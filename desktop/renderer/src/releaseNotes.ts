@@ -10,9 +10,19 @@ export type ReleaseNotes = {
 // 更新说明直接写软件修好了什么：哪一个界面、哪一项操作，以前错在哪里，现在怎样。
 // 不写「上游」「部分问题」「体验优化」这类看不出具体改动的话。
 export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
-  '0.2.20': {
-    title: { zh: '桌面画布、设置与账号', en: 'Desktop canvas, settings and account' },
+  '3.0.0': {
+    title: { zh: '新画布界面、更快的大画布与账号充值', en: 'New canvas layout, faster large canvases and account top-up' },
     fixes: [
+      { zh: '节点多的画布打开和切换明显变快：99 个节点的画布打开从 5 秒多降到 1.4 秒左右，切回已打开的画布也从 6 秒降到 1 秒多。', en: 'Canvases with many nodes open and switch much faster: a 99-node canvas now opens in about 1.4 s instead of over 5 s, and switching back to an open canvas takes about 1 s instead of 6 s.' },
+      { zh: '宫格切分、截帧等需要写入本机项目的操作，偶尔点了没有反应，现在会正常生成新节点。', en: 'Grid split, frame capture and other actions that write into the local project sometimes did nothing; they now create the new nodes.' },
+      { zh: '全景预览、视频截取、历史记录等弹窗可以按 Esc 关闭。', en: 'Esc now closes the panorama preview, video trim, history and similar dialogs.' },
+      { zh: '手机竖拍的照片在节点缩略图里不再横着显示；发给模型的参考图和局部重绘也按画面方向转正，涂抹区域和原图对得上。', en: 'Portrait phone photos no longer appear sideways in node thumbnails. Reference images sent for generation and inpainting are also rotated upright, so the painted area matches the picture.' },
+      { zh: '点击积分余额会打开账号页，账号小面板也加了「充值与积分明细」，桌面端可以直接充值和查看积分流水。', en: 'Clicking the balance opens the account page again, and the account panel now has Top up and credit history, so you can top up and review credits in the desktop app.' },
+      { zh: '图片生成选择同比例的大尺寸（例如 2K 方形）时，不会再被改回列表里较小的尺寸。', en: 'Choosing a larger size with the same ratio in image generation (for example 2K square) no longer switches back to a smaller size.' },
+      { zh: '豆包、Dola 视频在清晰度跟随平台时，时长选项不再是空的。', en: 'Doubao and Dola video duration options are no longer empty when the resolution follows the platform.' },
+      { zh: '豆包、Dola 模型在节点标题和模型选择框里显示官方名称，不再显示内部编号。', en: 'Doubao and Dola models show their official names in node titles and the model picker instead of internal IDs.' },
+      { zh: 'MiniMax H3 生成 15 秒视频时，成片略长于 15 秒不再按 16–30 秒的长视频价格结算。', en: 'A 15-second MiniMax H3 video that comes out slightly longer than 15 seconds is no longer charged at the 16–30 second long-video rate.' },
+      { zh: '截取视频会保留原视频的全部音轨。', en: 'Trimmed videos keep every audio track from the original.' },
       { zh: '登录、退出和积分改在窗口右上角的小面板里。打开软件先看到本机项目和案例，点「登录 / 注册」再登录，不再整页切到登录页。', en: 'Sign-in, sign-out and balance now live in a small panel at the top right. The app opens on local projects and cases; choose Sign in / Register to sign in instead of switching to a full-page sign-in screen.' },
       { zh: '未登录时也能打开本机项目和画布继续查看；历史、积分这些需要账号的入口在登录后才出现。', en: 'Local projects and canvases open without signing in; account-only entries such as history and balance appear after sign-in.' },
     ],
@@ -24,11 +34,10 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
       { zh: '桌面画布顶部只保留返回、当前画布切换和画布/文档切换；项目名称仍在项目管理里，画布不再重复显示；画布内不再放独立历史页。', en: 'The desktop canvas header now keeps only Back, the current canvas switcher and Canvas/Document tabs. Project naming stays in project management, and the canvas no longer repeats it or contains a separate History page.' },
       { zh: '展开提示词会把整张生成卡放大到画布中央，输入、模型、参数和发送操作保持在一起；收起入口固定在卡片右上角，参考素材不再把它挤到下一行。', en: 'Expanding a prompt enlarges the whole generation card in the canvas center, keeping prompt, model, parameters and send action together. The collapse action stays at the card’s top-right instead of being pushed down by references.' },
       { zh: '缩放菜单补上 50%、100%、800% 和当前快捷键；适合屏幕不会再为了铺满窗口把小画布强行放大到 100% 以上。', en: 'The zoom menu now includes 50%, 100%, 800% and the current shortcuts. Fit to screen no longer enlarges a small canvas above 100% just to fill the window.' },
-      { zh: '生成节点靠近底部时，提示词卡会根据底部工具栏自动限高，模型、参数和发送按钮不会再被工具栏盖住。', en: 'When a generation node is near the bottom, its prompt card now fits above the canvas toolbar so the model, settings and send button stay reachable.' },
       { zh: 'Agent 悬浮球在空闲时不再持续播放渐变动画，减少画布静止时的显卡占用和拖动卡顿。', en: 'The floating Agent orb no longer animates continuously while idle, reducing GPU use and canvas stutter.' },
       { zh: '切换项目或画布后，Agent 的新消息会绑定当前画布；画布尚未打开完成时先暂停发送，避免继续操作上一张画布。', en: 'After switching projects or canvases, a new Agent message binds to the current canvas. Sending pauses until that canvas is ready so work cannot continue on the previous one by mistake.' },
       { zh: '同一 Agent 会话现在可以只读列出本机其他项目、查看项目内画布并读取指定画布结构和节点内容，不必先丢弃当前会话；跨项目修改仍要先切到对应项目。', en: 'One Agent conversation can now list other local projects, inspect their canvases and read a selected canvas structure and node content without discarding the current conversation. Cross-project edits still require switching to that project.' },
-      { zh: '桌面画布直接读写本机工作区，不再定时向云端拉取整张画布；模型生成结果仍按原任务编号取回并保存到本机项目。', en: 'The desktop canvas reads and writes its local workspace directly instead of polling the cloud for the whole canvas. Generated results are still recovered by their original task ID and saved into the local project.' },
+      { zh: '桌面画布直接读写本机工作区，不再定时向云端拉取整张画布；回到窗口或切换画布时会读一次本机文件，后台保存的生成结果也能显示出来。', en: 'The desktop canvas reads and writes its local workspace directly instead of polling the cloud for the whole canvas. Returning to the window or switching canvases reads the local file once, so results saved in the background appear.' },
       { zh: '资产页分成“生成历史”和“个人资产库”：生成历史对应账号里的模型任务，个人资产库直接读取本机项目里的图片、视频和音频；未登录也能离线浏览本机资产。', en: 'Assets now separates Generation history from Personal assets: generation history follows account model tasks, while Personal assets reads images, videos and audio from local projects and remains available while signed out.' },
       { zh: '资产页的图片和视频先显示本机 320px 缩略图，点开后才读取原文件，浏览大项目时不再一次加载大量原始媒体。', en: 'Images and videos in Assets use cached local 320 px thumbnails, loading the original only when opened instead of pulling many full-size files at once.' },
       { zh: '生成历史里旧版本保存的图片改用本机缩略图，不再显示裂图；本机原件已删除的记录显示类型图标，视频记录显示实际消耗积分。', en: 'Images saved by earlier versions now use local thumbnails in Generation history instead of broken images. Records whose local original was deleted show a type icon, and video records show the credits actually used.' },
@@ -38,7 +47,14 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
       { zh: '设置中的豆包与 Dola 页面补全网络自检顺序，并说明只切换节点、没有开启系统代理或 TUN 时，妙图窗口仍可能直连；Dola 需要日本、英国、东南亚等开放地区的出口，美国出口会被 Dola 限制。', en: 'The Doubao and Dola settings now explain the network checks and note that selecting a node without enabling System Proxy or TUN may leave MiaoImg on a direct connection. Dola needs an exit in an offered region such as Japan, the UK or Southeast Asia; US exits are restricted by Dola.' },
       { zh: 'MiniMax H3 按当前官方能力开放 480p、768P、1080p 和 2K，并支持 4–30 秒；2K 仍按官方限制最长 15 秒，16–30 秒报价按官方长视频档计算。', en: 'MiniMax H3 now follows its current official options for 480p, 768P, 1080p and 2K with 4–30 second clips. 2K keeps the official 15-second limit, while 16–30 second quotes use the official long-video rate.' },
       { zh: 'Grok Imagine Image 2.0 补上官方支持的自动质量选项；多图编辑上限按当前官方能力保持 5 张。', en: 'Grok Imagine Image 2.0 now includes the official automatic quality option; multi-image editing keeps the current official five-image limit.' },
-      { zh: '修复桌面画布左上角「历史」与 macOS 窗口红黄绿按钮重叠的问题。', en: 'Fixed History in the top-left of the desktop canvas overlapping the macOS window controls.' },
+      { zh: '画布左上角的画布名和切换按钮不再挡住 macOS 窗口的红黄绿按钮；窗口顶部空白处可以直接拖动窗口。', en: 'The canvas name and switcher in the top-left no longer cover the macOS window buttons, and the empty strip along the top drags the window.' },
+      { zh: '画布工具重新排布：左下角是素材库、整理、小地图、连线和吸附，底部中间是添加节点、选择、抓手、撤销、重做、适应视图和设置。', en: 'Canvas tools are rearranged: the asset library, tidy, minimap, links and snapping sit at the bottom left; add node, select, hand, undo, redo, fit view and settings sit at the bottom center.' },
+      { zh: '输入框去掉了框中框；空的图片、视频生成节点给出「试试」入口，连上参考后自动收起；输入框新增「+ 参考」，选中的文件放在节点左侧并自动连好线。', en: 'The prompt box no longer has a box inside a box. Empty image and video generation nodes offer Try shortcuts that disappear once references are connected, and + Reference places the chosen files to the left of the node and links them.' },
+      { zh: '没有素材的图片、视频、音频节点只显示能用的按钮和上传提示。', en: 'Image, video and audio nodes without media show only usable buttons and an upload hint.' },
+      { zh: '截取视频按所选起止精确到帧。', en: 'Video trim now cuts at the exact frames you select.' },
+      { zh: '音频节点新增格式转换：MP3、M4A、WAV、FLAC。', en: 'Audio nodes can convert to MP3, M4A, WAV or FLAC.' },
+      { zh: '画布里的视频直接播放原文件，不再自动换成低清副本。', en: 'Videos on the canvas play the original file instead of switching to a low-resolution copy.' },
+      { zh: '节点右键菜单的「复制节点」改名为「创建副本」，原来的「创建副本」改为「创建副本（保留输入连线）」，名称和实际效果一致。', en: 'In the node menu, Copy node is now Create a copy, and the old Create a copy is now Create a copy (keep input links), matching what each does.' },
     ],
     knownIssues: [
       { zh: '登录仍需要邮箱验证码和密码；收不到验证码时请检查邮箱。', en: 'Sign-in still requires the email code and password; check the inbox if the code does not arrive.' },

@@ -16,8 +16,8 @@
       <template #dropdown>
         <el-dropdown-menu>
           <el-dropdown-item v-if="assetOutputs.length && saveNodeToAssets" command="saveAsset" :icon="IconFolderPlus">{{ translate('保存到素材库') }}</el-dropdown-item>
-          <el-dropdown-item :divided="!!(assetOutputs.length && saveNodeToAssets)" command="copy" :icon="IconCopy">{{ translate('复制节点') }}</el-dropdown-item>
-          <el-dropdown-item command="duplicate" :icon="IconCopyPlus">{{ translate('创建副本') }}</el-dropdown-item>
+          <el-dropdown-item :divided="!!(assetOutputs.length && saveNodeToAssets)" command="copy" :icon="IconCopy">{{ translate('创建副本') }}</el-dropdown-item>
+          <el-dropdown-item command="duplicate" :icon="IconCopyPlus">{{ translate('创建副本（保留输入连线）') }}</el-dropdown-item>
           <el-dropdown-item command="delete" :icon="IconTrash">{{ translate('删除节点') }}</el-dropdown-item>
           <el-dropdown-item divided command="clipboard" :icon="IconCopy" :disabled="!copyNodeToClipboard || copyingToClipboard">
             {{ translate('复制到剪贴板') }}
