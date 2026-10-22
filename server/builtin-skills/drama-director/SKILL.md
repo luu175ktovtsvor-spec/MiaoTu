@@ -1,40 +1,33 @@
 ---
 name: drama-director
-displayName: 漫剧制作
-displayName_en: Drama production
-description: 从剧本到角色场景资产、机位、分镜、对白、段落衔接与视频提示词的漫剧制作流程。分集长篇结构调用分集短剧编剧，动作段调用对应专项导演。
-description_en: From script to character and scene assets, camera set-ups, storyboards, dialogue and video prompts. Multi-episode structure goes to the series writer; action beats to the matching action director.
+displayName: 短剧与漫剧制作
+displayName_en: Short drama and comic drama production
+description: 短剧与漫剧制作板块：从剧本到资产、机位、分镜、对白、段落衔接和视频提示词的完整流程，画布上的实际制作，单段短剧，以及写实、玄幻动作段导演。
+description_en: The short-drama and comic-drama section: the full flow from script to assets, camera set-ups, shots, dialogue, segment continuity and video prompts, hands-on canvas production, single segments, and realistic or fantasy action direction.
 ---
+# 短剧与漫剧制作
 
-> 执行说明：保留本文的方法和工具步骤。先核对当前工具与用户授权；桌面端可用本机工具时先检查软件是否已安装，缺少时按统一工具说明，在用户任务授权范围内准备所需依赖；妙图不会因为读取本文而自动安装软件。不要把 Skill 的示例路径、模型或能力当成已安装配置。网页端使用当前实际可用工具。
+负责把剧本真正做成视频：资产、机位、分镜、段落衔接、视频提示词，一直到画布上的成片片段。
 
-# 漫剧制作
+## 先选方法
 
-## 按需制作
+| 方法 | 什么时候用 | 读取 |
+| --- | --- | --- |
+| 漫剧制作 | 漫剧制作方法总纲：资产、机位、分镜、对白、段缝衔接（本板块原有方法，见 references/core.md） | `readSkill({name:"drama-director", path:"references/core.md"})` |
+| workflow | 在当前画布上实际制作、续作和局部修改的执行流程（动手做时先读它） | `readSkill({name:"workflow"})` |
+| 单段短剧 | 单段短剧情或独立场景 | `readSkill({name:"video-short-drama"})` |
+| 写实动作导演 | 写实动作段：格斗、追逐、警匪、多人打斗 | `readSkill({name:"real-combat-director"})` |
+| 玄幻动作导演 | 玄幻动作段：斗法、法术对轰、兵器近战、法阵 | `readSkill({name:"xuanhuan-combat-director"})` |
 
-先读取共享执行说明 readSkill({name:"drama-director",path:"references/miaoimg-adapter.md"})；本轮已读则复用。完整创作总纲位于 references/production/source-guide.md，按任务读取流程、案例与规则索引。
+## 和画布配合
 
-按当前问题选阶段，不强制用户每次走完全部阶段：
+- 动手制作时先读 workflow，它说明怎样在画布上按剧本、资产、分镜、视频的顺序摆节点和连线。
+- 剧本层的问题（分集大纲、改稿）转到「剧本创作」板块；角色和场景设定图转到「角色与场景设定」板块。
+- 方法里对 MiniMax H3、Seedance 等模型写的时长和参数是原作者当时的规格。妙图当前的实际上限以视频节点给出的为准，例如 H3 现在 480p、768P、1080p 可选 4–30 秒，2K 最长 15 秒。
 
-| 当前任务 | 读取参考或复用入口 |
-| --- | --- |
-| 全流程立项与制作交接 | production/asset-first-pipeline.md、production/production-ledger-handbook.md |
-| 单集剧本与因果节拍 | production/screenplay-gate-engine.md；连续分集用 readSkill({name:"short-drama-factory"}) |
-| 角色、场景与站位锁定 | production/asset-spatial-ledger.md、production/character-lineage-and-sheets.md；资产制作复用下表 |
-| 文戏、台词与表情 | production/dialogue-doctor-7d.md、production/dialogue-speed-check.md、production/wenxi-micro-expression.md、production/facs-micro-expression.md |
-| 写实动作段 | readSkill({name:"real-combat-director"})，本段不重复加载通用动作引擎 |
-| 玄幻动作段 | readSkill({name:"xuanhuan-combat-director"})，本段不重复加载旧玄幻动作引擎 |
-| 分镜、机位与段缝 | production/cinematic-dramaturgy-rules.md、production/spatial-topview-camera.md、production/camera-transitions-6types.md、production/segment-splicing.md |
-| 模型提示词封装 | production/model-adapters.md；用户选 H3 时读 production/h3-adapter.md；参数以当前节点配置为准 |
-| 旁白、独白与情绪节拍 | production/vo-os-weaving.md、production/emotion-beat-curve.md |
-| 交付前审查 | production/quality-gate-review.md、production/prompt-feeding-checklist.md |
+## 读取规则
 
-上表中的 production/... 均按表内实际文件名读取，例如 readSkill({name:"drama-director",path:"references/production/asset-first-pipeline.md"})。需要总纲详细锁定与模式切换时读取 source-guide.md 对应章节；其开头包含版本记录，不以版本记录代替正文。
-
-## 已有资产能力只复用一次
-
-角色正交视图用 miaotu-character-orthographic；服装、表情、姿态、道具分别用 miaotu-character-costume、miaotu-character-expression、miaotu-character-pose、miaotu-character-prop。场景布局、正交场景、俯视图分别用 miaotu-ai-drama-scene-layout、miaotu-scene-turnaround、miaotu-scene-top-view-layout。九宫格和故事面板分别用 miaotu-visual-storyboard-grid、miaotu-storyboard-panel。先 listSkills 确认当前账号可用入口，再 readSkill 对应 ID；只调用本任务需要的项；巨物尺度场景用 miaotu-giant-scale-scene，先锁定尺度参照和空间关系，再进入图片或视频提示词制作。
-
-这些入口负责独立资产，漫剧总入口负责资产与剧本、分镜的关系。已经锁定的原图以路径和节点关联，不重复出图或建立平行资产册。
-
-总纲的章节及读取 offset 见 readSkill({name:"drama-director",path:"references/guide-index.md"})，需要总纲正文时按章节读取。
+- 下列每个方法都是原作者的方法原文，只改了名称；细节以原文为准，不要凭印象改写。
+- 只读当前任务需要的那一个方法，不要一次把整个板块读完。正文较长时 readSkill 会截断，用返回的 nextOffset 接着读需要的章节。
+- 方法里写到的平台、模型、时长、比例和价格是当时的示例。实际能用的模型和参数，以画布节点返回的为准（getCanvas、node:getConfig），费用每次用节点的 estimate 重新询价。
+- 方法原文里的相对路径，用该方法自己的名称读取，例如 `readSkill({name:"方法名", path:"references/…"})`。

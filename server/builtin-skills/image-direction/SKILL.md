@@ -1,24 +1,30 @@
 ---
 name: image-direction
-displayName: 图片创作指导
-displayName_en: Image direction
-description: 为角色、场景、产品和图形编写完整图片指导，并组织真实参考关系。
-description_en: Write complete image direction for characters, scenes, products and graphics, and organise the real reference relationships.
+displayName: 图片与视觉指导
+displayName_en: Image and visual direction
+description: 图片与视觉板块：角色、场景、产品和图形的图片指导，视觉方向卡，以及从妙图灵感库挑选可追溯的参考。
+description_en: The image and visual section: image direction for characters, scenes, products and graphics, visual direction cards, and traceable references from the MiaoImg library.
 ---
-# 图片创作指导
+# 图片与视觉指导
 
-A few decisive strokes carry the picture. Direct a complete view through Capture, Person, Shot and Setting where that shape fits. Give appearance, framing and place the few choices that make this picture particular.
+负责单张图片和整体视觉风格：先定方向，再写可执行的图片指导，并找到真实的参考图。
 
-## 按需读取完整指导
+## 先选方法
 
-- `readSkill({name:"video-create",path:"references/playbooks/craft/image-direction.md"})`：完整制作前阅读。
-- `readSkill({name:"video-create",path:"references/playbooks/craft/examples/image-direction.md"})`：问题涉及此项时阅读。
-- `readSkill({name:"video-create",path:"references/miaoimg-tools.md"})`：执行节点、媒体、费用或文件操作前阅读；本轮已读则复用。
-- `readSkill({name:"image-direction",path:"references/prompt-optimization.md"})`：需要构建、诊断或修复图片提示词时读取完整的四步优化、编辑保护和质量检查方法。
+| 方法 | 什么时候用 | 读取 |
+| --- | --- | --- |
+| 图片创作指导 | 角色、场景、产品和图形的完整图片指导（本板块原有方法，见 references/core.md） | `readSkill({name:"image-direction", path:"references/core.md"})` |
+| 视觉方向卡 | 把模糊的意图整理成视觉方向卡 | `readSkill({name:"visual-direction"})` |
+| 灵感库参考 | 从灵感库检索可追溯的提示词和参考图，并接入画布 | `readSkill({name:"inspiration-library"})` |
 
-这些是详细创作参考，不止简要提示词。readSkill 截断时用 nextOffset 继续当前所需章节；不要一次加载整个参考库。共享参考只保存一份，此技能可独立调用，也可由“视频创作”总入口组合调用。
+## 和画布配合
 
-## 从指导到实际作品
+- 参考图接入画布后连到图片生成节点的输入，提示词里用 @ 引用，引用顺序就是参考顺序。
+- 需要调光、换机位、改局部时，用图片节点自带的打光、多角度、局部重绘，不必重写整段提示词。
 
-先理解当前目标与账号素材，把参考观察、创作决定和实际完成的结果分开。用现有节点和模型返回的 schema 实现作品；用户只要分析或方案时不触发生成。选择实际必要的其他技能，通过 listSkills / readSkill 读取，不强制跑完整流程。
+## 读取规则
 
+- 下列每个方法都是原作者的方法原文，只改了名称；细节以原文为准，不要凭印象改写。
+- 只读当前任务需要的那一个方法，不要一次把整个板块读完。正文较长时 readSkill 会截断，用返回的 nextOffset 接着读需要的章节。
+- 方法里写到的平台、模型、时长、比例和价格是当时的示例。实际能用的模型和参数，以画布节点返回的为准（getCanvas、node:getConfig），费用每次用节点的 estimate 重新询价。
+- 方法原文里的相对路径，用该方法自己的名称读取，例如 `readSkill({name:"方法名", path:"references/…"})`。

@@ -133,8 +133,8 @@ export function createEmailOtp({ management, env = process.env }: Record<string,
       const stored = management.issueEmailOtp({ email: normalized, codeHash: codeHash(normalized, code, config.pepper), now, expiresAt: now + CODE_TTL_MS, cooldownMs: RESEND_COOLDOWN_MS })
       await sendSmtp({
         to: normalized,
-        subject: '妙图登录验证码',
-        text: `你的妙图登录验证码是：${code}\n\n验证码 10 分钟内有效。如非本人操作，请忽略此邮件。`,
+        subject: '妙图验证码',
+        text: `你的妙图验证码是：${code}\n\n用于登录、注册或重设密码，10 分钟内有效。如非本人操作，请忽略此邮件。`,
       }, config)
       return { cooldown: Math.ceil((stored.nextAllowedAt - now) / 1000) }
     },
@@ -143,10 +143,21 @@ export function createEmailOtp({ management, env = process.env }: Record<string,
       if (!validEmail(normalized) || !/^\d{6}$/.test(String(code || '').trim())) throw failure('验证码错误或已过期', 401)
       const config = smtpConfig(env)
       if (!config) throw failure('邮箱验证码服务暂未配置', 503)
-      // 密码不对时不消耗验证码，避免一次手误就要重发邮件。
-      management.assertEmailPassword(normalized, password)
+      // 旧客户端会连同密码提交：密码不对时不消耗验证码，避免一次手误就要重发邮件。
+      if (password) management.assertEmailPassword(normalized, password)
+      else if (!management.get('SELECT 1 FROM users WHERE lower(email)=?', normalized) && !management.settings().registrationEnabled) throw failure('当前暂未开放注册', 403)
       management.consumeEmailOtp({ email: normalized, codeHash: codeHash(normalized, String(code).trim(), config.pepper), now: Date.now(), maxAttempts: MAX_ATTEMPTS })
       return management.loginEmailOtp(normalized, name, password)
+    },
+    resetPassword(email, code, password = '') {
+      const normalized = normalizeEmail(email)
+      if (!validEmail(normalized) || !/^\d{6}$/.test(String(code || '').trim())) throw failure('验证码错误或已过期', 401)
+      if (String(password).length < 8 || String(password).length > 128) throw failure('密码长度需要为 8 到 128 位')
+      const config = smtpConfig(env)
+      if (!config) throw failure('邮箱验证码服务暂未配置', 503)
+      if (!management.get('SELECT 1 FROM users WHERE lower(email)=?', normalized)) throw failure('这个邮箱还没有注册，请用验证码登录', 404)
+      management.consumeEmailOtp({ email: normalized, codeHash: codeHash(normalized, String(code).trim(), config.pepper), now: Date.now(), maxAttempts: MAX_ATTEMPTS })
+      return management.resetPasswordWithEmailOtp(normalized, password)
     },
   }
 }

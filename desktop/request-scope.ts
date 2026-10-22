@@ -4,7 +4,7 @@
 const projectIndependent = new Set([
   '/api/desktop/status', '/api/desktop/login', '/api/desktop/register', '/api/desktop/logout', '/api/desktop/doubao', '/api/desktop/dola',
   '/api/imagine/session', '/api/imagine/logout', '/api/imagine/config',
-  '/api/imagine/email/config', '/api/imagine/email/request-code', '/api/imagine/email/verify-code',
+  '/api/imagine/email/config', '/api/imagine/email/request-code', '/api/imagine/email/verify-code', '/api/imagine/password/reset',
   '/api/imagine/workspace/projects', '/api/imagine/workspace/projects/open',
   '/api/imagine/workspace/projects/rename', '/api/imagine/workspace/projects/remove',
   '/health',

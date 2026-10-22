@@ -154,7 +154,7 @@ POST {MINIMAX_API_BASE}/v2/h3_context_ir
 |---|---|
 | H1 | 字段集完整：T2VA/I2VA/FL2VA/L2VA → 三字段；Ref2VA → 六段式且**顺序正确** |
 | H2 | `[Shot 1]` 无时间戳；后续切点 `[Shot N] At MM:SS.mmm,` 严格递增且 ≤ 段时长；切镜动词用官方绑定短语（the camera/shot cuts to…） |
-| H3 | 时长落在 **4–30s**（单次 2K 最高 15s），且与载荷 `duration_seconds` 一致 |
+| H3 | 时长落在 **4–15s**，且与载荷 `duration_seconds` 一致 |
 | H4 | **正文应为英文**（官方 base-en/ref-en；`<d>` 与双引号画内文字之外出现中文 → WARN）；`<d>` 必须有语言标签、台词保原语言未被翻译 |
 | H5 | 标签先定义后引用（Ref2VA）；无未定义标签；`summary` 不引入新标签；**定义项 >9 告警**；**定义了却在正文一次未引用 → 告警**（别白占 9 张额度 / 人物凭空消失） |
 | H6 | 保留度标记取值为合法英文固定值；`retention_analysis` 不含 `(Sx)` |
@@ -171,7 +171,7 @@ POST {MINIMAX_API_BASE}/v2/h3_context_ir
 
 - 官方仓库 `MiniMax-AI/MiniMax-H3`：`README.zh-CN.md` 的 **case-T2VA / case-I2VA / case-Ref2VA** 三段 **H3-Context-IR 真实输出 JSON**（`task.content.prompt`）→ 字段名、段序、标签、保留度标记、`(S1)`、`<d>[Language]`、镜号切点、任务类型前缀全部逐字对上。
 - `skills/h3-prompt-writing/SKILL.md` + `references/base-en.txt` + `references/ref-en.txt`（基础模式指南 / 全参考六段式指南）。
-- 当前目录：480p/768P/1080p 支持 **4–30 秒**，2K 支持 **4–15 秒**；宽高比含 `21:9/16:9/4:3/1:1/3:4/9:16`。超过 15 秒时成本按官方长视频 2 倍档计算，画布报价以服务端实际返回为准。
+- 官方规格表：输出时长 **4–15 秒**、宽高比含 `21:9/16:9/4:3/1:1/3:4/9:16`、24 FPS、32 kHz 立体声、短边 768 默认、2K 走 `H3-Regenerate-2K`、稳定支持 11 种对话语言（含中文）。
 - 模型变体与输入规格（FL2VA / Ref2VA 两 checkpoint，图像 ≤9 张等上限）。
 - `scripts/readme/*.sh` 真实请求体（路径 A / 路径 B 两套载荷）。
 - ⚠️ **真人脸红线：H3 官方没有这条**（官方只有通用内容审核：违法/色情/侵权拦截）。**不得把 Seedance 的真人脸素材红线照搬到 H3 支线。**

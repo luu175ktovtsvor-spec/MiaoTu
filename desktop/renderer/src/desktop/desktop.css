@@ -67,6 +67,15 @@
 .desktop-account-tabs button[aria-selected=true]:hover:not(:disabled){background:color-mix(in srgb,var(--da-accent) 22%,transparent);color:var(--da-ink)}
 .desktop-account-tabs button:disabled{opacity:.45}
 .desktop-account-panel form{display:grid;gap:var(--da-form-gap)}
+/* 登录方式切换：验证码登录 / 密码登录。 */
+.desktop-account-tabs{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;margin-bottom:var(--da-form-gap);border:1px solid var(--da-line);border-radius:10px;background:var(--da-field)}
+.desktop-account-tabs button{min-height:32px;border:0;border-radius:7px;background:transparent;color:var(--da-muted);font-size:13px;font-weight:600}
+.desktop-account-tabs button[aria-selected="true"]{background:var(--da-elevate);color:var(--da-ink);box-shadow:0 1px 2px rgba(0,0,0,.18)}
+.desktop-account-tabs button:hover:not(:disabled):not([aria-selected="true"]){color:var(--da-ink)}
+.desktop-account-link{justify-self:start;padding:0;border:0;background:transparent;color:var(--da-muted);font-size:12px;font-weight:500;cursor:pointer}
+.desktop-account-link:hover:not(:disabled){color:var(--da-ink);text-decoration:underline}
+.desktop-account-forgot{justify-self:end;margin-top:-4px}
+.desktop-account-back{margin-bottom:var(--da-form-gap)}
 .desktop-account-field{display:grid;gap:var(--da-field-gap);min-width:0;color:var(--da-body);font-size:12px;font-weight:500}
 .desktop-account-field>label,.desktop-account-field>span{color:var(--da-body);font-size:12px;font-weight:500}
 .desktop-account-field small{margin-left:6px;color:var(--da-faint);font-size:11px;font-weight:400}

@@ -13,6 +13,7 @@ export default function DesktopBar({ children }: { children: ReactNode }) {
   const [name, setName] = useState('')
   const [email, setEmail] = useState(''), [password, setPassword] = useState(''), [showPassword, setShowPassword] = useState(false)
   const [code, setCode] = useState(''), [codeSent, setCodeSent] = useState(false), [cooldown, setCooldown] = useState(0), [sending, setSending] = useState(false)
+  const [mode, setMode] = useState<'code' | 'password' | 'reset'>('code')
   const panel = useRef<HTMLElement>(null)
   const native = window.miaoDesktop
   const account = state?.cloud?.account
@@ -101,7 +102,9 @@ export default function DesktopBar({ children }: { children: ReactNode }) {
     } catch (e) { setError(e instanceof Error ? e.message : '验证码发送失败，请稍后重试') }
     finally { setSending(false) }
   }
-  const codeIncomplete = !codeSent || !/^\d{6}$/.test(code.trim()) || password.length < 8
+  // 验证码登录（新邮箱自动注册）和密码登录二选一；忘记密码时用验证码重设。
+  const submitReady = Boolean(email.trim()) && (mode === 'password' ? password.length >= 8 : /^\d{6}$/.test(code.trim()) && (mode === 'code' || password.length >= 8))
+  function switchMode(next: 'code' | 'password' | 'reset') { setMode(next); setError(''); setPassword(''); setShowPassword(false) }
   return <>
     <div key={account?.id || account?.workspaceKey || 'local'}>{children}</div>
     {native.platform !== 'darwin' && <div className="desktop-window-buttons"><button aria-label="最小化" onClick={() => native.minimize()}>−</button><button aria-label="最大化" onClick={() => native.maximize()}>□</button><button aria-label="关闭" onClick={() => native.close()}>×</button></div>}
@@ -117,25 +120,35 @@ export default function DesktopBar({ children }: { children: ReactNode }) {
       }}>
         <button className="desktop-account-close" type="button" aria-label="关闭账号窗口" disabled={busy} onClick={close}><X size={20} /></button>
         <div className="desktop-account-brand"><img src="/miaoimg-logo.png" alt="" /><span>妙图</span></div>
-        <h2 id="desktop-account-title">{account ? '账号' : '登录妙图'}</h2>
-        <p id="desktop-account-description" className="desktop-account-description">{account ? '账号与积分。画布和素材保存在这台电脑。' : registrationEnabled ? '验证码和密码登录，新邮箱会创建账号。' : '验证码和密码登录。'}</p>
+        <h2 id="desktop-account-title">{account ? '账号' : mode === 'reset' ? '重设密码' : '登录妙图'}</h2>
+        <p id="desktop-account-description" className="desktop-account-description">{account ? '账号与积分。画布和素材保存在这台电脑。' : mode === 'reset' ? '验证邮箱后设置新密码，完成后直接登录。' : mode === 'password' ? '用邮箱和密码登录。' : registrationEnabled ? '用邮箱验证码登录，新邮箱会自动注册。' : '用邮箱验证码登录。'}</p>
         {loading ? <div className="desktop-account-loading" role="status"><SpinnerGap size={22} className="desktop-account-spinner" />正在读取账号…</div> : (!state || state.statusUnavailable) ? <>
           <p role="alert" className="desktop-account-error">{error || '暂时无法读取账号，请重试'}</p>
           <button className="desktop-account-submit" onClick={() => setRefresh(value => value + 1)}>重试</button>
         </> : !account ? <>
+          {mode !== 'reset' ? <div className="desktop-account-tabs" role="tablist" aria-label="登录方式">
+            <button type="button" role="tab" aria-selected={mode === 'code'} disabled={busy} onClick={() => switchMode('code')}>验证码登录</button>
+            <button type="button" role="tab" aria-selected={mode === 'password'} disabled={busy} onClick={() => switchMode('password')}>密码登录</button>
+          </div> : <button type="button" className="desktop-account-link desktop-account-back" disabled={busy} onClick={() => switchMode('password')}>← 返回密码登录</button>}
           <form id="desktop-account-form" noValidate onSubmit={async event => {
             event.preventDefault(); if (busy || sending) return
-            if (!event.currentTarget.checkValidity() || password.length < 8 || !/^\d{6}$/.test(code.trim())) { setError(password.length < 8 ? '请设置至少 8 位密码' : '请填写邮箱、密码和 6 位验证码'); event.currentTarget.querySelector<HTMLElement>(':invalid')?.focus(); return }
-            const ok = await action('/api/imagine/email/verify-code', { email: email.trim(), code: code.trim(), password, ...(name.trim() ? { name: name.trim() } : {}) })
+            const problem = !email.trim() || !event.currentTarget.checkValidity() ? '请填写有效的邮箱'
+              : mode !== 'password' && !/^\d{6}$/.test(code.trim()) ? '请填写 6 位验证码'
+              : mode !== 'code' && password.length < 8 ? (mode === 'reset' ? '新密码至少 8 位' : '请输入至少 8 位密码') : ''
+            if (problem) { setError(problem); return }
+            const ok = mode === 'code' ? await action('/api/imagine/email/verify-code', { email: email.trim(), code: code.trim(), ...(name.trim() ? { name: name.trim() } : {}) })
+              : mode === 'password' ? await action('/api/desktop/login', { email: email.trim(), password })
+              : await action('/api/imagine/password/reset', { email: email.trim(), code: code.trim(), password })
             setPassword(''); setCode('')
-            if (ok) { setOpen(false); window.dispatchEvent(new Event('miao-desktop-session')) }
+            if (ok) { setOpen(false); setMode('code'); window.dispatchEvent(new Event('miao-desktop-session')) }
           }}>
             <label className="desktop-account-field"><span>邮箱</span><div className="desktop-account-input"><EnvelopeSimple size={18} aria-hidden="true" /><input id="desktop-account-email" name="miao-account-email" type="email" autoComplete="off" value={email} onChange={e => { setEmail(e.target.value); setError('') }} placeholder="输入邮箱地址" required disabled={busy} /></div></label>
-            <div className="desktop-account-field"><label htmlFor="desktop-account-password">密码</label><div className="desktop-account-input"><LockKey size={18} aria-hidden="true" /><input id="desktop-account-password" name="miao-account-password" type={showPassword ? 'text' : 'password'} autoComplete="off" value={password} onChange={e => { setPassword(e.target.value); setError('') }} placeholder="至少 8 位" required minLength={8} maxLength={128} disabled={busy} /><button type="button" className="desktop-account-password-toggle" aria-label={showPassword ? '隐藏密码' : '显示密码'} aria-pressed={showPassword} disabled={busy} onClick={() => setShowPassword(!showPassword)}>{showPassword ? <EyeSlash size={19} /> : <Eye size={19} />}</button></div></div>
-            <div className="desktop-account-field"><label htmlFor="desktop-account-code">验证码</label><div className="desktop-account-input"><input id="desktop-account-code" name="miao-account-code" inputMode="numeric" autoComplete="off" pattern="[0-9]{6}" maxLength={6} value={code} onChange={e => { setCode(e.target.value.replace(/\D/g, '').slice(0, 6)); setError('') }} placeholder="6 位验证码" required disabled={busy} /><button type="button" className="desktop-account-send" disabled={!email.trim() || busy || sending || cooldown > 0} onClick={requestCode}>{cooldown > 0 ? `${cooldown}s` : sending ? '发送中…' : '获取验证码'}</button></div></div>
-            {registrationEnabled && <label className="desktop-account-field"><span>昵称<span>选填，新账号使用</span></span><div className="desktop-account-input"><input name="miao-account-name" autoComplete="off" value={name} maxLength={60} onChange={e => { setName(e.target.value); setError('') }} placeholder="在妙图中显示的名字" disabled={busy} /></div></label>}
+            {mode !== 'password' && <div className="desktop-account-field"><label htmlFor="desktop-account-code">验证码</label><div className="desktop-account-input"><input id="desktop-account-code" name="miao-account-code" inputMode="numeric" autoComplete="off" pattern="[0-9]{6}" maxLength={6} value={code} onChange={e => { setCode(e.target.value.replace(/\D/g, '').slice(0, 6)); setError('') }} placeholder="6 位验证码" required disabled={busy} /><button type="button" className="desktop-account-send" disabled={!email.trim() || busy || sending || cooldown > 0} onClick={requestCode}>{cooldown > 0 ? `${cooldown}s` : sending ? '发送中…' : codeSent ? '重新获取' : '获取验证码'}</button></div></div>}
+            {mode !== 'code' && <div className="desktop-account-field"><label htmlFor="desktop-account-password">{mode === 'reset' ? '新密码' : '密码'}</label><div className="desktop-account-input"><LockKey size={18} aria-hidden="true" /><input id="desktop-account-password" name="miao-account-password" type={showPassword ? 'text' : 'password'} autoComplete="off" value={password} onChange={e => { setPassword(e.target.value); setError('') }} placeholder={mode === 'reset' ? '设置至少 8 位的新密码' : '输入密码'} required minLength={8} maxLength={128} disabled={busy} /><button type="button" className="desktop-account-password-toggle" aria-label={showPassword ? '隐藏密码' : '显示密码'} aria-pressed={showPassword} disabled={busy} onClick={() => setShowPassword(!showPassword)}>{showPassword ? <EyeSlash size={19} /> : <Eye size={19} />}</button></div></div>}
+            {mode === 'password' && <button type="button" className="desktop-account-link desktop-account-forgot" disabled={busy} onClick={() => switchMode('reset')}>忘记密码？</button>}
+            {mode === 'code' && registrationEnabled && <label className="desktop-account-field"><span>昵称<span>选填，新账号使用</span></span><div className="desktop-account-input"><input name="miao-account-name" autoComplete="off" value={name} maxLength={60} onChange={e => { setName(e.target.value); setError('') }} placeholder="在妙图中显示的名字" disabled={busy} /></div></label>}
             {error && <p role="alert" className="desktop-account-error">{error}</p>}
-            <button className="desktop-account-submit" disabled={busy || sending || codeIncomplete}>{busy ? <><SpinnerGap size={18} className="desktop-account-spinner" />处理中…</> : <>进入妙图<ArrowRight size={18} /></>}</button>
+            <button className="desktop-account-submit" disabled={busy || sending || !submitReady}>{busy ? <><SpinnerGap size={18} className="desktop-account-spinner" />处理中…</> : <>{mode === 'reset' ? '设置新密码并登录' : registrationEnabled && mode === 'code' ? '登录 / 注册' : '登录'}<ArrowRight size={18} /></>}</button>
           </form>
         </> : <>
           <div className="desktop-account-profile"><div className="desktop-account-avatar">{Array.from(String(account.name || account.email || '妙'))[0]}</div><div><strong>{account.name || '妙图用户'}</strong><p>{account.email}</p></div></div>

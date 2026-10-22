@@ -364,7 +364,14 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
         if (!localMediaSite(body.model, body.providerId) || localMediaKind(body.model) !== 'text') throw Object.assign(new Error('请选择本机账户文本模型'), { status: 422 })
         json(response, 202, await tasks.submit(project, 'text', body)); return
       }
-      if (['/api/desktop/login','/api/desktop/register'].includes(url.pathname) && request.method === 'POST') { throw Object.assign(new Error('请使用邮箱验证码登录'), { status: 422 }) }
+      if (url.pathname === '/api/desktop/register' && request.method === 'POST') { throw Object.assign(new Error('请使用邮箱验证码注册'), { status: 422 }) }
+      if (url.pathname === '/api/desktop/login' && request.method === 'POST') {
+        mutate(request); computer.cancel()
+        const body = await readJson(request, 64 * 1024)
+        await cloud.login({ email: body.email, password: body.password })
+        store.activeAccount = cloud.account
+        json(response, 200, { session: userSession() }); return
+      }
       if (url.pathname === '/api/desktop/logout' && request.method === 'POST') { mutate(request); computer.cancel(); await cloud.logout(); store.activeAccount = cloud.account; json(response, 200, { ok: true }); return }
       if (url.pathname === '/api/desktop/reveal' && request.method === 'POST') { mutate(request); const body = await readJson(request); const file = files.locate('local', body.path, body.project || 'default'); await native.reveal(file.diskPath); json(response, 200, { ok: true }); return }
       if (url.pathname === '/api/desktop/export' && request.method === 'POST') { mutate(request); const body = await readJson(request); const file = files.locate('local', body.path, body.project || 'default'); json(response, 200, { saved: await native.save(file.diskPath, body.path.split('/').pop()) }); return }
@@ -695,6 +702,12 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
       }
       if (url.pathname === '/api/imagine/email/request-code' && request.method === 'POST') {
         json(response, 200, await cloud.json(url.pathname, { method: 'POST', body: await readJson(request, 64 * 1024), anonymous: true })); return
+      }
+      if (url.pathname === '/api/imagine/password/reset' && request.method === 'POST') {
+        computer.cancel()
+        await cloud.resetPassword(await readJson(request, 64 * 1024))
+        store.activeAccount = cloud.account
+        json(response, 200, { session: userSession() }); return
       }
       if (url.pathname === '/api/imagine/email/verify-code' && request.method === 'POST') {
         computer.cancel()

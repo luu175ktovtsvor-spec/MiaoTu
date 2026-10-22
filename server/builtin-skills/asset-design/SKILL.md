@@ -1,0 +1,41 @@
+---
+name: asset-design
+displayName: 角色与场景设定
+displayName_en: Character and scene design
+description: 资产板块：角色设定图、三视图、表情、动作、服装、道具，场景四视图、俯视布局、短剧场景板、VR 全景、巨物场景，以及从剧本提炼资产 DNA。
+description_en: The asset section: character sheets, turnarounds, expressions, poses, costumes, props, scene turnarounds, top views, scene boards, VR panoramas, giant-scale scenes and script asset DNA.
+---
+# 角色与场景设定
+
+负责把角色、场景、道具做成稳定可复用的设定图，保证后面每个镜头里人物和场景都是同一个。
+
+## 先选方法
+
+| 方法 | 什么时候用 | 读取 |
+| --- | --- | --- |
+| 剧本资产美术指导 | 从剧本提炼角色、场景、道具清单和视觉 DNA（通常第一步） | `readSkill({name:"miaotu-script-asset-dna"})` |
+| 角色设定图 | 角色设定图与正侧背三视图 | `readSkill({name:"miaotu-character-turnaround"})` |
+| 角色正交视图 | 建模用的标准正交视图（四视图、六视图） | `readSkill({name:"miaotu-character-orthographic"})` |
+| 角色表情设定 | 十二表情库 | `readSkill({name:"miaotu-character-expression"})` |
+| 角色动作设定 | 十五种标准动作姿态 | `readSkill({name:"miaotu-character-pose"})` |
+| 角色服装设定 | 服装结构、面料、纹样拆解 | `readSkill({name:"miaotu-character-costume"})` |
+| 角色道具设定 | 武器、饰品、装备等道具拆解 | `readSkill({name:"miaotu-character-prop"})` |
+| 场景四视图 | 场景正交四视图 | `readSkill({name:"miaotu-scene-turnaround"})` |
+| 场景俯视布局 | 场景俯视图、走位和机位规划 | `readSkill({name:"miaotu-scene-top-view-layout"})` |
+| 短剧场景布局 | 短剧场景资产板（四个机位视角加空间布局） | `readSkill({name:"miaotu-ai-drama-scene-layout"})` |
+| 全景场景设计 | 720° 全景环境 | `readSkill({name:"miaotu-vr-panorama"})` |
+| 巨物场景导演 | 巨型生物、巨神、遗迹等巨物场景的尺度与构图 | `readSkill({name:"miaotu-giant-scale-scene"})` |
+
+## 和画布配合
+
+- 一张设定图一个图片生成节点，角色原图或参考图连到节点输入；同一个角色的设定图放在一起并打组，组名用角色名。
+- DNA 文本写进文本节点，后面生成画面时用 @ 引用，不要每次重新描述。
+- 全景图可以直接用图片节点的「全景」预览和截图；三视图、四视图需要拆开时用「宫格切分」。
+- 生成前用节点 estimate 报价；用户只要方案时只写文字，不触发生成。
+
+## 读取规则
+
+- 下列每个方法都是原作者的方法原文，只改了名称；细节以原文为准，不要凭印象改写。
+- 只读当前任务需要的那一个方法，不要一次把整个板块读完。正文较长时 readSkill 会截断，用返回的 nextOffset 接着读需要的章节。
+- 方法里写到的平台、模型、时长、比例和价格是当时的示例。实际能用的模型和参数，以画布节点返回的为准（getCanvas、node:getConfig），费用每次用节点的 estimate 重新询价。
+- 方法原文里的相对路径，用该方法自己的名称读取，例如 `readSkill({name:"方法名", path:"references/…"})`。

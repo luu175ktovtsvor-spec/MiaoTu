@@ -778,29 +778,46 @@ export class ManagementStore {
     if (row?.password_hash && !passwordMatches(password, row.password_hash)) throw failure('邮箱或密码不正确', 401)
     if (!row && !this.settings().registrationEnabled) throw failure('当前暂未开放注册', 403)
   }
+  // 验证码本身就证明了邮箱归属：只填验证码即可登录或注册。旧客户端会连同密码一起提交，
+  // 这时仍按原规则校验密码，新账号把它设为登录密码。
   loginEmailOtp(email, name = '', password = '') {
     email = normalizeEmail(email)
     if (!validEmail(email)) throw failure('请输入有效的邮箱地址')
-    if (!validPassword(password)) throw failure('密码长度需要为 8 到 128 位')
+    const withPassword = Boolean(password)
+    if (withPassword && !validPassword(password)) throw failure('密码长度需要为 8 到 128 位')
     return this.transaction(() => {
       const existing = this.get('SELECT id,password_hash,status FROM users WHERE lower(email)=?', email)
       if (existing && existing.status !== 'active') throw failure('账号已停用', 403)
-      if (existing?.password_hash && !passwordMatches(password, existing.password_hash)) throw failure('邮箱或密码不正确', 401)
+      if (withPassword && existing?.password_hash && !passwordMatches(password, existing.password_hash)) throw failure('邮箱或密码不正确', 401)
       let user = existing ? this.user(existing.id) : null
       if (!user) {
         if (!this.settings().registrationEnabled) throw failure('当前暂未开放注册', 403)
         const id = randomUUID()
         const display = uniqueExternalName(this, String(name || '').trim() || email.split('@')[0], email, '邮箱')
-        this.run('INSERT INTO users(id,name,email,password_hash,secret_hash,status,points,models,email_verified,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)', id, display, email, passwordHash(password), digest(randomBytes(32).toString('base64url')), 'active', 0, '[]', 1, new Date().toISOString())
+        // 只用验证码注册时先放一个谁也不知道的随机密码，用户之后可在「忘记密码」里设置。
+        this.run('INSERT INTO users(id,name,email,password_hash,secret_hash,status,points,models,email_verified,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)', id, display, email, passwordHash(withPassword ? password : randomBytes(32).toString('base64url')), digest(randomBytes(32).toString('base64url')), 'active', 0, '[]', 1, new Date().toISOString())
         this.ledger(id, 0, '邮箱验证码注册初始额度')
         this.audit(email, 'user.email_otp.create', id, { email })
         user = this.user(id)
       } else {
-        if (!existing.password_hash) this.run('UPDATE users SET password_hash=?, email_verified=1 WHERE id=?', passwordHash(password), user.id)
+        if (!existing.password_hash && withPassword) this.run('UPDATE users SET password_hash=?, email_verified=1 WHERE id=?', passwordHash(password), user.id)
         else this.run('UPDATE users SET email_verified=1 WHERE id=?', user.id)
         this.audit(email, 'user.email_otp.login', user.id, { email })
       }
       return this.createSession('user', user.id)
+    })
+  }
+  // 忘记密码：验证码已在调用前核销，这里只换密码并登录。
+  resetPasswordWithEmailOtp(email, password) {
+    email = normalizeEmail(email)
+    if (!validPassword(password)) throw failure('密码长度需要为 8 到 128 位')
+    return this.transaction(() => {
+      const row = this.get('SELECT id,status FROM users WHERE lower(email)=?', email)
+      if (!row) throw failure('这个邮箱还没有注册，请用验证码登录', 404)
+      if (row.status !== 'active') throw failure('账号已停用', 403)
+      this.run('UPDATE users SET password_hash=?, email_verified=1 WHERE id=?', passwordHash(password), row.id)
+      this.audit(email, 'user.password.reset', row.id, { email })
+      return this.createSession('user', row.id)
     })
   }
   saveOAuthState({ provider, state, nonce, redirectUri, expiresAt }: Record<string, any>) {

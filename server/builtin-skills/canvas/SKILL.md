@@ -1,5 +1,7 @@
 ---
 name: canvas
+displayName: 画布操作手册
+displayName_en: Canvas guide
 description: 妙图画布操作手册。使用画布工具创建、切换和重命名画布，添加、移动、重命名、连接和删除节点，自动整理整幅画布、调整视口，以及调用节点注册的函数。用户要求操作当前画布或搭建节点流程时使用。
 description_en: Create or switch canvases; add, move, rename, connect and delete nodes; tidy the canvas, adjust the viewport and call node functions. Use when operating a canvas or building a node flow.
 metadata:

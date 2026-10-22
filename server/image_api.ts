@@ -95,6 +95,10 @@ const management = new ManagementStore()
 const imageReceipts = new ImageReceiptFiles(join(mediaRoot(), IMAGE_RECEIPT_DIRECTORY), IMAGE_PROXY_MAX_BYTES)
 const errorExplanations = createErrorExplanations({ management })
 const emailOtp = createEmailOtp({ management })
+// 密码登录按邮箱计失败次数：15 分钟内连错 5 次就暂停密码登录，只能用验证码。
+const PASSWORD_FAILURE_LIMIT = 5
+const PASSWORD_FAILURE_WINDOW_MS = 15 * 60_000
+const passwordFailures = new Map<string, { count: number; until: number }>()
 const oauthLogin = createOAuthLogin({ management })
 const { createPaymentOrder, handlePaymentNotify, paymentQrImage } = createPaymentService({ management })
 // 生成结果的字节也从库里搬到磁盘（和 workspace_files 同一套做法）：
@@ -1249,7 +1253,30 @@ const server = createServer(withRequestProject(async (request, response) => {
   }
   if (url.pathname === '/api/imagine/login-password' && request.method === 'POST') {
     sameOrigin(request); loginRate(request)
-    throw failure('请使用邮箱验证码登录', 422)
+    const payload = await readJson(request, SMALL_BODY_BYTES)
+    const key = String(payload.email || '').trim().toLowerCase()
+    // 同一邮箱连续输错密码就暂停密码登录，改用验证码，防止猜密码。
+    const failed = passwordFailures.get(key)
+    if (failed && failed.count >= PASSWORD_FAILURE_LIMIT && Date.now() < failed.until) throw failure('密码错误次数过多，请用验证码登录，或 15 分钟后再试', 429)
+    let next
+    try { next = management.loginPassword(payload.email, payload.password) }
+    catch (error) {
+      if (error?.status === 401 && key) {
+        const count = (failed && Date.now() < failed.until ? failed.count : 0) + 1
+        passwordFailures.set(key, { count, until: Date.now() + PASSWORD_FAILURE_WINDOW_MS })
+        if (passwordFailures.size > 10000) passwordFailures.delete(passwordFailures.keys().next().value)
+      }
+      throw error
+    }
+    passwordFailures.delete(key)
+    json(response, 200, { session: publicSession(next) }, { 'set-cookie': sessionCookie(request, next.token) }); return
+  }
+  if (url.pathname === '/api/imagine/password/reset' && request.method === 'POST') {
+    sameOrigin(request); loginRate(request)
+    const payload = await readJson(request, SMALL_BODY_BYTES)
+    const next = emailOtp.resetPassword(payload.email, payload.code, payload.password)
+    passwordFailures.delete(String(payload.email || '').trim().toLowerCase())
+    json(response, 200, { session: publicSession(next) }, { 'set-cookie': sessionCookie(request, next.token) }); return
   }
   if (url.pathname === '/api/imagine/email/config' && request.method === 'GET') {
     json(response, 200, emailOtp.config()); return
