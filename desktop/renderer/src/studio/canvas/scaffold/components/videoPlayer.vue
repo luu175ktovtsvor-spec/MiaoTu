@@ -235,7 +235,8 @@ function markReady() { failed.value = false; ready.value = true; readDuration();
 function retryPlayback() {
   failed.value = false;
   originalFallback.value = false;
-  adaptivePreview.value = Boolean(window.miaoDesktop);
+  // Retry the local original first; the transcoded copy is only for decode failures.
+  adaptivePreview.value = false;
   mediaRequested.value = true;
   if (video.value) { video.value.src = workspacePlaybackUrl(props.src, adaptivePreview.value); video.value.load(); }
 }
@@ -268,11 +269,8 @@ function useLightweightPlayback(resume: boolean) {
 }
 function readTime() {
   if (!scrubbing) currentTime.value = video.value?.currentTime ?? 0;
-  // 正常视频保持原画质。用实际丢帧判断负担，避免仅按文件大小强制转码。
-  if (canAdaptPlayback.value && playing.value && !adaptivePreview.value && !scrubbing) {
-    const quality = video.value?.getVideoPlaybackQuality();
-    if (quality && quality.totalVideoFrames >= 90 && quality.droppedVideoFrames / quality.totalVideoFrames > 0.08) useLightweightPlayback(true);
-  }
+  // 桌面版始终播放本机原片。以前按丢帧率中途切到转码副本：播放会停下来等 ffmpeg
+  // 转完整段，回来还是 720p 低码率，看起来就是"卡一下再变糊"。只有解码失败才降载。
 }
 function scrub(value: number | number[]) {
   if (typeof value !== "number" || !Number.isFinite(value)) return;
