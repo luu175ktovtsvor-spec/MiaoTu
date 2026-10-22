@@ -36,7 +36,7 @@
         @error="showNodeError(translate('无法预览该图片'), translate('图片预览失败'))" />
       <div v-else class="imageEmpty mediaEmpty" :aria-label="translate('暂无生成图片')">
         <icon-photo-ai :size="48" stroke="1.25" aria-hidden="true" />
-        <div class="emptyHints nodrag nopan" role="group" :aria-label="translate('试试')">
+        <div v-if="!refList.length" class="emptyHints nodrag nopan" role="group" :aria-label="translate('试试')">
           <span class="emptyHintsTitle">{{ translate('试试：') }}</span>
           <button type="button" class="emptyHint" :disabled="generating || deleting" @pointerdown.stop @click.stop="focusPrompt">
             <icon-writing :size="16" aria-hidden="true" />{{ translate('文字生成图片') }}
@@ -110,7 +110,7 @@
                 :label="nodeModelOptionLabel(item)" :value="JSON.stringify([item.providerId, item.modelId])" />
             </el-option-group>
           </el-select>
-          <el-popover v-if="['doubao-local', 'dola-local'].includes(selectedModel?.providerId || '')" trigger="click" placement="top-start" :width="360">
+          <el-popover :persistent="false" v-if="['doubao-local', 'dola-local'].includes(selectedModel?.providerId || '')" trigger="click" placement="top-start" :width="360">
             <template #reference><el-button text size="small">{{ translate('参数与水印') }}</el-button></template>
             <div v-if="ratioOptions.some(ratio => ratio !== 'auto')" class="localRatio">
               <span>{{ translate('比例') }}</span>

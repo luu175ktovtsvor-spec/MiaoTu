@@ -11,7 +11,7 @@
     :showClose="!processing"
     @closed="clearPreview"
     :style="{ maxWidth: 'calc(100vw - 24px)', maxHeight: 'calc(94vh - 12px)', overflow: 'auto' }">
-    <div class="videoActionPanel nodrag nopan nowheel" @pointerdown.stop @mousedown.stop @dblclick.stop @keydown.stop>
+    <div class="videoActionPanel nodrag nopan nowheel" @pointerdown.stop @mousedown.stop @dblclick.stop @keydown="event => event.key !== 'Escape' && event.stopPropagation()">
       <template v-if="action === 'trim'">
         <video ref="preview" class="clipPreview" :src="workspacePlaybackUrl(src)" controls playsinline preload="metadata" :aria-label="translate('截取片段预览')" @loadedmetadata="readDuration" @timeupdate="readTime" @play="playSelection" @error="duration = 0" />
         <div class="clipTimeline" :class="{ unavailable: processing || !duration }">

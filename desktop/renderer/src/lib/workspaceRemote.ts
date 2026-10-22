@@ -94,22 +94,26 @@ let headerInstalled = false
 function installProjectHeader() {
   if (headerInstalled || typeof window === 'undefined') return
   headerInstalled = true
-  const projectHeaderTarget = (url: string) => {
+  const apiTarget = (url: string) => {
     try {
       const target = new URL(url, window.location.origin)
+      if (target.origin !== window.location.origin || !target.pathname.startsWith('/api/')) return undefined
       // An explicit project query belongs to that project (for example a
-      // project-card preview). Do not mix in the currently open project.
-      return target.origin === window.location.origin && target.pathname.startsWith('/api/') && !target.searchParams.has('project')
+      // project-card preview). Do not mix in the currently open project, but
+      // still bind the request to this page: the desktop runtime rejects
+      // writes without the page epoch.
+      return { project: !target.searchParams.has('project') }
     } catch {
-      return false
+      return undefined
     }
   }
   const originalFetch = window.fetch.bind(window)
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
-    if (!projectHeaderTarget(url)) return originalFetch(input, init)
+    const target = apiTarget(url)
+    if (!target) return originalFetch(input, init)
     const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined))
-    headers.set('x-workspace-project', activeProject)
+    if (target.project) headers.set('x-workspace-project', activeProject)
     if (document.documentElement.lang) headers.set('accept-language', document.documentElement.lang)
     const epoch = await desktopDocumentEpoch()
     if (epoch) headers.set('x-miaoimg-document', epoch)
@@ -119,8 +123,9 @@ function installProjectHeader() {
       : originalFetch(input, { ...init, headers })
   }
   axios.interceptors.request.use(async (config) => {
-    if (projectHeaderTarget(String(config.url || ''))) {
-      config.headers.set('x-workspace-project', activeProject)
+    const target = apiTarget(String(config.url || ''))
+    if (target) {
+      if (target.project) config.headers.set('x-workspace-project', activeProject)
       if (document.documentElement.lang) config.headers.set('accept-language', document.documentElement.lang)
       const epoch = await desktopDocumentEpoch()
       if (epoch) config.headers.set('x-miaoimg-document', epoch)

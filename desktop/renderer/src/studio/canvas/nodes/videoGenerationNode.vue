@@ -28,7 +28,7 @@
         @dimensions="resizeVideo" />
       <div v-else class="videoEmpty mediaEmpty" :aria-label="translate('暂无生成视频')">
         <icon-camera-ai :size="48" stroke="1.25" aria-hidden="true" />
-        <div v-if="emptyHints.length" class="emptyHints nodrag nopan" role="group" :aria-label="translate('试试')">
+        <div v-if="emptyHints.length && !refList.length" class="emptyHints nodrag nopan" role="group" :aria-label="translate('试试')">
           <span class="emptyHintsTitle">{{ translate('试试：') }}</span>
           <button v-for="hint in emptyHints" :key="hint.key" type="button" class="emptyHint" :disabled="generating || deleting" @pointerdown.stop @click.stop="hint.run()">
             <component :is="hint.icon" :size="16" aria-hidden="true" />{{ hint.label }}
@@ -790,7 +790,8 @@ function requestReference(accept?: string[]) {
 function focusPrompt() {
   document.querySelector<HTMLElement>(`.vue-flow__node[data-id="${CSS.escape(id)}"] .promptInput [contenteditable="true"]`)?.focus();
 }
-// Empty-node shortcuts list only the modes the selected model really offers.
+// Empty-node shortcuts list only the modes the selected model really offers;
+// once references are connected the composer chips take over.
 const emptyHints = computed(() => {
   const modes = selectedModel.value?.mode ?? [];
   const has = (name: string) => modes.some((item) => item === name);

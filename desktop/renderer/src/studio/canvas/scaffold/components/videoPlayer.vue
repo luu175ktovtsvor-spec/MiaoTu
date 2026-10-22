@@ -32,10 +32,10 @@
     <div v-show="!fullscreen" class="playerControls nodrag nopan nowheel" @pointerdown.stop @mousedown.stop @dblclick.stop @keydown.stop>
       <el-button class="playerButton playButton" text circle :icon="playing ? IconPlayerPause : IconPlayerPlay" :disabled="!mediaActive || failed" :aria-label="playing ? translate('暂停视频') : translate('播放视频')" :title="playing ? translate('暂停') : translate('播放')" @click="togglePlayback" />
       <span class="currentTime">{{ formatTime(currentTime) }}</span>
-      <el-slider class="progressSlider" :modelValue="currentTime" :min="0" :max="duration || 1" :step="0.01" :disabled="!ready || !duration" :formatTooltip="formatTime" :aria-label="translate('视频播放进度')" @input="scrub" @change="seek" />
+      <el-slider class="progressSlider" :persistent="false" :modelValue="currentTime" :min="0" :max="duration || 1" :step="0.01" :disabled="!ready || !duration" :formatTooltip="formatTime" :aria-label="translate('视频播放进度')" @input="scrub" @change="seek" />
       <span class="durationLabel"><template v-if="duration"><span class="timeSeparator">/</span>{{ formatTime(duration) }}</template></span>
       <div class="volumeControl">
-        <el-popover trigger="hover" placement="top" :width="40" :popperStyle="{ minWidth: '40px', padding: '8px 0', borderRadius: 'var(--el-border-radius-base)' }" :showArrow="false" :showAfter="80" :hideAfter="150" :disabled="!ready">
+        <el-popover :persistent="false" trigger="hover" placement="top" :width="40" :popperStyle="{ minWidth: '40px', padding: '8px 0', borderRadius: 'var(--el-border-radius-base)' }" :showArrow="false" :showAfter="80" :hideAfter="150" :disabled="!ready">
           <template #reference>
             <el-button class="playerButton volumeButton" text circle :icon="muted || !volume ? IconVolumeOff : IconVolume" :disabled="!ready" :aria-pressed="muted || !volume" :aria-label="muted || !volume ? translate('取消静音') : translate('静音视频')" :title="translate('音量 · 点击切换静音')" @click="toggleMute" />
           </template>
@@ -45,7 +45,7 @@
           </div>
         </el-popover>
       </div>
-      <el-dropdown class="captureMenu" trigger="click" placement="top-end" :disabled="disabled || !mediaActive || failed || capturing" @visibleChange="captureMenuVisible = $event" @command="command => captureFrame(command)">
+      <el-dropdown class="captureMenu" :persistent="false" trigger="click" placement="top-end" :disabled="disabled || !mediaActive || failed || capturing" @visibleChange="captureMenuVisible = $event" @command="command => captureFrame(command)">
         <el-button class="playerButton" text circle :icon="IconPhotoScan" :loading="capturing" :disabled="disabled || !mediaActive || failed || capturing" :aria-expanded="captureMenuVisible" :aria-label="translate('截取视频帧')" :title="translate('截取视频帧')" />
         <template #dropdown>
           <el-dropdown-menu>

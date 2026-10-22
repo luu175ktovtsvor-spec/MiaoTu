@@ -1,5 +1,5 @@
 <template>
-  <section class="panoramaPreview nodrag nopan nowheel" @pointerdown.stop @mousedown.stop @dblclick.stop @wheel.stop @keydown.stop>
+  <section class="panoramaPreview nodrag nopan nowheel" @pointerdown.stop @mousedown.stop @dblclick.stop @wheel.stop @keydown="event => event.key !== 'Escape' && event.stopPropagation()">
     <div class="previewWorkspace">
       <div class="stageColumn">
         <div class="stageHeader">

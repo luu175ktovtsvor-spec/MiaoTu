@@ -1,7 +1,7 @@
 <template>
   <teleport v-if="target" :to="target"><el-button :icon="IconHistory" :disabled="disabled" text :title="translate('历史记录')" :aria-label="translate('历史记录')" @click.stop="visible = true" /></teleport>
   <el-dialog v-model="visible" :title="translate('{0}历史记录', { 0: mediaType === 'image' ? translate('图片') : translate('视频') })" width="min(760px, calc(100vw - 32px))" appendToBody destroyOnClose>
-    <div v-loading="loading" class="mediaHistory nodrag nopan nowheel" @pointerdown.stop @mousedown.stop @dblclick.stop @keydown.stop>
+    <div v-loading="loading" class="mediaHistory nodrag nopan nowheel" @pointerdown.stop @mousedown.stop @dblclick.stop @keydown="event => event.key !== 'Escape' && event.stopPropagation()">
       <el-alert v-if="loadError" :title="loadError" type="error" :closable="false" />
       <el-empty v-else-if="!loading && !items.length" :description="translate('暂无历史记录')" />
       <template v-else-if="items.length">

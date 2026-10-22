@@ -51,7 +51,8 @@ export function localModelCaption(model: unknown, provider: unknown) {
   const site = localMediaSite(model, provider)
   if (!site) return ''
   const selection = localModelSelection(model)
-  if (selection) return selection.id
+  // 界面显示官方名称；内部 ID 只用于保存和路由。
+  if (selection) return selection.label.includes(site.label) ? selection.label : `${site.label} ${selection.label}`
   return typeof model === 'string' ? model : ''
 }
 export function localVideoParameters(model: unknown, menu?: LiveMenu) {

@@ -1,5 +1,5 @@
 <template>
-  <el-dropdown ref="dropdown" trigger="click" virtualTriggering :virtualRef="trigger" :disabled="disabled || busy || !src" @command="selectAction">
+  <el-dropdown ref="dropdown" :persistent="false" trigger="click" virtualTriggering :virtualRef="trigger" :disabled="disabled || busy || !src" @command="selectAction">
     <template #dropdown>
       <el-dropdown-menu>
         <el-dropdown-item command="generateSphere">{{ translate('生成720°全景图') }}</el-dropdown-item>
@@ -29,7 +29,7 @@
         <span>{{ translate('预览与校正') }}</span>
       </div>
     </template>
-    <div class="panoramaPanel nodrag nopan nowheel" @pointerdown.stop @mousedown.stop @dblclick.stop @wheel.stop @keydown.stop>
+    <div class="panoramaPanel nodrag nopan nowheel" @pointerdown.stop @mousedown.stop @dblclick.stop @wheel.stop @keydown="event => event.key !== 'Escape' && event.stopPropagation()">
       <imagePanoramaPreview v-if="visible" ref="previewStage" :src="src" :mode="mode" :disabled="disabled || saving" @capture="saveCapture" />
     </div>
   </el-dialog>

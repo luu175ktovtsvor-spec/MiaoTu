@@ -4,6 +4,7 @@
   <div ref="skeletonElement" v-bind="$attrs" class="nodeSkeleton" :class="{ documentNode: documentTarget }" @wheel.capture="zoomCanvas" @dblclick.stop="focusNode" @contextmenu="documentTarget && openMenu($event)">
     <el-dropdown
       ref="menu"
+      :persistent="false"
       trigger="contextmenu"
       virtualTriggering
       :virtualRef="menuAnchor"
@@ -33,7 +34,7 @@
       @pointerdown.stop
       @mousedown.stop
       @dblclick.stop
-      @keydown.stop
+      @keydown="event => event.key !== 'Escape' && event.stopPropagation()"
       @contextmenu.stop>
       <slot name="top">
         <el-card class="mediaToolbar" shadow="never" :bodyStyle="{ padding: '6px' }">

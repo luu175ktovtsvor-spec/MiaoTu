@@ -1500,7 +1500,10 @@ async function loadRemoteNodes(reloadName?: string, refresh = false) {
       })
     );
   } catch (error) {
-    if (requestId === loadRequest) console.error("获取远端节点列表失败", error);
+    if (requestId !== loadRequest) return;
+    // 首次装载画布会换掉控制器；被它打断的列表请求要在新控制器下重拉，否则插件节点不会载入。
+    if (signal.aborted && !canvasController.value.signal.aborted) { void loadRemoteNodes(undefined, refresh); return; }
+    if (!signal.aborted) console.error("获取远端节点列表失败", error);
   } finally {
     if (requestId === loadRequest) nodeListLoading.value = false;
   }
