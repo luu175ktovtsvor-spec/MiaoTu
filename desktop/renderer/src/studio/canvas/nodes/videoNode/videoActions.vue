@@ -63,7 +63,7 @@
           <span class="selectionDuration">{{ translate('时长 {0} 秒', { 0: validRange ? (end - start).toFixed(2) : '—' }) }}</span>
         </div>
         <p class="actionHint">{{ validRange ? translate('截取后生成新视频节点，原视频会保留。') : translate('请选择有效的起止时间。') }}</p>
-        <p class="actionHint">{{ translate('保留原画质和音质，范围会向外对齐关键帧；结果标注实际截取范围。') }}</p>
+        <p class="actionHint">{{ translate('按所选起止精确截取，画质接近原片。') }}</p>
       </template>
       <p v-else class="actionHint">{{ action === 'extractAudio' ? translate('提取音轨并生成音频节点，保留原视频。') : translate('生成静音视频和音频两个节点，保留原视频。') }}</p>
       <div v-if="processing" class="processingStatus" role="status" aria-live="polite">
@@ -409,7 +409,7 @@ async function process(signal?: AbortSignal, toolCall = false) {
 
 nodeTools.register({
   name: 'processVideo',
-  description: '对当前视频执行 trim 截取、extractAudio 提取音轨或 separate 分离音视频，复用界面处理，生成新的画布节点并保留原片，不调用生成模型。截取使用原画质音质流复制并向外对齐关键帧，返回实际起止范围。',
+  description: '对当前视频执行 trim 截取、extractAudio 提取音轨或 separate 分离音视频，复用界面处理，生成新的画布节点并保留原片，不调用生成模型。截取按所选起止精确到帧（本机重新编码为高画质 H.264 MP4）；提取音轨与分离保持原音视频流不重新编码。',
   parameters: z.strictObject({ action: z.enum(['trim', 'extractAudio', 'separate']), start: z.number().finite().min(0).optional(), end: z.number().finite().positive().optional() }),
   async execute(args, { signal }) {
     if (processing.value || props.disabled || !props.file) throw new Error('视频尚未就绪或正在处理');

@@ -2,8 +2,17 @@ import type { BrowserFfmpegCommand, BrowserFfmpegFactory, FfprobeData } from "@m
 import { preservedAudioOutput, primaryAudio } from "../mediaPreservation";
 
 export type AudioSegment = { start: number; end: number };
+// Format conversion re-encodes from the node's audio (an extracted track is
+// already the untouched original stream), at transparent quality settings.
+export const AUDIO_FORMATS = {
+  mp3: { extension: "mp3", format: "mp3", mimeType: "audio/mpeg", codec: "libmp3lame", options: ["-b:a", "320k"] },
+  m4a: { extension: "m4a", format: "ipod", mimeType: "audio/mp4", codec: "aac", options: ["-b:a", "256k", "-movflags", "+faststart"] },
+  wav: { extension: "wav", format: "wav", mimeType: "audio/wav", codec: "pcm_s16le", options: [] },
+  flac: { extension: "flac", format: "flac", mimeType: "audio/flac", codec: "flac", options: [] },
+} as const;
+export type AudioFormat = keyof typeof AUDIO_FORMATS;
 export type AudioProcessingOptions = { outputPath: string } & (
-  { action: "speed"; speed: number } | { action: "clip"; segments: AudioSegment[] }
+  { action: "speed"; speed: number } | { action: "clip"; segments: AudioSegment[] } | { action: "convert"; format: AudioFormat }
 );
 
 function normalizePath(path: string) {
@@ -45,7 +54,8 @@ function runCommand(command: BrowserFfmpegCommand, signal?: AbortSignal) {
 export async function processAudio(ffmpeg: BrowserFfmpegFactory, source: string, options: AudioProcessingOptions, signal?: AbortSignal) {
   signal?.throwIfAborted();
   if (normalizePath(source) === normalizePath(options.outputPath)) throw new Error("输出文件不能覆盖原音频");
-  if (!["speed", "clip"].includes(options.action)) throw new Error("未知的音频处理操作");
+  if (!["speed", "clip", "convert"].includes(options.action)) throw new Error("未知的音频处理操作");
+  if (options.action === "convert" && !Object.hasOwn(AUDIO_FORMATS, options.format)) throw new Error("不支持的音频格式");
   if (options.action === "speed" && (!Number.isFinite(options.speed) || options.speed < 0.1 || options.speed > 4)) {
     throw new Error("音频速度须在 0.1 至 4 倍之间");
   }
@@ -61,10 +71,15 @@ export async function processAudio(ffmpeg: BrowserFfmpegFactory, source: string,
   }
 
   const unchangedSpeed = options.action === "speed" && options.speed === 1;
-  const output = preservedAudioOutput(options.outputPath, audio, unchangedSpeed, media);
+  const target = options.action === "convert" ? AUDIO_FORMATS[options.format] : undefined;
+  const output = target
+    ? { path: options.outputPath.replace(/\.[^/.]+$/, "") + "." + target.extension, format: target.format, mimeType: target.mimeType, codec: target.codec }
+    : preservedAudioOutput(options.outputPath, audio, unchangedSpeed, media);
   if (normalizePath(source) === normalizePath(output.path)) throw new Error("输出文件不能覆盖原音频");
   const command = ffmpeg(source).output(output.path).noVideo().audioCodec(output.codec).format(output.format);
-  if (unchangedSpeed) {
+  if (options.action === "convert") {
+    command.outputOptions("-map", `0:${audio.index}`, ...AUDIO_FORMATS[options.format].options);
+  } else if (unchangedSpeed) {
     command.outputOptions("-map", `0:${audio.index}`);
   } else if (options.action === "speed") {
     let tempo = options.speed;

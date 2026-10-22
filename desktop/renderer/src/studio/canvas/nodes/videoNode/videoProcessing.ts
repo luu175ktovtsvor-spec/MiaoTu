@@ -67,43 +67,15 @@ export async function processVideo(ffmpeg: BrowserFfmpegFactory, source: string,
   }
 
   const audioOutput = needsAudio ? preservedAudioOutput(options.audioPath!, audio!, true, media) : undefined;
-  const videoOutput = needsVideo ? preservedVideoOutput(options.videoPath!, source, media) : undefined;
+  // Trim re-encodes for a frame-accurate range, so it always writes H.264 MP4.
+  const videoOutput = !needsVideo ? undefined : options.action === "trim"
+    ? { path: options.videoPath!.replace(/\.[^/.]+$/, "") + ".mp4", format: "mp4", mimeType: "video/mp4", codec: "libx264" }
+    : preservedVideoOutput(options.videoPath!, source, media);
   for (const target of [audioOutput, videoOutput]) {
     if (target && normalizePath(target.path) === sourcePath) throw new Error("输出文件不能覆盖原视频");
   }
-  let actualStart = options.start ?? 0;
-  let actualEnd = options.end ?? duration;
-  let frameCount: number | undefined;
-  if (options.action === "trim" && actualStart > 0) {
-    // ffprobe 的区间读取先定位到前一个可寻址关键帧，只读取一个包，不全量扫描长视频。
-    const origin = Number(media.format.start_time) || 0;
-    const seek = await probeMedia(ffmpeg, source, signal, ["-select_streams", String(video.index), "-show_packets", "-read_intervals", `${actualStart + origin}%+#1`]);
-    const packet = (seek as FfprobeData & { packets?: { flags?: string; pts_time?: string }[] }).packets?.[0];
-    const position = Number(packet?.pts_time) - origin;
-    if (!packet?.flags?.includes("K") || !Number.isFinite(position) || position > actualStart + 0.001) {
-      throw new Error("无法确定可无损截取的起点，原视频未修改");
-    }
-    actualStart = Math.max(0, position);
-  }
-  if (options.action === "trim") {
-    const origin = Number(media.format.start_time) || 0;
-    // 结尾也保留完整 GOP，避免最后一帧跳到未来参考帧。向后寻找结束边界，不漏掉用户选区。
-    let span = 1;
-    while (actualEnd < duration - 0.001) {
-      const scanEnd = Math.min(duration, options.end! + span);
-      const seek = await probeMedia(ffmpeg, source, signal, ["-select_streams", String(video.index), "-skip_frame", "nokey", "-show_frames", "-show_entries", "frame=pts_time,best_effort_timestamp_time", "-read_intervals", `${options.end! + origin}%${scanEnd + origin}`]);
-      const frames = (seek as FfprobeData & { frames?: { pts_time?: string; best_effort_timestamp_time?: string }[] }).frames || [];
-      const next = frames.map(frame => Number(frame.best_effort_timestamp_time ?? frame.pts_time) - origin)
-        .find(position => Number.isFinite(position) && position >= options.end! - 0.001 && position > actualStart);
-      if (next !== undefined) { actualEnd = Math.min(duration, next); break; }
-      if (scanEnd === duration) { actualEnd = duration; break; }
-      span *= 2;
-    }
-    // -t 按解码时间截止会多带下个 GOP 的参考帧。限制完整包数，让尾部保持原帧序列。
-    const counted = await probeMedia(ffmpeg, source, signal, ["-select_streams", String(video.index), "-count_packets", "-read_intervals", `${actualStart + origin}%${actualEnd + origin}`]);
-    frameCount = Number(counted.streams[0]?.nb_read_packets);
-    if (!Number.isSafeInteger(frameCount) || frameCount < 1) throw new Error("无法确定可无损截取的范围，原视频未修改");
-  }
+  const actualStart = options.start ?? 0;
+  const actualEnd = options.end ?? duration;
   const command = ffmpeg(source);
   if (options.action === "trim") command.seekInput(actualStart);
   if (needsAudio) {
@@ -111,13 +83,18 @@ export async function processVideo(ffmpeg: BrowserFfmpegFactory, source: string,
       .outputOptions("-map", `0:${audio!.index}`);
     if (audioOutput!.format === "ipod") command.outputOptions("-movflags", "+faststart");
   }
-  if (needsVideo) {
-    // 截取和分离均直接复制视频，不修改尺寸、帧率、色彩或编码质量。
+  if (needsVideo && options.action === "trim") {
+    // 截取按所选起止精确到帧：桌面端本机重新编码，画质参数接近原片；不再向外对齐关键帧。
+    command.output(videoOutput!.path).videoCodec("libx264").format("mp4").duration(actualEnd - actualStart)
+      .outputOptions("-map", `0:${video.index}`, "-preset", "fast", "-crf", "16", "-pix_fmt", "yuv420p", "-movflags", "+faststart");
+    if (audio) command.audioCodec("aac").outputOptions("-map", `0:${audio.index}`, "-b:a", "256k");
+    else command.noAudio();
+  } else if (needsVideo) {
+    // 分离直接复制视频，不修改尺寸、帧率、色彩或编码质量。
     command.output(videoOutput!.path).videoCodec("copy").format(videoOutput!.format)
       .outputOptions("-map", `0:${video.index}`);
     if (["mp4", "mov"].includes(videoOutput!.format)) command.outputOptions("-movflags", "+faststart");
-    if (options.action === "separate") command.noAudio();
-    else command.duration(actualEnd - actualStart).audioCodec("copy").outputOptions("-map", "0:a?", "-frames:v", String(frameCount));
+    command.noAudio();
   }
   await runCommand(command, signal);
   const result = await probeMedia(ffmpeg, (videoOutput || audioOutput)!.path, signal);

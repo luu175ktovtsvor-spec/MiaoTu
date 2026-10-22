@@ -12,6 +12,17 @@
     <template #topActions>
       <el-button :icon="IconScissors" :disabled="!previewUrl || uploading || uploadingDrag || actions?.processing" text :title="translate('截取音频')" :aria-label="translate('截取音频')" @click.stop="actions?.open('clip')">{{ translate('截取') }}</el-button>
       <el-button :icon="IconGauge" :disabled="!previewUrl || uploading || uploadingDrag || actions?.processing" text :title="translate('音频变速')" :aria-label="translate('音频变速')" @click.stop="actions?.open('speed')">{{ translate('变速') }}</el-button>
+      <el-dropdown trigger="click" :disabled="!previewUrl || uploading || uploadingDrag || actions?.processing" @command="(format: AudioFormat) => actions?.open('convert', format)">
+        <el-button :icon="IconFileMusic" :disabled="!previewUrl || uploading || uploadingDrag || actions?.processing" text :title="translate('转换音频格式')" :aria-label="translate('转换音频格式')" @click.stop>{{ translate('格式') }}</el-button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item command="mp3">MP3 · 320k</el-dropdown-item>
+            <el-dropdown-item command="m4a">M4A · AAC 256k</el-dropdown-item>
+            <el-dropdown-item command="wav">WAV · {{ translate('无损') }}</el-dropdown-item>
+            <el-dropdown-item command="flac">FLAC · {{ translate('无损压缩') }}</el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
       <el-button
         :icon="IconTransfer"
         :loading="uploading || uploadingDrag"
@@ -49,8 +60,9 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { IconMusic, IconUpload, IconTransfer, IconScissors, IconGauge } from "@tabler/icons-vue";
-import { ElButton, ElMessage } from "element-plus";
+import { IconMusic, IconUpload, IconTransfer, IconScissors, IconGauge, IconFileMusic } from "@tabler/icons-vue";
+import { ElButton, ElDropdown, ElDropdownItem, ElDropdownMenu, ElMessage } from "element-plus";
+import type { AudioFormat } from "./audioNode/audioProcessing";
 import { nodeSkeleton, nodeTools, useNode, useNodeUpload, z, type NodeHandle } from "@miaoimg/nodes-scaffold/runtime";
 import { translate } from "@miaoimg/i18n/vue";
 import uploadProgress from "../components/uploadProgress.vue";

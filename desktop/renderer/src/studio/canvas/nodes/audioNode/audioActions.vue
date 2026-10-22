@@ -37,7 +37,7 @@ import { ElButton, ElCard, ElDialog, ElInputNumber, ElMessage, ElSlider } from "
 import { IconArrowUp, IconX } from "@tabler/icons-vue";
 import { nodeTools, z, showNodeError, useNodeFfmpeg, useNodeFiles, type NodeMediaValue, type WorkspaceFiles } from "@miaoimg/nodes-scaffold/runtime";
 import { translate } from "@miaoimg/i18n/vue";
-import { processAudio, type AudioSegment, type AudioProcessingOptions } from "./audioProcessing";
+import { processAudio, AUDIO_FORMATS, type AudioFormat, type AudioSegment, type AudioProcessingOptions } from "./audioProcessing";
 import audioClipEditor from "./audioClipEditor.vue";
 
 const props = defineProps<{ file?: NodeMediaValue; src: string; disabled?: boolean; target?: HTMLElement }>();
@@ -48,7 +48,8 @@ const files = useNodeFiles();
 const loadFfmpeg = useNodeFfmpeg();
 const getCanvas = inject<(() => { id: string } | undefined) | undefined>("canvas", undefined);
 const batchHistory = inject<(action: () => Promise<void>) => Promise<void>>("batchCanvasHistory", action => action());
-const mode = ref<"speed" | "clip">();
+const mode = ref<"speed" | "clip" | "convert">();
+const convertFormat = ref<AudioFormat>("mp3");
 const speed = ref(1);
 const segments = ref<AudioSegment[]>([]);
 const processing = ref(false);
@@ -81,11 +82,13 @@ watch(() => props.disabled, disabled => { if (disabled) reset(); }, { flush: "sy
 watch(() => getCanvas?.()?.id, reset, { flush: "sync" });
 onBeforeUnmount(cancel);
 
-function open(value: "speed" | "clip") {
+function open(value: "speed" | "clip" | "convert", format?: AudioFormat) {
   if (processing.value || props.disabled || !props.file || !props.src) return;
   emit("pause");
   segments.value = [];
   mode.value = value;
+  // Format conversion has no settings to adjust; start right away.
+  if (value === "convert") { convertFormat.value = format && Object.hasOwn(AUDIO_FORMATS, format) ? format : "mp3"; run(); }
 }
 
 async function cancelAndWait() {
@@ -96,7 +99,7 @@ async function cancelAndWait() {
 defineExpose({ open, mode, processing, cancelAndWait });
 
 function run() {
-  if (processing.value || props.disabled || !props.file || !mode.value || (mode.value === "speed" ? !validSpeed.value : !clipEditor.value?.valid)) return;
+  if (processing.value || props.disabled || !props.file || !mode.value || (mode.value === "speed" ? !validSpeed.value : mode.value === "clip" && !clipEditor.value?.valid)) return;
   job = process();
 }
 
@@ -108,8 +111,9 @@ async function process(signal?: AbortSignal, toolCall = false) {
   const outputPath = `assets/${id}/audio.m4a`;
   const options: AudioProcessingOptions = mode.value === "speed"
     ? { action: "speed", outputPath, speed: speed.value }
+    : mode.value === "convert" ? { action: "convert", outputPath, format: convertFormat.value }
     : { action: "clip", outputPath, segments: segments.value.map(segment => ({ ...segment })) };
-  const label = options.action === "speed" ? `${options.speed.toFixed(2)}×` : "拼接";
+  const label = options.action === "speed" ? `${options.speed.toFixed(2)}×` : options.action === "convert" ? options.format.toUpperCase() : "拼接";
   const current = controller = new AbortController();
   const abort = () => current.abort(signal?.reason);
   signal?.addEventListener("abort", abort, { once: true });
@@ -166,13 +170,15 @@ async function process(signal?: AbortSignal, toolCall = false) {
 
 nodeTools.register({
   name: 'processAudio',
-  description: '对当前音频执行 speed 变速（0.1–4 倍，保持音高），或 clip 按 segments 起止秒数顺序截取并拼接。复用界面处理，创建新的音频节点并保留原件，不调用生成模型。',
-  parameters: z.strictObject({ action: z.enum(['speed', 'clip']), speed: z.number().finite().min(0.1).max(4).optional(), segments: z.array(z.strictObject({ start: z.number().finite().min(0), end: z.number().finite().positive() })).min(1).max(100).optional() }),
+  description: '对当前音频执行 speed 变速（0.1–4 倍，保持音高）、clip 按 segments 起止秒数顺序截取并拼接，或 convert 转换为 format（mp3 320k / m4a AAC 256k / wav 16 位 / flac 无损）。复用界面处理，创建新的音频节点并保留原件，不调用生成模型。',
+  parameters: z.strictObject({ action: z.enum(['speed', 'clip', 'convert']), speed: z.number().finite().min(0.1).max(4).optional(), segments: z.array(z.strictObject({ start: z.number().finite().min(0), end: z.number().finite().positive() })).min(1).max(100).optional(), format: z.enum(['mp3', 'm4a', 'wav', 'flac']).optional() }),
   async execute(args, { signal }) {
     if (processing.value || props.disabled || !props.file) throw new Error('音频尚未就绪或正在处理');
     if (args.action === 'speed' && args.speed === undefined) throw new Error('变速需要 speed');
     if (args.action === 'clip' && !args.segments?.length) throw new Error('截取需要 segments');
+    if (args.action === 'convert' && !args.format) throw new Error('转换格式需要 format');
     mode.value = args.action;
+    convertFormat.value = args.format ?? 'mp3';
     speed.value = args.speed ?? 1;
     segments.value = args.segments ?? [];
     const pending = process(signal, true); job = pending.then(() => {}, () => {});

@@ -3303,7 +3303,6 @@
   "深海蓝": "Deep blue",
   "森林绿": "Forest",
   "暮紫": "Dusk",
-  "保留原画质和音质，范围会向外对齐关键帧；结果标注实际截取范围。": "Original picture and sound are preserved. The range expands to keyframe boundaries; the result shows the actual range.",
   "暂无可用模型": "No models available",
   "原模型已不可用，请确认模型后重试": "The previous model is no longer available. Confirm the model and try again.",
   "正在读取参考素材与视频采样画面…": "Reading reference media and sampling video frames…",
@@ -3454,5 +3453,6 @@
   "文档已切换，请重新操作": "The document has changed. Please try again.",
   "此节点不支持重新读取磁盘正文": "This node does not support reloading its text from disk.",
   "节点类型未启用或尚未加载，请先用 getCanvas({include:[\"nodeTypes\"]}) 查询可用类型": "The node type is not enabled or has not been loaded. Please query getCanvas({include:[\"nodeTypes\"]}) first.",
-  "描述你想生成的画面内容，输入 @ 引用素材": "Describe what you want to generate. Type @ to reference media."
+  "描述你想生成的画面内容，输入 @ 引用素材": "Describe what you want to generate. Type @ to reference media.",
+  "按所选起止精确截取，画质接近原片。": "Trims exactly to the selected range at near-original quality."
 }
