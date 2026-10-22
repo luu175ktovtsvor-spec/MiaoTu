@@ -192,7 +192,7 @@ export function useCanvasTools(options: {
       case "addNode": {
         const args = canvasSchemas.addNode.parse(request.args);
         const type = [...options.availableNodes.value, { type: "canvasGroup", label: "分组" }].find(node => node.type === args.type);
-        if (!type) throw new Error("节点类型未启用或尚未加载，请先查询 getCanvas");
+        if (!type) throw new Error('节点类型未启用或尚未加载，请先用 getCanvas({include:["nodeTypes"]}) 查询可用类型');
         const id = crypto.randomUUID();
         flow.addNodes({ id, type: type.type, position: nodePosition(args.position), data: { label: args.label ?? type.label }, ...(type.type === "canvasGroup" ? { style: { width: "400px", height: "300px" }, connectable: false, expandParent: false } : {}) });
         await nextTick();

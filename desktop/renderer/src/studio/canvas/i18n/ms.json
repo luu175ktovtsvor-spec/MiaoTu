@@ -785,7 +785,6 @@
   "节点脚本加载失败": "Skrip nod gagal dimuatkan",
   "节点脚本未导出 {0} 组件": "Skrip nod tidak mengeksport komponen {0}",
   "节点脚本语法无效，请重新构建并上传完整的 .umd.js 文件": "Sintaks skrip nod tidak sah, sila bina semula dan muat naik fail .umd.js yang lengkap",
-  "节点类型未启用或尚未加载，请先查询 getCanvas": "Jenis nod tidak didayakan atau belum dimuatkan. Sila tanya getCanvas dahulu.",
   "节点类型无效": "Jenis nod tidak sah",
   "节点连线动画": "Animasi sambungan nod",
   "节点连线高亮颜色": "Warna sorotan sambungan nod",
@@ -2063,5 +2062,6 @@
   "已达到 1000 个文件的检查上限，已停止。以下为部分结果，可缩小查找文本后重试。": "Had pemeriksaan 1000 fail dicapai; carian dihentikan. Berikut ialah sebahagian hasil; kecilkan teks carian kemudian cuba lagi.",
   "已达到 20 MiB 文本的搜索上限，已停止。以下为部分结果，可缩小查找文本后重试。": "Had carian teks 20 MiB dicapai; carian dihentikan. Berikut ialah sebahagian hasil; kecilkan teks carian kemudian cuba lagi.",
   "已达到 500 处匹配的展示上限，已停止。以下为部分结果，可缩小查找文本后重试。": "Had paparan 500 padanan dicapai; carian dihentikan. Berikut ialah sebahagian hasil; kecilkan teks carian kemudian cuba lagi.",
-  "正在搜索磁盘文件…": "Mencari fail pada cakera…"
+  "正在搜索磁盘文件…": "Mencari fail pada cakera…",
+  "节点类型未启用或尚未加载，请先用 getCanvas({include:[\"nodeTypes\"]}) 查询可用类型": "Jenis nod tidak didayakan atau belum dimuatkan. Sila tanya getCanvas({include:[\"nodeTypes\"]}) dahulu."
 }

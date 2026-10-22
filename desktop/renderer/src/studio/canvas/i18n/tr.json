@@ -785,7 +785,6 @@
   "节点脚本加载失败": "Düğüm betiği yüklenemedi",
   "节点脚本未导出 {0} 组件": "Düğüm betiği {0} bileşenini dışa aktarmıyor",
   "节点脚本语法无效，请重新构建并上传完整的 .umd.js 文件": "Geçersiz düğüm komut dosyası sözdizimi. Lütfen .umd.js dosyasının tamamını yeniden oluşturun ve yükleyin",
-  "节点类型未启用或尚未加载，请先查询 getCanvas": "Düğüm türü etkinleştirilmedi veya yüklenmedi. Lütfen önce getCanvas'yu sorgulayın.",
   "节点类型无效": "Geçersiz düğüm türü",
   "节点连线动画": "Düğüm bağlantı animasyonu",
   "节点连线高亮颜色": "Düğüm bağlantısı vurgu rengi",
@@ -2063,5 +2062,6 @@
   "已达到 1000 个文件的检查上限，已停止。以下为部分结果，可缩小查找文本后重试。": "1000 dosyalık kontrol sınırına ulaşıldığı için durduruldu. Aşağıda kısmi sonuçlar yer alıyor; aranan metni daraltıp yeniden deneyin.",
   "已达到 20 MiB 文本的搜索上限，已停止。以下为部分结果，可缩小查找文本后重试。": "20 MiB metin arama sınırına ulaşıldığı için durduruldu. Aşağıda kısmi sonuçlar yer alıyor; aranan metni daraltıp yeniden deneyin.",
   "已达到 500 处匹配的展示上限，已停止。以下为部分结果，可缩小查找文本后重试。": "500 eşleşmelik gösterim sınırına ulaşıldığı için durduruldu. Aşağıda kısmi sonuçlar yer alıyor; aranan metni daraltıp yeniden deneyin.",
-  "正在搜索磁盘文件…": "Diskteki dosyalar aranıyor…"
+  "正在搜索磁盘文件…": "Diskteki dosyalar aranıyor…",
+  "节点类型未启用或尚未加载，请先用 getCanvas({include:[\"nodeTypes\"]}) 查询可用类型": "Düğüm türü etkinleştirilmedi veya yüklenmedi. Lütfen önce getCanvas({include:[\"nodeTypes\"]})'yu sorgulayın."
 }

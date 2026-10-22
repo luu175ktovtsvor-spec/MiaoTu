@@ -785,7 +785,6 @@
   "节点脚本加载失败": "Skrip simpul gagal dimuat",
   "节点脚本未导出 {0} 组件": "Skrip simpul tidak mengekspor komponen {0}",
   "节点脚本语法无效，请重新构建并上传完整的 .umd.js 文件": "Sintaks skrip node tidak valid, harap buat ulang dan unggah file .umd.js lengkap",
-  "节点类型未启用或尚未加载，请先查询 getCanvas": "Jenis node tidak diaktifkan atau belum dimuat. Silakan menanyakan getCanvas terlebih dahulu.",
   "节点类型无效": "Jenis simpul tidak valid",
   "节点连线动画": "Animasi koneksi node",
   "节点连线高亮颜色": "Warna sorotan koneksi node",
@@ -2063,5 +2062,6 @@
   "已达到 1000 个文件的检查上限，已停止。以下为部分结果，可缩小查找文本后重试。": "Batas pemeriksaan 1000 berkas tercapai; pencarian dihentikan. Berikut hasil sebagian; persempit teks pencarian lalu coba lagi.",
   "已达到 20 MiB 文本的搜索上限，已停止。以下为部分结果，可缩小查找文本后重试。": "Batas pencarian teks 20 MiB tercapai; pencarian dihentikan. Berikut hasil sebagian; persempit teks pencarian lalu coba lagi.",
   "已达到 500 处匹配的展示上限，已停止。以下为部分结果，可缩小查找文本后重试。": "Batas tampilan 500 kecocokan tercapai; pencarian dihentikan. Berikut hasil sebagian; persempit teks pencarian lalu coba lagi.",
-  "正在搜索磁盘文件…": "Mencari berkas di disk…"
+  "正在搜索磁盘文件…": "Mencari berkas di disk…",
+  "节点类型未启用或尚未加载，请先用 getCanvas({include:[\"nodeTypes\"]}) 查询可用类型": "Jenis node tidak diaktifkan atau belum dimuat. Silakan menanyakan getCanvas({include:[\"nodeTypes\"]}) terlebih dahulu."
 }

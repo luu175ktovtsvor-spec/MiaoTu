@@ -834,7 +834,6 @@
   "节点脚本加载失败": "Node script failed to load",
   "节点脚本未导出 {0} 组件": "Node script does not export {0} component",
   "节点脚本语法无效，请重新构建并上传完整的 .umd.js 文件": "Invalid node script syntax, please rebuild and upload the complete .umd.js file",
-  "节点类型未启用或尚未加载，请先查询 getCanvas": "The node type is not enabled or has not been loaded. Please query getCanvas first.",
   "节点类型无效": "Invalid node type",
   "节点连线动画": "Node connection animation",
   "节点连线高亮颜色": "Node connection highlight color",
@@ -3454,5 +3453,6 @@
   "画布文件请使用 renameCanvas 或 moveCanvas": "Use renameCanvas or moveCanvas for canvas files.",
   "节点已删除，未保存的正文已保留，请另存副本。": "This node was deleted. Your unsaved text is kept here. Save a copy to preserve it.",
   "文档已切换，请重新操作": "The document has changed. Please try again.",
-  "此节点不支持重新读取磁盘正文": "This node does not support reloading its text from disk."
+  "此节点不支持重新读取磁盘正文": "This node does not support reloading its text from disk.",
+  "节点类型未启用或尚未加载，请先用 getCanvas({include:[\"nodeTypes\"]}) 查询可用类型": "The node type is not enabled or has not been loaded. Please query getCanvas({include:[\"nodeTypes\"]}) first."
 }

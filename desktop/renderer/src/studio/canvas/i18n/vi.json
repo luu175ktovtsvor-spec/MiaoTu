@@ -785,7 +785,6 @@
   "节点脚本加载失败": "Tập lệnh nút không tải được",
   "节点脚本未导出 {0} 组件": "Tập lệnh nút không xuất thành phần {0}",
   "节点脚本语法无效，请重新构建并上传完整的 .umd.js 文件": "Cú pháp tập lệnh nút không hợp lệ, vui lòng xây dựng lại và tải lên tệp .umd.js hoàn chỉnh",
-  "节点类型未启用或尚未加载，请先查询 getCanvas": "Loại nút chưa được bật hoặc chưa được tải. Vui lòng truy vấn getCanvas trước.",
   "节点类型无效": "Loại nút không hợp lệ",
   "节点连线动画": "Hoạt ảnh kết nối nút",
   "节点连线高亮颜色": "Màu đánh dấu kết nối nút",
@@ -2063,5 +2062,6 @@
   "已达到 1000 个文件的检查上限，已停止。以下为部分结果，可缩小查找文本后重试。": "Đã đạt giới hạn kiểm tra 1000 tệp và dừng. Dưới đây là một phần kết quả; hãy thu hẹp văn bản cần tìm rồi thử lại.",
   "已达到 20 MiB 文本的搜索上限，已停止。以下为部分结果，可缩小查找文本后重试。": "Đã đạt giới hạn tìm kiếm 20 MiB văn bản và dừng. Dưới đây là một phần kết quả; hãy thu hẹp văn bản cần tìm rồi thử lại.",
   "已达到 500 处匹配的展示上限，已停止。以下为部分结果，可缩小查找文本后重试。": "Đã đạt giới hạn hiển thị 500 vị trí khớp và dừng. Dưới đây là một phần kết quả; hãy thu hẹp văn bản cần tìm rồi thử lại.",
-  "正在搜索磁盘文件…": "Đang tìm kiếm tệp trên đĩa…"
+  "正在搜索磁盘文件…": "Đang tìm kiếm tệp trên đĩa…",
+  "节点类型未启用或尚未加载，请先用 getCanvas({include:[\"nodeTypes\"]}) 查询可用类型": "Loại nút chưa được bật hoặc chưa được tải. Vui lòng truy vấn getCanvas({include:[\"nodeTypes\"]}) trước."
 }
