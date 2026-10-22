@@ -2090,7 +2090,6 @@
   "展开编辑提示词": "Expand to edit the prompt",
   "生成提示词": "Generation prompt",
   "选择参考": "Choose a reference",
-  "描述一下生成风格提示词，输入 @ 引用参考": "Describe the style prompt; type @ to reference",
   "预览引用 {0}": "Preview reference {0}",
   "删除引用 {0}": "Remove reference {0}",
   "删除引用": "Remove reference",
@@ -3454,5 +3453,6 @@
   "节点已删除，未保存的正文已保留，请另存副本。": "This node was deleted. Your unsaved text is kept here. Save a copy to preserve it.",
   "文档已切换，请重新操作": "The document has changed. Please try again.",
   "此节点不支持重新读取磁盘正文": "This node does not support reloading its text from disk.",
-  "节点类型未启用或尚未加载，请先用 getCanvas({include:[\"nodeTypes\"]}) 查询可用类型": "The node type is not enabled or has not been loaded. Please query getCanvas({include:[\"nodeTypes\"]}) first."
+  "节点类型未启用或尚未加载，请先用 getCanvas({include:[\"nodeTypes\"]}) 查询可用类型": "The node type is not enabled or has not been loaded. Please query getCanvas({include:[\"nodeTypes\"]}) first.",
+  "描述你想生成的画面内容，输入 @ 引用素材": "Describe what you want to generate. Type @ to reference media."
 }

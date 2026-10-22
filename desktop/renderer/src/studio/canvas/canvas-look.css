@@ -614,3 +614,16 @@ body[data-miaoimg-canvas-ui] .vue-flow__panel.bottom.center[data-yield-to] * { p
 body[data-miaoimg-canvas-ui] .canvasMenu .workspaceNameInput .el-input__wrapper { background: transparent; box-shadow: none !important; }
 body[data-miaoimg-canvas-ui] .canvasMenu .workspaceNameInput:hover .el-input__wrapper,
 body[data-miaoimg-canvas-ui] .canvasMenu .workspaceNameInput .el-input__wrapper.is-focus { background: var(--canvas-field, var(--el-fill-color-light)); }
+
+/* 生成输入面板顶部的快捷标签行（+ 参考），对应参考编辑器的标签行。 */
+body[data-miaoimg-canvas-ui] .promptCard .composerTools { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+body[data-miaoimg-canvas-ui] .promptCard .composerChip { display: inline-flex; align-items: center; gap: 3px; height: 26px; padding: 0 10px 0 8px; border: 0; border-radius: 8px; background: var(--canvas-field, var(--el-fill-color-light)); color: var(--canvas-muted, var(--el-text-color-regular)); font: inherit; font-size: 12px; cursor: pointer; }
+body[data-miaoimg-canvas-ui] .promptCard .composerChip:hover:not(:disabled) { color: var(--canvas-text, var(--el-text-color-primary)); background: var(--canvas-hover, var(--el-fill-color)); }
+body[data-miaoimg-canvas-ui] .promptCard .composerChip:disabled { opacity: .45; cursor: not-allowed; }
+
+/* 空的生成节点：图标下给出「试试：」快捷用法，按当前模型实际支持的模式列出。 */
+body[data-miaoimg-canvas-ui] .mediaEmpty .emptyHints { display: grid; justify-items: start; gap: 4px; min-width: 180px; }
+body[data-miaoimg-canvas-ui] .mediaEmpty .emptyHintsTitle { margin-bottom: 2px; color: var(--canvas-muted); font-size: 12px; }
+body[data-miaoimg-canvas-ui] .mediaEmpty .emptyHint { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--canvas-text); font: inherit; font-size: 13px; cursor: pointer; }
+body[data-miaoimg-canvas-ui] .mediaEmpty .emptyHint:hover:not(:disabled) { background: var(--canvas-hover); }
+body[data-miaoimg-canvas-ui] .mediaEmpty .emptyHint:disabled { opacity: .45; cursor: not-allowed; }

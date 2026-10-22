@@ -26,8 +26,14 @@
         :disabled="deleting || uploading || uploadingDrag"
         :label="translate('生成视频')"
         @dimensions="resizeVideo" />
-      <div v-else class="videoEmpty" role="img" :aria-label="translate('暂无生成视频')">
+      <div v-else class="videoEmpty mediaEmpty" :aria-label="translate('暂无生成视频')">
         <icon-camera-ai :size="48" stroke="1.25" aria-hidden="true" />
+        <div v-if="emptyHints.length" class="emptyHints nodrag nopan" role="group" :aria-label="translate('试试')">
+          <span class="emptyHintsTitle">{{ translate('试试：') }}</span>
+          <button v-for="hint in emptyHints" :key="hint.key" type="button" class="emptyHint" :disabled="generating || deleting" @pointerdown.stop @click.stop="hint.run()">
+            <component :is="hint.icon" :size="16" aria-hidden="true" />{{ hint.label }}
+          </button>
+        </div>
       </div>
       <uploadProgress v-if="dragUploadEntry" :entry="dragUploadEntry" @retry="retryDragUpload" @dismiss="dismissDragUpload" />
       <generationProgress :progress="progress" :label="translate('视频生成进度')" />
@@ -46,6 +52,11 @@
         @click.stop
         @keydown.esc.stop="composerExpanded = false">
         <div class="promptBody">
+          <div class="composerTools">
+            <button type="button" class="composerChip nodrag" :disabled="generating || deleting" :aria-label="translate('添加参考素材')" @click.stop="requestReference()">
+              <icon-plus :size="14" aria-hidden="true" />{{ translate('参考') }}
+            </button>
+          </div>
           <referenceItem
             v-if="refList.length"
             v-model="refList"
@@ -126,7 +137,7 @@ import { groupNodeModels } from "../scaffold/nodeAi";
 import { nodeLocalModelLabel, nodeModelOptionLabel } from '../scaffold/localModelLabel';
 import { computed, inject, nextTick, onMounted, onScopeDispose, ref, watch, watchEffect } from "vue";
 import { ElButton, ElCard, ElSelect, ElOption, ElOptionGroup, ElLoading, ElMessage } from "element-plus";
-import { IconCameraAi, IconCoins, IconSparkles, IconArrowUp, IconPlayerStop, IconTransfer } from "@tabler/icons-vue";
+import { IconCameraAi, IconCoins, IconSparkles, IconArrowUp, IconPlayerStop, IconTransfer, IconPlus, IconWriting, IconPhoto, IconLayersLinked, IconStack2 } from "@tabler/icons-vue";
 import { nodeSkeleton, nodeTools, showNodeError, useGenerationProgress, useNode, useNodeGeneration, useNodeReferences, useNodeUpload, z, type NodeMediaModel, type NodeVideoRequest, type NodeHandle } from "@miaoimg/nodes-scaffold/runtime";
 import promptInput from "@miaoimg/nodes-scaffold/promptInput";
 import videoPlayer from "@miaoimg/nodes-scaffold/videoPlayer";
@@ -324,7 +335,15 @@ function getResolutions(choice: NodeMediaModel, duration?: number) {
   return [...new Set((choice.durationResolutionMap ?? []).filter((item) => item.duration.includes(duration!)).flatMap((item) => item.resolution))];
 }
 // ACT: 引用改变时只替换不适用的模式；普通媒体优先作为参考，避免自动变成首尾帧。
+// A "试试" hint asks for a mode before its references exist; apply it once the
+// connected media make that mode valid, instead of the default reference mode.
+const preferredMode = ref<string | null>(null);
 watch([selectedModel, matchingModes, () => data.value.mode], ([choice, matches]) => {
+  if (choice && preferredMode.value && matches.some((item) => JSON.stringify(item) === preferredMode.value)) {
+    data.value.mode = preferredMode.value;
+    preferredMode.value = null;
+    return;
+  }
   if (!choice || matches.some((item) => JSON.stringify(item) === data.value.mode)) return;
   const modes = choice.mode ?? [];
   const mode = matches.find(Array.isArray) ?? matches.find((item) => item === "singleImage")
@@ -406,6 +425,8 @@ function scheduleVideoEstimate() {
   videoEstimate.value = null;
   videoEstimateError.value = "";
   if (!autoEstimateVisible.value) return;
+  // Nothing to quote before there is a prompt; the send button already explains it.
+  if (!generationPrompt.value && !promptOptional.value) return;
   videoEstimateTimer = window.setTimeout(() => {
     if (autoEstimateVisible.value) void refreshVideoEstimate(sequence);
   }, 220);
@@ -761,6 +782,28 @@ nodeTools.register({
     return startGeneration(signal);
   },
 });
+
+// "+ 参考" picks local media; the canvas imports it and wires it into this node.
+function requestReference(accept?: string[]) {
+  window.dispatchEvent(new CustomEvent("miao-canvas-add-reference", { detail: { nodeId: id, accept } }));
+}
+function focusPrompt() {
+  document.querySelector<HTMLElement>(`.vue-flow__node[data-id="${CSS.escape(id)}"] .promptInput [contenteditable="true"]`)?.focus();
+}
+// Empty-node shortcuts list only the modes the selected model really offers.
+const emptyHints = computed(() => {
+  const modes = selectedModel.value?.mode ?? [];
+  const has = (name: string) => modes.some((item) => item === name);
+  const reference = modes.find(Array.isArray);
+  const prefer = (mode: unknown, accept: string[]) => () => { preferredMode.value = JSON.stringify(mode); requestReference(accept); };
+  const hints: { key: string; label: string; icon: unknown; run: () => void }[] = [];
+  if (has("text")) hints.push({ key: "text", label: translate("文字生成视频"), icon: IconWriting, run: focusPrompt });
+  const first = has("singleImage") ? "singleImage" : has("endFrameOptional") ? "endFrameOptional" : null;
+  if (first) hints.push({ key: "first", label: translate("首帧生成视频"), icon: IconPhoto, run: prefer(first, ["IMAGE"]) });
+  if (has("endFrameOptional")) hints.push({ key: "frames", label: translate("首尾帧生成视频"), icon: IconLayersLinked, run: prefer("endFrameOptional", ["IMAGE"]) });
+  if (reference) hints.push({ key: "reference", label: translate("多素材参考生成"), icon: IconStack2, run: prefer(reference, ["IMAGE", "VIDEO", "AUDIO"]) });
+  return hints;
+});
 </script>
 
 <style scoped lang="scss">
@@ -776,6 +819,8 @@ nodeTools.register({
   .videoEmpty {
     display: grid;
     place-items: center;
+    align-content: center;
+    gap: 18px;
     min-height: 144px;
     color: var(--el-text-color-placeholder);
   }

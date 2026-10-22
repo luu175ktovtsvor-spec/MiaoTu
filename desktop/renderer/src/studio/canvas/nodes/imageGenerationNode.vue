@@ -34,8 +34,17 @@
         :alt="translate('生成图片')"
         @load="resizeImage"
         @error="showNodeError(translate('无法预览该图片'), translate('图片预览失败'))" />
-      <div v-else class="imageEmpty" role="img" :aria-label="translate('暂无生成图片')">
+      <div v-else class="imageEmpty mediaEmpty" :aria-label="translate('暂无生成图片')">
         <icon-photo-ai :size="48" stroke="1.25" aria-hidden="true" />
+        <div class="emptyHints nodrag nopan" role="group" :aria-label="translate('试试')">
+          <span class="emptyHintsTitle">{{ translate('试试：') }}</span>
+          <button type="button" class="emptyHint" :disabled="generating || deleting" @pointerdown.stop @click.stop="focusPrompt">
+            <icon-writing :size="16" aria-hidden="true" />{{ translate('文字生成图片') }}
+          </button>
+          <button v-if="(selectedModel?.maxReferences ?? 1) > 0" type="button" class="emptyHint" :disabled="generating || deleting" @pointerdown.stop @click.stop="requestReference()">
+            <icon-photo-plus :size="16" aria-hidden="true" />{{ translate('参考图生成图片') }}
+          </button>
+        </div>
       </div>
       <uploadProgress v-if="dragUploadEntry" :entry="dragUploadEntry" @retry="retryDragUpload" @dismiss="dismissDragUpload" />
       <generationProgress :progress="progress" :label="translate('图片生成进度')" />
@@ -54,6 +63,11 @@
         @click.stop
         @keydown.esc.stop="composerExpanded = false">
         <div class="promptBody">
+          <div class="composerTools">
+            <button type="button" class="composerChip nodrag" :disabled="generating || deleting" :aria-label="translate('添加参考素材')" @click.stop="requestReference()">
+              <icon-plus :size="14" aria-hidden="true" />{{ translate('参考') }}
+            </button>
+          </div>
           <referenceItem
             v-if="refList.length && editor?.mode !== 'inpaint'"
             v-model="refList"
@@ -161,7 +175,7 @@ import { nodeLocalModelLabel, nodeModelOptionLabel } from '../scaffold/localMode
 import { useImagePreviewTools } from '../scaffold/useImagePreviewTools';
 import { computed, inject, nextTick, onMounted, onScopeDispose, ref, watch, watchEffect } from "vue";
 import { ElButton, ElCard, ElSelect, ElOption, ElOptionGroup, ElLoading, ElImageViewer, ElMessage } from "element-plus";
-import { IconCoins, IconPhotoAi, IconSparkles, IconArrowUp, IconPlayerStop, IconTransfer, IconLayoutGrid, IconBrush, IconPencil } from "@tabler/icons-vue";
+import { IconCoins, IconPhotoAi, IconSparkles, IconArrowUp, IconPlayerStop, IconTransfer, IconLayoutGrid, IconBrush, IconPencil, IconPlus, IconWriting, IconPhotoPlus } from "@tabler/icons-vue";
 import { nodeSkeleton, nodeTools, showNodeError, useGenerationProgress, useNode, useNodeGeneration, useNodeReferences, useNodeUpload, z, type NodeMediaModel, type NodeHandle } from "@miaoimg/nodes-scaffold/runtime";
 import { assertPromptReferencesConnected, isPromptModel } from "../scaffold/promptModel";
 import promptInput from "@miaoimg/nodes-scaffold/promptInput";
@@ -776,6 +790,14 @@ nodeTools.register({
     return startGeneration(signal);
   },
 });
+
+// "+ 参考" picks local media; the canvas imports it and wires it into this node.
+function requestReference() {
+  window.dispatchEvent(new CustomEvent("miao-canvas-add-reference", { detail: { nodeId: id } }));
+}
+function focusPrompt() {
+  document.querySelector<HTMLElement>(`.vue-flow__node[data-id="${CSS.escape(id)}"] .promptInput [contenteditable="true"]`)?.focus();
+}
 </script>
 
 <style scoped lang="scss">
@@ -788,6 +810,8 @@ nodeTools.register({
   border-radius: var(--el-border-radius-base);
 
   .imageEmpty {
+    align-content: center;
+    gap: 18px;
     display: grid;
     place-items: center;
     min-height: 144px;

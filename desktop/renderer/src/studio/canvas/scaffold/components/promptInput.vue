@@ -147,7 +147,7 @@ watch(senderElement, (element, _previous, onCleanup) => {
   const initialModel: AnyTagProps[][] = model.value.length ? model.value : text.value.split("\n").map(text => [{ type: "Write", text }]);
   const instance = new xSender(element, {
     autoFocus: false,
-    placeholder: translate("描述一下生成风格提示词，输入 @ 引用参考"),
+    placeholder: translate("描述你想生成的画面内容，输入 @ 引用素材"),
     chatStyle: { minHeight: "70px", maxHeight: "180px", fontSize: "14px", lineHeight: "1.6" },
     getPopupContainer: () => popup,
     mentionConfig: { dialogTitle: translate("选择参考"), callEvery: false, options: props.references },
@@ -206,7 +206,7 @@ watch(senderElement, (element, _previous, onCleanup) => {
   const stopLocaleWatch = watch(locale, () => {
     if (sender !== instance) return;
     instance.updateConfig({
-      placeholder: translate("描述一下生成风格提示词，输入 @ 引用参考"),
+      placeholder: translate("描述你想生成的画面内容，输入 @ 引用素材"),
       mentionConfig: { dialogTitle: translate("选择参考"), callEvery: false, options: props.references },
     });
     editor.setAttribute("aria-label", translate("生成提示词"));
@@ -296,18 +296,7 @@ function handleMentionKey(event: KeyboardEvent) {
 .promptInputWrap {
   position: relative;
   margin: 12px 0 16px;
-  border: 1px solid var(--canvas-line, var(--el-border-color));
-  border-radius: 14px;
-  background: var(--canvas-field, var(--el-fill-color-blank));
-  padding: 10px 12px;
   box-sizing: border-box;
-  overflow: hidden;
-  transition: border-color 120ms ease, box-shadow 120ms ease;
-
-  &:focus-within {
-    border-color: var(--canvas-hover-line, var(--el-border-color-darker));
-    box-shadow: 0 0 0 1px var(--canvas-line, var(--el-border-color)) inset;
-  }
 
   .expandButton {
     position: absolute;

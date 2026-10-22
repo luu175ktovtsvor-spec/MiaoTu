@@ -182,7 +182,7 @@ import { getShortcutBindings, shortcutLabel, shortcutMatches, shortcutPressed } 
 import useWorkspaceFiles from "@/lib/workspaceFiles";
 import { createFileRevisionOwner, type WorkspaceSourceEntry } from "@/lib/workspaceFileSelection";
 import anonymousData from "@/lib/anonymousData";
-import { dropCanvasFiles, importCanvasFiles, isCanvasFileDrag, getClipboardMediaFiles } from "./canvasDrop";
+import { dropCanvasFiles, importCanvasFiles, importReferenceFiles, isCanvasFileDrag, getClipboardMediaFiles } from "./canvasDrop";
 import "@vue-flow/core/dist/style.css";
 import "@vue-flow/core/dist/theme-default.css";
 import "@vue-flow/minimap/dist/style.css";
@@ -704,6 +704,34 @@ function selectFiles(position: { x: number; y: number }) {
   };
   input.click();
 }
+
+// A generation composer asks for references; the canvas owns files and edges.
+function addReferenceFiles(event: Event) {
+  const { nodeId, accept: wanted } = (event as CustomEvent<{ nodeId?: string; accept?: string[] }>).detail ?? {};
+  const directory = project.value?.directory;
+  const target = nodeId ? flow.findNode(nodeId) : undefined;
+  if (!props.active || props.settingsVisible || !canvasId.value || !directory || !target) return;
+  const port = (target.data?.handles as { id: string; type: string; dataType?: string | string[] }[] | undefined)?.find(handle => handle.id === "in" && handle.type === "target");
+  const accepts = [port?.dataType ?? []].flat().map(String).filter(type => ["IMAGE", "VIDEO", "AUDIO"].includes(type) && (!wanted?.length || wanted.includes(type)));
+  if (!accepts.length) return;
+  const context = { directory, availableNodes: availableNodes.value, signal: canvasController.value.signal, flow };
+  const input = document.createElement("input");
+  input.type = "file";
+  input.multiple = true;
+  input.accept = accepts.map(type => `${type.toLowerCase()}/*`).join(",");
+  input.onchange = async () => {
+    const files = Array.from(input.files ?? []);
+    if (!files.length || context.signal.aborted) return;
+    try {
+      await canvasHistory.batch(() => importReferenceFiles(files, { id: target.id, position: target.position, accepts }, context));
+    } catch (error) {
+      ElMessage.error(error instanceof Error ? error.message : translate("文件导入失败"));
+    }
+  };
+  input.click();
+}
+onMounted(() => window.addEventListener("miao-canvas-add-reference", addReferenceFiles));
+onBeforeUnmount(() => window.removeEventListener("miao-canvas-add-reference", addReferenceFiles));
 
 function openNodeMenu(event: MouseEvent) {
   if (event.target instanceof Element && event.target.classList.contains("vue-flow__pane")) nodeMenuRef.value?.openMenu(event, true);
