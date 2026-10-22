@@ -1,0 +1,12 @@
+[Unit]
+Description=Check Open Image Prompts Releases every six hours
+
+[Timer]
+OnCalendar=*-*-* 01,07,13,19:30:00 UTC
+Persistent=true
+RandomizedDelaySec=2min
+AccuracySec=1min
+Unit=miaoimg-sync.service
+
+[Install]
+WantedBy=timers.target

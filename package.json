@@ -1,0 +1,50 @@
+{
+  "name": "miaoimg",
+  "version": "1.3.3",
+  "private": true,
+  "description": "妙图桌面创作工具、官网与服务端",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "setup": "npm ci && npm --prefix desktop ci && npm --prefix desktop/renderer ci",
+    "setup:web": "npm ci && npm run data:pull && npm --prefix web ci",
+    "data:pull": "node scripts/run_python.ts scripts/fetch_dataset.py",
+    "data:pull:db": "node scripts/run_python.ts scripts/fetch_dataset.py --db-only",
+    "dev": "npm run desktop:dev",
+    "dev:web": "npm --prefix web run dev",
+    "status": "node scripts/run_python.ts skills/img-gen-prompts/scripts/miaoimg.py status",
+    "build": "npm --prefix desktop run prepare:app",
+    "build:web": "npm --prefix web run build",
+    "preview": "npm run desktop:dev",
+    "preview:web": "npm run build:web && npm --prefix web run preview",
+    "desktop:dev": "npm --prefix desktop start",
+    "desktop:renderer": "npm --prefix desktop/renderer run dev"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/luu175ktovtsvor-spec/miaoimg.git"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@earendil-works/chord": "1.3.0",
+    "@earendil-works/pi-ai": "1.3.0",
+    "@earendil-works/pi-coding-agent": "1.3.0",
+    "@earendil-works/pi-mcp": "1.3.0",
+    "@mozilla/readability": "0.6.0",
+    "fflate": "^0.8.3",
+    "html-encoding-sniffer": "7.0.0",
+    "intl-messageformat": "^10.7.16",
+    "linkedom": "0.18.13",
+    "turndown": "7.2.4",
+    "@earendil-works/pi-durable": "1.3.0",
+    "@modelcontextprotocol/node": "2.1.1",
+    "@modelcontextprotocol/server": "2.3.1",
+    "htmlparser2": "10.1.0",
+    "marked": "18.1.0",
+    "micromark": "4.0.3",
+    "micromark-util-decode-string": "2.0.1",
+    "proper-lockfile": "4.1.2"
+  },
+  "type": "module"
+}

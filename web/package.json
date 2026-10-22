@@ -1,0 +1,32 @@
+{
+  "name": "miaoimg-web",
+  "private": true,
+  "version": "1.3.3",
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "dev": "node scripts/with_api.ts dev",
+    "dev:web": "vite",
+    "api": "node ../scripts/run_python.ts ../server/miaoimg_api.py",
+    "build": "vite build",
+    "preview": "node scripts/with_api.ts preview"
+  },
+  "dependencies": {
+    "@phosphor-icons/react": "^2.1.10",
+    "@tailwindcss/vite": "^4.2.1",
+    "framer-motion": "^12.35.0",
+    "hls.js": "^1.7.3",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.1",
+    "typescript": "^7.0.2",
+    "vite": "^7.3.1"
+  }
+}

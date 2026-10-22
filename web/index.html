@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <script>
+      (() => {
+        const params = new URLSearchParams(window.location.search)
+        const landing = !window.miaoDesktop && window.location.hostname !== 'admin.miaoimg.cn' && !window.location.pathname.startsWith('/manage')
+        if (!landing) return
+        const lang = params.get('lang') === 'en' ? 'en' : 'zh'
+        document.documentElement.dataset.landing = '1'
+        document.documentElement.dataset.landingLang = lang
+        document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en'
+        // Only an explicit URL language overrides the persisted TS provider state.
+        if (params.get('lang') === 'en' || params.get('lang') === 'zh') window.__OIP_INITIAL_LANG__ = lang
+      })()
+    </script>
+    <link rel="icon" type="image/png" href="/miaoimg-logo.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#09090b" />
+    <meta name="description" content="妙图 MiaoImg：连接灵感、素材与 AI，在无限画布上探索更多创作方向。下载 macOS 或 Windows 桌面版，从参考素材到图片与视频，在自己的电脑上继续创作。" />
+    <meta property="og:title" content="妙图 MiaoImg · AI 无限画布" />
+    <meta property="og:description" content="连接灵感、素材与 AI，在无限画布上探索更多创作方向。适用于 macOS 与 Windows。" />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="https://miaoimg.cn/landing/mv-band.jpg" />
+    <title>妙图 MiaoImg · AI 无限画布</title>
+    <style>
+      html{background:#09090b}body{margin:0}html:not([data-landing]) .landing-shell{display:none}html[data-landing-lang="zh"] .shell-en{display:none}html:not([data-landing-lang="zh"]) .shell-zh{display:none}.studio-login .language-control{display:none!important}.landing-shell{min-height:100dvh;background:#09090b;color:#f2f2f2;font-family:Inter,-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased}.landing-shell a{color:inherit;text-decoration:none}.shell-nav{height:88px;display:flex;align-items:center;gap:10px;padding:0 48px;box-sizing:border-box;font-size:18px}.shell-nav small{color:#9b9ba6;font-size:11px;margin-left:9px}.shell-main{text-align:center;padding:65px 20px}.shell-lede{color:#b9b9c4;font-size:11px;letter-spacing:.14em;margin:0}.shell-main h1{font-size:clamp(44px,5.4vw,76px);line-height:1.2;letter-spacing:-.065em;font-weight:600;margin:28px 0 22px}.shell-main h1 span span{color:#909099}.shell-body{color:#a5a5b0;font-size:16px;line-height:1.9;margin:0}.shell-downloads{display:flex;justify-content:center;flex-wrap:wrap;gap:12px;margin-top:30px}.shell-downloads a{background:#f2f2f2;color:#09090b;padding:14px 20px;border-radius:9px;font-size:13px}@media(max-width:720px){.shell-nav{height:74px;padding:0 20px}.shell-main{padding-top:45px}.shell-main h1{font-size:clamp(32px,7.4vw,50px);line-height:1.3}.shell-body{font-size:13px}.shell-downloads a{font-size:11px;padding:12px}}
+    </style>
+  </head>
+  <body>
+    <div id="root"><div class="landing-shell"><header class="shell-nav"><a href="/"><img src="/miaoimg-logo.png" width="34" height="34" alt="" /></a><span>妙图<small>MiaoImg</small></span></header><main class="shell-main"><p class="shell-lede"><span class="shell-zh">妙图 · AI 创作平台</span><span class="shell-en">FOR YOUR NEXT GREAT IDEA</span></p><h1><span class="shell-zh">创作你的<br/><span>无限可能</span></span><span class="shell-en">Create your<br/><span>infinite possibilities</span></span></h1><p class="shell-body"><span class="shell-zh">连接灵感、素材与 AI，探索每一个值得尝试的方向<br/>在无限画布上和 Agent 一起，把想法做成你的作品</span><span class="shell-en">An infinite canvas for ideas, agents, and moving images.<br/>From your first reference to your next finished piece.</span></p><div class="shell-downloads"><a href="/desktop-downloads/updates/miaoimg-desktop-mac-arm64.dmg">macOS · Apple</a><a href="/desktop-downloads/updates/miaoimg-desktop-mac-x64.dmg">macOS · Intel</a><a href="/desktop-downloads/updates/miaoimg-desktop-windows.exe">Windows</a></div></main></div></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

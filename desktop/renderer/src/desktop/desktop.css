@@ -1,0 +1,118 @@
+.miao-desktop #root{padding-top:0}.miao-desktop .studio-shell{min-height:100dvh}.miao-desktop .studio-app:has(.studio-main){height:100dvh;min-height:0}
+.miao-desktop-darwin .lib-toolbar{top:56px}
+.miao-desktop,.miao-desktop *{scrollbar-width:none}
+.miao-desktop::-webkit-scrollbar,.miao-desktop *::-webkit-scrollbar{display:none}
+.miao-desktop .studio-top{-webkit-app-region:drag;border:0;box-shadow:none;background:transparent}
+.miao-desktop .studio-top a,.miao-desktop .studio-top button,.miao-desktop .studio-top .language-control{-webkit-app-region:no-drag}
+.miao-desktop-darwin .studio-top{padding-left:116px}.miao-desktop-win32 .studio-top{padding-right:140px}
+.miao-desktop .lib-nav{-webkit-app-region:drag}
+.miao-desktop .lib-nav a,.miao-desktop .lib-nav button{-webkit-app-region:no-drag}
+.miao-desktop-darwin .lib-nav{padding-left:76px}
+.miao-desktop-win32 .lib-nav{padding-right:140px}
+.desktop-window-buttons{position:fixed;top:0;right:0;height:56px;display:flex;align-items:center;z-index:10000;-webkit-app-region:no-drag}
+.desktop-window-buttons button{width:42px;height:36px;background:transparent;border:0;color:var(--color-body);cursor:pointer;font-size:16px}.desktop-window-buttons button:hover{background:var(--color-hover);color:var(--color-ink)}.desktop-window-buttons button:last-child:hover{background:#b83232}
+.miao-desktop hr,.miao-desktop .el-divider--horizontal{display:none}
+.miao-desktop .agentMenu,.miao-desktop .editingBanner,.miao-desktop .mentionFooter{border-top:0!important;border-bottom:0!important;box-shadow:none!important}
+.miao-desktop .workspacePage .canvasMenu{margin-left:140px;max-width:calc(50vw - 252px)}
+
+/* 桌面端常驻左边栏：顶部只留妙图标识，项目、资产、设置和账号
+   沿侧栏纵向排列，不进入画布，也不藏进账号弹层。 */
+.miao-desktop .studio-app{flex-direction:row;align-items:stretch}
+.miao-desktop .studio-app>.studio-app__body{display:flex;min-width:0;flex:1;height:100dvh;flex-direction:column;overflow:hidden}
+.miao-desktop .studio-settings-page{position:fixed;inset:56px 0 0 240px;z-index:11900;overflow:hidden;background:var(--color-abyss,#141414);pointer-events:auto}
+.miao-desktop .studio-settings-page>.el-overlay{position:absolute;inset:0;display:block;background:transparent!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+.miao-desktop .studio-settings-page .el-overlay-dialog{position:absolute;inset:0;overflow:hidden;padding:0}
+.miao-desktop .studio-top__brand{display:none}
+.miao-desktop .studio-app:has(.desktop-edge-rail) .studio-top__history{display:none}
+.miao-desktop .studio-app:has(.desktop-edge-rail) .studio-top{padding-left:18px}
+.desktop-edge-rail{width:240px;flex:0 0 240px;height:100dvh;display:flex;flex-direction:column;align-items:stretch;padding:74px 12px 16px;border-right:1px solid var(--color-line);background:var(--color-canvas);color:var(--color-muted);-webkit-app-region:drag}
+.desktop-edge-rail button{font:inherit;-webkit-app-region:no-drag;cursor:pointer}
+.desktop-edge-rail__masthead{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%}
+.desktop-edge-rail__brand{display:flex;width:100%;height:36px;align-items:center;justify-content:flex-start;gap:8px;padding:0 11px;border:1px solid var(--color-line);border-radius:10px;background:color-mix(in srgb,var(--color-elevate) 82%,transparent);color:var(--color-muted);font-size:13px!important;font-weight:560}
+.desktop-edge-rail__brand img{display:block;width:24px;height:24px;object-fit:contain}
+.desktop-edge-rail__brand:hover,.desktop-edge-rail__brand:focus-visible{border-color:var(--color-line-strong);background:var(--color-elevate);color:var(--color-ink)}
+.desktop-edge-rail__nav{display:flex;width:100%;flex-direction:column;gap:4px;margin-top:22px}
+.desktop-edge-rail__nav button,.desktop-edge-rail__account{position:relative;display:flex;width:100%;min-height:38px;align-items:center;justify-content:flex-start;gap:11px;padding:0 12px;border:0;border-radius:10px;background:transparent;color:var(--color-muted);font-size:13px!important;line-height:1}
+.desktop-edge-rail__nav button:hover,.desktop-edge-rail__account:hover{background:color-mix(in srgb,var(--color-elevate) 72%,transparent);color:var(--color-ink)}
+.desktop-edge-rail__nav button[aria-current="page"],.desktop-edge-rail__account[aria-current="page"]{background:var(--color-elevate);color:var(--color-ink)}
+.desktop-edge-rail__nav button[aria-current="page"]::before,.desktop-edge-rail__account[aria-current="page"]::before{position:absolute;left:-12px;width:2px;height:22px;border-radius:2px;background:var(--color-accent);content:""}
+.desktop-edge-rail__account{margin-top:auto}
+.miao-desktop .studio-home{grid-template-columns:minmax(0,1fr);min-height:calc(100dvh - 56px)}
+.miao-desktop .studio-home>nav{display:none}
+.miao-desktop .studio-home__main{padding-top:26px}
+@media(max-width:900px){.desktop-edge-rail{width:200px;flex-basis:200px;padding-inline:10px}.desktop-edge-rail__brand span{display:none}.desktop-edge-rail__brand{flex:none;width:44px}.miao-desktop .studio-app:has(.desktop-edge-rail) .studio-top{padding-left:12px}.miao-desktop .studio-settings-page{left:200px}}
+
+/* 账号面板：沿用客户端近黑底、单层 1px 细框与亮白强调，层次只靠间距和一层抬升面表达。
+   三个状态（登录 / 注册 / 已登录）共用同一套间距变量，控件尺寸与圆角也统一。 */
+.desktop-account-mask{position:fixed;inset:0;display:block;padding:0;z-index:11000;background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none;-webkit-app-region:no-drag}
+.desktop-account-panel{--da-surface:var(--color-surface,#1e1e24);--da-elevate:var(--color-elevate,#25252c);--da-field:var(--color-canvas,#111114);--da-line:var(--color-line,rgb(255 255 255 / .12));--da-line-strong:var(--color-line-strong,rgb(255 255 255 / .22));--da-ink:var(--color-ink,#fafafa);--da-body:var(--color-body,#dedede);--da-muted:var(--color-muted,#b2b2b2);--da-faint:var(--color-faint,#929292);--da-accent:var(--color-accent,#f2f2f2);--da-accent-ink:var(--color-accent-ink,#151515);--da-error:var(--da-body);--da-section:16px;--da-title-gap:6px;--da-content-gap:18px;--da-form-gap:12px;--da-field-gap:8px;--da-radius:12px;position:fixed;top:68px;right:20px;display:flex;flex-direction:column;row-gap:var(--da-section);width:min(392px,calc(100vw - 32px));max-height:calc(100dvh - 92px);box-sizing:border-box;padding:24px;overflow:auto;border:1px solid var(--da-line);border-radius:18px;color:var(--da-ink);background:linear-gradient(180deg,rgba(255,255,255,.025),transparent 38%),var(--da-surface);box-shadow:0 24px 64px rgba(0,0,0,.45);font-family:var(--font-sans,Inter,"PingFang SC","Hiragino Sans GB",sans-serif);font-size:14px;outline:none}
+@media (max-width:760px){.desktop-account-panel{top:auto;bottom:16px;left:16px;right:16px;width:auto;max-height:calc(100dvh - 32px)}}
+.desktop-account-panel>*{flex:none;min-width:0}
+.desktop-account-panel button,.desktop-account-panel input{font:inherit}
+.desktop-account-panel button{cursor:pointer;transition:background-color .15s ease,border-color .15s ease,color .15s ease}
+.desktop-account-panel button:disabled{cursor:default}
+.desktop-account-panel :focus-visible{outline:2px solid var(--da-accent);outline-offset:3px}
+
+/* 头部：品牌 → 标题（贴住副标题）→ 副标题 → 内容，靠 --da-section 统一呼吸。 */
+.desktop-account-close{position:absolute;right:14px;top:14px;width:32px;height:32px;display:grid;place-items:center;border:0;border-radius:999px;background:transparent;color:var(--da-muted)}.desktop-account-close:hover:not(:disabled){background:rgba(255,255,255,.06);color:var(--da-ink)}.desktop-account-close:disabled{opacity:.45}
+.desktop-account-brand{display:flex;align-items:center;gap:10px;color:var(--da-ink);font-size:15px;font-weight:600;letter-spacing:.02em}.desktop-account-brand img{flex:none;width:32px;height:32px;object-fit:contain}
+.desktop-account-panel h2{margin:0;color:var(--da-ink);font-size:20px;font-weight:600;line-height:1.3;letter-spacing:-.01em}
+.desktop-account-description{margin:calc(var(--da-title-gap) - var(--da-section)) 0 calc(var(--da-content-gap) - var(--da-section));color:var(--da-muted);font-size:13px;line-height:1.7}
+
+/* 登录 / 注册：分段切换、字段、错误行、主按钮、次要入口共用一套垂直节奏。 */
+.desktop-account-tabs{display:flex;gap:2px;padding:3px;border:1px solid var(--da-line);border-radius:999px;background:rgb(244 244 245 / .035)}
+.desktop-account-tabs button{flex:1;min-height:32px;border:0;border-radius:999px;background:transparent;color:var(--da-muted);font-size:13px;font-weight:500}
+.desktop-account-tabs button:hover:not(:disabled){color:var(--da-ink)}
+.desktop-account-tabs button[aria-selected=true]{background:color-mix(in srgb,var(--da-accent) 16%,transparent);color:var(--da-accent)}
+.desktop-account-tabs button[aria-selected=true]:hover:not(:disabled){background:color-mix(in srgb,var(--da-accent) 22%,transparent);color:var(--da-ink)}
+.desktop-account-tabs button:disabled{opacity:.45}
+.desktop-account-panel form{display:grid;gap:var(--da-form-gap)}
+.desktop-account-field{display:grid;gap:var(--da-field-gap);min-width:0;color:var(--da-body);font-size:12px;font-weight:500}
+.desktop-account-field>label,.desktop-account-field>span{color:var(--da-body);font-size:12px;font-weight:500}
+.desktop-account-field small{margin-left:6px;color:var(--da-faint);font-size:11px;font-weight:400}
+.desktop-account-input{display:flex;align-items:center;gap:10px;min-height:44px;padding:0 12px;border:1px solid var(--da-line-strong);border-radius:var(--da-radius);background:var(--da-field);color:var(--da-faint);transition:border-color .15s ease,box-shadow .15s ease}
+.desktop-account-input:hover{border-color:var(--da-line-strong)}
+.desktop-account-input:focus-within{border-color:color-mix(in srgb,var(--da-accent) 80%,transparent);box-shadow:0 0 0 3px rgb(242 242 242 / .12)}
+.desktop-account-input:has(input:disabled){opacity:.55}
+.desktop-account-input>svg{flex:none}
+.desktop-account-input input{width:100%;min-width:0;box-sizing:border-box;padding:11px 0;border:0;background:transparent;color:var(--da-ink);font-size:14px;line-height:1.4;outline:none}
+.desktop-account-input input::placeholder{color:var(--da-faint)}
+/* 画布那条全局 :focus-visible（body[data-miaoimg-canvas-ui] :is(button,input,…)）比这里的
+   .desktop-account-input input:focus-visible 更高一级，会把 2px 白框画在字段内部、和外框叠成双层焦点。
+   这里用更长的选择器压住它：焦点信号只留字段外框这一层（accent 细框 + 3px 柔环）。 */
+.desktop-account-panel .desktop-account-field .desktop-account-input input:focus-visible{outline:none}
+.desktop-account-input input:-webkit-autofill{-webkit-text-fill-color:var(--da-ink);caret-color:var(--da-ink);-webkit-box-shadow:0 0 0 100px var(--da-field) inset;transition:background-color 9999s ease-out}
+.desktop-account-password-toggle{flex:none;width:30px;height:30px;display:grid;place-items:center;border:0;border-radius:8px;background:transparent;color:var(--da-faint)}.desktop-account-password-toggle:hover:not(:disabled){background:rgba(255,255,255,.06);color:var(--da-ink)}.desktop-account-password-toggle:disabled{opacity:.45}
+.desktop-account-send{flex:none;min-height:30px;padding:0 12px;border:1px solid var(--da-line-strong);border-radius:8px;background:transparent;color:var(--da-body);font-size:12px;font-weight:600;white-space:nowrap}.desktop-account-send:hover:not(:disabled){border-color:var(--da-accent);color:var(--da-ink);background:rgba(255,255,255,.06)}.desktop-account-send:disabled{opacity:.45}
+.desktop-account-error{margin:0;padding:10px 12px;border:1px solid color-mix(in srgb,var(--da-error) 28%,transparent);border-radius:10px;background:color-mix(in srgb,var(--da-error) 12%,transparent);color:var(--da-error);font-size:12px;line-height:1.6}
+.desktop-account-submit{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:44px;padding:0 18px;border:1px solid transparent;border-radius:999px;background:var(--da-accent);color:var(--da-accent-ink);font-size:14px!important;font-weight:650!important;letter-spacing:.01em}
+.desktop-account-submit:hover:not(:disabled){background:color-mix(in srgb,var(--da-accent) 88%,var(--da-surface))}.desktop-account-submit:active:not(:disabled){background:color-mix(in srgb,var(--da-accent) 78%,var(--da-surface))}
+.desktop-account-submit:disabled{background:color-mix(in srgb,var(--da-accent) 72%,var(--da-surface));color:color-mix(in srgb,var(--da-accent-ink) 80%,var(--da-surface))}
+.desktop-account-footer{display:flex;justify-content:center;align-items:center;gap:6px;color:var(--da-faint);font-size:12px}
+.desktop-account-footer button{margin:-4px -2px;padding:4px 6px;border:0;border-radius:8px;background:transparent;color:var(--da-body);font-size:12px;font-weight:500}
+.desktop-account-footer button:hover:not(:disabled){color:var(--da-ink);text-decoration:underline;text-underline-offset:3px}
+.desktop-account-footer button:disabled{opacity:.45}
+
+/* 已登录：身份行不加框，唯一一层抬升面留给积分卡；退出是次要操作，弱化但可见。 */
+.desktop-account-profile{display:flex;align-items:center;gap:12px;padding:0}
+.desktop-account-avatar{flex:none;display:grid;place-items:center;width:44px;height:44px;border:1px solid var(--da-line);border-radius:14px;background:var(--da-elevate);color:var(--da-ink);font-size:17px;font-weight:600;line-height:1}
+.desktop-account-profile>div:last-child{min-width:0}
+.desktop-account-profile strong{display:block;color:var(--da-ink);font-size:14px;font-weight:600;overflow-wrap:anywhere}
+.desktop-account-profile p{margin:4px 0 0;color:var(--da-muted);font-size:12px;overflow-wrap:anywhere}
+.desktop-account-balance{display:grid;gap:8px;padding:16px 18px;border:1px solid var(--da-line);border-radius:14px;background:linear-gradient(180deg,rgba(255,255,255,.035),transparent 40%),var(--da-elevate)}
+.desktop-account-balance>span{color:var(--da-muted);font-size:11px;letter-spacing:.08em}
+.desktop-account-balance strong{display:flex;align-items:baseline;gap:8px;color:var(--da-ink);font-size:30px;font-weight:600;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.desktop-account-balance small{color:var(--da-muted);font-size:12px;font-weight:500;letter-spacing:0}
+.desktop-account-signout{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:42px;padding:0 16px;border:1px solid var(--da-line-strong);border-radius:999px;background:transparent;color:var(--da-body);font-size:13px!important;font-weight:500}
+.desktop-account-signout:hover:not(:disabled){border-color:var(--da-accent);background:color-mix(in srgb,var(--da-accent) 8%,transparent);color:var(--da-ink)}
+.desktop-account-signout:disabled{opacity:.45}
+.desktop-account-settings{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:38px;padding:0 14px;border:1px solid var(--da-line);border-radius:999px;background:transparent;color:var(--da-muted);font-size:12px!important;font-weight:500}
+.desktop-account-settings:hover:not(:disabled){border-color:var(--da-line-strong);background:rgba(255,255,255,.04);color:var(--da-ink)}
+.miao-settings-backdrop{position:fixed;inset:0;z-index:11900;pointer-events:none;background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none}
+.miao-settings-mount{position:fixed;inset:0;z-index:12000;pointer-events:none}
+
+.desktop-account-loading{display:flex;align-items:center;justify-content:center;gap:10px;min-height:160px;color:var(--da-muted);font-size:13px}.desktop-account-spinner{flex:none;animation:desktop-account-spin 1s linear infinite}@keyframes desktop-account-spin{to{transform:rotate(360deg)}}
+
+/* 矮窗口（含最小 900×600）：收紧间距与控件高度，面板仍完整可见，不裁切。 */
+@media(max-height:720px){.desktop-account-mask{padding:16px}.desktop-account-panel{--da-section:16px;--da-title-gap:5px;--da-content-gap:20px;--da-form-gap:12px;--da-field-gap:7px;padding:22px 24px;max-height:calc(100dvh - 32px)}.desktop-account-panel h2{font-size:18px}.desktop-account-input{min-height:40px}.desktop-account-submit{min-height:40px}.desktop-account-signout{min-height:38px}.desktop-account-loading{min-height:110px}.desktop-account-balance strong{font-size:26px}}
+@media(prefers-reduced-motion:reduce){.desktop-account-spinner{animation:none}}

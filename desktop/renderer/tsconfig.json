@@ -1,0 +1,121 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "useDefineForClassFields": true,
+    "lib": [
+      "ES2024",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "allowJs": false,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": false,
+    "forceConsistentCasingInFileNames": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "types": [
+      "vite/client",
+      "node"
+    ],
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ],
+      "@miaoimg/nodes-scaffold/runtime": [
+        "./src/studio/canvas/scaffold/runtime.ts"
+      ],
+      "@miaoimg/nodes-scaffold/nodeSkeleton": [
+        "./src/studio/canvas/scaffold/nodeSkeleton.vue"
+      ],
+      "@miaoimg/nodes-scaffold/nodeDocument": [
+        "./src/studio/canvas/scaffold/nodeDocument.ts"
+      ],
+      "@miaoimg/nodes-scaffold/nodeEvent": [
+        "./src/studio/canvas/scaffold/nodeEvent.ts"
+      ],
+      "@miaoimg/nodes-scaffold/nodeTools": [
+        "./src/studio/canvas/scaffold/nodeTools.ts"
+      ],
+      "@miaoimg/nodes-scaffold/nodeAi": [
+        "./src/studio/canvas/scaffold/nodeAi.ts"
+      ],
+      "@miaoimg/nodes-scaffold/nodeInputs": [
+        "./src/studio/canvas/scaffold/nodeInputs.ts"
+      ],
+      "@miaoimg/nodes-scaffold/connection": [
+        "./src/studio/canvas/scaffold/connection.ts"
+      ],
+      "@miaoimg/nodes-scaffold/values": [
+        "./src/studio/canvas/scaffold/values.ts"
+      ],
+      "@miaoimg/nodes-scaffold/workspaceFiles": [
+        "./src/studio/canvas/scaffold/workspaceFiles.ts"
+      ],
+      "@miaoimg/ffmpeg/browser": [
+        "./src/studio/canvas/scaffold/browserFfmpeg.ts"
+      ],
+      "@miaoimg/nodes-scaffold/promptInput": [
+        "./src/studio/canvas/scaffold/components/promptInput.vue"
+      ],
+      "@miaoimg/nodes-scaffold/videoPlayer": [
+        "./src/studio/canvas/scaffold/components/videoPlayer.vue"
+      ],
+      "@miaoimg/nodes-scaffold/mediaHistory": [
+        "./src/studio/canvas/scaffold/components/mediaHistory.vue"
+      ],
+      "@miaoimg/nodes-scaffold/referenceItem": [
+        "./src/studio/canvas/scaffold/components/referenceItem.vue"
+      ],
+      "@miaoimg/nodes-scaffold/imageEditor": [
+        "./src/studio/canvas/scaffold/components/imageEditor.vue"
+      ],
+      "@miaoimg/nodes-scaffold/imageInpaintPrompt": [
+        "./src/studio/canvas/scaffold/components/imageInpaintPrompt.vue"
+      ],
+      "@miaoimg/nodes-scaffold/imageGridSplit": [
+        "./src/studio/canvas/scaffold/components/imageGridSplit.vue"
+      ],
+      "@miaoimg/nodes-scaffold/generationProgress": [
+        "./src/studio/canvas/scaffold/components/generationProgress.vue"
+      ],
+      "@miaoimg/tool-canvas/runtime": [
+        "./src/studio/canvas/toolRuntimeCompat.ts"
+      ],
+      "@miaoimg/tools-scaffold/runtime": [
+        "./src/studio/canvas/toolRuntimeCompat.ts"
+      ],
+      "@miaoimg/tools-scaffold/client": [
+        "./src/studio/canvas/toolsScaffoldClient.ts"
+      ],
+      "@miaoimg/server/agent/types": [
+        "./src/studio/canvas/agentEvents.ts"
+      ],
+      "@miaoimg/server/agent/mentionSources": [
+        "./src/studio/canvas/mentionSources.ts"
+      ],
+      "@miaoimg/model-icons": [
+        "./src/studio/canvas/modelIcons.ts"
+      ],
+      "@miaoimg/assets/logo.svg": [
+        "./public/miaoimg-logo.png"
+      ],
+      "@miaoimg/i18n": [
+        "./src/studio/canvas/i18nCompat.ts"
+      ],
+      "@miaoimg/i18n/vue": [
+        "./src/studio/canvas/i18nCompat.ts"
+      ]
+    }
+  },
+  "include": [
+    "src",
+    "vite.config.ts"
+  ]
+}

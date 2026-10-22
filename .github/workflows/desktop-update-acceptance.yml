@@ -1,0 +1,47 @@
+name: 妙图 Windows 更新入口验收
+on:
+  workflow_dispatch:
+    inputs:
+      previous_release:
+        description: Temporary release containing the previous installer
+        required: true
+      expected_version:
+        description: Version already published to the public update feed
+        required: true
+permissions:
+  contents: write
+jobs:
+  accept:
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24'
+      - name: 安装旧版并检查正式更新地址
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREVIOUS_RELEASE: ${{ inputs.previous_release }}
+          EXPECTED_VERSION: ${{ inputs.expected_version }}
+        shell: pwsh
+        run: |
+          gh release download $env:PREVIOUS_RELEASE --pattern '*.exe' --dir previous
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $installer = (Get-ChildItem 'previous/*.exe' | Select-Object -First 1).FullName
+          $destination = Join-Path $env:RUNNER_TEMP 'MiaoUpdateInstalled'
+          $result = Start-Process $installer -ArgumentList '/S', "/D=$destination" -Wait -PassThru
+          if ($result.ExitCode -ne 0) { throw 'Previous installer failed' }
+          $app = Join-Path $destination '妙图.exe'
+          Get-Process | Where-Object { $_.Path -eq $app } | Stop-Process
+          node desktop/scripts/accept-update.ts $app (Join-Path $env:RUNNER_TEMP 'update-proof') $env:EXPECTED_VERSION
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: 保存验收记录
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROOF_TAG: desktop-update-proof-${{ github.run_id }}
+        shell: pwsh
+        run: |
+          $proof = Join-Path $env:RUNNER_TEMP 'update-proof/result.json'
+          if (Test-Path $proof) { gh release create $env:PROOF_TAG $proof --target $env:GITHUB_SHA --latest=false --title '临时更新验收记录' --notes 'Remove after review.' }

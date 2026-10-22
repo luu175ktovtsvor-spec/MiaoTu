@@ -1,0 +1,277 @@
+@import "tailwindcss";
+
+@theme {
+  /* Client palette shared with the canvas. */
+  --color-abyss: #111114;
+  --color-canvas: #111114;
+  --color-surface: #1e1e24;
+  --color-elevate: #25252c;
+  --color-overlay: #2b2b32;
+
+  --color-ink: #fafafa;
+  --color-body: #dedede;
+  --color-muted: #b2b2b2;
+  --color-faint: #929292;
+
+  --color-line: rgb(255 255 255 / 0.12);
+  --color-line-strong: rgb(255 255 255 / 0.22);
+
+  --color-accent: #f2f2f2;
+  --color-accent-ink: #151515;
+  --color-brass: var(--color-accent);
+  --color-brass-strong: #ffffff;
+  --color-brass-soft: rgb(242 242 242 / 0.12);
+
+  --color-error: #e0705c;
+  --color-error-soft: rgb(224 112 92 / 0.14);
+
+  --font-sans: "Inter", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-display: "Fraunces", "Songti SC", "Noto Serif SC", serif;
+  --font-mono: "IBM Plex Mono", "SFMono-Regular", "Cascadia Code", monospace;
+}
+
+/* The client refresh does not change the administrator theme. */
+html[data-admin-theme] {
+  --color-accent: #d7f7ff;
+  --color-abyss: #09090b;
+  --color-canvas: #0e0e11;
+  --color-surface: #141416;
+  --color-elevate: #17181b;
+  --color-overlay: #1c1d20;
+  --color-ink: #f4f3ee;
+  --color-body: #b8b7b0;
+  --color-muted: #84837c;
+  --color-faint: #5a5954;
+  --color-line: rgb(244 243 238 / .12);
+  --color-line-strong: rgb(244 243 238 / .22);
+  --color-brass: #e2a75b;
+  --color-brass-strong: #f0bd76;
+  --color-brass-soft: rgb(226 167 91 / .14);
+}
+
+:root {
+  color: var(--color-ink);
+  background: var(--color-abyss);
+  font-family: var(--font-sans);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out-soft: cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  scroll-behavior: smooth;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100dvh;
+  margin: 0;
+  background: var(--color-abyss);
+  overflow-x: clip;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:not(:disabled),
+a {
+  cursor: pointer;
+}
+
+.search-input::-webkit-search-cancel-button {
+  display: none;
+}
+
+::selection {
+  color: var(--color-abyss);
+  background: var(--color-brass);
+}
+
+.focus-ring:focus-visible {
+  outline: 2px solid var(--color-brass);
+  outline-offset: 3px;
+}
+
+/* ——— ambient texture: fine film grain over the whole page ——— */
+.grain-overlay {
+  position: fixed;
+  inset: -50%;
+  z-index: 60;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.72' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.032;
+}
+
+/* ——— hero spotlight ——— */
+.hero-spotlight {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(58rem 26rem at 18% -8%, color-mix(in srgb,var(--color-accent) 10%,transparent), transparent 62%),
+    radial-gradient(46rem 24rem at 88% 4%, rgb(120 132 200 / 0.07), transparent 60%);
+}
+
+.hero-hairline {
+  background: linear-gradient(to right, transparent, rgb(244 244 245 / 0.14), transparent);
+  height: 1px;
+}
+
+/* ——— display type ——— */
+.display-serif {
+  font-family: var(--font-display);
+  font-weight: 560;
+  letter-spacing: -0.02em;
+}
+
+.display-num {
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+  font-weight: 560;
+  font-variation-settings: "opsz" 72;
+  letter-spacing: -0.02em;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+}
+
+/* ——— marquee strip ——— */
+.marquee-mask {
+  mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent);
+}
+
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee-drift 90s linear infinite;
+}
+
+.marquee-track:hover,
+.marquee-track:focus-within {
+  animation-play-state: paused;
+}
+
+@keyframes marquee-drift {
+  to { transform: translateX(-50%); }
+}
+
+/* ——— skeleton ——— */
+.skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+  background: var(--color-surface);
+}
+
+.skeleton-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 24%, rgb(244 244 245 / 0.05) 43%, transparent 62%);
+  transform: translateX(-110%);
+  animation: shimmer 1.8s var(--ease-out-expo) infinite;
+}
+
+@keyframes shimmer {
+  to { transform: translateX(110%); }
+}
+
+/* ——— status pulse ——— */
+.status-pulse {
+  position: relative;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--color-brass);
+}
+
+.status-pulse::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border: 1px solid var(--color-brass);
+  border-radius: inherit;
+  animation: status-breathe 2.6s var(--ease-out-expo) infinite;
+}
+
+@keyframes status-breathe {
+  0%, 100% { transform: scale(0.72); opacity: 0; }
+  38% { opacity: 0.55; }
+  72% { transform: scale(1.15); opacity: 0; }
+}
+
+/* ——— scrollbars ——— */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(244 244 245 / 0.16) transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgb(244 244 245 / 0.14);
+}
+
+@media (max-width: 767px) {
+  .grain-overlay {
+    display: none;
+  }
+
+  .mobile-marquee::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mobile-marquee {
+    mask-image: none;
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+  }
+
+  .mobile-marquee .marquee-track {
+    animation: none;
+  }
+
+  .mobile-marquee .marquee-track > button {
+    scroll-snap-align: start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,15 @@
+.release-notes-mask { position: fixed; inset: 0; z-index: 2000; display: grid; place-items: center; padding: 20px; background: rgb(10 10 14 / 62%); backdrop-filter: blur(8px); }
+.release-notes-modal { position: relative; box-sizing: border-box; width: min(620px, 100%); max-height: min(760px, calc(100dvh - 40px)); overflow: auto; padding: 34px 36px 30px; border: 1px solid var(--color-line, rgb(255 255 255 / 13%)); border-radius: 16px; color: var(--color-ink, #fafafa); background: linear-gradient(180deg, rgb(255 255 255 / 2.5%), transparent 38%), var(--color-surface, #1e1e24); box-shadow: 0 28px 90px rgb(0 0 0 / 48%); }
+.release-notes-close { position: absolute; top: 16px; right: 18px; width: 34px; height: 34px; border: 0; border-radius: 999px; color: var(--color-muted, #b2b2b2); background: transparent; font-size: 27px; line-height: 1; cursor: pointer; }
+.release-notes-close:hover { color: #fff; background: rgb(255 255 255 / 10%); }
+.release-notes-kicker { color: var(--color-muted, #b2b2b2); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
+.release-notes-modal h2 { margin: 10px 44px 0 0; font-size: 26px; line-height: 1.25; }
+.release-notes-intro { margin: 10px 0 24px; color: var(--color-muted, #b2b2b2); font-size: 14px; line-height: 1.7; }
+.release-notes-sections { display: grid; gap: 18px; }
+.release-notes-section { padding: 16px 18px; border: 1px solid var(--color-line, rgb(255 255 255 / 9%)); border-radius: 12px; background: var(--color-elevate, #25252c); }
+.release-notes-section h3 { margin: 0 0 8px; color: var(--color-ink, #fafafa); font-size: 14px; }
+.release-notes-section ul { margin: 0; padding-left: 20px; color: var(--color-body, #dedede); font-size: 14px; line-height: 1.8; }
+.release-notes-confirm { width: 100%; margin-top: 24px; padding: 12px 18px; border: 0; border-radius: 999px; color: var(--color-accent-ink, #151515); background: var(--color-accent, #f2f2f2); font-size: 14px; font-weight: 700; cursor: pointer; }
+.release-notes-confirm:hover { filter: brightness(1.08); }
+.release-notes-close:focus-visible, .release-notes-confirm:focus-visible { outline: 2px solid var(--color-ink, #fafafa); outline-offset: 3px; }
+@media (max-width: 600px) { .release-notes-modal { padding: 28px 22px 24px; border-radius: 20px; } .release-notes-modal h2 { font-size: 23px; } }

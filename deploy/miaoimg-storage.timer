@@ -1,0 +1,11 @@
+[Unit]
+Description=Reclaim MiaoImg temporary storage daily
+
+[Timer]
+OnCalendar=*-*-* 04:15:00 Asia/Shanghai
+RandomizedDelaySec=10min
+Persistent=true
+Unit=miaoimg-storage.service
+
+[Install]
+WantedBy=timers.target

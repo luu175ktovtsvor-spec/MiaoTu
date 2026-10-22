@@ -1,0 +1,164 @@
+# 官网展示素材
+
+创作流程依据产品使用手册。香水案例画面为公开作品抽帧，用于流程示意，不作为妙图生成记录。
+
+- product · @juliaevee · https://x.com/juliaevee/status/2095745759027028252
+- story · @AIwithNatalia · https://x.com/AIwithNatalia/status/2087462551210659906
+- animation · @aynellex · https://x.com/aynellex/status/2105147006356512789
+- fashion · @aiwithaayat · https://x.com/aiwithaayat/status/2100863394878525602
+- nature · @KinasRemek · https://x.com/KinasRemek/status/2102728913579327722
+- fantasy · @abxxai · https://x.com/abxxai/status/2081023473305162165
+- case-2 · @abxxai · https://x.com/abxxai/status/2095179656802844727
+- case-22 · @Goodmanprotocol · https://x.com/Goodmanprotocol/status/2107530733212590250
+- case-16 · @Zarnab_with_Ai · https://x.com/Zarnab_with_Ai/status/2106347953711661482
+- case-194 · @Diplomeme · https://x.com/Diplomeme/status/2079455816772649210
+- case-17 · @BubbleBrain · https://x.com/BubbleBrain/status/2083659648108990925
+- case-33 · @itxabdullaa · https://x.com/itxabdullaa/status/2106702315239686628
+- case-11 · @sophiaparkerr_ · https://x.com/sophiaparkerr_/status/2107096810783461509
+- case-23 · @aiwarts · https://x.com/aiwarts/status/2085736621685764503
+- case-257 · @hiapi_ai · https://x.com/hiapi_ai/status/2081294040415482322
+- case-514 · @nawalsehar · https://x.com/nawalsehar/status/2089583619484639598
+- case-25 · @Elvorya · https://x.com/Elvorya/status/2106974836887318797
+- case-398 · @Caden_Flux · https://x.com/Caden_Flux/status/2103788406392213575
+- case-221 · @Goodmanprotocol · https://x.com/Goodmanprotocol/status/2081028788771815678
+- case-171 · @ayzalnooor24521 · https://x.com/ayzalnooor24521/status/2108045351143997517
+- case-152 · @Inshrah_ali_ · https://x.com/Inshrah_ali_/status/2082761095538790899
+- case-262 · @PixelAigc · https://x.com/PixelAigc/status/2078846287500439682
+- case-386 · @ShamiWeb3 · https://x.com/ShamiWeb3/status/2093133619883913232
+- case-141 · @noorwithwifi · https://x.com/noorwithwifi/status/2079818537137475762
+- case-597 · @AIwithNatalia · https://x.com/AIwithNatalia/status/2103481825096278257
+- case-333 · @eshal__ai · https://x.com/eshal__ai/status/2096840505355370629
+- case-224 · @bmx_ai13 · https://x.com/bmx_ai13/status/2081091640857702427
+- case-830 · @johnAGI168 · https://x.com/johnAGI168/status/2088977887638516207
+- case-537 · @AIwithSynthia · https://x.com/AIwithSynthia/status/2104412786570981576
+- case-487 · @itxabdullaa · https://x.com/itxabdullaa/status/2103084704979394875
+- case-179 · @0xluffy_eth · https://x.com/0xluffy_eth/status/2079374857159270882
+- case-393 · @Chaemate_ · https://x.com/Chaemate_/status/2099439262106083704
+- case-606 · @itsSaira_1 · https://x.com/itsSaira_1/status/2104432266235851168
+- case-44 · @frametheory058 · https://x.com/frametheory058/status/2087007818721423855
+- case-773 · @sipteaandcoffee · https://x.com/sipteaandcoffee/status/2100615995127959764
+- case-658 · @Zyrellix · https://x.com/Zyrellix/status/2091393149805756450
+- case-181 · @itsshara_ai · https://x.com/itsshara_ai/status/2079565454436426187
+- case-83 · @saniaspeaks_ · https://x.com/saniaspeaks_/status/2088605003112235033
+- case-783 · @sophiaparkerr_ · https://x.com/sophiaparkerr_/status/2095862309285421150
+- case-191 · @HaniaAi12 · https://x.com/HaniaAi12/status/2076979039747920309
+- case-402 · @ShamiWeb3 · https://x.com/ShamiWeb3/status/2096101448090267992
+- case-197 · @noorwithwifi · https://x.com/noorwithwifi/status/2080354151750668360
+- case-581 · @ZaraIrahh · https://x.com/ZaraIrahh/status/2097191553991328162
+- case-199 · @noorwithwifi · https://x.com/noorwithwifi/status/2078535850745626926
+- case-209 · @ai_lifehack55 · https://x.com/ai_lifehack55/status/2076503632988561413
+- case-211 · @piotrbinkowski · https://x.com/piotrbinkowski/status/2078515110855753844
+- case-226 · @bmx_ai13 · https://x.com/bmx_ai13/status/2077208527840391188
+- case-233 · @ai_animer · https://x.com/ai_animer/status/2078023536992735573
+- case-554 · @ChillaiKalan__ · https://x.com/ChillaiKalan__/status/2088866007918268515
+- case-235 · @miilesus · https://x.com/miilesus/status/2080744222571848176
+
+原片与文件摘要见 deploy/site-media.json。全画幅抽帧检查未见平台或作者水印；保留作品原有商品标签与片名。
+
+
+## Additional 100 video references, 2026-10-14
+
+- new-6 — 晨光里的一杯咖啡 — [@Strength04_X](https://x.com/Strength04_X/status/2083094742682787939) · [Case](https://goodcase.ai/cases/seedance-25-minidv-coffee-asmr-vlog)
+- new-10 — 烈焰树灵的觉醒 — [@itsSaira_1](https://x.com/itsSaira_1/status/2107685928647160275) · [Case](https://goodcase.ai/cases/seedance-2-5-cinematic-dark-fantasy-battle-16-9-photoreal-shallow-depth-of-field-anamorp-a90377df74d6)
+- new-14 — 粉色球场的夜间滑行 — [@AIwithNatalia](https://x.com/AIwithNatalia/status/2107056982163402833) · [Case](https://goodcase.ai/cases/seedance-2-5-create-a-photorealistic-cinematic-fashion-sports-video-set-on-a-pink-tennis-cou-b27f2c8361f5)
+- new-15 — 微缩世界的便利店冒险 — [@AIwithkhan](https://x.com/AIwithkhan/status/2106397932304191969) · [Case](https://goodcase.ai/cases/seedance-2-5-create-a-30-second-cinematic-adventure-featuring-one-athletic-miniature-woman-a-f6c3d40e8edd)
+- new-28 — 现实与动画之间的舞步 — [@Aqsahere_](https://x.com/Aqsahere_/status/2087386090315616601) · [Case](https://goodcase.ai/cases/cyberpunk-holographic-dance-performance)
+- new-29 — 绿光天使的降临 — [@itsSaira_1](https://x.com/itsSaira_1/status/2108049177259462719) · [Case](https://goodcase.ai/cases/seedance-2-5-cinematic-16-9-dark-fantasy-photorealistic-gothic-cathedral-emerald-green-gl-a04d1df43215)
+- new-30 — 韩国女孩在首尔老街迎接冬日初雪 — [@nawalsehar](https://x.com/nawalsehar/status/2106251329085874184) · [Case](https://goodcase.ai/cases/seedance-2-5-create-a-30-second-ultra-photorealistic-early-2000s-korean-dv-camcorder-home-vi-af75581b34cc)
+- new-31 — 韩国女生户外泳池 Vlog — [@Strength04_X](https://x.com/Strength04_X/status/2091737661061095648) · [Case](https://goodcase.ai/cases/vlog-9decd38e99a4)
+- new-32 — GoPro 钓鱼到烤鱼全流程 — [@abxxai](https://x.com/abxxai/status/2087189194720657649) · [Case](https://goodcase.ai/cases/seedance-2-5-gopro-94a73eef1dbf)
+- new-38 — 金色日落里的经典跑车 — [@Just_sharon7](https://x.com/Just_sharon7/status/2085277106960007654) · [Case](https://goodcase.ai/cases/classic-mustang-golden-hour-drive)
+- new-42 — 雨夜便利店外，女子巧退三名恶汉 — [@aiwithaly](https://x.com/aiwithaly/status/2106981702677451248) · [Case](https://goodcase.ai/cases/seedance-2-5-create-an-exactly-30-second-16-9-24fps-hyper-realistic-korean-live-action-act-a420dc81e47a)
+- new-44 — 雾林中的女子化身黑豹 — [@itsSaira_1](https://x.com/itsSaira_1/status/2106596983565898079) · [Case](https://goodcase.ai/cases/seedance-2-5-cinematic-realistic-jungle-scene-misty-rainforest-soft-natural-light-1cd117ad9bf8)
+- new-48 — 韩国女孩的雨天街巷与小店之旅 — [@Lianaalane](https://x.com/Lianaalane/status/2106951270380802264) · [Case](https://goodcase.ai/cases/seedance-2-5-a-beautiful-korean-girl-in-a-realistic-cinematic-lifestyle-vlog-starting-insid-560e08eabe90)
+- new-49 — 湿货市场洪水逃生 — [@AiwithElisia](https://x.com/AiwithElisia/status/2091036019076272229) · [Case](https://goodcase.ai/cases/case-198b3f3748b3)
+- new-52 — 紫发女巫在暴雨古堡召唤水兽迎敌 — [@laviniavelle](https://x.com/laviniavelle/status/2107333176985317886) · [Case](https://goodcase.ai/cases/seedance-2-5-a-dark-fantasy-action-sequence-in-a-gothic-castle-courtyard-during-torrential-r-c8e719dfd14d)
+- new-55 — 深夜厨房手机实录做饭 — [@AIWithRay](https://x.com/AIWithRay/status/2087544594384773346) · [Case](https://goodcase.ai/cases/seedance-2-5-eba905fedcff)
+- new-57 — 来自 2100 年的神秘讯息 — [@iam_nafisahmed](https://x.com/iam_nafisahmed/status/2087921744166420808) · [Case](https://goodcase.ai/cases/sci-fi-mystery-message-from-2100)
+- new-59 — 少女以粉色闪电激战曼哈顿巨型章鱼 — [@itsSaira_1](https://x.com/itsSaira_1/status/2107349100698259868) · [Case](https://goodcase.ai/cases/seedance-2-5-photoreal-overcast-manhattan-street-wet-asphalt-yellow-taxis-a0972b6d3fa6)
+- new-60 — 荒原巨型沙漏前变换发色的女子 — [@itsSaira_1](https://x.com/itsSaira_1/status/2106989829108207864) · [Case](https://goodcase.ai/cases/seedance-2-5-cinematic-wide-shot-of-a-cracked-dry-wasteland-under-a-flat-grey-overcast-sky-9ae8ad970350)
+- new-61 — 爸爸，这幅画送给你 — [@Zarnab_with_Ai](https://x.com/Zarnab_with_Ai/status/2105974631106818101) · [Case](https://goodcase.ai/cases/seedance-2-5-made-with-seedance-2-5-786c124b4181)
+- new-65 — 首尔巷弄的一场相遇 — [@ayzalnooor24521](https://x.com/ayzalnooor24521/status/2106974434234138683) · [Case](https://goodcase.ai/cases/seedance-2-5-a-quiet-moment-a-kind-heart-and-a-story-that-speaks-without-words-08090a4dca11)
+- new-67 — 乡间晨光中女子倾诉，花朵渐次绽放 — [@AIwithZeeshi](https://x.com/AIwithZeeshi/status/2106967008650969278) · [Case](https://goodcase.ai/cases/seedance-2-5-a-peaceful-countryside-garden-on-a-warm-sunny-morning-73d9d998ca98)
+- new-70 — 紫衣女孩探访巨型机器人并飞向天空 — [@Zyrellix](https://x.com/Zyrellix/status/2107707535147081829) · [Case](https://goodcase.ai/cases/seedance-2-5-create-a-cinematic-30-second-photorealistic-sci-fi-short-film-set-in-a-futurist-92e51942d184)
+- new-71 — 智能手机旅行 Vlog：日本武道馆体验 — [@SimplyAnnisa](https://x.com/SimplyAnnisa/status/2093978574692679983) · [Case](https://goodcase.ai/cases/vlog-867cf0ce0743)
+- new-76 — 钟表匠的时间秘密 — [@AIwithZeeshi](https://x.com/AIwithZeeshi/status/2108412888415400315) · [Case](https://goodcase.ai/cases/seedance-2-5-a-middle-aged-clockmaker-is-repairing-an-antique-pocket-watch-in-his-old-fashio-884d47f3cd40)
+- new-78 — 乡村厨房蒜香炒青菜的制作过程 — [@aynellex](https://x.com/aynellex/status/2105869869216342141) · [Case](https://goodcase.ai/cases/seedance-2-5-create-a-cinematic-ultra-realistic-17-second-live-action-food-sequence-showing-6c9fa0508f22)
+- new-79 — 林间守护者循灯发现古树秘境 — [@itxabdullaa](https://x.com/itxabdullaa/status/2107792780395458733) · [Case](https://goodcase.ai/cases/seedance-2-5-created-a-30s-woodland-fantasy-scene-straight-out-of-a-forgotten-90s-fantasy-mo-e3f1b8f9e73c)
+- new-80 — 茶中蓝焰凤凰唤醒女子战甲飞跃霓虹都市 — [@laviniavelle](https://x.com/laviniavelle/status/2107709472944906671) · [Case](https://goodcase.ai/cases/seedance-2-5-cinematic-8k-video-sequence-30-seconds-an-elegant-east-asian-woman-in-a-dark-n-a7ec912255dc)
+- new-83 — 宝宝与小动物乘西瓜船畅游奇幻水果河 — [@Zarnab_with_Ai](https://x.com/Zarnab_with_Ai/status/2108504570603491475) · [Case](https://goodcase.ai/cases/seedance-2-5-made-with-seedance-2-5-4e9fb3d9d0c5)
+- new-86 — 穿越土耳其霓虹古城、碧海与热气球天空 — [@Naiknelofar788](https://x.com/Naiknelofar788/status/2106439652278411435) · [Case](https://goodcase.ai/cases/seedance-2-5-create-a-30-second-ultra-realistic-cinematic-fpv-travel-film-showcasing-the-fut-10f862c76c6a)
+- new-87 — 宫廷舞厅的多色礼服 — [@Zoyavelle](https://x.com/Zoyavelle/status/2108783755460853994) · [Case](https://goodcase.ai/cases/seedance-2-5-a-stunning-blonde-fashion-model-gracefully-walks-and-poses-in-a-luxurious-palac-e9b8bccd5224)
+- new-88 — 跑车、摩托、坦克与战机变身机甲 — [@laviniavelle](https://x.com/laviniavelle/status/2108404878590857384) · [Case](https://goodcase.ai/cases/seedance-2-5-a-silver-sports-car-driving-down-a-city-highway-smoothly-transforms-into-a-gian-4c149ba1934a)
+- new-89 — 粉衣女侠在古殿中腾空御金光 — [@aynellex](https://x.com/aynellex/status/2108422475730309602) · [Case](https://goodcase.ai/cases/seedance-2-5-create-a-cinematic-15-second-photorealistic-fantasy-martial-arts-short-film-set-4c4ce7b49e2d)
+- new-91 — 小鸭的森林漂流与动物伙伴相助 — [@Zyrellix](https://x.com/Zyrellix/status/2108047742425600244) · [Case](https://goodcase.ai/cases/seedance-2-5-a-sunny-forest-stream-pixar-style-3d-animation-a011f1d58b29)
+- new-93 — 耳边音乐，城市日落 — [@AIwithkhan](https://x.com/AIwithkhan/status/2107081013583089797) · [Case](https://goodcase.ai/cases/seedance-2-5-create-an-ultra-realistic-cinematic-commercial-for-a-fictional-premium-wireless-4edc18232149)
+- new-95 — 陨石中的装甲战士 — [@NoOneIsHere2603](https://x.com/NoOneIsHere2603/status/2106981270085656888) · [Case](https://goodcase.ai/cases/seedance-2-5-he-survived-the-first-impact-9892d09f9a57)
+- new-97 — 月夜竹林的武士猫 — [@Elvorya](https://x.com/Elvorya/status/2106237323046486362) · [Case](https://goodcase.ai/cases/seedance-2-5-create-a-15-second-photorealistic-cinematic-fantasy-action-sequence-featuring-a-b55a1fd3c9b6)
+- new-100 — 欧洲老城清晨旅拍 vlog — [@SyntheSarah](https://x.com/SyntheSarah/status/2087737206459044262) · [Case](https://goodcase.ai/cases/seedance-2-5-vlog-eae9734adb51)
+- new-102 — 咖啡馆里的意外对决 — [@nawalsehar](https://x.com/nawalsehar/status/2106975147806576802) · [Case](https://goodcase.ai/cases/seedance-2-5-create-an-exactly-30-second-16-9-24fps-hyper-realistic-korean-live-action-act-7ac2c14074ec)
+- new-105 — 年轻女子的居家日常与日落阳台 — [@Zyrellix](https://x.com/Zyrellix/status/2105899978396987489) · [Case](https://goodcase.ai/cases/seedance-2-5-a-young-woman-with-long-dark-brown-hair-and-a-beauty-mark-on-her-cheek-wakes-in-15f786e0335f)
+- new-106 — 巨型洗衣房的微缩冒险 — [@AIwithkhan](https://x.com/AIwithkhan/status/2108180243244818861) · [Case](https://goodcase.ai/cases/seedance-2-5-create-a-30-second-cinematic-adventure-featuring-one-athletic-miniature-woman-a-b8764850b1f7)
+- new-109 — 黄昏公交站的偶遇 — [@saniaspeaks_](https://x.com/saniaspeaks_/status/2091103923440328783) · [Case](https://goodcase.ai/cases/case-365f2a3615b1)
+- new-110 — 胶片里的晨间散步 — [@maxxmalist](https://x.com/maxxmalist/status/2085422370362110168) · [Case](https://goodcase.ai/cases/16mm-analog-morning-vlog)
+- new-113 — 骑行在雪山公路上 — [@AI_with_Antonio](https://x.com/AI_with_Antonio/status/2088599346908365227) · [Case](https://goodcase.ai/cases/karakoram-motorcycle-commercial)
+- new-114 — 暴雨港口灾难电影序列 — [@Noor_ul_ain43](https://x.com/Noor_ul_ain43/status/2087774014957850843) · [Case](https://goodcase.ai/cases/seedance-2-5-3f70c2f28d22)
+- new-118 — 一次电影般的告别 — [@liyue_ai](https://x.com/liyue_ai/status/2090378405288300626) · [Case](https://goodcase.ai/cases/seedance-3b9beb9a46d4)
+- new-123 — 日光里的墨镜测评 — [@AIwithkhan](https://x.com/AIwithkhan/status/2084608509837275231) · [Case](https://goodcase.ai/cases/seedance-2-5-ugc-69e79f387106)
+- new-126 — 幻想游戏的角色选择 — [@pratishhhhh](https://x.com/pratishhhhh/status/2085679073632882880) · [Case](https://goodcase.ai/cases/seedance-2-5-ui-228cf63ce8ff)
+- new-129 — 出租车里的最后一句话 — [袋鼠帝](https://mp.weixin.qq.com/s?__biz=MzkwMzE4NjU5NA==&mid=2247519871&idx=1&sn=6c800d0dfcb8afb69c418751cdfd0d3b&gc=scene-taxi-breakup) · [Case](https://goodcase.ai/cases/seedance-2-5-8d136b59e95a)
+- new-130 — 水果饼干电商广告 — [卡尔](https://x.com/aiwarts?gc=doc2-biscuit-ad) · [Case](https://goodcase.ai/cases/doc2-biscuit-ad)
+- new-132 — 城市之间的超英飞跃 — [卡尔](https://x.com/aiwarts?gc=doc2-spiderman-transform) · [Case](https://goodcase.ai/cases/doc2-spiderman-transform)
+- new-134 — 霓虹游戏世界的极速冲刺 — [卡尔](https://x.com/aiwarts?gc=doc3-game-realtime-magnetriot) · [Case](https://goodcase.ai/cases/doc3-game-realtime-magnetriot)
+- new-135 — 粉色节奏，拼贴女团 MV — [卡尔](https://x.com/aiwarts?gc=doc3-kpop-mv-real-person) · [Case](https://goodcase.ai/cases/doc3-kpop-mv-real-person)
+- new-136 — 霓虹疾驰：拼贴动画片头 — [卡尔](https://x.com/aiwarts?gc=doc3-retro-collage-title) · [Case](https://goodcase.ai/cases/doc3-retro-collage-title)
+- new-137 — 耳机品牌的网页动效 — [卡尔](https://x.com/aiwarts?gc=doc3-ui-motion-sonora) · [Case](https://goodcase.ai/cases/doc3-ui-motion-sonora)
+- new-138 — 智能手机拍摄的海滩一日游回忆 — [@Goodmanprotocol](https://x.com/Goodmanprotocol/status/2079189509586260101) · [Case](https://goodcase.ai/cases/smartphone-beach-day-memories)
+- new-145 — 夜景公寓里的动作喜剧 — [@pyona_ai](https://x.com/pyona_ai/status/2088605198973583799) · [Case](https://goodcase.ai/cases/modern-action-comedy-video-prompt)
+- new-147 — 猫咪的红色摩托追逐 — [@Just_sharon7](https://x.com/Just_sharon7/status/2084901309988425731) · [Case](https://goodcase.ai/cases/cats-chasing-via-red-mini-motorcycle)
+- new-148 — 舞台灯光下的女团时刻 — [@Just_sharon7](https://x.com/Just_sharon7/status/2087744765341159503) · [Case](https://goodcase.ai/cases/vibrant-k-pop-stage-performance)
+- new-154 — 粉色墨镜，复古时尚 — [@Caden_Flux](https://x.com/Caden_Flux/status/2106000754922184872) · [Case](https://goodcase.ai/cases/seedance-2-0-use-the-provided-character-image-as-the-strict-identity-and-styling-reference-ac3aa5983d35)
+- new-156 — 奶油鸡肉意面烹饪 Vlog — [@ElsaSofia__AI](https://x.com/ElsaSofia__AI/status/2091483398972080172) · [Case](https://goodcase.ai/cases/vlog-5bea56e008fc)
+- new-159 — 废墟中的橙虎战士 — [@Aiwithmaha](https://x.com/Aiwithmaha/status/2106938584431526162) · [Case](https://goodcase.ai/cases/seedance-2-0-create-a-cinematic-14-6-second-action-scene-featuring-a-powerful-anthropomorphi-ae5f2011beaa)
+- new-167 — 带有动画效果的 UGC 肉类广告 — [@RuzainaMeer](https://x.com/RuzainaMeer/status/2079141591449739775) · [Case](https://goodcase.ai/cases/ugc-f0cd0dd33284)
+- new-168 — 和巨型吉祥物打场球 — [@ayzalnooor24521](https://x.com/ayzalnooor24521/status/2107340030536741222) · [Case](https://goodcase.ai/cases/seedance-2-0-basketball-gets-a-whole-lot-more-fun-with-a-giant-fluffy-opponent-1b871f4125da)
+- new-169 — 珠宝精品店武术动作大片 — [@mimu_ai1](https://x.com/mimu_ai1/status/2091215411341930633) · [Case](https://goodcase.ai/cases/case-d0f11d1ff17c)
+- new-170 — 近距离的护肤时刻 — [@IsabellaHan_](https://x.com/IsabellaHan_/status/2081055849556877749) · [Case](https://goodcase.ai/cases/vlog-49dbf66ad64f)
+- new-171 — 晾衣院里的小龙 — [@ayzalnooor24521](https://x.com/ayzalnooor24521/status/2108503425277391053) · [Case](https://goodcase.ai/cases/seedance-2-0-create-a-25-second-cinematic-ultra-realistic-fantasy-video-featuring-a-beautif-bbe9f7af6fc1)
+- new-173 — 走进首尔的夜间市场 — [@ayzalnooor24521](https://x.com/ayzalnooor24521/status/2095356156487127394) · [Case](https://goodcase.ai/cases/case-429376496e25)
+- new-174 — 乡村巷弄的追鸡趣事 — [@Lianaalane](https://x.com/Lianaalane/status/2107326795750281669) · [Case](https://goodcase.ai/cases/seedance-2-0-cute-korean-village-vibes-with-a-little-chicken-chase-bc85f69be95c)
+- new-175 — 涂鸦汽水，街头活力 — [@Caden_Flux](https://x.com/Caden_Flux/status/2093959770579554517) · [Case](https://goodcase.ai/cases/mountain-dew-spark-b16d4e23caef)
+- new-179 — 后台试衣的日常 — [@doctorwasif](https://x.com/doctorwasif/status/2081353850779550056) · [Case](https://goodcase.ai/cases/korean-idol-backstage-fitting-vlog)
+- new-181 — 2000 年代 MiniDV 汉江骑行 — [@ZephyraLeigh](https://x.com/ZephyraLeigh/status/2081195428922708039) · [Case](https://goodcase.ai/cases/2000-minidv-5cceb6310905)
+- new-184 — 从毛坯到完整空间 — [@Naiknelofar788](https://x.com/Naiknelofar788/status/2081371164728041980) · [Case](https://goodcase.ai/cases/case-429309e40d97)
+- new-188 — 夏日汽水与城市派对 — [@AIwithSynthia](https://x.com/AIwithSynthia/status/2081383131668701519) · [Case](https://goodcase.ai/cases/case-1f7a27e4c448)
+- new-189 — 胶片感的日式日常 — [@SimplyAnnisa](https://x.com/SimplyAnnisa/status/2081342566524486102) · [Case](https://goodcase.ai/cases/pov-vlog-c94d5709daa4)
+- new-196 — 故障、像素与多维人像 — [@Ushizaru_LAB](https://x.com/Ushizaru_LAB/status/2081258810405175362) · [Case](https://goodcase.ai/cases/case-5c32e2bac894)
+- new-206 — 花瓣与手作书签 — [@noorwithwifi](https://x.com/noorwithwifi/status/2076415711375970372) · [Case](https://goodcase.ai/cases/asmr-b99180475dc6)
+- new-207 — 雨天河畔的鱼眼视角 — [@iamrealsnow](https://x.com/iamrealsnow/status/2080938085081403765) · [Case](https://goodcase.ai/cases/case-d346cb88c88e)
+- new-214 — 手持式护肤 Vlog 摄像机美学 — [@Strength04_X](https://x.com/Strength04_X/status/2077333945687925044) · [Case](https://goodcase.ai/cases/vlog-8a3e0b49e77b)
+- new-215 — 老人和鸽子的午后 — [@AIwithJames](https://x.com/AIwithJames/status/2087756963258278211) · [Case](https://goodcase.ai/cases/stylized-3d-animation-old-man-and-pigeon)
+- new-216 — 冰封星球要塞之战 — [@CharaspowerAI](https://x.com/CharaspowerAI/status/2080669361237303417) · [Case](https://goodcase.ai/cases/case-1b3b8865bca8)
+- new-218 — 城市漫游，记录一天 — [@Shorelyn_](https://x.com/Shorelyn_/status/2079066277650600170) · [Case](https://goodcase.ai/cases/case-58e736edb65c)
+- new-219 — 无线耳机产品评测 — [@Goodmanprotocol](https://x.com/Goodmanprotocol/status/2078490755958780363) · [Case](https://goodcase.ai/cases/case-b157d9c072bc)
+- new-221 — 武术巷战场景 — [@KeorUnreal](https://x.com/KeorUnreal/status/2081477878349246776) · [Case](https://goodcase.ai/cases/case-f7e7c1862f38)
+- new-224 — 水上行走的仙侠小事 — [@Soranlan](https://x.com/Soranlan/status/2081379282442420321) · [Case](https://goodcase.ai/cases/water-walking-xianxia-fraud)
+- new-226 — 黏土风格海盗鸭冒险 — [@CharaspowerAI](https://x.com/CharaspowerAI/status/2078072313686184334) · [Case](https://goodcase.ai/cases/case-21aab321f762)
+- new-185 — 晨光、运动与一杯果昔 — [@AIwithkhan](https://x.com/AIwithkhan/status/2081222954659234074) · [Case](https://goodcase.ai/cases/case-3bdeb046587d)
+- new-241 — 从平面蓝图到立体房屋 — [@craftian_keskin](https://x.com/craftian_keskin/status/2075669026508853393) · [Case](https://goodcase.ai/cases/case-778d0c927488)
+- new-248 — 街头节奏：双人音乐影像 — [@EchoraContinuum](https://x.com/EchoraContinuum/status/2079917613149503813) · [Case](https://goodcase.ai/cases/case-bf2bedc93316)
+- new-277 — 鱼眼镜头下的都市穿搭 — [Purz](https://comfy.org/workflows/5a3df986f9f8-5a3df986f9f8/) · [Case](https://goodcase.ai/cases/4k-seedance-2-0-reference-to-video)
+- new-323 — 小风筝的夏日冒险 — [@Lianaalane](https://x.com/Lianaalane/status/2089563357074559014) · [Case](https://goodcase.ai/cases/lianaalane-seedance-ai-d70d42733c55)
+- new-327 — 一粒种子的生长 — [@Yesandyou_](https://x.com/Yesandyou_/status/2088998841395921185) · [Case](https://goodcase.ai/cases/yesandyou-seedance-ai-d92a0a788b85)
+- new-339 — 潮池石头人的笨拙舞蹈 — [@arsalannazir07](https://x.com/arsalannazir07/status/2096791786807275583) · [Case](https://goodcase.ai/cases/seedance-create-a-21-second-vertical-9-16-cinematic-stop-motion-animation-557fa2797476)
+- new-348 — 追随蝴蝶的小小旅程 — [@ayzalnooor24521](https://x.com/ayzalnooor24521/status/2089559741718548578) · [Case](https://goodcase.ai/cases/ayzalnooor24521-seedance-ai-4a336f514777)
+- new-406 — 手绘线条闯入真实街头 — [@Sairah_0](https://x.com/Sairah_0/status/2089556355384512991) · [Case](https://goodcase.ai/cases/sairah-0-seedance-ai-19e5d269c3e0)
+- new-415 — 韩国束草渔村清晨探访 — [@oggii_0](https://x.com/oggii_0/status/2095029762070900919) · [Case](https://goodcase.ai/cases/seedance-format-30-seconds-16-9-ultra-photorealistic-live-action-continuous-handh-9260ed6474c5)
+- new-435 — 山景别墅的光影漫游 — [@noorlewisx](https://x.com/noorlewisx/status/2092109145055150431) · [Case](https://goodcase.ai/cases/noorlewisx-seedance-ai-3a8b37309451)
+- new-453 — 小公寓里的失控舞蹈练习 — [@Ciri_ai](https://x.com/Ciri_ai/status/2095026480552271884) · [Case](https://goodcase.ai/cases/seedance-create-a-30-second-1080p-ultra-realistic-personal-home-video-of-a-young-korean-906969cda347)
+- new-497 — 雾夜灯塔守望者与海上光灵 — [@SyntheSarah](https://x.com/SyntheSarah/status/2097182529564365135) · [Case](https://goodcase.ai/cases/seedance-a-weathered-old-lighthouse-keeper-stands-on-a-foggy-cliff-at-night-f581948aed80)
+- new-821 — 纸飞机穿过四季 — [@liyue_ai](https://x.com/liyue_ai/status/2092147008895426977) · [Case](https://goodcase.ai/cases/liyue-ai-seedance-ai-10c1ac4f1c20)
+
+## 粉色节拍 MV 节点案例
+
+取自已收录的公开 MV（卡尔 / AIwarts）：https://goodcase.ai/cases/doc3-kpop-mv-real-person 。三个演示片段保留原视频编码，原声音轨无损提取；图片为同一 MV 的完整关键帧。人物、舞台和拼贴构图贯穿整个示例。完整 MV 继续使用图库中的原片，不重复保存。节点框架、连接点和视觉规则来自妙图产品源码；操作流程参考妙图使用手册。

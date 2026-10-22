@@ -1,0 +1,84 @@
+{
+  "version": "b6.1.1",
+  "origin": "https://miaoimg.cn",
+  "platforms": {
+    "darwin-arm64": [
+      {
+        "name": "LICENSE",
+        "size": 4376,
+        "sha256": "cb48bf09a11f5fb576cddb0431c8f5ed0a60157a9ec942adffc13907cbe083f2",
+        "url": "/desktop-downloads/tools/b6.1.1/darwin-arm64-LICENSE.gz"
+      },
+      {
+        "name": "README",
+        "size": 1810,
+        "sha256": "05ba4b92c96605434b1aaae3eedf5a2c280c9607bf78ffca9a5b536d9af2dc6a",
+        "url": "/desktop-downloads/tools/b6.1.1/darwin-arm64-README.gz"
+      },
+      {
+        "name": "ffmpeg",
+        "size": 45568216,
+        "sha256": "a90e3db6a3fd35f6074b013f948b1aa45b31c6375489d39e572bea3f18336584",
+        "url": "/desktop-downloads/tools/b6.1.1/darwin-arm64-ffmpeg.gz"
+      },
+      {
+        "name": "ffprobe",
+        "size": 45528808,
+        "sha256": "bb2db6f5d8cef919da12fbf592119a987202a8c060a886f3cab091f9cab90b64",
+        "url": "/desktop-downloads/tools/b6.1.1/darwin-arm64-ffprobe.gz"
+      }
+    ],
+    "darwin-x64": [
+      {
+        "name": "LICENSE",
+        "size": 4346,
+        "sha256": "2e1d16c72fd74e12063776371da757322f8b77589386532f4fd8634bde7de1af",
+        "url": "/desktop-downloads/tools/b6.1.1/darwin-x64-LICENSE.gz"
+      },
+      {
+        "name": "README",
+        "size": 6227,
+        "sha256": "e88a0325f8e5b75210355e37341824f074d3cd82def2125be54c914b62848a36",
+        "url": "/desktop-downloads/tools/b6.1.1/darwin-x64-README.gz"
+      },
+      {
+        "name": "ffmpeg",
+        "size": 78862176,
+        "sha256": "ebdddc936f61e14049a2d4b549a412b8a40deeff6540e58a9f2a2da9e6b18894",
+        "url": "/desktop-downloads/tools/b6.1.1/darwin-x64-ffmpeg.gz"
+      },
+      {
+        "name": "ffprobe",
+        "size": 78780408,
+        "sha256": "fa3add0ce901f7241abe0dfc0155d958fc834aca3f8ce61f87cc712ae669c1e0",
+        "url": "/desktop-downloads/tools/b6.1.1/darwin-x64-ffprobe.gz"
+      }
+    ],
+    "win32-x64": [
+      {
+        "name": "LICENSE",
+        "size": 35147,
+        "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+        "url": "/desktop-downloads/tools/b6.1.1/win32-x64-LICENSE.gz"
+      },
+      {
+        "name": "README",
+        "size": 39494,
+        "sha256": "a636a7183c58006351acbaf35303c0ed85c6e1320fd4e80de453ba6157de6311",
+        "url": "/desktop-downloads/tools/b6.1.1/win32-x64-README.gz"
+      },
+      {
+        "name": "ffmpeg.exe",
+        "size": 82797568,
+        "sha256": "04e1307997530f9cf2fe35cba2ca7e8875ca91da02f89d6c7243df819c94ad00",
+        "url": "/desktop-downloads/tools/b6.1.1/win32-x64-ffmpeg.exe.gz"
+      },
+      {
+        "name": "ffprobe.exe",
+        "size": 82668032,
+        "sha256": "3a7e2dc003dc2cd1472827e4c7c4f056ae1ae0ae7c5bbc580c99b49827351ba4",
+        "url": "/desktop-downloads/tools/b6.1.1/win32-x64-ffprobe.exe.gz"
+      }
+    ]
+  }
+}

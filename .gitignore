@@ -1,0 +1,57 @@
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example
+!.env.docker.example
+__pycache__/
+*.py[cod]
+node_modules/
+web/node_modules/
+web/dist/
+db/*.db
+db/*.db-wal
+db/*.db-shm
+.oip/
+db/*.lock
+
+# Dataset assets come from GitHub Releases via scripts/fetch_dataset.py
+images/
+previews/
+db/prompts.db.gz
+
+# 本地跑测试会生成 SQLite，绝不入库
+data/*.sqlite
+data/*.sqlite-shm
+data/*.sqlite-wal
+# 本地默认的工作区文件目录（OIP_MEDIA_ROOT 未设时为 data/media）
+data/media/
+# Web 目录下直接跑 API 时生成的本地数据与自动生成的类型文件
+web/data/
+web/components.d.ts
+
+# 会话产出的截图与临时页面，不入库
+artifacts/
+web/visual-seed.html
+.playwright-cli/
+
+# 商户凭据，绝不入库
+secrets/
+
+# Local credential notes are kept outside version control as well.
+zpay支付 api.md
+火山引擎加yunshuapi.md
+
+# Legacy local checkouts and creative assets stay outside version control.
+/vendor/
+/本地资料/
+
+
+# Native build products and dependencies
+desktop/.app/
+desktop/node_modules/
+desktop/renderer/node_modules/
+desktop/renderer/dist/
+desktop/renderer/components.d.ts
+desktop/release/
+desktop/.tools/

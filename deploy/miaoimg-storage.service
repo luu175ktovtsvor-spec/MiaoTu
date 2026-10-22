@@ -1,0 +1,11 @@
+[Unit]
+Description=Keep MiaoImg storage bounded without removing original media
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/miaoimg-ops/deploy/cleanup-production.py --maintenance
+Nice=15
+IOSchedulingClass=idle
+TimeoutStartSec=15min

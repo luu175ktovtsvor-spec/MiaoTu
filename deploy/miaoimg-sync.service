@@ -1,0 +1,16 @@
+[Unit]
+Description=Synchronize Open Image Prompts database and image Releases
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/miaoimg
+Environment=OIP_REPO_ROOT=/opt/miaoimg
+Environment=OIP_CONTAINER=miaoimg
+ExecStart=/usr/bin/python3 /opt/miaoimg-ops/deploy/sync_upstream_dataset.py
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+TimeoutStartSec=45min

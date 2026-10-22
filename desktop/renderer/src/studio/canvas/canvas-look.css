@@ -1,0 +1,613 @@
+
+/* The canvas is the product surface. Keep its reference palette while the
+   canvas is mounted, in both dark and light appearances. */
+body[data-miaoimg-canvas-ui],
+body[data-miaoimg-settings-ui] {
+  --color-abyss:#141414;
+  --color-canvas:#141414;
+  --color-surface:#262626;
+  --color-elevate:#2f2f2f;
+  --color-overlay:#363636;
+  --color-ink:#f7f7f7;
+  --color-body:#d4d4d4;
+  --color-muted:#919191;
+  --color-faint:#737373;
+  --color-line:#363636;
+  --color-line-strong:#505050;
+  --color-hover:rgba(255,255,255,.06);
+  --color-soft:rgba(255,255,255,.035);
+  --color-grid:rgba(255,255,255,.16);
+  --canvas-bg:#141414;
+  --canvas-surface:#262626;
+  --canvas-node:#262626;
+  --canvas-field:#1f1f1f;
+  --canvas-line:#363636;
+  --canvas-hover-line:#505050;
+  --canvas-text:#f7f7f7;
+  --canvas-body:#d4d4d4;
+  --canvas-muted:#919191;
+  --canvas-faint:#737373;
+  --canvas-soft:rgba(255,255,255,.035);
+  --canvas-hover:rgba(255,255,255,.06);
+  --canvas-shadow:0 4px 10px rgba(0,0,0,.28);
+  --canvas-backdrop:rgba(0,0,0,.52);
+  --canvas-panel-paint:var(--canvas-surface);
+  --canvas-node-paint:var(--canvas-node);
+  --miaoimg-glass-node:var(--canvas-node);
+  --miaoimg-glass-panel:var(--canvas-surface);
+  --miaoimg-glass-line:var(--canvas-line);
+  --miaoimg-canvas-grid:rgba(255,255,255,.16);
+  --el-bg-color:var(--canvas-bg);
+  --el-bg-color-overlay:var(--canvas-surface);
+  --el-fill-color-blank:var(--canvas-field);
+  --el-fill-color:#2f2f2f;
+  --el-fill-color-light:#333333;
+  --el-fill-color-lighter:#2e2e2e;
+  --el-fill-color-extra-light:rgba(255,255,255,.035);
+  --el-fill-color-dark:#202020;
+  --el-fill-color-darker:#161616;
+  --el-text-color-primary:var(--canvas-text);
+  --el-text-color-regular:var(--canvas-body);
+  --el-text-color-secondary:var(--canvas-muted);
+  --el-text-color-placeholder:var(--canvas-faint);
+  --el-border-color:var(--canvas-line);
+  --el-border-color-light:var(--canvas-line);
+  --el-border-color-lighter:#303030;
+  --el-border-color-extra-light:#292929;
+  --el-color-primary:#f7f7f7;
+  --el-color-primary-light-3:#ffffff;
+  --el-color-primary-light-5:#eeeeee;
+  --el-color-primary-light-7:#dddddd;
+  --el-color-primary-light-8:#cccccc;
+  --el-color-primary-light-9:rgba(247,247,247,.12);
+  --el-color-primary-dark-2:#d6d6d6;
+  --el-color-warning:var(--canvas-text);
+  --el-color-warning-light-3:#dedede;
+  --el-color-warning-light-5:#929292;
+  --el-color-warning-light-7:#45454d;
+  --el-color-warning-light-8:#34343c;
+  --el-color-warning-light-9:var(--canvas-surface);
+  --el-color-warning-dark-2:#b2b2b2;
+  --canvas-accent-ink:#151515;
+  --canvas-card-radius:12px;
+  --canvas-node-border:#363636;
+  --canvas-node-border-selected:#606060;
+  --el-font-size-base:calc(14px * var(--canvas-font-scale,1));
+}
+
+html[data-client-scheme="light"] body[data-miaoimg-canvas-ui],
+html[data-client-scheme="light"] body[data-miaoimg-settings-ui] {
+  --color-abyss:#f7f7f7;
+  --color-canvas:#f5f5f5;
+  --color-surface:#ffffff;
+  --color-elevate:#f1f1f1;
+  --color-overlay:#e9e9e9;
+  --color-ink:#141414;
+  --color-body:#3b3b3b;
+  --color-muted:#737373;
+  --color-faint:#8b8b8b;
+  --color-line:#e3e3e3;
+  --color-line-strong:#c7c7c7;
+  --color-hover:rgba(0,0,0,.055);
+  --color-soft:rgba(0,0,0,.03);
+  --color-grid:rgba(0,0,0,.14);
+  --canvas-bg:#f5f5f5;
+  --canvas-surface:#ffffff;
+  --canvas-node:#ffffff;
+  --canvas-field:#f7f7f7;
+  --canvas-line:#e3e3e3;
+  --canvas-hover-line:#c7c7c7;
+  --canvas-text:#141414;
+  --canvas-body:#3b3b3b;
+  --canvas-muted:#737373;
+  --canvas-faint:#8b8b8b;
+  --canvas-soft:rgba(0,0,0,.03);
+  --canvas-hover:rgba(0,0,0,.055);
+  --canvas-shadow:0 4px 10px rgba(0,0,0,.12);
+  --canvas-backdrop:rgba(0,0,0,.34);
+  --canvas-panel-paint:#ffffff;
+  --canvas-node-paint:#ffffff;
+  --miaoimg-glass-node:#ffffff;
+  --miaoimg-glass-panel:#ffffff;
+  --miaoimg-glass-line:#e3e3e3;
+  --miaoimg-canvas-grid:rgba(0,0,0,.14);
+  --el-fill-color:#f1f1f1;
+  --el-fill-color-light:#ededed;
+  --el-fill-color-lighter:#f3f3f3;
+  --el-fill-color-extra-light:rgba(0,0,0,.03);
+  --el-fill-color-dark:#e7e7e7;
+  --el-fill-color-darker:#dddddd;
+  --el-border-color-lighter:#e9e9e9;
+  --el-border-color-extra-light:#efefef;
+  --el-color-primary:#252525;
+  --el-color-primary-light-3:#5a5a5a;
+  --el-color-primary-light-5:#888888;
+  --el-color-primary-light-7:#bdbdbd;
+  --el-color-primary-light-8:#d6d6d6;
+  --el-color-primary-light-9:rgba(37,37,37,.08);
+  --el-color-primary-dark-2:#111111;
+  --canvas-accent-ink:#ffffff;
+  --canvas-node-border:#e3e3e3;
+  --canvas-node-border-selected:#8a8a8a;
+}
+body[data-miaoimg-canvas-ui] .miaoimgApp {
+  background: var(--canvas-bg);
+  color: var(--canvas-text);
+  font-family: "PingFang SC","Hiragino Sans GB",Inter,sans-serif;
+}
+body[data-miaoimg-canvas-ui] .miaoimgApp .canvas { background: var(--canvas-bg); }
+body[data-miaoimg-canvas-ui] .miaoimgApp .vue-flow__edge-path,
+body[data-miaoimg-canvas-ui] .miaoimgApp .vue-flow__connection-path {
+  stroke: var(--canvasEdgeColor,rgba(255,255,255,.30));
+  stroke-width: 1.2px;
+  stroke-opacity: .9;
+}
+body[data-miaoimg-canvas-ui] .miaoimgApp .vue-flow__edge.selected .vue-flow__edge-path { stroke: #fff; stroke-opacity: 1; stroke-width: 1.6px; }
+body[data-miaoimg-canvas-ui] .miaoimgApp .vue-flow__selection,
+body[data-miaoimg-canvas-ui] .miaoimgApp .vue-flow__nodesselection-rect { border: 1px solid var(--el-color-primary); background: color-mix(in srgb,var(--el-color-primary) 8%,transparent); border-radius: 8px; }
+
+/* One media card and one detached composer. Titles stay outside both, as in
+   the reference editor, and the empty and generated states share the frame. */
+body[data-miaoimg-canvas-ui] .nodeSkeleton .titleBar { box-sizing: border-box; min-height: 24px; height: 24px; padding: 0 1px; gap: 5px; background: transparent; border: 0; color: var(--canvas-muted); font-size: calc(13px * var(--canvas-font-scale,1)); font-weight: 400; line-height: 20px; }
+body[data-miaoimg-canvas-ui] .nodeSkeleton .titleBar .titleIcon { display: inline-flex; width: 14px; height: 14px; color: var(--canvas-muted); }
+body[data-miaoimg-canvas-ui] .nodeSkeleton .titleBar .nodeActions { visibility: hidden; }
+body[data-miaoimg-canvas-ui] .nodeSkeleton:focus-within .titleBar .nodeActions { visibility: visible; }
+body[data-miaoimg-canvas-ui] .nodeSkeleton .cardContainer .contentCard {
+  border: 1px solid var(--canvas-node-border);
+  border-radius: 12px;
+  background: var(--canvas-node);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  overflow: hidden;
+  transition: border-color 140ms ease,box-shadow 140ms ease;
+}
+body[data-miaoimg-canvas-ui] .nodeSkeleton .cardContainer .contentCard:hover { border-color: color-mix(in srgb,var(--canvas-text) 28%,transparent); }
+body[data-miaoimg-canvas-ui] .nodeSkeleton .cardContainer .contentCard.selected {
+  border-color: var(--canvas-node-border-selected);
+  box-shadow: none;
+}
+
+body[data-miaoimg-canvas-ui] .nodeSkeleton.emptyGeneration {
+  position: relative;
+  width: min(620px, calc(100vw - 32px)) !important;
+}
+body[data-miaoimg-canvas-ui] .nodeSkeleton.emptyGeneration .cardContainer .contentCard {
+  border-radius: 12px;
+}
+body[data-miaoimg-canvas-ui] .nodeSkeleton.emptyGeneration .videoContent,
+body[data-miaoimg-canvas-ui] .nodeSkeleton.emptyGeneration .imageContent {
+  min-height: 348px;
+}
+body[data-miaoimg-canvas-ui] .nodeSkeleton.emptyGeneration.imageNodeShell .imageContent {
+  min-height: 348px;
+}
+body[data-miaoimg-canvas-ui] .nodeSkeleton.emptyGeneration .floatingSlot.bottomSlot {
+  top: calc(100% + 12px) !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  width: min(660px, calc(100vw - 32px)) !important;
+}
+body[data-miaoimg-canvas-ui] .nodeSkeleton.emptyGeneration .floatingSlot.bottomSlot :is(.promptCard,.el-card) {
+  border: .5px solid var(--canvas-node-border) !important;
+  border-radius: 16px !important;
+  background: var(--canvas-node) !important;
+  box-shadow: var(--canvas-shadow) !important;
+  filter: none !important;
+}
+body[data-miaoimg-canvas-ui] .nodeSkeleton.emptyGeneration .floatingSlot.bottomSlot .promptCard.expandedPromptCard {
+  box-shadow: 0 16px 30px rgba(0,0,0,.18) !important;
+  filter: none !important;
+}
+body[data-miaoimg-canvas-ui] .nodeSkeleton.emptyGeneration:has(.contentCard.selected) .floatingSlot.bottomSlot :is(.promptCard,.el-card) {
+  border-color: var(--canvas-node-border-selected) !important;
+}
+body[data-miaoimg-canvas-ui] .nodeSkeleton.emptyGeneration .floatingSlot.bottomSlot .promptCard .el-card__body {
+  min-height: 0;
+}
+body[data-miaoimg-canvas-ui] .nodeSkeleton.videoNodeShell.emptyGeneration .floatingSlot.bottomSlot .promptCard {
+  min-height: 191px;
+}
+
+body[data-miaoimg-canvas-ui] .nodeSkeleton .contentCard>.el-card__body { padding: 0 !important; background: transparent; border: 0; border-radius: inherit; }
+body[data-miaoimg-canvas-ui] .nodeSkeleton :is(.imageContent,.videoContent,.audioContent) { border: 0; border-radius: inherit; background: transparent; box-shadow: none; }
+body[data-miaoimg-canvas-ui] .nodeSkeleton :is(.imageContent,.videoContent) :is(img,video) { border: 0; border-radius: 0; box-shadow: none; }
+/* Video nodes share the canvas frame; media fills the frame without an inner border. */
+body[data-miaoimg-canvas-ui] .nodeSkeleton.videoNodeShell:has(.contentCard.selected) .titleBar .labelText { color: var(--el-color-primary); }
+body[data-miaoimg-canvas-ui] .nodeSkeleton .textPreview { padding: 16px 18px; color: var(--canvas-text); font-size: calc(14px * var(--canvas-font-scale,1)); line-height: 1.65; }
+body[data-miaoimg-canvas-ui] .nodeSkeleton .audioContent { padding: 12px; }
+body[data-miaoimg-canvas-ui] .nodeSkeleton .cardContainer .nodeHandle { width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; border: 1px solid color-mix(in srgb,var(--canvas-text) 38%,transparent); border-radius: 50%; background: var(--canvas-bg); color: var(--canvas-muted); font-size: 13px; line-height: 1; }
+body[data-miaoimg-canvas-ui] .nodeSkeleton .cardContainer .nodeHandle.vue-flow__handle-left { left: -10px; }
+body[data-miaoimg-canvas-ui] .nodeSkeleton .cardContainer .nodeHandle.vue-flow__handle-right { right: -10px; }
+body[data-miaoimg-canvas-ui] .nodeSkeleton .nodeHandle .handleIcon { display: none !important; }
+body[data-miaoimg-canvas-ui] .nodeSkeleton .nodeHandle::after {
+  content: "+"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 400; line-height: 1; color: inherit; pointer-events: none;
+}
+body[data-miaoimg-canvas-ui] .nodeSkeleton .nodeHandle:hover { border-color: var(--canvas-node-border-selected); color: var(--canvas-text); }
+body[data-miaoimg-canvas-ui] .nodeSkeleton .nodeHandle[data-connection-status="invalid"] { color: var(--el-color-danger); border-color: var(--el-color-danger); }
+body[data-miaoimg-canvas-ui] .miaoimgApp .groupNode { border: 1px solid var(--canvas-hover-line); border-radius: 12px; background: var(--canvas-soft); box-shadow: none; }
+
+/* Menus, generation composers, asset library and all body-mounted panels. */
+body[data-miaoimg-canvas-ui] :is(.canvasMenu,.canvasControlsCard,.nodeMenu,.nodeSearch,.assetLibrary,.floatingAgent,.settingsDialog,.settingsSubdialog,.directorDialog,.el-message-box,.el-popper.is-light,.el-dialog,.vue-flow__minimap),
+body[data-miaoimg-canvas-ui] .workspaceMenu>.el-card,
+body[data-miaoimg-canvas-ui] .floatingSlot .el-card {
+  border: .5px solid color-mix(in srgb,var(--canvas-line) 70%,var(--canvas-muted) 30%);
+  border-radius: var(--canvas-card-radius);
+  color: var(--canvas-text);
+  background: var(--canvas-panel-paint);
+  box-shadow: none;
+  filter: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+/* Shadow only the outer rounded surface. Inner dropdown lists are clipped by
+   Element Plus' scrollbar and otherwise leave a straight shadow below rounded
+   corners. */
+body[data-miaoimg-canvas-ui] :is(.canvasMenu,.canvasControlsCard,.assetLibrary,.floatingAgent,.settingsDialog,.settingsSubdialog,.directorDialog,.el-message-box,.el-popper.is-light,.el-dialog,.vue-flow__minimap),
+body[data-miaoimg-canvas-ui] .workspaceMenu>.el-card,
+body[data-miaoimg-canvas-ui] .floatingSlot .el-card {
+  box-shadow: var(--canvas-shadow) !important;
+  filter: none !important;
+}
+body[data-miaoimg-canvas-ui] :is(.canvasMenu,.canvasControlsCard,.nodeMenu,.floatingSlot) .el-card__body { border: 0; background: transparent; box-shadow: none; }
+body[data-miaoimg-canvas-ui] .floatingSlot .promptCard:not(.expandedPromptCard) {
+  box-shadow: var(--canvas-shadow) !important;
+  filter: none !important;
+}
+body[data-miaoimg-canvas-ui] .canvasControlsCard { border-radius: 12px !important; box-shadow: none !important; }
+body[data-miaoimg-canvas-ui] .canvasControls { background: transparent; border: 0; box-shadow: none; }
+body[data-miaoimg-canvas-ui] .canvasControls .toolButton { border-radius: 8px; }
+body[data-miaoimg-canvas-ui] .canvasMenu { border-radius: 12px !important; box-shadow: none !important; }
+.miao-desktop body[data-miaoimg-canvas-ui] .canvasMenu { margin-left:0; max-width:calc(50vw - 110px); }
+.miao-desktop body[data-miaoimg-canvas-ui] .canvasMenu .workspaceNameInput,
+.miao-desktop body[data-miaoimg-canvas-ui] .canvasMenu .menuContent>.el-divider { display:none; }
+@media (max-width:560px) {
+  .miao-desktop body[data-miaoimg-canvas-ui] .canvasMenu { max-width:calc(100vw - 24px); }
+}
+body[data-miaoimg-canvas-ui] .workspaceMenu>.el-card { border-radius: 12px !important; box-shadow: none !important; }
+body[data-miaoimg-canvas-ui] .panelSwitcher { --el-segmented-bg-color: var(--canvas-surface); --el-segmented-item-selected-bg-color: color-mix(in srgb,var(--el-color-primary) 12%,var(--canvas-surface)); --el-segmented-item-selected-color: var(--el-color-primary); border: .5px solid var(--canvas-line); border-radius: 12px; padding: 4px; box-shadow:none; }
+body[data-miaoimg-canvas-ui] .floatingSlot :is(.generationCard,.el-card),body[data-miaoimg-canvas-ui] .floatingSlot.mobileSheet { border-radius: var(--canvas-card-radius); }
+body[data-miaoimg-canvas-ui] :is(.promptInput,.promptEditor) { color: var(--canvas-text); }
+body[data-miaoimg-canvas-ui] .floatingSlot .promptInputWrap { margin: 8px 0 10px; }
+body[data-miaoimg-canvas-ui] .floatingSlot .sendButton { border-radius: 50%; }
+
+/* Expanding a generation composer moves the whole card, not just its text
+   field. References, prompt, model parameters and send action stay together. */
+body[data-miaoimg-canvas-ui] .promptComposerBackdrop {
+  position:fixed;
+  inset:0;
+  z-index:8000;
+  background:var(--canvas-backdrop);
+}
+body[data-miaoimg-canvas-ui] .promptCard.expandedPromptCard {
+  position:fixed;
+  top:50%;
+  left:50%;
+  z-index:8001;
+  display:flex;
+  flex-direction:column;
+  width:min(800px,90vw);
+  height:min(600px,90dvh);
+  box-sizing:border-box;
+  margin:0!important;
+  overflow:hidden;
+  transform:translate(-50%,-50%);
+  border:.5px solid color-mix(in srgb,var(--canvas-line) 70%,var(--canvas-muted) 30%)!important;
+  border-radius:16px!important;
+  background:var(--canvas-node)!important;
+  box-shadow:0 16px 30px rgba(0,0,0,.18)!important;
+  filter:none!important;
+}
+body[data-miaoimg-canvas-ui] .promptCard.expandedPromptCard>.el-card__body {
+  display:flex;
+  flex:1;
+  flex-direction:column;
+  min-height:0;
+  overflow:hidden;
+  border-radius:inherit;
+}
+body[data-miaoimg-canvas-ui] .promptCard.expandedPromptCard :is(.promptBody,.promptInputWrap) {
+  display:flex;
+  flex:1;
+  flex-direction:column;
+  min-height:0;
+}
+body[data-miaoimg-canvas-ui] .promptCard.expandedPromptCard .promptBody { overflow:hidden; }
+body[data-miaoimg-canvas-ui] .promptCard.expandedPromptCard .referenceList {
+  flex:none;
+  min-height:48px;
+  max-height:56px;
+  padding-right:40px;
+  align-items:flex-start;
+  overflow-x:auto;
+  overflow-y:hidden;
+}
+body[data-miaoimg-canvas-ui] .promptCard.expandedPromptCard .referenceItem {
+  border-radius:12px;
+}
+body[data-miaoimg-canvas-ui] .promptCard.expandedPromptCard .referenceItem :is(.preview,.typeIcon,.videoInfo) {
+  border-radius:inherit;
+}
+body[data-miaoimg-canvas-ui] .promptCard.expandedPromptCard .referenceItem .removeButton {
+  opacity:0;
+  transition:opacity 120ms ease;
+}
+body[data-miaoimg-canvas-ui] .promptCard.expandedPromptCard .referenceItem:hover .removeButton,
+body[data-miaoimg-canvas-ui] .promptCard.expandedPromptCard .referenceItem:focus-within .removeButton {
+  opacity:1;
+}
+body[data-miaoimg-canvas-ui] .promptCard.expandedPromptCard .promptInputWrap { min-height:160px; margin:8px 0 12px; position:static; }
+/* The collapse action belongs to the dialog chrome, not to the prompt row. */
+body[data-miaoimg-canvas-ui] .promptCard.expandedPromptCard .expandButton {
+  top:14px;
+  right:14px;
+  width:28px;
+  height:28px;
+  padding:6px;
+}
+body[data-miaoimg-canvas-ui] .promptCard.expandedPromptCard .promptInput { flex:1; min-height:100%; }
+body[data-miaoimg-canvas-ui] .promptCard.expandedPromptCard :is(.referenceItem,.referenceHint) { flex:none; }
+body[data-miaoimg-canvas-ui] .promptCard.expandedPromptCard .promptFooter { flex:none; margin-top:8px; }
+body[data-miaoimg-canvas-ui]:has(.promptCard.expandedPromptCard) .el-popper { z-index:8100!important; }
+html.miao-desktop-darwin body[data-miaoimg-canvas-ui] .promptCard.expandedPromptCard {
+  top:50%;
+}
+body[data-miaoimg-canvas-ui] .el-popper.is-light .el-popper__arrow { display: none; }
+body[data-miaoimg-canvas-ui] .el-popper { max-width: calc(100vw - 24px); }
+body[data-miaoimg-canvas-ui] .el-dialog { --el-dialog-bg-color: var(--canvas-surface); }
+body[data-miaoimg-canvas-ui] .el-dialog__header { border-bottom: 1px solid var(--canvas-line); }
+body[data-miaoimg-canvas-ui] .el-dialog__title { color: var(--canvas-text); font-weight: 600; }
+body[data-miaoimg-canvas-ui] .el-dialog__headerbtn { border-radius: 999px; }
+body[data-miaoimg-canvas-ui] .el-dialog__headerbtn:hover { background: var(--canvas-hover); }
+body[data-miaoimg-canvas-ui] .el-overlay { background: rgba(0,0,0,.55); }
+
+/* Primary, secondary, selected, hover, focus and disabled are shared everywhere. */
+body[data-miaoimg-canvas-ui] .el-button {
+  --el-button-bg-color: transparent;
+  --el-button-border-color: var(--canvas-line);
+  --el-button-text-color: var(--canvas-body);
+  --el-button-hover-text-color: var(--canvas-text);
+  --el-button-hover-bg-color: var(--canvas-hover);
+  --el-button-hover-border-color: var(--canvas-hover-line);
+  --el-button-active-text-color: var(--el-color-primary);
+  --el-button-active-bg-color: color-mix(in srgb,var(--el-color-primary) 10%,var(--canvas-surface));
+  --el-button-active-border-color: var(--el-color-primary);
+  --el-button-disabled-bg-color: var(--canvas-soft);
+  --el-button-disabled-border-color: var(--canvas-hover);
+  --el-button-disabled-text-color: #72727d;
+  border-radius: 8px;
+  box-shadow: none;
+}
+body[data-miaoimg-canvas-ui] .el-button--primary:not(.is-text):not(.is-link) {
+  --el-button-bg-color: var(--el-color-primary);
+  --el-button-border-color: var(--el-color-primary);
+  --el-button-text-color: var(--canvas-accent-ink);
+  --el-button-hover-bg-color: var(--el-color-primary-light-3);
+  --el-button-hover-border-color: var(--el-color-primary-light-3);
+  --el-button-hover-text-color: var(--canvas-accent-ink);
+  --el-button-active-bg-color: var(--el-color-primary-dark-2);
+  --el-button-active-border-color: var(--el-color-primary-dark-2);
+  --el-button-active-text-color: var(--canvas-accent-ink);
+}
+body[data-miaoimg-canvas-ui] .el-button--danger { --el-button-text-color: #f29b9b; --el-button-border-color: rgba(242,155,155,.2); --el-button-hover-text-color: #ffc4c4; }
+body[data-miaoimg-canvas-ui] .el-button.is-text:not(.is-disabled) { background: transparent; }
+body[data-miaoimg-canvas-ui] .el-button.is-text:not(.is-disabled):hover { background: var(--canvas-hover); }
+body[data-miaoimg-canvas-ui] :is(button,[role="button"],input,textarea,[contenteditable="true"]):focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: 3px; }
+body[data-miaoimg-canvas-ui] :is(.el-input__wrapper,.el-select__wrapper,.el-textarea__inner) {
+  border-radius: 12px; background: var(--canvas-field); color: var(--canvas-text);
+  box-shadow: 0 0 0 1px var(--canvas-line) inset;
+}
+body[data-miaoimg-canvas-ui] :is(.el-input__wrapper,.el-select__wrapper):hover { box-shadow: 0 0 0 1px var(--canvas-hover-line) inset; }
+body[data-miaoimg-canvas-ui] :is(.el-input__wrapper.is-focus,.el-select__wrapper.is-focused),body[data-miaoimg-canvas-ui] .el-textarea__inner:focus { box-shadow: 0 0 0 1px var(--el-color-primary) inset; }
+body[data-miaoimg-canvas-ui] .el-select-dropdown__item { margin: 2px 6px; border-radius: 8px; }
+body[data-miaoimg-canvas-ui] .el-select-dropdown__item.is-selected { color: var(--el-color-primary); background: color-mix(in srgb,var(--el-color-primary) 10%,var(--canvas-surface)); }
+body[data-miaoimg-canvas-ui] .modelSelectPopper {
+  width:min(420px,calc(100vw - 24px))!important;
+}
+body[data-miaoimg-canvas-ui] .modelSelectPopper .el-select-dropdown__wrap {
+  max-height:min(420px,calc(100dvh - 140px));
+  padding-right:8px;
+}
+body[data-miaoimg-canvas-ui] .modelSelectPopper .el-select-dropdown__list { padding:6px 10px 6px 6px; }
+body[data-miaoimg-canvas-ui] .modelSelectPopper .el-select-dropdown__item {
+  height:auto;
+  min-height:34px;
+  padding:7px 18px 7px 12px;
+  line-height:1.45;
+  white-space:normal;
+  overflow-wrap:anywhere;
+}
+body[data-miaoimg-canvas-ui] .modelSelectPopper .el-scrollbar__bar { right:2px!important; width:4px!important; opacity:.45; }
+body[data-miaoimg-canvas-ui] :is(.el-dropdown-menu,.el-select-dropdown,.el-select-dropdown__list,.el-tree) { background: transparent; }
+body[data-miaoimg-canvas-ui] .el-dropdown-menu__item { margin: 2px 6px; border-radius: 8px; color: var(--canvas-body); }
+body[data-miaoimg-canvas-ui] .el-dropdown-menu__item:not(.is-disabled):hover { color: var(--el-color-primary); background: var(--canvas-hover); }
+body[data-miaoimg-canvas-ui] .el-radio-button__inner { background: var(--canvas-field); border-color: var(--canvas-line); box-shadow: none; }
+body[data-miaoimg-canvas-ui] .el-radio-button.is-active .el-radio-button__inner { color: var(--el-color-primary); background: color-mix(in srgb,var(--el-color-primary) 12%,var(--canvas-surface)); border-color: var(--el-color-primary); box-shadow: none; }
+body[data-miaoimg-canvas-ui] :is(.ratioButton,.sizeOptions button,.outputOptions button,.mentionScopes button,.navItem,.nodeResult,.historyItem,.referenceItem,.assetEntry,.subAgentSelect).selected,
+body[data-miaoimg-canvas-ui] :is(.ratioButton,.sizeOptions button,.outputOptions button,.mentionScopes button,.navItem)[aria-pressed="true"] { color: var(--el-color-primary); border-color: color-mix(in srgb,var(--el-color-primary) 50%,transparent); background: color-mix(in srgb,var(--el-color-primary) 10%,var(--canvas-surface)); }
+body[data-miaoimg-canvas-ui] .el-switch { --el-switch-on-color: var(--el-color-primary); --el-switch-off-color: #515151; }
+body[data-miaoimg-canvas-ui] .el-switch.is-checked .el-switch__action { background: var(--canvas-accent-ink); }
+body[data-miaoimg-canvas-ui] .el-slider { --el-slider-main-bg-color: var(--el-color-primary); --el-slider-runway-bg-color: #4b4b4b; --el-slider-button-size: 14px; }
+body[data-miaoimg-canvas-ui] .el-tag { --el-tag-bg-color: var(--canvas-soft); --el-tag-text-color: var(--canvas-body); --el-tag-border-color: var(--canvas-line); border-radius: 8px; }
+body[data-miaoimg-canvas-ui] .el-card { --el-card-bg-color: var(--canvas-surface); --el-card-border-color: var(--canvas-line); }
+
+/* Agent: one outer panel, quiet message surfaces, one rounded composer. */
+body[data-miaoimg-canvas-ui] .floatingAgent { border-radius: 18px; overflow: hidden; }
+body[data-miaoimg-canvas-ui] .floatingAgent.docked { border-radius: 18px; }
+body[data-miaoimg-canvas-ui] .floatingAgent :is(.agent,.agentConversation,.messageViewport,.agentMenu,.messageList) { background: transparent; }
+body[data-miaoimg-canvas-ui] .floatingAgent .agentMenu { border-bottom: 0; padding: 12px 14px; }
+body[data-miaoimg-canvas-ui] .floatingAgent .messageInput { margin: 10px 12px 12px; border: 1px solid var(--canvas-line); border-radius: 14px; background: var(--canvas-field); box-shadow: none; }
+body[data-miaoimg-canvas-ui] .floatingAgent .messageInput:focus-within { border-color: color-mix(in srgb,var(--el-color-primary) 40%,transparent); }
+body[data-miaoimg-canvas-ui] .floatingAgent :is(.senderEditor,.senderActions) { background: transparent; border: 0; }
+body[data-miaoimg-canvas-ui] .floatingAgent :is(.messageContent,.messageText) { color: var(--color-ink); }
+body[data-miaoimg-canvas-ui] .floatingAgent .userMessage .messageContent { background: var(--color-soft); border-radius: 14px; padding: 10px 12px; }
+body[data-miaoimg-canvas-ui] .floatingAgent .welcomeSuggestion { border: 1px solid var(--canvas-line); border-radius: 12px; background: var(--color-soft); }
+body[data-miaoimg-canvas-ui] .floatingAgent .welcomeSuggestion:hover { border-color: var(--canvas-hover-line); background: var(--color-hover); }
+body[data-miaoimg-canvas-ui] :is(.toolCall,.questionCard,.attachmentList,.mentionPopup,.subAgentMenu,.agentContextPopover) { border-color: var(--canvas-line); border-radius: 12px; background: var(--canvas-surface); color: var(--color-body); }
+body[data-miaoimg-canvas-ui] :is(.toolData.toolPlain,.sourceEditor,.textPreview pre,.messageText pre) { border: 1px solid var(--canvas-line); border-radius: 10px; background: var(--canvas-field); }
+body[data-miaoimg-canvas-ui] :is(.questionOptions button,.mentionItem,.skillItem,.historyItem,.assetEntry) { border-radius: 10px; }
+body[data-miaoimg-canvas-ui] :is(.mentionItem,.historyItem,.assetEntry):hover { background: var(--color-hover); }
+
+/* Settings, document tools, audio/video editors and director stage. */
+body[data-miaoimg-canvas-ui] :is(.settingsDialog,.settingsSubdialog) { --el-bg-color-overlay: var(--canvas-surface); --el-fill-color-blank: var(--canvas-field); --el-text-color-primary: var(--canvas-text); --el-text-color-regular: var(--color-body); --el-text-color-secondary: var(--canvas-muted); --el-border-color: var(--canvas-line); }
+body[data-miaoimg-canvas-ui] .settingsDialog .sidebar { background: rgba(255,255,255,.015); border-right: 1px solid var(--color-hover); }
+body[data-miaoimg-canvas-ui] .settingsDialog .contentHeader h2 { font-size: 18px; }
+body[data-miaoimg-canvas-ui] .settingsDialog :is(.settingsSection,.preview,.el-card) { border-color: var(--canvas-line); border-radius: 12px; background: var(--color-soft); box-shadow: none; }
+body[data-miaoimg-canvas-ui] .documentPanel { background: var(--canvas-bg); color: var(--canvas-text); }
+body[data-miaoimg-canvas-ui] .documentPanel :is(.treePane,.editorSurface,.editorToolbar,.editorTab,.editorEmpty) { background: var(--canvas-surface); border-color: var(--canvas-line); }
+body[data-miaoimg-canvas-ui] .nodeMarkdownEditor :is(.editorToolbar,.sourceEditor,.richHost) { border-color: var(--canvas-line); background: var(--canvas-field); }
+body[data-miaoimg-canvas-ui] :is(.audioClipEditor,.audioActions,.videoActions,.imageEditor,.imageGridSplit,.generationSettings,.mediaHistory) { color: var(--canvas-text); }
+body[data-miaoimg-canvas-ui] :is(.directorWorkspace,.stagePanel,.sceneSettingsPanel,.lightingPanel,.playbackBar,.referenceHeader) { background: var(--canvas-surface); border-color: var(--canvas-line); }
+body[data-miaoimg-canvas-ui] .directorDialog .viewport { background: var(--canvas-bg); border: 1px solid var(--canvas-line); border-radius: 12px; }
+body[data-miaoimg-canvas-ui] :is(.nodeError,.messageError,.canvasSaveNotice) { border: 1px solid rgba(242,155,155,.22); border-radius: 12px; background: #2b2025; color: #ffc4c4; }
+body[data-miaoimg-canvas-ui] .el-message { --el-message-bg-color: var(--canvas-surface); --el-message-border-color: var(--canvas-line); border-radius: 12px; box-shadow: var(--canvas-shadow); }
+body[data-miaoimg-canvas-ui] ::-webkit-scrollbar { width: 7px; height: 7px; }
+body[data-miaoimg-canvas-ui] ::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 999px; background: rgba(255,255,255,.2); background-clip: padding-box; }
+body[data-miaoimg-canvas-ui] ::-webkit-scrollbar-track { background: transparent; }
+
+/* The surrounding account/history shell uses the same surfaces after canvas unmount. */
+.studio-shell.studio-app { background: var(--color-abyss); color: var(--canvas-text); }
+.studio-shell.studio-app .studio-top { min-height: 56px; background: var(--color-abyss); border-bottom: 0; }
+.studio-shell.studio-app .studio-top button { border-radius: 999px; color: var(--color-body); }
+.studio-shell.studio-app :is(.studio-lang__button--active,.studio-seg .active) { background: var(--color-accent); color: var(--color-accent-ink); }
+.studio-shell.studio-app :is(.panel-stats,.gen-card,.ledger-list,.account-password) { border: 1px solid var(--canvas-line); border-radius: 16px; background: var(--canvas-panel-paint); box-shadow: none; }
+.studio-shell.studio-app .studio-record :is(input,textarea,select) { color: var(--canvas-text); border-color: var(--canvas-line); border-radius: 12px; background: var(--canvas-field); }
+
+@media (max-width:760px) {
+  body[data-miaoimg-canvas-ui] .nodeSkeleton .titleBar .nodeActions { visibility: visible; }
+  body[data-miaoimg-canvas-ui] .canvasControlsCard { border-radius: 12px; }
+  body[data-miaoimg-canvas-ui] .canvasMenu { border-radius: 12px; }
+  body[data-miaoimg-canvas-ui] .floatingAgent { border-radius: 16px; }
+  body[data-miaoimg-canvas-ui] .settingsDialog .sidebar { border-right: 0; border-bottom: 1px solid var(--color-hover); }
+  body[data-miaoimg-canvas-ui] .nodeSkeleton.emptyGeneration .floatingSlot.bottomSlot.mobileSheet {
+    position: fixed !important;
+    top: auto !important;
+    right: 12px !important;
+    bottom: calc(84px + env(safe-area-inset-bottom, 0px)) !important;
+    left: 12px !important;
+    width: auto !important;
+    transform: none !important;
+  }
+  body[data-miaoimg-canvas-ui] .promptCard.expandedPromptCard {
+    width:calc(100vw - 20px);
+    height:calc(100dvh - 20px);
+    border-radius:14px!important;
+  }
+}
+@media (prefers-reduced-motion:reduce) {
+  body[data-miaoimg-canvas-ui] *,body[data-miaoimg-canvas-ui] *::before,body[data-miaoimg-canvas-ui] *::after { scroll-behavior: auto; transition-duration: 0ms !important; }
+}
+
+
+body[data-miaoimg-canvas-ui] .floatingAgent .messageInput:focus-within { outline: none; }
+body[data-miaoimg-canvas-ui] .floatingAgent .sendButton { background: var(--el-color-primary); color: var(--canvas-accent-ink); border-radius: 999px; }
+body[data-miaoimg-canvas-ui] .floatingAgent .sendButton:disabled { background: #464646; color: #a3a3a3; }
+body[data-miaoimg-canvas-ui] .miaoimgApp .groupNode.selected { border-color: var(--el-color-primary); }
+.studio-shell.studio-app { --studio-warm: var(--color-accent); --studio-paper: var(--color-ink); --studio-muted: var(--color-muted); --studio-line: var(--color-line); }
+.studio-shell.studio-app .studio-lang button[aria-pressed="true"] { background: var(--color-accent); color: var(--color-accent-ink); }
+
+body[data-miaoimg-canvas-ui] .el-segmented:not(.panelSwitcher) { --el-segmented-bg-color: var(--canvas-field); --el-segmented-item-selected-bg-color: var(--el-color-primary); --el-segmented-item-selected-color: var(--canvas-accent-ink); border: 1px solid var(--canvas-line); border-radius: 12px; }
+body[data-miaoimg-canvas-ui] .el-checkbox__input.is-checked .el-checkbox__inner::after { border-color: var(--canvas-accent-ink); }
+body[data-miaoimg-canvas-ui] .el-checkbox__input.is-indeterminate .el-checkbox__inner::before { background: var(--canvas-accent-ink); }
+.studio-shell.studio-app .studio-top button[aria-current="page"] { color: var(--color-accent); }
+.studio-shell.studio-app .language-control button[aria-pressed="true"] { background: var(--color-accent); color: var(--color-accent-ink); }
+
+body[data-miaoimg-canvas-ui] .el-loading-mask { background: rgba(32,32,32,.76); }
+body[data-miaoimg-canvas-ui] .el-empty__description p { color: var(--canvas-muted); }
+body[data-miaoimg-canvas-ui] .el-progress-bar__outer { background: #4b4b4b; }
+
+body[data-miaoimg-canvas-ui] .floatingAgent .senderEditor [contenteditable="true"]:focus-visible { outline: none; }
+body[data-miaoimg-canvas-ui] .settingsLoading { padding: 24px 0; color: var(--canvas-muted); font-size: 13px; }
+body[data-miaoimg-canvas-ui] .canvasSaveNotice { left: 50%; right: auto; width: max-content; max-width: min(520px,calc(100% - 24px)); transform: translateX(-50%); pointer-events: none; }
+body[data-miaoimg-canvas-ui] .canvasSaveNotice button { pointer-events: auto; border: 1px solid var(--canvas-line); border-radius: 999px; color: var(--canvas-text); background: var(--canvas-surface); }
+
+/* Account history shares the canvas frame without nested statistic/media borders. */
+.studio-shell.studio-app .studio-seg button[aria-selected="true"],
+.studio-shell.studio-app .studio-seg button[aria-pressed="true"] { color: var(--color-accent); background: var(--color-brass-soft); }
+.studio-shell.studio-app .panel-stat { border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.studio-shell.studio-app .panel-stat__value { font-family: Inter,"PingFang SC",sans-serif; }
+.studio-shell.studio-app .gen-card { overflow: hidden; gap: 8px; padding-bottom: 12px; }
+.studio-shell.studio-app .gen-card__media { border: 0; border-radius: 15px 15px 0 0; }
+.studio-shell.studio-app :is(.gen-card__prompt,.gen-card__error,.gen-card__meta,.gen-card__when) { margin-left: 12px; margin-right: 12px; }
+.studio-shell.studio-app .gen-card:hover { border-color: rgba(242,242,242,.35); }
+.studio-shell.studio-app .gen-card__status.is-active { background: var(--color-accent); color: var(--color-accent-ink); }
+.studio-shell.studio-app .studio-record h1 { font-family: Inter,"PingFang SC",sans-serif; font-size: 28px; font-weight: 600; letter-spacing: -.02em; }
+
+/* Element radio buttons already have a border; reserve an outline for keyboard focus. */
+body[data-miaoimg-canvas-ui] .el-radio-button__inner { outline: none; }
+body[data-miaoimg-canvas-ui] .el-radio-button:has(input:focus-visible) .el-radio-button__inner { outline: 2px solid var(--el-color-primary); outline-offset: 3px; }
+
+/* Native inner inputs inherit the single Element control frame. */
+body[data-miaoimg-canvas-ui] :is(.el-input__inner,.el-select__input) { background: transparent; border: 0; border-radius: 0; box-shadow: none; }
+body[data-miaoimg-canvas-ui] :is(.el-input__inner,.el-select__input,.el-textarea__inner):focus-visible { outline: none; }
+
+/* No decorative divider lines: spacing carries hierarchy. Card frames and connectors remain. */
+body[data-miaoimg-canvas-ui] :is(hr,.el-divider--horizontal,.el-divider--vertical),
+.studio-shell.studio-app hr { display: none; }
+body[data-miaoimg-canvas-ui] :is(.el-dialog__header,.settingsRow,.modelRow,.mentionFooter,.editingBanner,
+  .previewHeader,.mediaHeader,.textHeader,.searchFooter,.searchResult,.editorToolbar,.editorTabs,.errorDetails) {
+  border-top: 0;
+  border-bottom: 0;
+}
+body[data-miaoimg-canvas-ui] .el-dropdown-menu__item--divided { border-top: 0; margin-top: 8px; }
+.studio-shell.studio-app :is(.studio-record,.ledger-table,.account-ledger) :is(th,td) { border-top: 0; border-bottom: 0; }
+@media (max-width:760px) {
+  body[data-miaoimg-canvas-ui] .settingsDialog .sidebar { border-bottom: 0; }
+}
+
+/* Focus belongs to the enclosing composer; nested editor outlines were clipped into a white rule. */
+body[data-miaoimg-canvas-ui] :is(.promptInput,.senderEditor) [contenteditable="true"]:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+body[data-miaoimg-canvas-ui] .floatingSlot:focus-within :is(.generationCard,.el-card),
+body[data-miaoimg-canvas-ui] .floatingAgent .messageInput:focus-within {
+  border-color: var(--canvas-hover-line);
+}
+
+/* Keep actions and the quote visible when the canvas scales a tall desktop composer. */
+body[data-miaoimg-canvas-ui] .desktopEditor .promptCard {
+  display: flex;
+  flex-direction: column;
+  max-height: var(--editor-max-height, none);
+}
+body[data-miaoimg-canvas-ui] .desktopEditor .promptCard > .el-card__body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: inherit;
+  overflow: hidden;
+}
+body[data-miaoimg-canvas-ui] .desktopEditor .promptBody {
+  min-height: 0;
+  overflow: auto;
+  flex: 1 1 auto;
+}
+body[data-miaoimg-canvas-ui] .desktopEditor .promptCard:not(.expandedPromptCard) .promptBody {
+  display: flex;
+  flex-direction: column;
+}
+/* 高度不够时缩小的是输入框本身、在框内滚动，不把框的下边和圆角裁掉。 */
+body[data-miaoimg-canvas-ui] .desktopEditor .promptCard:not(.expandedPromptCard) .promptBody > .promptInputWrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-bottom: 0;
+  display: flex;
+  flex-direction: column;
+}
+body[data-miaoimg-canvas-ui] .desktopEditor .promptCard:not(.expandedPromptCard) .promptBody { overflow: hidden; padding-bottom: 10px; }
+body[data-miaoimg-canvas-ui] .desktopEditor .promptCard:not(.expandedPromptCard) .promptBody > .promptInputWrap > .promptInput {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+body[data-miaoimg-canvas-ui] .desktopEditor .promptCard :is(.promptFooter,.estimateLine) {
+  flex-shrink: 0;
+}
+
+/* 选中节点的输入卡需要更多高度时，底部工具栏暂时淡出让位；取消选中后恢复。 */
+body[data-miaoimg-canvas-ui] .vue-flow__panel.bottom.center { transition: opacity 140ms ease; }
+body[data-miaoimg-canvas-ui] .vue-flow__panel.bottom.center[data-yield-to] { opacity: 0; }
+body[data-miaoimg-canvas-ui] .vue-flow__panel.bottom.center[data-yield-to],
+body[data-miaoimg-canvas-ui] .vue-flow__panel.bottom.center[data-yield-to] * { pointer-events: none !important; }

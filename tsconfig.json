@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "strict": false,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": [
+      "node"
+    ],
+    "typeRoots": [
+      "desktop/renderer/node_modules/@types",
+      "desktop/node_modules/@types",
+      "web/node_modules/@types",
+      "node_modules/@types"
+    ]
+  },
+  "include": [
+    "server/**/*.ts",
+    "desktop/**/*.ts",
+    "scripts/**/*.ts",
+    "web/scripts/**/*.ts"
+  ],
+  "exclude": [
+    "desktop/.app",
+    "desktop/node_modules",
+    "server/builtin-skills",
+    "desktop/renderer",
+    "node_modules",
+    "web/node_modules"
+  ]
+}

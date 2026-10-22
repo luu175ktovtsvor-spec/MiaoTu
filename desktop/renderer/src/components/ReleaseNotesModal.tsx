@@ -1,0 +1,57 @@
+import { useEffect, useState } from 'react'
+import { useLang } from '../i18n'
+import { RELEASE_NOTES, type ReleaseNotes } from '../releaseNotes'
+import './releaseNotes.css'
+
+type DesktopUpdateStatus = { currentVersion?: string }
+type DesktopBridge = { updateStatus?: () => Promise<DesktopUpdateStatus> }
+
+function ReleaseNotesModal({ version, notes, onClose }: { version: string; notes: ReleaseNotes; onClose: () => void }) {
+  const { lang } = useLang()
+  const text = (value: { zh: string; en: string }) => value[lang === 'en' ? 'en' : 'zh']
+  const sections = [
+    ['修复', 'Fixes', notes.fixes],
+    ['优化', 'Improvements', notes.improvements],
+    ['已知问题', 'Known issues', notes.knownIssues],
+  ] as const
+  return <div className="release-notes-mask" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
+    <section className="release-notes-modal" role="dialog" aria-modal="true" aria-labelledby="release-notes-title">
+      <button className="release-notes-close" type="button" aria-label={lang === 'en' ? 'Close release notes' : '关闭更新说明'} onClick={onClose}>×</button>
+      <div className="release-notes-kicker">MiaoImg · v{version}</div>
+      <h2 id="release-notes-title">{text(notes.title)}</h2>
+      <p className="release-notes-intro">{lang === 'en' ? 'Here is what changed in this version.' : '这次更新，我们修复了问题，也把使用体验做得更顺手。'}</p>
+      <div className="release-notes-sections">
+        {sections.filter(([, , items]) => items.length > 0).map(([zh, en, items]) => <section key={zh} className="release-notes-section">
+          <h3>{lang === 'en' ? en : zh}</h3>
+          <ul>{items.map(item => <li key={item.zh}>{text(item)}</li>)}</ul>
+        </section>)}
+      </div>
+      <button className="release-notes-confirm" type="button" onClick={onClose}>{lang === 'en' ? 'Start using MiaoImg' : '开始使用妙图'}</button>
+    </section>
+  </div>
+}
+
+export default function ReleaseNotesOnVersion() {
+  const [state, setState] = useState<{ version: string; notes: ReleaseNotes } | null>(null)
+  useEffect(() => {
+    const bridge = (window as Window & { miaoDesktop?: DesktopBridge }).miaoDesktop
+    if (!bridge?.updateStatus) return
+    let cancelled = false
+    void bridge.updateStatus().then(status => {
+      const version = String(status?.currentVersion || '')
+      const notes = RELEASE_NOTES[version]
+      if (cancelled || !notes) return
+      try {
+        if (window.localStorage.getItem(`miaoimg.release-notes.${version}`)) return
+      } catch { /* storage may be unavailable; show the notes for this session */ }
+      setState({ version, notes })
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+  if (!state) return null
+  const close = () => {
+    try { window.localStorage.setItem(`miaoimg.release-notes.${state.version}`, '1') } catch {}
+    setState(null)
+  }
+  return <ReleaseNotesModal version={state.version} notes={state.notes} onClose={close} />
+}

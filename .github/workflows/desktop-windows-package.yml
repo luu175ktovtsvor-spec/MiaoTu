@@ -1,0 +1,94 @@
+name: 妙图 Windows 打包
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/desktop-windows-package.yml
+      - package.json
+      - package-lock.json
+      - scripts/compile-desktop.ts
+      - scripts/desktop-resources.ts
+      - scripts/third-party-notices.ts
+      - docs/compatibility/**
+      - LICENSE
+      - desktop/**
+      - server/**
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    runs-on: windows-2025
+    timeout-minutes: 45
+    env:
+      MIAO_DESKTOP_NO_GENERATION: '1'
+      ENABLE_MODEL_CALLS: 'false'
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: 检查原生验收所需配置
+        env:
+          MIAO_ACCEPT_EMAIL: ${{ secrets.MIAO_ACCEPT_EMAIL }}
+          MIAO_ACCEPT_PASSWORD: ${{ secrets.MIAO_ACCEPT_PASSWORD }}
+        run: node --input-type=module -e "if (!process.env.MIAO_ACCEPT_EMAIL || !process.env.MIAO_ACCEPT_PASSWORD) throw new Error('Existing authorized acceptance credentials are required before packaging')"
+      - name: 安装依赖
+        run: |
+          npm --prefix desktop/renderer ci
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm --prefix desktop ci
+      - name: 打包 Windows 安装程序与便携包
+        run: npm --prefix desktop run package:windows
+      - name: 安装并实际验证现有账号与画布
+        env:
+          MIAO_ACCEPT_EMAIL: ${{ secrets.MIAO_ACCEPT_EMAIL }}
+          MIAO_ACCEPT_PASSWORD: ${{ secrets.MIAO_ACCEPT_PASSWORD }}
+        shell: pwsh
+        run: |
+          $installer = (Get-ChildItem 'desktop/release/*-Windows-x64.exe' | Select-Object -First 1).FullName
+          $destination = Join-Path $env:RUNNER_TEMP 'MiaoLoginInstalled'
+          $installed = Start-Process -FilePath $installer -ArgumentList '/S', "/D=$destination" -Wait -PassThru
+          if ($installed.ExitCode -ne 0) { throw "Installer exited with $($installed.ExitCode)" }
+          $app = Join-Path $destination '妙图.exe'
+          if (-not (Test-Path $app)) { throw 'Installed application missing' }
+          Get-Process | Where-Object { $_.Path -eq $app } | Stop-Process
+          node desktop/scripts/accept-login.ts $app (Join-Path $env:RUNNER_TEMP 'login-proof')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: 保存脱敏验收结果
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROOF_TAG: desktop-login-proof-${{ github.run_id }}
+        shell: pwsh
+        run: |
+          $proof = Join-Path $env:RUNNER_TEMP 'login-proof'
+          if (Test-Path "$proof/result.json") {
+            gh release create $env:PROOF_TAG "$proof/result.json" --target $env:GITHUB_SHA --latest=false --title "临时 Windows 验收 $env:GITHUB_SHA" --notes 'Sanitized temporary acceptance result; delete after retrieval.'
+          }
+      # Actions artifact 配额可能在删除后延迟释放，因此短期取回改用临时
+      # GitHub Release 资产。正式更新源仍是 miaoimg.cn；取回后由发布者删除
+      # 这个 Release 和 tag，不把它当用户下载位置。
+      - name: 保存 Windows 安装包到临时 Release
+        if: always() && hashFiles('desktop/release/latest.yml') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: desktop-build-${{ github.run_id }}
+        shell: pwsh
+        run: |
+          gh release delete $env:RELEASE_TAG --yes --cleanup-tag 2>$null
+          gh release create $env:RELEASE_TAG `
+            --target $env:GITHUB_SHA --latest=false `
+            desktop/release/妙图-*-Windows-x64.exe `
+            desktop/release/latest.yml `
+            desktop/release/*.blockmap `
+            --title "临时 Windows 构建 $env:GITHUB_SHA" `
+            --notes "Temporary build asset; delete after retrieval."

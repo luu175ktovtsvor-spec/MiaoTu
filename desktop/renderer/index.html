@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#111114" />
+    <link rel="icon" type="image/png" href="/miaoimg-logo.png" />
+    <title>妙图</title>
+    <style>
+      html, body { margin: 0; background: var(--color-canvas, #111114); color: var(--color-muted, #b2b2b2); }
+      .desktop-boot { display: grid; place-items: center; min-height: 100dvh; font: 14px system-ui, sans-serif; }
+    </style>
+    <script>
+      // Apply the saved background before the application bundle loads.
+      try {
+        const ui = JSON.parse(localStorage.getItem('miaoimg.canvas.settings') || '{}').ui || {};
+        const dark = ui.theme === 'dark' || ((!ui.theme || ui.theme === 'system') && matchMedia('(prefers-color-scheme: dark)').matches);
+        const background = ui.theme === 'custom' && /^#[\da-f]{6}$/i.test(ui.backgroundColor) ? ui.backgroundColor : dark ? '#111114' : '#f4f4f6';
+        document.documentElement.style.setProperty('--color-canvas', background);
+      } catch {}
+    </script>
+  </head>
+  <body>
+    <div id="root"><div class="desktop-boot" role="status">正在打开妙图…</div></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

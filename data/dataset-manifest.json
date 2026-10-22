@@ -1,0 +1,113 @@
+{
+  "schema": 1,
+  "dataset_version": "2026-09-09-0607",
+  "generated_at": "2026-09-08T22:08:55.999816+00:00",
+  "taxonomy_version": "oip-visual-v2",
+  "selection": "full public corpus; labeling process tables excluded",
+  "release_repo": "NanmiCoder/open-image-prompts",
+  "db": {
+    "asset": "prompts.db.gz",
+    "tag": "dataset-2026-09-09-0607",
+    "sha256": "d990afa8aef88bc4fd12c357d5f140f7f8c8ae1a1dff5db056970c0e60cd0788",
+    "bytes": 107984392,
+    "counts": {
+      "prompts": 18019,
+      "images": 31992,
+      "translations": 36026,
+      "prompt_labels": 209880,
+      "media_labels": 366470,
+      "taxonomy_labels": 185
+    }
+  },
+  "image_packs": [
+    {
+      "asset": "images-2025-08.tar.gz",
+      "tag": "dataset-2026-07-25",
+      "sha256": "29ce417244089c5d563c946ef03fe727e1ef46515d423bfa25ec1f1b1d67823e",
+      "bytes": 130731,
+      "files": 1,
+      "signature": "bdca2181f84429729d4e07186306104f32447d74ad06d003b1a358661aca57a2"
+    },
+    {
+      "asset": "images-2025-12.tar.gz",
+      "tag": "dataset-2026-07-27-1544",
+      "sha256": "b1e25beb51bf0e2c6fab93df4f81ce0d67a770589ed1a5ff387b72adf414c050",
+      "bytes": 1410625,
+      "files": 12,
+      "signature": "aeac287e404ce6730a694e0ebf91bd551dfdb979f8bea9d582d1675b419417a8"
+    },
+    {
+      "asset": "images-2026-01.tar.gz",
+      "tag": "dataset-2026-07-27-1544",
+      "sha256": "7b6efa4e6f8f2e9aa0403b7163016521fd0e0675aeb7872669dfde4d1967abf7",
+      "bytes": 2701470,
+      "files": 13,
+      "signature": "7e45074c3edc8d62d38e6839b3b9d62d709153ea3efccd6ea8f3b0a8d3b4b038"
+    },
+    {
+      "asset": "images-2026-02.tar.gz",
+      "tag": "dataset-2026-07-27-1544",
+      "sha256": "0e2b9ae77e0eb6d5d7301659e93b40061a8cdbe2b2c02782de334f0979ad6212",
+      "bytes": 5488741,
+      "files": 33,
+      "signature": "c74592546e2c2f57f8e3166052878208a112912ff11887d596025ba5eb509b62"
+    },
+    {
+      "asset": "images-2026-03.tar.gz",
+      "tag": "dataset-2026-07-27-1809",
+      "sha256": "8cfbafe7a83badaa19fa69a299a70a3a838354f4af72fe9ac71c22b03c228fdc",
+      "bytes": 560643003,
+      "files": 3587,
+      "signature": "00dd4c3ca765367cc8c76688aa450e3823e9010aa1941d4c2d427dea88131d36"
+    },
+    {
+      "asset": "images-2026-04.tar.gz",
+      "tag": "dataset-2026-07-27-1809",
+      "sha256": "dda91a282131c8e740290568ba26860bedf3a425b6418a46cbf4f8c7ce6fd3e4",
+      "bytes": 725138424,
+      "files": 4407,
+      "signature": "70d82e97c0255150f82dd2b000189a4818c8e22e2baa4c89c05fb0754d8cf67b"
+    },
+    {
+      "asset": "images-2026-05.tar.gz",
+      "tag": "dataset-2026-07-27-1809",
+      "sha256": "d3874651ee4483a20ccc53ee8bd679159d6282c9f87789329f6ced5cc3eab76a",
+      "bytes": 813839782,
+      "files": 4317,
+      "signature": "24eb7d35392cec731c06f2af32dc6d4ee187a88b2d3b3bfec174e3460f40e140"
+    },
+    {
+      "asset": "images-2026-06.tar.gz",
+      "tag": "dataset-2026-07-27-1809",
+      "sha256": "ce307e7389d68c4784322cdd3483ddb568a50f151bf47f8c40391664a44a7445",
+      "bytes": 1148375089,
+      "files": 6578,
+      "signature": "dd786ba26b537b771eb3137fe0867f61712b5e13c30cbfe984575f02424bee8b"
+    },
+    {
+      "asset": "images-2026-07.tar.gz",
+      "tag": "dataset-2026-07-29-0610",
+      "sha256": "2c25a1733c0d2a9c57c8fc3f7f8ab7b1050f16b631da3c20c82accece5a09b0c",
+      "bytes": 901015380,
+      "files": 5357,
+      "signature": "c161ac054eddc0d96205927e563b1f26c3adfa194a00144bd34edb0eb5bc5641"
+    },
+    {
+      "asset": "images-2026-08.tar.gz",
+      "tag": "dataset-2026-08-24-0006",
+      "sha256": "651d49df6815be3cbc0671259c5806bf8e8918b633b7567e669e137fcbe51159",
+      "bytes": 748924137,
+      "files": 4277,
+      "signature": "4c65f96a8827a702e327f2dd7043f2e4180e46c57748927a2a0b2fea2c76eef3"
+    },
+    {
+      "asset": "images-2026-09.tar.gz",
+      "tag": "dataset-2026-09-09-0607",
+      "sha256": "0c7d0f377fe708cf374fbf9982c21ecc568adb580d81a6e622e409df2805ffe8",
+      "bytes": 257208041,
+      "files": 1395,
+      "signature": "a59157b8a881acdb66c57ae68bff32cfd550426058154e8b8a0b0f22ec13b5b0"
+    }
+  ],
+  "images_total": 29977
+}

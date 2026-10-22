@@ -1,0 +1,61 @@
+<template>
+  <span ref="element" class="mentionThumbnail" aria-hidden="true">
+    <video v-if="previewUrl && !failed && thumbnail?.mimeType.startsWith('video/') && !videoPoster" :src="previewUrl" preload="metadata" muted playsinline @error="failed = true" />
+    <img v-else-if="previewUrl && !failed" :src="previewUrl" alt="" draggable="false" @error="failed = true" />
+    <slot v-else />
+  </span>
+</template>
+
+<script setup lang="ts">
+import { onBeforeUnmount, onMounted, ref, watch } from "vue";
+import useWorkspaceFiles from "@/lib/workspaceFiles";
+
+const props = defineProps<{ thumbnail?: { url: string; mimeType: string }; directory?: string }>();
+const element = ref<HTMLElement>();
+const inView = ref(false);
+const previewUrl = ref("");
+const videoPoster = ref(false);
+const failed = ref(false);
+let observer: IntersectionObserver | undefined;
+
+onMounted(() => {
+  observer = new IntersectionObserver(([entry]) => { inView.value = !!entry?.isIntersecting; });
+  if (element.value) observer.observe(element.value);
+});
+onBeforeUnmount(() => observer?.disconnect());
+
+watch([inView, () => props.thumbnail?.url, () => props.thumbnail?.mimeType, () => props.directory], async ([visible, path, mimeType, directory], _old, onCleanup) => {
+  previewUrl.value = "";
+  videoPoster.value = false;
+  failed.value = false;
+  if (!visible || !path) return;
+  if (!directory) return;
+  let cancelled = false;
+  // 可见的消息引用只读取图片缩略图或视频首帧，不能为了小头像下载原视频。
+  const preview = useWorkspaceFiles(directory).acquirePreviewUrl(path, mimeType, 320);
+  onCleanup(() => { cancelled = true; preview.release(); });
+  try {
+    const url = await preview.url;
+    if (!cancelled) { videoPoster.value = /[?&]preview=1(?:&|$)/.test(url); previewUrl.value = url; }
+  } catch {
+    if (!cancelled) failed.value = true;
+  }
+});
+</script>
+
+<style scoped lang="scss">
+.mentionThumbnail {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  overflow: hidden;
+  border-radius: 5px;
+  background: var(--el-fill-color-light);
+  color: var(--el-text-color-secondary);
+
+  img, video { width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+}
+</style>
