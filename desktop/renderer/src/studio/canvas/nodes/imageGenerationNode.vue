@@ -105,6 +105,7 @@
             placement="top-start"
             @visible-change="(visible) => visible && loadModels().catch((error) => showNodeError(error, translate('模型读取失败')))">
             <template #prefix><icon-sparkles :size="17" /></template>
+            <el-option v-if="data.model && !models.some(item => JSON.stringify([item.providerId, item.modelId]) === data.model)" class="savedModelOption" :label="nodeModelValueLabel(data.model)" :value="data.model" />
             <el-option-group v-for="group in groupNodeModels(models)" :key="group.id" :label="group.label">
               <el-option v-for="item in group.models" :key="JSON.stringify([item.providerId, item.modelId])"
                 :label="nodeModelOptionLabel(item)" :value="JSON.stringify([item.providerId, item.modelId])" />
@@ -171,7 +172,7 @@
 <script setup lang="ts">
 import { fitsCustomSize, groupNodeModels } from "../scaffold/nodeAi";
 import { controlPayload } from "../scaffold/mediaParameters";
-import { nodeLocalModelLabel, nodeModelOptionLabel } from '../scaffold/localModelLabel';
+import { nodeLocalModelLabel, nodeModelOptionLabel, nodeModelValueLabel } from '../scaffold/localModelLabel';
 import { useImagePreviewTools } from '../scaffold/useImagePreviewTools';
 import { computed, inject, nextTick, onMounted, onScopeDispose, ref, watch, watchEffect } from "vue";
 import { ElButton, ElCard, ElSelect, ElOption, ElOptionGroup, ElLoading, ElImageViewer, ElMessage } from "element-plus";

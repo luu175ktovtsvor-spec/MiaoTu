@@ -405,7 +405,7 @@ export default function StudioPage() {
   }, [assetSection, signedIn, surface])
 
   useEffect(() => {
-    if ((surface !== 'account' && !(surface === 'history' && assetSection === 'history')) || !signedIn) return undefined
+    if (surface !== 'account' || !signedIn) return undefined
     const controller = new AbortController()
     setLedgerState({ owner: historyOwner, status: 'loading', items: [], error: '', summary: null })
     const month = currentMonthRange()
@@ -671,6 +671,12 @@ export default function StudioPage() {
     ...(config?.textModels || []),
   ].filter((model, index, models) => models.findIndex((item) => item.id === model.id) === index)
 
+  useEffect(() => {
+    const open = () => { closeSettings(); void changeSurface('account') }
+    window.addEventListener('miao-open-account-surface', open)
+    return () => window.removeEventListener('miao-open-account-surface', open)
+  })
+
   if (!workspaceReady && !error) {
     return (
       <div className="studio-login" aria-busy="true">
@@ -707,6 +713,8 @@ export default function StudioPage() {
     if (window.miaoDesktop) window.dispatchEvent(new Event('miao-desktop-account'))
     else void changeSurface('account')
   }
+  // 桌面账号弹窗只放余额和退出，充值与积分明细在账号页里。
+  const openAccountPage = () => { closeSettings(); void changeSurface('account') }
 
   return (
     <div className="studio-shell studio-app">
@@ -736,7 +744,7 @@ export default function StudioPage() {
         {!window.miaoDesktop && Boolean(userSession?.user?.email) && <button type="button" className="studio-top__history" aria-current={surface === 'history' ? 'page' : undefined} onClick={() => { void changeSurface('history') }}>{studioText('历史', lang)}</button>}
         {statusMessage && <span role="status" title={statusMessage}>{statusMessage}</span>}
         <span className="studio-top__gap" />
-        {Number.isFinite(balance) && Boolean(userSession?.user?.email) && <button type="button" aria-current={surface === 'account' ? 'page' : undefined} onClick={openAccountSurface}>{studioPoint(balance, lang)}</button>}
+        {Number.isFinite(balance) && Boolean(userSession?.user?.email) && <button type="button" aria-current={surface === 'account' ? 'page' : undefined} onClick={openAccountPage}>{studioPoint(balance, lang)}</button>}
         <button type="button" aria-current={surface === 'account' ? 'page' : undefined} onClick={openAccountSurface}>{window.miaoDesktop && !userSession?.user?.email ? studioText('登录 / 注册', lang) : studioText('账号', lang)}</button>
         {!(window.miaoDesktop && surface === 'look' && !settingsOpen) && <LanguageControl compact />}
       </header>

@@ -25,7 +25,7 @@ import { createMcpApi, mcpSkillMarkdown } from '../server/mcp-api.ts'
 import { ownTextModelById } from '../server/text-model-registry.ts'
 import { isTransientModelFailure, modelResponseHeaders, readJsonRequest, readModelJson } from '../server/model-transport.ts'
 import { withRequestProject, currentProject } from '../server/workspace-scope.ts'
-import { createMediaPreviews } from '../server/media-previews.ts'
+import { createMediaPreviews, MEDIA_PREVIEW_VERSION } from '../server/media-previews.ts'
 import { MEDIA_INPUT_VERSION } from '../server/media-input.ts'
 import { createAudioWaveforms } from './audio-waveform.ts'
 import { createVideoPlayback } from '../server/video-playback.ts'
@@ -94,7 +94,7 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
   files.projectAccess = project => { store.project(project) }
   for (const site of LOCAL_MEDIA_SITES) localRoutes.set(site.provider, new LocalMediaRouter(store, () => cloud.account, native?.localMediaHosts?.[site.id], site,
     () => ({ revision: cloud.authRevision, available: Boolean(cloud.account) && !cloud.sessionChanging && !cloud.authenticationExpired })))
-  tasks = new LocalTasks({ store, files, cloud, localRoutes })
+  tasks = new LocalTasks({ store, files, cloud, localRoutes, ensureTools: () => tools.ensure() })
   files.canvasCleanupReferences = (_userId, project) => tasks.canvasCleanupReferences(project)
   const token = randomBytes(32).toString('hex'), csrf = randomBytes(32).toString('hex')
   // MCP credentials belong to the signed-in account and survive normal restarts;
@@ -223,7 +223,7 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
   }
   async function previewFile(file, project, path, dimension, signal: AbortSignal, beforeCommit: () => void) {
     const key = createHash('sha256').update(JSON.stringify([project, path, file.revision, dimension])).digest('hex')
-    const cache = join(directory, 'previews', `v${MEDIA_INPUT_VERSION}-` + key + '.jpg')
+    const cache = join(directory, 'previews', `v${MEDIA_INPUT_VERSION}-p${MEDIA_PREVIEW_VERSION}-` + key + '.jpg')
     return previews.read(cache, file.bytes || file.diskPath, {
       video: /^video\//i.test(file.mime),
       maxDimension: dimension,
@@ -568,7 +568,7 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
               if (preview) {
                 const dimension = url.searchParams.get('previewSize') === '320' ? 320 : 1024
                 const cache = await previewFile(file, project, path, dimension, signal, assertCurrent)
-                file = { ...file, diskPath: cache, bytes: null, size: statSync(cache).size, mime: 'image/jpeg', revision: revision + `-preview-v${MEDIA_INPUT_VERSION}-` + dimension }
+                file = { ...file, diskPath: cache, bytes: null, size: statSync(cache).size, mime: 'image/jpeg', revision: revision + `-preview-v${MEDIA_INPUT_VERSION}-p${MEDIA_PREVIEW_VERSION}-` + dimension }
               } else {
                 // Playback copies never replace originals or model references.
                 const owner = createHash('sha256').update(project).digest('hex')

@@ -3,8 +3,8 @@ import { lstatSync, unlinkSync, type BigIntStats } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { setImmediate as yieldToFiles } from 'node:timers/promises'
 
-const COMPLETE = /^(?:v2-)?[a-f0-9]{64}\.jpg$/
-const TEMPORARY = /^((?:v2-)?[a-f0-9]{64}\.jpg)\.tmp-[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/
+const COMPLETE = /^(?:v2-(?:p\d{1,3}-)?)?[a-f0-9]{64}\.jpg$/
+const TEMPORARY = /^((?:v2-(?:p\d{1,3}-)?)?[a-f0-9]{64}\.jpg)\.tmp-[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/
 const sameFile = (a: BigIntStats, b: BigIntStats) => a.dev === b.dev && a.ino === b.ino && a.size === b.size && a.mtimeNs === b.mtimeNs && a.ctimeNs === b.ctimeNs
 type Candidate = { path: string; base: string; temporary: boolean; info: BigIntStats }
 

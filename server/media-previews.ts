@@ -3,6 +3,7 @@ import { createReadStream, mkdirSync, lstatSync, utimesSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import { localMediaInputOptions } from './media-input.ts'
+import { imageOrientation, orientationFilters } from './image-orientation.ts'
 import { MediaJobs, waitForMedia } from './media-jobs.ts'
 import { mediaPermissions, writeFileAtomic } from './media-files.ts'
 import { sweepPreviewFiles } from './preview-files.ts'
@@ -13,7 +14,7 @@ const FFMPEG = process.env.OIP_FFMPEG_PATH || 'ffmpeg'
 const PREVIEW_MAX_DIMENSION = 320
 const PREVIEW_TIMEOUT_MS = 20_000
 
-function ffmpegPreview(source, video, maxDimension = PREVIEW_MAX_DIMENSION, signal?: AbortSignal) {
+function ffmpegPreview(source, video, maxDimension = PREVIEW_MAX_DIMENSION, signal?: AbortSignal, rotate: string[] = []) {
   signal?.throwIfAborted()
   return new Promise<any>((resolve, reject) => {
     // Pipe still images so image2 cannot interpret a filename as a sequence.
@@ -24,8 +25,10 @@ function ffmpegPreview(source, video, maxDimension = PREVIEW_MAX_DIMENSION, sign
       '-v', 'error',
       '-threads', '1',
       ...localMediaInputOptions({ images: true }),
+      // 静态图按 EXIF 自己转正，和画布显示一致；视频仍由 ffmpeg 按旋转元数据处理。
+      ...(video ? [] : ['-noautorotate']),
       '-i', typeof source === 'string' && !imageFile ? source : 'pipe:0',
-      '-vf', scale,
+      '-vf', [...rotate, scale].join(','),
       '-frames:v', '1',
       '-f', 'image2pipe',
       '-c:v', 'mjpeg',
@@ -78,8 +81,9 @@ function ffmpegPreview(source, video, maxDimension = PREVIEW_MAX_DIMENSION, sign
   })
 }
 
-export function createMediaPreview(source, { video = false, maxDimension = PREVIEW_MAX_DIMENSION, signal }: Record<string, any> = {}) {
-  return ffmpegPreview(source, video, maxDimension, signal)
+export async function createMediaPreview(source, { video = false, maxDimension = PREVIEW_MAX_DIMENSION, signal }: Record<string, any> = {}) {
+  const rotate = video ? [] : orientationFilters(await imageOrientation(source).catch(() => 1))
+  return ffmpegPreview(source, video, maxDimension, signal, rotate)
 }
 
 export function createMediaPreviews({ ensureTools = async () => {}, cacheDirectory }: { ensureTools?: () => Promise<unknown>; cacheDirectory?: () => string } = {}) {
@@ -129,3 +133,5 @@ export function createMediaPreviews({ ensureTools = async () => {}, cacheDirecto
 }
 
 export const MEDIA_PREVIEW_MIME = 'image/jpeg'
+// 缩略图生成规则变了就加一；只让缩略图重做，不动视频播放副本。2 = 静态图按 EXIF 方向转正。
+export const MEDIA_PREVIEW_VERSION = 2

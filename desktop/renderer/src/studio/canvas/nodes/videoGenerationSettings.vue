@@ -110,7 +110,8 @@ const modes = computed(() => (props.model?.mode ?? []).map(item => ({
   label: translate(Array.isArray(item) ? "混合参考" : modeLabels[item] ?? item),
 })));
 const durations = computed(() => durationsForMode(props.model, selectedModeName.value)
-  .filter(value => value < 0 || resolutionsFor(value).includes(resolution.value)));
+  // 清晰度跟随平台（没有分辨率可选）时不按分辨率筛时长。
+  .filter(value => value < 0 || !resolution.value || resolutionsFor(value).includes(resolution.value)));
 const resolutions = computed(() => resolutionsFor(duration.value));
 
 // 输入素材另计：参考视频按输入时长、图片素材超出免费张数按张计费（结算时合并预扣）。

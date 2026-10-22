@@ -15,10 +15,16 @@ function canvasEntries(files: DesktopWorkspaceFiles, project: string) {
     })
 }
 
+// 列表只给概要：一张过大或损坏的画布只标出来，不能让整个列表失败。
 function canvasSummary(files: DesktopWorkspaceFiles, project: string, entry: { path: string; revision?: string; updatedAt?: string; size?: number }) {
-  const bytes = files.read('local', entry.path, project).bytes
-  const canvas = JSON.parse(bytes.toString('utf8'))
-  if (!Array.isArray(canvas.nodes) || !Array.isArray(canvas.edges)) throw new Error(`画布文件无效：${entry.path}`)
+  const base = { id: entry.path, name: entry.path.replace(/\.json$/i, ''), revision: entry.revision || null, updatedAt: entry.updatedAt || null, size: Number(entry.size) || null }
+  if (Number(entry.size) > MAX_CANVAS_BYTES) return { ...base, nodeCount: null, edgeCount: null, note: '画布较大，未统计节点数；用 readProjectCanvas 读取' }
+  let bytes: Buffer, canvas: any
+  try {
+    bytes = files.read('local', entry.path, project).bytes
+    canvas = JSON.parse(bytes.toString('utf8'))
+  } catch { return { ...base, nodeCount: null, edgeCount: null, note: '画布文件读取失败' } }
+  if (!Array.isArray(canvas?.nodes) || !Array.isArray(canvas?.edges)) return { ...base, nodeCount: null, edgeCount: null, note: '画布文件无效' }
   return {
     id: entry.path,
     name: String(canvas.name || entry.path.replace(/\.json$/i, '')),

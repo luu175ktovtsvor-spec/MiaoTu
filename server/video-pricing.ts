@@ -75,7 +75,10 @@ export function costPlusVideoCost({ model, parameters = {}, usage, seconds }: Re
       : usage ? input : Math.ceil(input)
     const images = present(usage?.input_image_count) ? nonnegative(usage.input_image_count) : nonnegative(parameters.referenceImages)
     const unitCredits = input > 0 ? tier.withVideo : tier.withoutVideo
-    const longOutput = h3 && Number(tier.longThreshold) > 0 && output > Number(tier.longThreshold)
+    // The 2x tier follows the requested duration, as Metaso's estimate does
+    // (outputVideoSeconds). Measured output can run a little past 15 s.
+    const requested = nonnegative(parameters.billableDuration ?? parameters.duration)
+    const longOutput = h3 && Number(tier.longThreshold) > 0 && (requested > 0 ? requested : output) > Number(tier.longThreshold)
     // Metaso's estimate (2026-10-22) doubles the whole base fee past 15 s:
     // output, reference-video seconds and chargeable images. Context IR is not.
     const longFactor = longOutput ? Number(tier.longOutput) / Number(tier.withoutVideo) : 1

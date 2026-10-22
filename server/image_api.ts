@@ -69,7 +69,7 @@ import { createReferenceMaterializer, createReferenceMediaProbe, createMediaBuff
 import { runtimeSecret } from './runtime-secrets.ts'
 import { createEmailOtp } from './email-otp.ts'
 import { createOAuthLogin } from './auth/oauth-login.ts'
-import { createMediaPreviews, MEDIA_PREVIEW_MIME } from './media-previews.ts'
+import { createMediaPreviews, MEDIA_PREVIEW_MIME, MEDIA_PREVIEW_VERSION } from './media-previews.ts'
 import { MEDIA_INPUT_VERSION } from './media-input.ts'
 import { assertMockProviderConfiguration, assertProviderRequestAllowed, isMockProviderMode, mockProviderAudit } from './provider-safety.ts'
 import { assertTextAccess, assertTextIdentity } from './text-access.ts'
@@ -335,7 +335,7 @@ async function submitYunshu(request, env = process.env, signal, fetchImpl = fetc
 function storedParameters(request) {
   return {
     ...request.generation,
-    upstreamImagePricing:imagePricingSnapshot(request.model,request.generation),
+    upstreamImagePricing:imagePricingSnapshot(request.model,{...request.generation,referenceCount:request.references.length}),
     // 画布节点目录：图片结果由服务端直接写进去（和视频同一套）。
     outputDirectory: request.outputDirectory || '',
     ...(request.desktopDelivery === 1 ? { desktopDelivery: 1, desktopReferences: request.desktopReferences } : {}),
@@ -763,7 +763,7 @@ function previewPath(ownerId, key) {
   const root = owner && validMediaOwner(owner) ? join(mediaRoot(), owner) : mediaRoot()
   const directory = join(root, PREVIEW_DIRECTORY)
   mkdirSync(directory, { recursive: true, mode: mediaPermissions().directory })
-  return join(directory, `v${MEDIA_INPUT_VERSION}-${previewKey(key)}.jpg`)
+  return join(directory, `v${MEDIA_INPUT_VERSION}-p${MEDIA_PREVIEW_VERSION}-${previewKey(key)}.jpg`)
 }
 
 async function cachedPreview(path, source, options: { video?: boolean; maxDimension?: number; beforeCommit?: () => void } = {}, signal?: AbortSignal) {
@@ -1162,7 +1162,7 @@ const server = createServer(withRequestProject(async (request, response) => {
           if (!info) throw failure('预览暂不可用，请读取原文件', 404)
           await sendWorkspaceFile(request, response, session.userId, {
             ...file, mime: MEDIA_PREVIEW_MIME, bytes: null, diskPath: info.path,
-            size: info.size, revision: file.revision + `-preview-v${MEDIA_INPUT_VERSION}-` + dimension,
+            size: info.size, revision: file.revision + `-preview-v${MEDIA_INPUT_VERSION}-p${MEDIA_PREVIEW_VERSION}-` + dimension,
           }, { version: url.searchParams.get('v') })
           return
         }

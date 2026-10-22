@@ -141,6 +141,7 @@ export default function DesktopBar({ children }: { children: ReactNode }) {
           <div className="desktop-account-profile"><div className="desktop-account-avatar">{Array.from(String(account.name || account.email || '妙'))[0]}</div><div><strong>{account.name || '妙图用户'}</strong><p>{account.email}</p></div></div>
           <div className="desktop-account-balance"><span>可用积分</span><strong>{Number(account.points || 0).toLocaleString('zh-CN')}<small>积分</small></strong></div>
           {error && <p role="alert" className="desktop-account-error">{error}</p>}
+          <button className="desktop-account-submit" type="button" disabled={busy} onClick={() => { close(); window.dispatchEvent(new Event('miao-open-account-surface')) }}>充值与积分明细<ArrowRight size={18} /></button>
           <button className="desktop-account-signout" disabled={busy} onClick={async () => { if (await action('/api/desktop/logout', {})) { setPassword(''); setCode(''); setError(''); window.dispatchEvent(new Event('miao-desktop-session')) } }}><SignOut size={18} />{busy ? '处理中…' : '退出登录'}</button>
         </>}
       </section>

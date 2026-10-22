@@ -161,7 +161,8 @@ async function process(signal?: AbortSignal, toolCall = false) {
     if (!committed && created && workspace) await workspace.remove(`assets/${id}`, true).catch(error => {
       if (error?.response?.data?.data?.code !== "ENOENT") showNodeError(error, translate("临时音频清理失败"));
     });
-    if (current.signal.aborted) mode.value = undefined;
+    // 转换格式没有设置面板，失败后也要退出，避免节点停在处理状态。
+    if (current.signal.aborted || mode.value === "convert") mode.value = undefined;
     processing.value = cancelling.value = false;
     signal?.removeEventListener("abort", abort);
     controller = undefined;

@@ -416,7 +416,8 @@ function syncDesktopEditor() {
   const element = bottomSlotElement.value;
   if (!element || mobileSheet.value || documentTarget.value || !canvasUiActive.value) {
     for (const property of ["--editor-max-width", "--editor-max-height"]) element?.style.removeProperty(property);
-    toolbarYield(document.querySelector<HTMLElement>(".vue-flow__panel.bottom.center:has(.canvasControls)"), false);
+    // 平移时每个节点都会走到这里；只有占着工具栏的节点才需要去查 DOM。
+    if (holdingToolbar) toolbarYield(document.querySelector<HTMLElement>(".vue-flow__panel.bottom.center:has(.canvasControls)"), false);
     return;
   }
   const zoom = viewport.value.zoom || 1;
@@ -449,7 +450,9 @@ function syncDesktopEditor() {
     && editorRect.left < toolbarRect!.right && editorRect.right > toolbarRect!.left;
   toolbarYield(toolbar, covering);
 }
+let holdingToolbar = false;
 function toolbarYield(toolbar: HTMLElement | null, yieldIt: boolean) {
+  holdingToolbar = yieldIt && !!toolbar;
   if (!toolbar) return;
   if (yieldIt) toolbar.dataset.yieldTo = nodeId;
   else if (toolbar.dataset.yieldTo === nodeId) delete toolbar.dataset.yieldTo;
@@ -480,6 +483,8 @@ watch(bottomSlotElement, (element, previous) => {
 let editorSyncFrame: number | undefined;
 function scheduleFloatingEditorSync() {
   if (editorSyncFrame !== undefined) return;
+  // 没有展开输入框的节点平移时无事可做。
+  if (!bottomSlotElement.value && !mobileSheet.value && !holdingToolbar) return;
   editorSyncFrame = window.requestAnimationFrame(() => {
     editorSyncFrame = undefined;
     void nextTick(syncFloatingEditors);

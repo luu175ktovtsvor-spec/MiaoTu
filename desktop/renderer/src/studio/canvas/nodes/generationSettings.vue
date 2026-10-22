@@ -164,11 +164,18 @@ function applyCustomSize() {
   size.value = `${customWidth.value}x${customHeight.value}`;
 }
 
+// 比例由所选尺寸推出时，不能再反过来按比例改尺寸，否则同比例的大尺寸会被换成列表里第一个。
+let ratioFromSize = false;
+function setRatioFromSize(next: string) {
+  if (ratio.value === next) return;
+  ratioFromSize = true;
+  ratio.value = next;
+}
 function reconcileSizeAndRatio() {
   if (independentRatio.value) return;
   const mapped = sizeMeta.value.find(item => item.value === size.value)?.ratio;
   if (mapped) {
-    if (ratio.value !== mapped) ratio.value = mapped;
+    setRatioFromSize(mapped);
     return;
   }
   const match = parsedSize.value;
@@ -177,12 +184,12 @@ function reconcileSizeAndRatio() {
   const gcd = (left: number, right: number): number => right ? gcd(right, left % right) : left;
   const divisor = gcd(width, height);
   const exact = `${width / divisor}:${height / divisor}`;
-  const next = props.ratios.includes(exact) ? exact : "";
-  if (ratio.value !== next) ratio.value = next;
+  setRatioFromSize(props.ratios.includes(exact) ? exact : "");
 }
 watch(size, reconcileSizeAndRatio, { immediate: true });
 watch(() => sizeMeta.value.map(item => `${item.value}:${item.ratio || ""}`).join("|"), reconcileSizeAndRatio, { immediate: true });
 watch(ratio, value => {
+  if (ratioFromSize) { ratioFromSize = false; return; }
   if (independentRatio.value || !value) return;
   const target = sizeMeta.value.find(item => item.ratio === value);
   if (target && size.value !== target.value) size.value = target.value;

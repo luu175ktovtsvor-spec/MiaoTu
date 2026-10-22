@@ -540,7 +540,9 @@ export function upstreamImageCostRmb({ model, count = 1, parameters = {} }: Reco
   const images = Math.max(1, Math.floor(Number(count) || 1))
   const frozen=parameters.upstreamImagePricing
   if (frozen?.version === 'image-cost-snapshot-2026-10-08' && frozen.model === id && Number.isFinite(frozen.unitRmb)) {
-    return {rmb:Math.round(frozen.unitRmb*images*10000)/10000,basis:frozen.basis,detail:{...frozen.detail,images,requestedSize:parameters.size||'',requestedQuality:parameters.quality||'',referenceCount:parameters.referenceCount??0,pricingSnapshot:frozen,...(frozen.expenses?{expenses:frozen.expenses,serverAllocatedRmb:frozen.expenses.rmbPerRequest||0}:{})}}
+    // 参考图费按次收，不随张数翻倍；旧快照没有 referenceRmb，按 0 算。
+    const referenceRmb=Number(frozen.referenceRmb)||0
+    return {rmb:Math.round((frozen.unitRmb*images+referenceRmb)*10000)/10000,basis:frozen.basis,detail:{...frozen.detail,images,requestedSize:parameters.size||'',requestedQuality:parameters.quality||'',referenceCount:parameters.referenceCount??0,pricingSnapshot:frozen,...(frozen.expenses?{expenses:frozen.expenses,serverAllocatedRmb:frozen.expenses.rmbPerRequest||0}:{})}}
   }
   if (provider === 'ark') {
     const price = ARK_IMAGE_RMB[id]
@@ -578,8 +580,10 @@ export function metasoResolutionTierRmb(model, resolution) {
 
 // Created from server-normalized parameters, never accepted from client input.
 export function imagePricingSnapshot(model, parameters: Record<string, any> = {}) {
-  const cost=upstreamImageCostRmb({model,count:1,parameters})
-  return cost ? {version:'image-cost-snapshot-2026-10-08',model:model.publicId||model.id,unitRmb:cost.rmb,basis:cost.basis,detail:cost.detail,...(videoExpenses().serverAllocationMode==='all_media_requests'?{expenses:videoExpenses()}: {})} : null
+  const cost=upstreamImageCostRmb({model,count:1,parameters:{...parameters,referenceCount:0}})
+  const price=model?.provider==='ark'?ARK_IMAGE_RMB[String(model.publicId||model.id||'')]:null
+  const referenceRmb=price?arkReferenceRmb(price,parameters.referenceCount):0
+  return cost ? {version:'image-cost-snapshot-2026-10-08',model:model.publicId||model.id,unitRmb:cost.rmb,referenceRmb,basis:cost.basis,detail:cost.detail,...(videoExpenses().serverAllocationMode==='all_media_requests'?{expenses:videoExpenses()}: {})} : null
 }
 
 export function estimateUpstreamCostRmb(input: Record<string, any> = {}) {

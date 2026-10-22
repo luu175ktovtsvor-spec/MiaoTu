@@ -1,6 +1,7 @@
 import { assertDesktopMediaProtocol, validRequestId } from '../server/generation-contract.ts'
 import { isReferenceMediaMime } from '../server/reference-assets.ts'
 import { WORKSPACE_FILE_MAX_BYTES } from '../server/workspace-files.ts'
+import { applyImageOrientation, imageOrientation } from '../server/image-orientation.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, openAsBlob } from 'node:fs'
 import { readFile } from 'node:fs/promises'
@@ -38,6 +39,7 @@ export class LocalTasks {
   declare files: import('./workspace-files.ts').DesktopWorkspaceFiles
   declare cloud: import('./cloud.ts').CloudGateway
   declare localRoutes: Map<string, LocalMediaRouter>
+  declare ensureTools: () => Promise<unknown>
   declare changed: any
   declare inflight: Map<any, any>
   declare saving: Map<any, any>
@@ -54,8 +56,8 @@ export class LocalTasks {
   accountController = new AbortController()
   mediaProtocol?: { revision: number; origin: string; promise: Promise<void> }
 
-  constructor({ store, files, cloud, changed, localRoutes = new Map() }: Record<string, any>) {
-    Object.assign(this, { store, files, cloud, changed, localRoutes })
+  constructor({ store, files, cloud, changed, localRoutes = new Map(), ensureTools = async () => {} }: Record<string, any>) {
+    Object.assign(this, { store, files, cloud, changed, localRoutes, ensureTools })
     this.inflight = new Map(); this.saving = new Map(); this.staging = new Map()
     this.controller = new AbortController()
     this.timer = setInterval(() => this.resume(), 2000); this.timer.unref()
@@ -115,8 +117,15 @@ export class LocalTasks {
       // File-backed Blob streams without allocating a whole video and detects
       // changes to the source during reading. Immutable blob indexes already
       // contain the digest; legacy path files are hashed in bounded chunks.
-      const content = file.diskPath ? await openAsBlob(file.diskPath, { type: file.mime }) : new Blob([file.bytes], { type: file.mime })
-      let digest = file.blob
+      // 手机照片的方向常只写在 EXIF 里。模型拿到的像素要和画布里看到的一致，
+      // 局部重绘的蒙版也是按显示方向画的，所以上传前先把像素转正。
+      const oriented = await imageOrientation(file.diskPath || file.bytes, file.mime).catch(() => 1) > 1
+        ? (await this.ensureTools(), await applyImageOrientation(file.diskPath || file.bytes, file.mime, { signal }))
+        : null
+      signal.throwIfAborted()
+      const mime = oriented?.mime || file.mime
+      const content = oriented ? new Blob([new Uint8Array(oriented.bytes)], { type: mime }) : file.diskPath ? await openAsBlob(file.diskPath, { type: mime }) : new Blob([file.bytes], { type: mime })
+      let digest = oriented ? '' : file.blob
       if (!digest) {
         const hash = createHash('sha256')
         for await (const chunk of Readable.fromWeb(content.stream(), { signal })) hash.update(chunk)
@@ -124,11 +133,11 @@ export class LocalTasks {
       }
       signal.throwIfAborted()
       if (this.cloud.account !== account || this.cloud.authRevision !== authRevision) throw new Error('账号已切换')
-      const name = digest + '.' + extension(file.mime)
-      const contentKey = JSON.stringify(['content', account, authRevision, name, file.mime])
+      const name = digest + '.' + extension(mime)
+      const contentKey = JSON.stringify(['content', account, authRevision, name, mime])
       if (!this.staging.has(contentKey)) this.staging.set(contentKey, (async () => {
         const url = `/api/imagine/desktop/references/${name}`
-        const options = { headers: { 'content-type': file.mime }, signal }
+        const options = { headers: { 'content-type': mime }, signal }
         let value
         try { value = await this.cloud.json(url, { ...options, method: 'POST' }) }
         catch (error) {

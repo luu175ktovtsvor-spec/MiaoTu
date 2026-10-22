@@ -929,7 +929,8 @@ async function syncRemoteCanvas(force = false) {
   saving = pending.catch(() => {});
   try { await pending; } finally { syncingRemote = false; }
 }
-const resumeCanvasSync = () => { if (!window.miaoDesktop && !document.hidden) void syncRemoteCanvas(); };
+// 桌面端不轮询；只在回到窗口或切到这张画布时读一次磁盘，接住主进程写入的任务结果等外部改动。
+const resumeCanvasSync = () => { if (!document.hidden) void syncRemoteCanvas(true); };
 onMounted(() => {
   if (!window.miaoDesktop) syncTimer = window.setInterval(() => { void syncRemoteCanvas(); }, 5000);
   window.addEventListener("focus", resumeCanvasSync);
@@ -941,7 +942,7 @@ onScopeDispose(() => {
   window.removeEventListener("focus", resumeCanvasSync);
   document.removeEventListener("visibilitychange", resumeCanvasSync);
 });
-watch(() => props.active, active => { if (active && !window.miaoDesktop) void syncRemoteCanvas(); });
+watch(() => props.active, active => { if (active) void syncRemoteCanvas(true); });
 watch(canvasId, async id => {
   if (!id) return;
   try {

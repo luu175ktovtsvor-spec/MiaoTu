@@ -87,7 +87,8 @@ export async function processVideo(ffmpeg: BrowserFfmpegFactory, source: string,
     // 截取按所选起止精确到帧：桌面端本机重新编码，画质参数接近原片；不再向外对齐关键帧。
     command.output(videoOutput!.path).videoCodec("libx264").format("mp4").duration(actualEnd - actualStart)
       .outputOptions("-map", `0:${video.index}`, "-preset", "fast", "-crf", "16", "-pix_fmt", "yuv420p", "-movflags", "+faststart");
-    if (audio) command.audioCodec("aac").outputOptions("-map", `0:${audio.index}`, "-b:a", "256k");
+    // 和原来一样保留全部音轨（多语言、解说轨等），不只取第一条。
+    if (audio) command.audioCodec("aac").outputOptions("-map", "0:a?", "-b:a", "256k");
     else command.noAudio();
   } else if (needsVideo) {
     // 分离直接复制视频，不修改尺寸、帧率、色彩或编码质量。
