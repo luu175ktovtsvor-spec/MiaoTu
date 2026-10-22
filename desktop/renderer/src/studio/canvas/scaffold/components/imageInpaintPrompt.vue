@@ -11,7 +11,7 @@
         :disabled="disabled || generating"
         :placeholder="translate('选择模型')"
         :aria-label="translate('局部重绘模型')"
-        :noDataText="translate('暂无可用于局部重绘的图片模型')"
+        :noDataText="modelsNeedSignIn ? translate('登录后可选择模型') : translate('暂无可用于局部重绘的图片模型')"
         placement="top-start"
         @visible-change="visible => visible && loadModels().catch(error => showNodeError(error, translate('模型读取失败')))">
         <template #prefix><icon-sparkles :size="17" /></template>
@@ -58,7 +58,7 @@ import { IconArrowUp, IconChevronUp, IconPlayerStop, IconSparkles } from "@table
 import { translate } from "@miaoimg/i18n/vue";
 import { nodeTools, z } from "../nodeTools";
 import { useNodeAi, type NodeInpaintInput, type NodeMediaModel } from "../nodeAi";
-import { showNodeError } from "../showNodeError";
+import { isSignInRequired, showNodeError } from "../showNodeError";
 import promptInput from "./promptInput.vue";
 
 const props = defineProps<{
@@ -80,6 +80,7 @@ const size = ref("");
 const ratio = ref("");
 const models = ref<NodeMediaModel[]>([]);
 const modelsLoading = ref(false);
+const modelsNeedSignIn = ref(false);
 const generating = computed(() => props.generating);
 const selectedModel = computed(() => models.value.find(item => JSON.stringify([item.providerId, item.modelId]) === model.value));
 const sizeOptions = computed(() => selectedModel.value?.imageSizes || []);
@@ -115,6 +116,9 @@ function loadModels() {
       const first = models.value[0];
       model.value = first ? JSON.stringify([first.providerId, first.modelId]) : "";
     }
+  }).then(() => { modelsNeedSignIn.value = false; }, (error) => {
+    if (!isSignInRequired(error)) throw error;
+    modelsNeedSignIn.value = true;
   }).finally(() => {
     modelsLoading.value = false;
     modelsRequest = undefined;

@@ -49,3 +49,9 @@ export function showNodeError(error: unknown, title: string) {
     show(explanation);
   }).catch(() => {});
 }
+
+/** 未登录或登录失效时读不到模型列表：不弹错误，由选择框提示登录。 */
+export function isSignInRequired(error: unknown) {
+  const typed = error as { status?: number; response?: { status?: number } } | undefined;
+  return Number(typed?.response?.status || typed?.status) === 401;
+}

@@ -101,7 +101,7 @@
             :disabled="generating || deleting"
             :placeholder="translate('选择模型')"
             :aria-label="translate('生成模型')"
-            :noDataText="translate('请先在设置中添加图片模型')"
+            :noDataText="modelsNeedSignIn ? translate('登录后可选择模型') : translate('请先在设置中添加图片模型')"
             placement="top-start"
             @visible-change="(visible) => visible && loadModels().catch((error) => showNodeError(error, translate('模型读取失败')))">
             <template #prefix><icon-sparkles :size="17" /></template>
@@ -177,7 +177,7 @@ import { useImagePreviewTools } from '../scaffold/useImagePreviewTools';
 import { computed, inject, nextTick, onMounted, onScopeDispose, ref, watch, watchEffect } from "vue";
 import { ElButton, ElCard, ElSelect, ElOption, ElOptionGroup, ElLoading, ElImageViewer, ElMessage } from "element-plus";
 import { IconCoins, IconPhotoAi, IconSparkles, IconArrowUp, IconPlayerStop, IconTransfer, IconLayoutGrid, IconBrush, IconPencil, IconPlus, IconWriting, IconPhotoPlus } from "@tabler/icons-vue";
-import { nodeSkeleton, nodeTools, showNodeError, useGenerationProgress, useNode, useNodeGeneration, useNodeReferences, useNodeUpload, z, type NodeMediaModel, type NodeHandle } from "@miaoimg/nodes-scaffold/runtime";
+import { nodeSkeleton, nodeTools, showNodeError, isSignInRequired, useGenerationProgress, useNode, useNodeGeneration, useNodeReferences, useNodeUpload, z, type NodeMediaModel, type NodeHandle } from "@miaoimg/nodes-scaffold/runtime";
 import { assertPromptReferencesConnected, isPromptModel } from "../scaffold/promptModel";
 import promptInput from "@miaoimg/nodes-scaffold/promptInput";
 import referenceItem from "@miaoimg/nodes-scaffold/referenceItem";
@@ -228,6 +228,7 @@ data.value.optimizePrompt ??= "";
 const { refList, referenceMentions, referenceHistory, preparePromptReferences, setReferencePreview, removeReference } = useNodeReferences();
 const models = ref<NodeMediaModel[]>([]);
 const modelsLoading = ref(false);
+const modelsNeedSignIn = ref(false);
 const uploading = ref(false);
 const fileInput = ref<HTMLInputElement>();
 const historyTarget = ref<HTMLElement>();
@@ -500,6 +501,9 @@ function loadModels() {
       const first = models.value[0];
       data.value.model = first ? JSON.stringify([first.providerId, first.modelId]) : "";
     }
+  }).then(() => { modelsNeedSignIn.value = false; }, (error) => {
+    if (!isSignInRequired(error)) throw error;
+    modelsNeedSignIn.value = true;
   }).finally(() => {
     modelsLoading.value = false;
     modelsRequest = undefined;

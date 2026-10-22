@@ -4,7 +4,7 @@ export { useNodeReferences } from "./useNodeReferences";
 export { useNodeGeneration } from "./useNodeGeneration";
 export { useNodeUpload } from "./useNodeUpload";
 export { useGenerationProgress, type ProgressPhase } from "./generationProgress";
-export { showNodeError } from "./showNodeError";
+export { showNodeError, isSignInRequired } from "./showNodeError";
 export * from "./connection";
 export * from "./values";
 export * from "./nodeInputs";

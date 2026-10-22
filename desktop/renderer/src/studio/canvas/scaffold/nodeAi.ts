@@ -216,7 +216,7 @@ async function loadConfig(): Promise<RuntimeConfig> {
 async function requestData<T>(url: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(url, { cache: "no-store", credentials: "same-origin", signal });
   const payload = await response.json().catch(() => ({})) as { code?: number; message?: string; data?: T };
-  if (!response.ok || payload.code !== 200) throw new Error(payload.message || translate("模型列表读取失败（{0}）", { 0: response.status }));
+  if (!response.ok || payload.code !== 200) throw Object.assign(new Error(payload.message || translate("模型列表读取失败（{0}）", { 0: response.status })), { status: response.status });
   return payload.data as T;
 }
 
