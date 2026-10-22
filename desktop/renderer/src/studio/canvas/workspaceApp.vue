@@ -109,6 +109,11 @@ let agentButtonInteraction: {
 } | null = null;
 let suppressAgentButtonClick = false;
 const settingsVisible = ref(false);
+// Canvases stay mounted in the background; only measure the canvas on screen.
+function visibleCanvasElement(host: HTMLElement | null | undefined, selector: string) {
+  return [...(host?.querySelectorAll<HTMLElement>(selector) || [])].find(item => item.getClientRects().length && item.offsetParent
+    && !item.closest("[inert], [aria-hidden='true'], .backgroundPanel") && getComputedStyle(item).visibility === "visible");
+}
 // Until the user drags it, the orb docks to the right of the bottom tool group.
 const agentDockPosition = ref<{ left: number; top: number } | null>(null);
 const agentButtonStyle = computed(() => {
@@ -120,16 +125,16 @@ const panelSwitcherPosition = ref<{ left: number; top: number } | null>(null);
 const panelSwitcherStyle = computed(() => panelSwitcherPosition.value
   ? { left: `${panelSwitcherPosition.value.left}px`, top: `${panelSwitcherPosition.value.top}px`, transform: "none" }
   : undefined);
-let observedCanvasMenu: HTMLElement | undefined;
+// Watch every canvas menu: switching canvases hides one (size → 0) and shows
+// another, and either change re-places the switcher and the docked orb.
+const observedCanvasMenus = new WeakSet<HTMLElement>();
 const canvasMenuObserver = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(() => scheduleAgentButtonClamp());
 function updatePanelSwitcher() {
   const host = agentButtonAnchor.value?.offsetParent as HTMLElement | null;
-  const element = [...(host?.querySelectorAll<HTMLElement>(".canvasMenu") || [])].find(item => item.getClientRects().length && item.offsetParent);
-  if (element !== observedCanvasMenu) {
-    if (observedCanvasMenu) canvasMenuObserver?.unobserve(observedCanvasMenu);
-    if (element) canvasMenuObserver?.observe(element);
-    observedCanvasMenu = element;
+  for (const item of host?.querySelectorAll<HTMLElement>(".canvasMenu, .canvasControlsCard") || []) {
+    if (!observedCanvasMenus.has(item)) { observedCanvasMenus.add(item); canvasMenuObserver?.observe(item); }
   }
+  const element = visibleCanvasElement(host, ".canvasMenu");
   const menu = element?.getBoundingClientRect();
   if (!host || !menu?.width || window.innerWidth <= 700) { panelSwitcherPosition.value = null; return; }
   const hostRect = host.getBoundingClientRect();
@@ -138,7 +143,7 @@ function updatePanelSwitcher() {
 function updateAgentDock() {
   updatePanelSwitcher();
   const host = agentButtonAnchor.value?.offsetParent as HTMLElement | null;
-  const controls = host?.querySelector<HTMLElement>(".canvasControlsCard")?.getBoundingClientRect();
+  const controls = visibleCanvasElement(host, ".canvasControlsCard")?.getBoundingClientRect();
   if (!host || !controls?.width) { agentDockPosition.value = null; return; }
   const hostRect = host.getBoundingClientRect(), size = 48, gap = 10;
   const left = controls.right - hostRect.left + gap;
@@ -155,7 +160,7 @@ function clampAgentButtonPosition(left: number, top: number) {
   let nextLeft = Math.max(gap, Math.min(left, width - size - gap));
   let nextTop = Math.max(gap, Math.min(top, height - size - gap));
   const hostRect = host?.getBoundingClientRect();
-  const controls = host?.querySelector<HTMLElement>(".canvasControlsCard")?.getBoundingClientRect();
+  const controls = visibleCanvasElement(host, ".canvasControlsCard")?.getBoundingClientRect();
   if (hostRect && controls) {
     const controlTop = controls.top - hostRect.top;
     const controlLeft = controls.left - hostRect.left;
@@ -248,7 +253,8 @@ onMounted(() => {
   // The canvas toolbar mounts with the canvas; dock again once it has a size.
   for (const delay of [1500, 3000]) window.setTimeout(scheduleAgentButtonClamp, delay);
 });
-onBeforeUnmount(() => { window.removeEventListener("resize", scheduleAgentButtonClamp); canvasMenuObserver?.disconnect(); });
+onMounted(() => window.addEventListener("miao-canvas-layout", scheduleAgentButtonClamp));
+onBeforeUnmount(() => { window.removeEventListener("resize", scheduleAgentButtonClamp); window.removeEventListener("miao-canvas-layout", scheduleAgentButtonClamp); canvasMenuObserver?.disconnect(); });
 const syncSettingsVisible = (event: Event) => { settingsVisible.value = Boolean((event as CustomEvent<{ open?: boolean }>).detail?.open) };
 onMounted(() => window.addEventListener("miao-settings-visible", syncSettingsVisible));
 onBeforeUnmount(() => window.removeEventListener("miao-settings-visible", syncSettingsVisible));

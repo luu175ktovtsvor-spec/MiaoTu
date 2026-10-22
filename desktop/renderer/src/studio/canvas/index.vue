@@ -731,6 +731,11 @@ function addReferenceFiles(event: Event) {
   input.click();
 }
 onMounted(() => window.addEventListener("miao-canvas-add-reference", addReferenceFiles));
+// Floating chrome outside the canvas (panel switcher, docked agent orb) lines
+// up with this canvas's menu and toolbar; tell it when this canvas comes on screen.
+watch([canvasId, () => props.active, () => props.settingsVisible], () => {
+  if (props.active) void nextTick(() => window.requestAnimationFrame(() => window.dispatchEvent(new Event("miao-canvas-layout"))));
+});
 onBeforeUnmount(() => window.removeEventListener("miao-canvas-add-reference", addReferenceFiles));
 
 function openNodeMenu(event: MouseEvent) {
