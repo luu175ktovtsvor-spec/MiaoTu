@@ -24,11 +24,11 @@
         :observeNode="canvasPanelRef?.observeDocumentNode" />
     </keep-alive>
     <workspaceMenu v-if="!isDesktop" class="workspaceMenu" :disabled="leavingProject" @exit="exitProject" @switchProject="switchProject" @projectRemoved="projectRemoved" />
-    <el-segmented :modelValue="activePanel" class="panelSwitcher" :options="panelOptions" size="small" :aria-label="translate('切换面板')" @change="switchPanel">
+    <el-segmented :modelValue="activePanel" class="panelSwitcher" :class="{ docked: !!panelSwitcherPosition }" :style="panelSwitcherStyle" :options="panelOptions" size="small" :aria-label="translate('切换面板')" @change="switchPanel">
       <template #default="{ item }">
-        <span class="panelOption">
-          <component :is="item.icon" :size="14" aria-hidden="true" />
-          {{ item.label }}
+        <span class="panelOption" :title="item.label">
+          <component :is="item.icon" :size="16" aria-hidden="true" />
+          <span class="panelOptionLabel">{{ item.label }}</span>
         </span>
       </template>
     </el-segmented>
@@ -109,12 +109,43 @@ let agentButtonInteraction: {
 } | null = null;
 let suppressAgentButtonClick = false;
 const settingsVisible = ref(false);
-const agentButtonStyle = computed(() => agentButtonPosition.value ? {
-  left: `${agentButtonPosition.value.left}px`,
-  top: `${agentButtonPosition.value.top}px`,
-  right: "auto",
-  bottom: "auto",
-} : undefined);
+// Until the user drags it, the orb docks to the right of the bottom tool group.
+const agentDockPosition = ref<{ left: number; top: number } | null>(null);
+const agentButtonStyle = computed(() => {
+  const position = agentButtonPosition.value ?? agentDockPosition.value;
+  return position ? { left: `${position.left}px`, top: `${position.top}px`, right: "auto", bottom: "auto" } : undefined;
+});
+// The canvas/document switcher sits right after the top-left canvas menu.
+const panelSwitcherPosition = ref<{ left: number; top: number } | null>(null);
+const panelSwitcherStyle = computed(() => panelSwitcherPosition.value
+  ? { left: `${panelSwitcherPosition.value.left}px`, top: `${panelSwitcherPosition.value.top}px`, transform: "none" }
+  : undefined);
+let observedCanvasMenu: HTMLElement | undefined;
+const canvasMenuObserver = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(() => scheduleAgentButtonClamp());
+function updatePanelSwitcher() {
+  const host = agentButtonAnchor.value?.offsetParent as HTMLElement | null;
+  const element = [...(host?.querySelectorAll<HTMLElement>(".canvasMenu") || [])].find(item => item.getClientRects().length && item.offsetParent);
+  if (element !== observedCanvasMenu) {
+    if (observedCanvasMenu) canvasMenuObserver?.unobserve(observedCanvasMenu);
+    if (element) canvasMenuObserver?.observe(element);
+    observedCanvasMenu = element;
+  }
+  const menu = element?.getBoundingClientRect();
+  if (!host || !menu?.width || window.innerWidth <= 700) { panelSwitcherPosition.value = null; return; }
+  const hostRect = host.getBoundingClientRect();
+  panelSwitcherPosition.value = { left: menu.right - hostRect.left + 8, top: menu.top - hostRect.top + (menu.height - 36) / 2 };
+}
+function updateAgentDock() {
+  updatePanelSwitcher();
+  const host = agentButtonAnchor.value?.offsetParent as HTMLElement | null;
+  const controls = host?.querySelector<HTMLElement>(".canvasControlsCard")?.getBoundingClientRect();
+  if (!host || !controls?.width) { agentDockPosition.value = null; return; }
+  const hostRect = host.getBoundingClientRect(), size = 48, gap = 10;
+  const left = controls.right - hostRect.left + gap;
+  agentDockPosition.value = left + size + 8 <= host.clientWidth
+    ? { left, top: controls.top - hostRect.top + (controls.height - size) / 2 }
+    : null;
+}
 const agentButtonStorageKey = computed(() => `miaoimg.agent-button.${workspaceStore.project?.directory || "default"}`);
 function clampAgentButtonPosition(left: number, top: number) {
   const host = agentButtonAnchor.value?.offsetParent as HTMLElement | null;
@@ -204,6 +235,7 @@ function toggleAgent() {
 }
 function resizeAgentButton() {
   if (agentButtonPosition.value) agentButtonPosition.value = clampAgentButtonPosition(agentButtonPosition.value.left, agentButtonPosition.value.top);
+  updateAgentDock();
 }
 function scheduleAgentButtonClamp() {
   window.requestAnimationFrame(() => resizeAgentButton());
@@ -213,8 +245,10 @@ onMounted(() => {
   restoreAgentButtonPosition();
   window.addEventListener("resize", scheduleAgentButtonClamp);
   void nextTick(() => window.setTimeout(scheduleAgentButtonClamp, 600));
+  // The canvas toolbar mounts with the canvas; dock again once it has a size.
+  for (const delay of [1500, 3000]) window.setTimeout(scheduleAgentButtonClamp, delay);
 });
-onBeforeUnmount(() => window.removeEventListener("resize", scheduleAgentButtonClamp));
+onBeforeUnmount(() => { window.removeEventListener("resize", scheduleAgentButtonClamp); canvasMenuObserver?.disconnect(); });
 const syncSettingsVisible = (event: Event) => { settingsVisible.value = Boolean((event as CustomEvent<{ open?: boolean }>).detail?.open) };
 onMounted(() => window.addEventListener("miao-settings-visible", syncSettingsVisible));
 onBeforeUnmount(() => window.removeEventListener("miao-settings-visible", syncSettingsVisible));
@@ -548,6 +582,14 @@ function saveDocumentNode(directory: string, canvasPath: string, nodeId: string,
     :deep(.canvasMenu) {
       display: none;
     }
+  }
+
+  .panelSwitcher.docked {
+    --el-border-radius-base: 10px;
+    min-height: 36px;
+    padding: 3px;
+    :deep(.el-segmented__item) { min-width: 32px; padding: 0 6px; }
+    .panelOptionLabel { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   }
 
   .panelSwitcher {

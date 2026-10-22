@@ -116,3 +116,15 @@
 /* 矮窗口（含最小 900×600）：收紧间距与控件高度，面板仍完整可见，不裁切。 */
 @media(max-height:720px){.desktop-account-mask{padding:16px}.desktop-account-panel{--da-section:16px;--da-title-gap:5px;--da-content-gap:20px;--da-form-gap:12px;--da-field-gap:7px;padding:22px 24px;max-height:calc(100dvh - 32px)}.desktop-account-panel h2{font-size:18px}.desktop-account-input{min-height:40px}.desktop-account-submit{min-height:40px}.desktop-account-signout{min-height:38px}.desktop-account-loading{min-height:110px}.desktop-account-balance strong{font-size:26px}}
 @media(prefers-reduced-motion:reduce){.desktop-account-spinner{animation:none}}
+
+/* 画布全屏：顶栏变成右上角悬浮胶囊（积分、账号），画布从窗口顶部开始铺满。 */
+.miao-desktop .studio-app>.studio-app__body{position:relative}
+/* 顶部 52px 仍是窗口拖动区：横跨整窗、对按钮和画布菜单打洞；胶囊与 macOS 红黄绿按钮同一水平线。 */
+.miao-desktop .studio-shell.studio-app .studio-top.studio-top--canvas{position:absolute;top:0;right:0;left:0;z-index:20;height:52px;min-height:0;justify-content:flex-end;align-items:center;gap:6px;padding:0 12px 0 0;border:0;background:transparent;box-shadow:none;pointer-events:none;-webkit-app-region:drag}
+.miao-desktop .studio-shell.studio-app .studio-top.studio-top--canvas>*{pointer-events:auto;-webkit-app-region:no-drag}
+.miao-desktop-win32 .studio-shell.studio-app .studio-top.studio-top--canvas{padding-right:152px}
+.miao-desktop-darwin body[data-miaoimg-canvas-ui] .workspacePage .vue-flow__panel.canvasMenuPanel{margin-left:84px}
+.miao-desktop body[data-miaoimg-canvas-ui] .workspacePage :is(.canvasMenuPanel,.canvasMenu,.panelSwitcher,.floatingAgent,.agentButtonAnchor){-webkit-app-region:no-drag}
+.miao-desktop .studio-shell.studio-app .studio-top.studio-top--canvas :is(.studio-top__brand,.studio-top__gap){display:none}
+.miao-desktop .studio-shell.studio-app .studio-top.studio-top--canvas button{height:32px;padding:0 12px;border:.5px solid var(--canvas-line,rgb(128 128 128 / .24));border-radius:10px;background:var(--canvas-surface,var(--color-surface));color:var(--canvas-text,var(--color-ink));font-size:13px}
+.miao-desktop .studio-shell.studio-app .studio-top.studio-top--canvas button:hover{border-color:var(--canvas-hover-line,rgb(128 128 128 / .4))}

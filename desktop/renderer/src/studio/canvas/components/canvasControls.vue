@@ -2,26 +2,27 @@
   <mini-map
     v-if="showMap"
     position="bottom-left"
-    :style="{ bottom: '22px' }"
+    :style="{ bottom: '64px' }"
     :pannable="true"
     :zoomable="true"
     node-color="rgba(244, 243, 238, .5)"
     mask-color="rgba(11, 12, 14, .72)"
     mask-stroke-color="var(--el-color-primary)"
     :mask-stroke-width="2" />
-  <!-- 工具栏居中：左下角留给小地图，工具条放正下方更好找，也不和左侧的节点搜索抢位置。 -->
-  <panel position="bottom-center">
-    <elCard class="canvasControlsCard" shadow="never" :body-style="{ padding: '8px' }">
+  <!-- 左下是视图组（素材、整理、地图、连线、吸附、缩放），正下方是创作工具组；Agent 圆球贴在工具组右侧。 -->
+  <panel position="bottom-left" class="canvasViewPanel">
+    <elCard class="canvasViewCard" shadow="never" :body-style="{ padding: '4px' }">
       <div class="canvasControls">
         <el-tooltip :showArrow="false" :content="assetsVisible ? translate('关闭素材库') : translate('打开素材库')" placement="top" :hideAfter="0" :enterable="false" :triggerKeys="[]">
           <el-button
-            class="toolButton"
+            class="toolButton labelButton"
             text
             :type="assetsVisible ? 'primary' : 'default'"
             :aria-pressed="assetsVisible"
             :aria-label="translate('素材库')"
             @click="assetsVisible = !assetsVisible">
-            <icon-folders :size="17" />
+            <icon-folders :size="16" />
+            <span class="toolLabel">{{ translate('素材库') }}</span>
           </el-button>
         </el-tooltip>
         <!-- trigger 用 contextmenu 是为了让整理按钮只由 arrangeNodes 控制显隐，同时仍保留点击外部自动关闭 -->
@@ -50,17 +51,6 @@
             <icon-map :size="17" />
           </el-button>
         </el-tooltip>
-        <el-tooltip :showArrow="false" :content="snapEnabled ? translate('关闭网格吸附') : translate('开启网格吸附')" placement="top" :hideAfter="0" :enterable="false" :triggerKeys="[]">
-          <el-button
-            class="toolButton"
-            text
-            :type="snapEnabled ? 'primary' : 'default'"
-            :aria-pressed="snapEnabled"
-            :aria-label="translate('网格吸附')"
-            @click="snapEnabled = !snapEnabled">
-            <icon-magnet :size="17" />
-          </el-button>
-        </el-tooltip>
         <el-tooltip :showArrow="false" :content="showEdges ? translate('隐藏连线') : translate('显示连线')" placement="top" :hideAfter="0" :enterable="false" :triggerKeys="[]">
           <el-button
             class="toolButton"
@@ -72,9 +62,15 @@
             <icon-arrow-guide :size="17" />
           </el-button>
         </el-tooltip>
-        <el-tooltip :showArrow="false" :content="translate('适应视图')" placement="top" :hideAfter="0" :enterable="false" :triggerKeys="[]">
-          <el-button class="toolButton" text :aria-label="translate('适应视图')" @click="fitView({ padding: 0.25, maxZoom: 1 })">
-            <icon-focus-centered :size="17" />
+        <el-tooltip :showArrow="false" :content="snapEnabled ? translate('关闭网格吸附') : translate('开启网格吸附')" placement="top" :hideAfter="0" :enterable="false" :triggerKeys="[]">
+          <el-button
+            class="toolButton"
+            text
+            :type="snapEnabled ? 'primary' : 'default'"
+            :aria-pressed="snapEnabled"
+            :aria-label="translate('网格吸附')"
+            @click="snapEnabled = !snapEnabled">
+            <icon-magnet :size="17" />
           </el-button>
         </el-tooltip>
         <el-tooltip :showArrow="false"
@@ -127,6 +123,44 @@
             </el-popover>
           </span>
         </el-tooltip>
+      </div>
+    </elCard>
+  </panel>
+  <panel position="bottom-center">
+    <elCard class="canvasControlsCard" shadow="never" :body-style="{ padding: '6px' }">
+      <div class="canvasControls">
+        <el-tooltip :showArrow="false" :content="translate('添加节点')" placement="top" :hideAfter="0" :enterable="false" :triggerKeys="[]">
+          <el-button class="toolButton addNodeButton" :aria-label="translate('添加节点')" @click="emit('addNode', $event)">
+            <icon-plus :size="18" />
+          </el-button>
+        </el-tooltip>
+        <el-tooltip :showArrow="false" :content="translate('选择')" placement="top" :hideAfter="0" :enterable="false" :triggerKeys="[]">
+          <el-button class="toolButton" text :type="handMode ? 'default' : 'primary'" :aria-pressed="!handMode" :aria-label="translate('选择')" @click="emit('tool', 'move')">
+            <icon-pointer :size="17" />
+          </el-button>
+        </el-tooltip>
+        <el-tooltip :showArrow="false" :content="translate('抓手')" placement="top" :hideAfter="0" :enterable="false" :triggerKeys="[]">
+          <el-button class="toolButton" text :type="handMode ? 'primary' : 'default'" :aria-pressed="handMode" :aria-label="translate('抓手')" @click="emit('tool', 'hand')">
+            <icon-hand-stop :size="17" />
+          </el-button>
+        </el-tooltip>
+        <span class="toolDivider" aria-hidden="true" />
+        <el-tooltip :showArrow="false" :content="translate('撤销')" placement="top" :hideAfter="0" :enterable="false" :triggerKeys="[]">
+          <el-button class="toolButton" text :disabled="!canUndo" :aria-label="translate('撤销')" @click="emit('undo')">
+            <icon-arrow-back-up :size="17" />
+          </el-button>
+        </el-tooltip>
+        <el-tooltip :showArrow="false" :content="translate('重做')" placement="top" :hideAfter="0" :enterable="false" :triggerKeys="[]">
+          <el-button class="toolButton" text :disabled="!canRedo" :aria-label="translate('重做')" @click="emit('redo')">
+            <icon-arrow-forward-up :size="17" />
+          </el-button>
+        </el-tooltip>
+        <el-tooltip :showArrow="false" :content="translate('适应视图')" placement="top" :hideAfter="0" :enterable="false" :triggerKeys="[]">
+          <el-button class="toolButton" text :aria-label="translate('适应视图')" @click="fitView({ padding: 0.25, maxZoom: 1 })">
+            <icon-focus-centered :size="17" />
+          </el-button>
+        </el-tooltip>
+        <span class="toolDivider" aria-hidden="true" />
         <el-tooltip v-if="settingsAvailable" :showArrow="false" :content="translate('设置')" placement="top" :hideAfter="0" :enterable="false" :triggerKeys="[]">
           <el-button class="toolButton" text :aria-label="translate('设置')" @click="openDesktopSettings">
             <icon-settings :size="17" />
@@ -141,7 +175,7 @@
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from "vue";
 import { Panel, useVueFlow, type GraphNode, type XYPosition } from "@vue-flow/core";
 import { MiniMap } from "@vue-flow/minimap";
-import { IconMap, IconMagnet, IconFocusCentered, IconSettings } from "@tabler/icons-vue";
+import { IconMap, IconMagnet, IconFocusCentered, IconSettings, IconPlus, IconPointer, IconHandStop, IconArrowBackUp, IconArrowForwardUp } from "@tabler/icons-vue";
 import { ElMessage } from "element-plus";
 import { arrangeCanvas } from "../arrangeCanvas";
 import { getShortcutBindings, shortcutLabel } from "@/lib/canvasShortcuts";
@@ -152,7 +186,11 @@ const props = defineProps<{
   canvasId: string;
   directory: string | undefined;
   batchHistory: (action: () => Promise<void>) => Promise<void>;
+  handMode?: boolean;
+  canUndo?: boolean;
+  canRedo?: boolean;
 }>();
+const emit = defineEmits<{ addNode: [event: MouseEvent]; tool: [tool: "move" | "hand"]; undo: []; redo: [] }>();
 const snapEnabled = defineModel<boolean>("snapEnabled", { required: true });
 const showEdges = defineModel<boolean>("showEdges", { required: true });
 const assetsVisible = defineModel<boolean>("assetsVisible", { default: false });
@@ -278,6 +316,29 @@ async function undoArrange() {
     flex-shrink: 0;
     margin-left: 0;
     padding: 0;
+  }
+
+  .labelButton {
+    width: auto;
+    padding: 0 10px 0 8px;
+    :deep(> span) { gap: 6px; }
+  }
+
+  .toolLabel { font-size: 13px; }
+
+  .addNodeButton {
+    border: 0;
+    border-radius: 10px;
+    background: var(--canvas-text, var(--el-text-color-primary));
+    color: var(--canvas-bg, var(--el-bg-color));
+    &:hover, &:focus-visible { background: color-mix(in srgb, var(--canvas-text, var(--el-text-color-primary)) 86%, transparent); color: var(--canvas-bg, var(--el-bg-color)); }
+  }
+
+  .toolDivider {
+    width: 1px;
+    height: 18px;
+    margin: 0 4px;
+    background: var(--canvas-line, var(--el-border-color));
   }
 
 }

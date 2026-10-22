@@ -260,8 +260,6 @@ body[data-miaoimg-canvas-ui] .canvasControls { background: transparent; border: 
 body[data-miaoimg-canvas-ui] .canvasControls .toolButton { border-radius: 8px; }
 body[data-miaoimg-canvas-ui] .canvasMenu { border-radius: 12px !important; box-shadow: none !important; }
 .miao-desktop body[data-miaoimg-canvas-ui] .canvasMenu { margin-left:0; max-width:calc(50vw - 110px); }
-.miao-desktop body[data-miaoimg-canvas-ui] .canvasMenu .workspaceNameInput,
-.miao-desktop body[data-miaoimg-canvas-ui] .canvasMenu .menuContent>.el-divider { display:none; }
 @media (max-width:560px) {
   .miao-desktop body[data-miaoimg-canvas-ui] .canvasMenu { max-width:calc(100vw - 24px); }
 }
@@ -611,3 +609,8 @@ body[data-miaoimg-canvas-ui] .vue-flow__panel.bottom.center { transition: opacit
 body[data-miaoimg-canvas-ui] .vue-flow__panel.bottom.center[data-yield-to] { opacity: 0; }
 body[data-miaoimg-canvas-ui] .vue-flow__panel.bottom.center[data-yield-to],
 body[data-miaoimg-canvas-ui] .vue-flow__panel.bottom.center[data-yield-to] * { pointer-events: none !important; }
+
+/* 左上项目名按纯文字显示，悬停或编辑时才出现底色。 */
+body[data-miaoimg-canvas-ui] .canvasMenu .workspaceNameInput .el-input__wrapper { background: transparent; box-shadow: none !important; }
+body[data-miaoimg-canvas-ui] .canvasMenu .workspaceNameInput:hover .el-input__wrapper,
+body[data-miaoimg-canvas-ui] .canvasMenu .workspaceNameInput .el-input__wrapper.is-focus { background: var(--canvas-field, var(--el-fill-color-light)); }

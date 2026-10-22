@@ -725,7 +725,8 @@ export default function StudioPage() {
       />}
       <div className="studio-app__body">
       <div className="grain-overlay" aria-hidden="true" />
-      <header className="studio-top">
+      {/* 桌面画布全屏铺开：顶栏缩成右上角的悬浮胶囊，语言在设置里切换。 */}
+      <header className={`studio-top${window.miaoDesktop && surface === 'look' && !settingsOpen ? ' studio-top--canvas' : ''}`}>
         <a className="studio-top__brand" href="/" onClick={event => {
           if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
           event.preventDefault()
@@ -737,7 +738,7 @@ export default function StudioPage() {
         <span className="studio-top__gap" />
         {Number.isFinite(balance) && Boolean(userSession?.user?.email) && <button type="button" aria-current={surface === 'account' ? 'page' : undefined} onClick={openAccountSurface}>{studioPoint(balance, lang)}</button>}
         <button type="button" aria-current={surface === 'account' ? 'page' : undefined} onClick={openAccountSurface}>{window.miaoDesktop && !userSession?.user?.email ? studioText('登录 / 注册', lang) : studioText('账号', lang)}</button>
-        <LanguageControl compact />
+        {!(window.miaoDesktop && surface === 'look' && !settingsOpen) && <LanguageControl compact />}
       </header>
       {surface === 'history' ? (
       <main className="studio-record asset-page">

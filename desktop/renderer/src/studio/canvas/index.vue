@@ -71,6 +71,13 @@
         :canvasId="canvasId"
         :directory="project?.directory"
         :batchHistory="canvasHistory.batch"
+        :handMode="selectedTool === 'hand'"
+        :canUndo="canUndo"
+        :canRedo="canRedo"
+        @addNode="addNodeFromToolbar"
+        @tool="selectedTool = $event"
+        @undo="changeHistory('undo')"
+        @redo="changeHistory('redo')"
         @update:showEdges="edgeDisconnect = undefined" />
       <nodeMenu
         :key="JSON.stringify(['menu', project?.directory, canvasId])"
@@ -707,6 +714,17 @@ function addNodeAtPointer() {
   if (!rect) return;
   const position = pointerPosition ?? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
   void nodeMenuRef.value?.openMenu(new MouseEvent("contextmenu", { clientX: position.x, clientY: position.y }), true);
+}
+
+// The toolbar's add button opens the same node menu as a double click, just
+// above the button so the new node lands near the visible center.
+function addNodeFromToolbar(event: MouseEvent) {
+  const button = (event.currentTarget as HTMLElement | null)?.getBoundingClientRect();
+  const rect = canvasElement.value?.getBoundingClientRect();
+  if (!rect) return;
+  const x = button ? button.left + button.width / 2 : rect.left + rect.width / 2;
+  const y = button ? button.top - 12 : rect.top + rect.height / 2;
+  void nodeMenuRef.value?.openMenu(new MouseEvent("contextmenu", { clientX: x, clientY: y }), true);
 }
 
 async function changeHistory(direction: "undo" | "redo") {
