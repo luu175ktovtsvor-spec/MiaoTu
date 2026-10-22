@@ -260,6 +260,9 @@ body[data-miaoimg-canvas-ui] .canvasControls { background: transparent; border: 
 body[data-miaoimg-canvas-ui] .canvasControls .toolButton { border-radius: 8px; }
 body[data-miaoimg-canvas-ui] .canvasMenu { border-radius: 12px !important; box-shadow: none !important; }
 .miao-desktop body[data-miaoimg-canvas-ui] .canvasMenu { margin-left:0; max-width:calc(50vw - 110px); }
+/* 桌面版的画布工作区名是统一的「妙图工作区」，不是当前项目名；在这里改名也不会改到项目，所以不显示。 */
+.miao-desktop body[data-miaoimg-canvas-ui] .canvasMenu .workspaceNameInput,
+.miao-desktop body[data-miaoimg-canvas-ui] .canvasMenu .menuContent>.el-divider { display:none; }
 @media (max-width:560px) {
   .miao-desktop body[data-miaoimg-canvas-ui] .canvasMenu { max-width:calc(100vw - 24px); }
 }
@@ -609,11 +612,6 @@ body[data-miaoimg-canvas-ui] .vue-flow__panel.bottom.center { transition: opacit
 body[data-miaoimg-canvas-ui] .vue-flow__panel.bottom.center[data-yield-to] { opacity: 0; }
 body[data-miaoimg-canvas-ui] .vue-flow__panel.bottom.center[data-yield-to],
 body[data-miaoimg-canvas-ui] .vue-flow__panel.bottom.center[data-yield-to] * { pointer-events: none !important; }
-
-/* 左上项目名按纯文字显示，悬停或编辑时才出现底色。 */
-body[data-miaoimg-canvas-ui] .canvasMenu .workspaceNameInput .el-input__wrapper { background: transparent; box-shadow: none !important; }
-body[data-miaoimg-canvas-ui] .canvasMenu .workspaceNameInput:hover .el-input__wrapper,
-body[data-miaoimg-canvas-ui] .canvasMenu .workspaceNameInput .el-input__wrapper.is-focus { background: var(--canvas-field, var(--el-fill-color-light)); }
 
 /* 生成输入面板顶部的快捷标签行（+ 参考），对应参考编辑器的标签行。 */
 body[data-miaoimg-canvas-ui] .promptCard .composerTools { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
