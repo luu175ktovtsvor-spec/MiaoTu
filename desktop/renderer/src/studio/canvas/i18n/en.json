@@ -3454,5 +3454,9 @@
   "此节点不支持重新读取磁盘正文": "This node does not support reloading its text from disk.",
   "节点类型未启用或尚未加载，请先用 getCanvas({include:[\"nodeTypes\"]}) 查询可用类型": "The node type is not enabled or has not been loaded. Please query getCanvas({include:[\"nodeTypes\"]}) first.",
   "描述你想生成的画面内容，输入 @ 引用素材": "Describe what you want to generate. Type @ to reference media.",
-  "按所选起止精确截取，画质接近原片。": "Trims exactly to the selected range at near-original quality."
+  "按所选起止精确截取，画质接近原片。": "Trims exactly to the selected range at near-original quality.",
+  "想让 AI 写什么？输入 @ 引用素材": "What should AI write? Type @ to reference media.",
+  "点击上传，或把图片拖进来": "Click to upload, or drop an image here",
+  "点击上传，或把视频拖进来": "Click to upload, or drop a video here",
+  "点击上传，或把音频拖进来": "Click to upload, or drop audio here"
 }

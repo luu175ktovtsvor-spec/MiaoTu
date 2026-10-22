@@ -27,7 +27,7 @@
             @preview="setReferencePreview"
             @remove="removeReference" />
         </div>
-        <promptInput v-model="promptModel" v-model:text="prompt" :references="referenceMentions" />
+        <promptInput v-model="promptModel" v-model:text="prompt" :references="referenceMentions" placeholder="想让 AI 写什么？输入 @ 引用素材" />
         <div class="promptFooter">
           <el-select v-model="model" class="modelSelect" filterable :loading="modelsLoading" :disabled="generating" :placeholder="translate('选择模型')" :aria-label="translate('生成模型')" :noDataText="translate('暂无可用模型')" placement="top-start" @visible-change="visible => visible && loadModels()">
             <template #prefix><icon-sparkles :size="17" /></template>

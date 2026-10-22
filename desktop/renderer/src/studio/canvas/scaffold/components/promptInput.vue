@@ -36,6 +36,8 @@ import { referenceHtml, normalizePromptModel, getPromptText } from "../promptMod
 
 const props = defineProps<{
   references: (MentionItem & { value: string })[];
+  // Source string for translate(); text nodes describe writing, media nodes describe a picture.
+  placeholder?: string;
   expandable?: boolean;
   expandMode?: "dialog" | "external";
 }>();
@@ -147,7 +149,7 @@ watch(senderElement, (element, _previous, onCleanup) => {
   const initialModel: AnyTagProps[][] = model.value.length ? model.value : text.value.split("\n").map(text => [{ type: "Write", text }]);
   const instance = new xSender(element, {
     autoFocus: false,
-    placeholder: translate("描述你想生成的画面内容，输入 @ 引用素材"),
+    placeholder: translate(props.placeholder ?? "描述你想生成的画面内容，输入 @ 引用素材"),
     chatStyle: { minHeight: "70px", maxHeight: "180px", fontSize: "14px", lineHeight: "1.6" },
     getPopupContainer: () => popup,
     mentionConfig: { dialogTitle: translate("选择参考"), callEvery: false, options: props.references },
@@ -206,7 +208,7 @@ watch(senderElement, (element, _previous, onCleanup) => {
   const stopLocaleWatch = watch(locale, () => {
     if (sender !== instance) return;
     instance.updateConfig({
-      placeholder: translate("描述你想生成的画面内容，输入 @ 引用素材"),
+      placeholder: translate(props.placeholder ?? "描述你想生成的画面内容，输入 @ 引用素材"),
       mentionConfig: { dialogTitle: translate("选择参考"), callEvery: false, options: props.references },
     });
     editor.setAttribute("aria-label", translate("生成提示词"));

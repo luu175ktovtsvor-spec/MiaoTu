@@ -10,10 +10,10 @@
     style="width: 320px"
     @fullscreen="enterFullscreen">
     <template #topActions>
-      <el-button :icon="IconScissors" :disabled="!previewUrl || uploading || uploadingDrag || actions?.processing" text :title="translate('截取音频')" :aria-label="translate('截取音频')" @click.stop="actions?.open('clip')">{{ translate('截取') }}</el-button>
-      <el-button :icon="IconGauge" :disabled="!previewUrl || uploading || uploadingDrag || actions?.processing" text :title="translate('音频变速')" :aria-label="translate('音频变速')" @click.stop="actions?.open('speed')">{{ translate('变速') }}</el-button>
-      <el-dropdown trigger="click" :disabled="!previewUrl || uploading || uploadingDrag || actions?.processing" @command="(format: AudioFormat) => actions?.open('convert', format)">
-        <el-button :icon="IconFileMusic" :disabled="!previewUrl || uploading || uploadingDrag || actions?.processing" text :title="translate('转换音频格式')" :aria-label="translate('转换音频格式')" @click.stop>{{ translate('格式') }}</el-button>
+      <el-button v-if="previewUrl" :icon="IconScissors" :disabled="!previewUrl || uploading || uploadingDrag || actions?.processing" text :title="translate('截取音频')" :aria-label="translate('截取音频')" @click.stop="actions?.open('clip')">{{ translate('截取') }}</el-button>
+      <el-button v-if="previewUrl" :icon="IconGauge" :disabled="!previewUrl || uploading || uploadingDrag || actions?.processing" text :title="translate('音频变速')" :aria-label="translate('音频变速')" @click.stop="actions?.open('speed')">{{ translate('变速') }}</el-button>
+      <el-dropdown v-if="previewUrl" trigger="click" :disabled="!previewUrl || uploading || uploadingDrag || actions?.processing" @command="(format: AudioFormat) => actions?.open('convert', format)">
+        <el-button v-if="previewUrl" :icon="IconFileMusic" :disabled="!previewUrl || uploading || uploadingDrag || actions?.processing" text :title="translate('转换音频格式')" :aria-label="translate('转换音频格式')" @click.stop>{{ translate('格式') }}</el-button>
         <template #dropdown>
           <el-dropdown-menu>
             <el-dropdown-item command="mp3">MP3 · 320k</el-dropdown-item>
@@ -50,6 +50,7 @@
         @dblclick.stop
         @click="fileInput?.click()">
         <icon-upload v-if="!uploading" :size="48" stroke="1.5" />
+        <span v-if="!uploading" class="uploadHint">{{ translate('点击上传，或把音频拖进来') }}</span>
       </el-button>
       <uploadProgress v-if="dragUploadEntry" :entry="dragUploadEntry" @retry="retryDragUpload" @dismiss="dismissDragUpload" />
     </div>

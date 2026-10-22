@@ -9,9 +9,9 @@
     :style="{ width: previewUrl && videoWidth ? `${videoWidth}px` : undefined }"
     @fullscreen="player?.enterFullscreen()">
     <template #topActions>
-      <el-button :icon="IconMusic" text :disabled="!outputFile || uploading || uploadingDrag || exporting || actions?.processing" :title="translate('提取音轨')" :aria-label="translate('提取音轨')" @click.stop="actions?.open('extractAudio')">{{ translate('提取音轨') }}</el-button>
-      <el-button :icon="IconLayersSubtract" text :disabled="!outputFile || uploading || uploadingDrag || exporting || actions?.processing" :title="translate('分离音视频')" :aria-label="translate('分离音视频')" @click.stop="actions?.open('separate')">{{ translate('分离音视频') }}</el-button>
-      <el-button :icon="IconScissors" text :disabled="!outputFile || uploading || uploadingDrag || exporting || actions?.processing" :title="translate('截取片段')" :aria-label="translate('截取片段')" @click.stop="actions?.open('trim')">{{ translate('截取片段') }}</el-button>
+      <el-button v-if="outputFile" :icon="IconMusic" text :disabled="!outputFile || uploading || uploadingDrag || exporting || actions?.processing" :title="translate('提取音轨')" :aria-label="translate('提取音轨')" @click.stop="actions?.open('extractAudio')">{{ translate('提取音轨') }}</el-button>
+      <el-button v-if="outputFile" :icon="IconLayersSubtract" text :disabled="!outputFile || uploading || uploadingDrag || exporting || actions?.processing" :title="translate('分离音视频')" :aria-label="translate('分离音视频')" @click.stop="actions?.open('separate')">{{ translate('分离音视频') }}</el-button>
+      <el-button v-if="outputFile" :icon="IconScissors" text :disabled="!outputFile || uploading || uploadingDrag || exporting || actions?.processing" :title="translate('截取片段')" :aria-label="translate('截取片段')" @click.stop="actions?.open('trim')">{{ translate('截取片段') }}</el-button>
       <el-button
         :icon="IconTransfer"
         :loading="uploading || uploadingDrag"
@@ -43,6 +43,7 @@
         @dblclick.stop
         @click="fileInput?.click()">
         <icon-upload v-if="!uploading" :size="48" stroke="1.5" />
+        <span v-if="!uploading" class="uploadHint">{{ translate('点击上传，或把视频拖进来') }}</span>
       </el-button>
       <uploadProgress v-if="dragUploadEntry" :entry="dragUploadEntry" @retry="retryDragUpload" @dismiss="dismissDragUpload" />
     </div>

@@ -625,3 +625,7 @@ body[data-miaoimg-canvas-ui] .mediaEmpty .emptyHintsTitle { margin-bottom: 2px; 
 body[data-miaoimg-canvas-ui] .mediaEmpty .emptyHint { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--canvas-text); font: inherit; font-size: 13px; cursor: pointer; }
 body[data-miaoimg-canvas-ui] .mediaEmpty .emptyHint:hover:not(:disabled) { background: var(--canvas-hover); }
 body[data-miaoimg-canvas-ui] .mediaEmpty .emptyHint:disabled { opacity: .45; cursor: not-allowed; }
+
+/* 空的图片/视频/音频节点：上传图标下说明可点击或拖入。 */
+body[data-miaoimg-canvas-ui] .nodeSkeleton .uploadButton > span { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+body[data-miaoimg-canvas-ui] .nodeSkeleton .uploadButton .uploadHint { color: var(--canvas-muted); font-size: 12px; font-weight: 400; }

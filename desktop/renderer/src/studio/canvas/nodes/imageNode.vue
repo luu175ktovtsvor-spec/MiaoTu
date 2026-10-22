@@ -12,17 +12,17 @@
     <template v-if="editor?.mode" #top><div ref="paintToolbar" /></template>
     <template #topActions>
       <el-button v-if="generating || pendingInpaint" :icon="generating ? IconPlayerStop : IconPlayerPlay" text :title="generating ? translate('停止生成') : translate('继续取回')" :aria-label="generating ? translate('停止生成') : translate('继续取回')" @click="generating ? inpaintTask.stop() : resumeInpaint()">{{ generating ? translate('停止生成') : translate('继续取回') }}</el-button>
-      <el-button :icon="IconSun" text :disabled="!previewUrl || imageBusy" :title="translate('图片打光')" :aria-label="translate('图片打光')" @click.stop="variationMode = variationMode === 'lighting' ? undefined : 'lighting'; editor?.cancel()" />
-      <el-button :icon="IconCamera" text :disabled="!previewUrl || imageBusy" :title="translate('多角度')" :aria-label="translate('多角度')" @click.stop="variationMode = variationMode === 'angle' ? undefined : 'angle'; editor?.cancel()" />
-      <el-button :icon="IconPanoramaHorizontal" text :disabled="!previewUrl || imageBusy" :title="translate('全景')" :aria-label="translate('全景')" @click.stop="panorama?.open($event)" />
-      <el-button
+      <el-button v-if="previewUrl" :icon="IconSun" text :disabled="!previewUrl || imageBusy" :title="translate('图片打光')" :aria-label="translate('图片打光')" @click.stop="variationMode = variationMode === 'lighting' ? undefined : 'lighting'; editor?.cancel()" />
+      <el-button v-if="previewUrl" :icon="IconCamera" text :disabled="!previewUrl || imageBusy" :title="translate('多角度')" :aria-label="translate('多角度')" @click.stop="variationMode = variationMode === 'angle' ? undefined : 'angle'; editor?.cancel()" />
+      <el-button v-if="previewUrl" :icon="IconPanoramaHorizontal" text :disabled="!previewUrl || imageBusy" :title="translate('全景')" :aria-label="translate('全景')" @click.stop="panorama?.open($event)" />
+      <el-button v-if="previewUrl"
         :icon="IconBrush"
         :disabled="imageBusy || !previewUrl || gridSplit?.splitting"
         text
         :title="translate('局部重绘')"
         :aria-label="translate('局部重绘')"
         @click.stop="editor?.start('inpaint')" />
-      <el-button
+      <el-button v-if="previewUrl"
         :icon="IconLayoutGrid"
         :disabled="imageBusy || !previewUrl"
         :loading="gridSplit?.splitting"
@@ -30,7 +30,7 @@
         :title="translate('宫格切分')"
         :aria-label="translate('宫格切分')"
         @click.stop="gridSplit?.open($event)" />
-      <el-button
+      <el-button v-if="previewUrl"
         :icon="IconPencil"
         :disabled="imageBusy || !previewUrl || gridSplit?.splitting"
         text
@@ -69,6 +69,7 @@
         @dblclick.stop
         @click="fileInput?.click()">
         <icon-upload v-if="!uploading" :size="48" stroke="1.5" />
+        <span v-if="!uploading" class="uploadHint">{{ translate('点击上传，或把图片拖进来') }}</span>
       </el-button>
       <uploadProgress v-if="dragUploadEntry" :entry="dragUploadEntry" @retry="retryDragUpload" @dismiss="dismissDragUpload" />
       <generationProgress :progress="inpaintTask.progress" :label="translate('图片生成进度')" />
