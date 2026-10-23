@@ -30,8 +30,9 @@ export default function VideoPlayer({ source, poster, title }: { source: string;
       }, { once: true })
     }
     if (entry && Hls.isSupported()) {
-      engine = new Hls({ startLevel: 0, abrEwmaDefaultEstimate: 650_000, capLevelToPlayerSize: true,
-        maxBufferLength: 4, maxMaxBufferLength: 12, backBufferLength: 4, lowLatencyMode: false })
+      // Same policy as the website: begin on the sharpest step, fall back only when the link can't keep up.
+      engine = new Hls({ startLevel: -1, testBandwidth: false, abrEwmaDefaultEstimate: 8_000_000, abrEwmaDefaultEstimateMax: 8_000_000,
+        capLevelToPlayerSize: false, maxBufferLength: 4, maxMaxBufferLength: 12, backBufferLength: 4, lowLatencyMode: false })
       video.dataset.playback = 'adaptive'
       const absolute = (text: string, base: URL) => text.split('\n').map(line => line && !line.startsWith('#') ? new URL(line, base).href : line).join('\n')
       const masterAddress = new URL(entry.master, location.origin)

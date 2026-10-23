@@ -15,7 +15,10 @@
     :style="{ width: previewUrl && imageWidth ? `${imageWidth + 2}px` : undefined }">
     <template v-if="editor?.mode" #top><div ref="paintToolbar" /></template>
     <template #topActions>
+      <el-button :icon="IconPanoramaHorizontal" :disabled="imageBusy || !previewUrl" text :title="translate('全景图')" :aria-label="translate('全景图')" @click.stop="panorama?.open($event)" />
       <el-button v-if="selectedModel?.regionEdit" :icon="IconBrush" :disabled="generating || deleting || uploading || !previewUrl || gridSplit?.splitting" text :title="translate('局部重绘')" :aria-label="translate('局部重绘')" @click.stop="editor?.start('inpaint')" />
+      <el-button :icon="IconSun" :disabled="imageBusy || !previewUrl" text :title="translate('图片打光')" :aria-label="translate('图片打光')" @click.stop="openLighting" />
+      <el-button :icon="IconCameraRotate" :disabled="imageBusy || !previewUrl" text :title="translate('多角度')" :aria-label="translate('多角度')" @click.stop="openMultiAngle" />
       <el-button :icon="IconLayoutGrid" :disabled="generating || deleting || uploading || !previewUrl" :loading="gridSplit?.splitting" text :title="translate('宫格切分')" :aria-label="translate('宫格切分')" @click.stop="gridSplit?.open($event)" />
       <span ref="historyTarget" />
       <el-button :icon="IconTransfer" :loading="uploading || uploadingDrag" :disabled="generating || deleting" text :title="translate('替换图片')" :aria-label="translate('替换图片')" @click.stop="fileInput?.click()" />
@@ -50,10 +53,11 @@
       <generationProgress :progress="progress" :label="translate('图片生成进度')" />
     </div>
     <template #bottom>
+      <div v-if="variationMode" ref="variationTarget" />
       <Teleport to="body">
         <div v-if="composerExpanded" class="promptComposerBackdrop" aria-hidden="true" @pointerdown.stop @click="composerExpanded = false" />
       </Teleport>
-      <Teleport to="body" :disabled="!composerExpanded">
+      <Teleport v-if="!variationMode" to="body" :disabled="!composerExpanded">
       <el-card
         class="promptCard"
         :class="{ expandedPromptCard: composerExpanded }"
@@ -161,6 +165,9 @@
       </Teleport>
     </template>
   </nodeSkeleton>
+  <imageLighting v-if="variationMode === 'lighting'" ref="lighting" :src="previewUrl" :source="outputFile" :target="variationTarget" :disabled="generating || deleting || uploading || gridSplit?.splitting" @close="variationMode = undefined" />
+  <imageMultiAngle v-if="variationMode === 'angle'" ref="multiAngle" :src="previewUrl" :source="outputFile" :target="variationTarget" :disabled="generating || deleting || uploading || gridSplit?.splitting" @close="variationMode = undefined" />
+  <imagePanorama ref="panorama" :src="previewUrl" :source="outputFile" :disabled="imageBusy" @open="openPanorama" />
   <mediaHistory :target="historyTarget" mediaType="image" :current="outputFile" :disabled="generating || deleting || uploading" @select="outputs.image = { dataType: 'IMAGE', value: $event }" />
   <imageGridSplit ref="gridSplit" :src="previewUrl" :source="outputFile" :disabled="generating || deleting || uploading" :active="node.selected" />
   <el-image-viewer
@@ -177,7 +184,7 @@ import { nodeLocalModelLabel, nodeModelOptionLabel, nodeModelValueLabel } from '
 import { useImagePreviewTools } from '../scaffold/useImagePreviewTools';
 import { computed, inject, nextTick, onMounted, onScopeDispose, ref, watch, watchEffect } from "vue";
 import { ElButton, ElCard, ElSelect, ElOption, ElOptionGroup, ElLoading, ElImageViewer, ElMessage } from "element-plus";
-import { IconCoins, IconPhotoAi, IconSparkles, IconArrowUp, IconPlayerStop, IconTransfer, IconLayoutGrid, IconBrush, IconPencil, IconUpload, IconWriting, IconPhotoPlus } from "@tabler/icons-vue";
+import { IconCoins, IconPhotoAi, IconSparkles, IconArrowUp, IconPlayerStop, IconTransfer, IconLayoutGrid, IconBrush, IconPencil, IconUpload, IconWriting, IconPhotoPlus, IconSun, IconCameraRotate, IconPanoramaHorizontal } from "@tabler/icons-vue";
 import { nodeSkeleton, nodeTools, showNodeError, isSignInRequired, useGenerationProgress, useNode, useNodeGeneration, useNodeReferences, useNodeUpload, z, type NodeMediaModel, type NodeHandle } from "@miaoimg/nodes-scaffold/runtime";
 import { assertPromptReferencesConnected, isPromptModel } from "../scaffold/promptModel";
 import promptInput from "@miaoimg/nodes-scaffold/promptInput";
@@ -195,6 +202,10 @@ import { localReferenceRejection } from '../../../../../local-media/catalog.ts';
 import { getTargetValues } from "../scaffold/nodeInputs";
 import { translate } from "@miaoimg/i18n/vue";
 import { useMediaTaskDelivery } from "../scaffold/useMediaTaskDelivery";
+import { useImageTools } from "./imageTools/useImageTools";
+import imageLighting from "./imageTools/components/imageLighting.vue";
+import imageMultiAngle from "./imageTools/components/imageMultiAngle.vue";
+import imagePanorama from "./imageTools/components/imagePanorama.vue";
 
 defineOptions({
   inheritAttrs: false,
@@ -235,6 +246,11 @@ const fileInput = ref<HTMLInputElement>();
 const historyTarget = ref<HTMLElement>();
 const gridSplit = ref<InstanceType<typeof imageGridSplit>>();
 const editor = ref<InstanceType<typeof imageEditor>>();
+const variationTarget = ref<HTMLElement>();
+const variationMode = ref<"lighting" | "angle">();
+const lighting = ref<InstanceType<typeof imageLighting>>();
+const multiAngle = ref<InstanceType<typeof imageMultiAngle>>();
+const panorama = ref<InstanceType<typeof imagePanorama>>();
 const paintToolbar = ref<HTMLElement>();
 let disposed = false;
 const deleting = ref(false);
@@ -391,6 +407,10 @@ const previewUrl = files.useFileUrl(
   outputFile,
   (error) => showNodeError(error, translate("图片读取失败"))
 );
+const imageBusy = computed(() => generating.value || deleting.value || uploading.value || uploadingDrag.value
+  || Boolean(editor.value?.busy) || Boolean(lighting.value?.generating) || Boolean(multiAngle.value?.generating)
+  || Boolean(panorama.value?.busy) || Boolean(gridSplit.value?.splitting));
+useImageTools(() => Boolean(outputFile.value) && !imageBusy.value);
 const composerVisible = ref(false);
 const composerExpanded = ref(false);
 watchEffect(() => { composerVisible.value = composerExpanded.value || node.selected || !previewUrl.value; });
@@ -475,13 +495,31 @@ function replaceOutput(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
   input.value = "";
-  if (!file || generating.value || deleting.value || uploading.value || uploadingDrag.value || disposed) return;
+  if (!file || imageBusy.value || disposed) return;
   if (assetFileType(file).kind !== "image") return void showNodeError(translate("请选择图片文件"), translate("图片替换失败"));
   if (!file.size || file.size > ASSET_MAX_BYTES) return void showNodeError(translate("图片为空或超过当前工作区允许的大小"), translate("图片替换失败"));
   // 和「拖文件进画布」、以及基础媒体节点的「替换」走同一条通道：真上传进度的环形、
   // 失败可重试、写回 outputs 都在 useNodeUpload 里，别再退回一个没有百分比的转圈。
   // ACT: 保留历史输出文件，避免破坏撤销记录和复制节点的引用。
   beginUpload(id, file.name, file, assetFileType(file).mimeType);
+}
+
+function openPanorama() {
+  if (imageBusy.value || !previewUrl.value) return;
+  editor.value?.cancel();
+  variationMode.value = undefined;
+}
+
+function openLighting() {
+  if (imageBusy.value || !previewUrl.value) return;
+  editor.value?.cancel();
+  variationMode.value = "lighting";
+}
+
+function openMultiAngle() {
+  if (imageBusy.value || !previewUrl.value) return;
+  editor.value?.cancel();
+  variationMode.value = "angle";
 }
 
 function keepSavedLocalModel(items: NodeMediaModel[]) {
@@ -577,6 +615,8 @@ async function startGeneration(signal?: AbortSignal) {
   if (disposed || deleting.value) throw new Error(translate("节点正在删除"));
   if (generating.value) throw new Error(translate("图片正在生成，请等待完成"));
   if (uploading.value || uploadingDrag.value) throw new Error(translate("图片正在替换，请等待完成"));
+  if (variationMode.value) throw new Error(translate("请先退出打光或多角度，再开始生成"));
+  if (panorama.value?.visible || panorama.value?.busy) throw new Error(translate("请先关闭全景图，再开始生成"));
   const wasPending = pendingTask.value;
   const previousOutput = outputs.value.image;
   const previousValue = JSON.stringify(previousOutput);
@@ -669,10 +709,11 @@ async function startGeneration(signal?: AbortSignal) {
 }
 
 nodeEvent.on("save", (reason) => {
-  if (reason === "reload" && (generating.value || uploading.value || deleting.value || editor.value?.busy)) throw new Error(translate("图片处理中，请完成后再刷新节点"));
+  if (reason === "reload" && (imageBusy.value || variationMode.value)) throw new Error(translate("图片处理中，请完成后再刷新节点"));
 });
 nodeEvent.on("delete", async () => {
-  if (uploading.value || (editor.value?.busy && !generating.value)) throw new Error(translate("图片处理中，请稍后删除节点"));
+  if (uploading.value || uploadingDrag.value || variationMode.value || lighting.value?.generating || multiAngle.value?.generating
+    || panorama.value?.busy || (editor.value?.busy && !generating.value)) throw new Error(translate("图片处理中，请稍后删除节点"));
   deleting.value = true;
   generationController?.abort();
   try {
@@ -777,13 +818,18 @@ nodeTools.register({
 
 nodeTools.register({
   name: "setPrompt",
-  description: "修改此节点的图片生成提示词，支持 {{ref 1}} 等参考标记；只修改提示词，不启动生成",
-  parameters: z.strictObject({ prompt: z.string() }),
-  execute({ prompt: value }) {
+  description: "修改此节点的图片提示词，支持 {{ref 1}} 等参考标记；target=generate 修改普通生图提示词，target=inpaint 修改局部重绘提示词；只修改提示词，不启动生成",
+  parameters: z.strictObject({ prompt: z.string(), target: z.enum(["generate", "inpaint"]).default("generate") }),
+  execute({ prompt: value, target }) {
     if (deleting.value) throw new Error("节点正在删除，请稍后修改");
-    data.value.prompt = value;
-    data.value.promptModel = value.split("\n").map((text) => [{ type: "Write", text }]);
-    return { prompt: value };
+    if (target === "inpaint") {
+      data.value.inpaintPrompt = value;
+      data.value.inpaintPromptModel = value.split("\n").map((text) => [{ type: "Write", text }]);
+    } else {
+      data.value.prompt = value;
+      data.value.promptModel = value.split("\n").map((text) => [{ type: "Write", text }]);
+    }
+    return { prompt: value, target };
   },
 });
 

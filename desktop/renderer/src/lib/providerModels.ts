@@ -1,10 +1,20 @@
-// 自定义文本供应商的客户端缓存：与 MiaoImg 的 customProviders 面板同构。
-// 供应商配置保存在服务端账号工作区，浏览器只拿到脱敏后的列表（hasKey，不含 Key）。
+// 自定义文本供应商的客户端缓存。桌面版把配置保存在本机当前工作区，
+// 页面只拿到脱敏后的列表（hasKey，不含 Key）。
 import { ref } from "vue";
 import { assertWorkspaceScope, captureWorkspaceScope, subscribeWorkspaceScope, workspaceHeaders } from './workspaceRemote';
 
-export type ProviderModelEntry = { id: string; label: string; contextWindow?: number; maxOutputTokens?: number };
-export type UserProvider = { id: string; label: string; apiUrl: string; protocol: string; models: ProviderModelEntry[]; hasKey: boolean };
+export type ProviderModelEntry = {
+  id: string;
+  label: string;
+  contextWindow?: number;
+  maxOutputTokens?: number;
+  reasoning?: boolean;
+  input?: Array<"text" | "image">;
+  maxTokensField?: "max_tokens" | "max_completion_tokens";
+  thinkingLevelMap?: Partial<Record<"off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max", string | null>>;
+  compat?: Record<string, string | number | boolean>;
+};
+export type UserProvider = { id: string; label: string; apiUrl: string; protocol: string; compat?: Record<string, string | number | boolean>; models: ProviderModelEntry[]; hasKey: boolean };
 
 export const PROVIDER_PROTOCOLS = ["openai-completions", "openai-responses", "anthropic-messages"] as const;
 
@@ -85,7 +95,7 @@ export function invalidateUserProviders() {
   return loadUserProviders(true).catch(() => { assertBinding(current); return providers.value; });
 }
 
-export async function saveUserProvider(payload: { id: string; label: string; apiUrl: string; protocol: string; apiKey?: string; models: ProviderModelEntry[] }) {
+export async function saveUserProvider(payload: { id: string; label: string; apiUrl: string; protocol: string; apiKey?: string; compat?: Record<string, string | number | boolean>; models: ProviderModelEntry[] }) {
   const current = binding;
   const data = await request("./api/imagine/providers", { method: "POST", body: JSON.stringify(payload) }, current);
   assertBinding(current);

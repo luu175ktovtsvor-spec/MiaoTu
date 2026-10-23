@@ -90,7 +90,14 @@ export function ownTextModelById(id, env = process.env) {
   return resolveTextModel(entry, { contextWindow: env.OIP_TEXT_CONTEXT_WINDOW, maxOutputTokens: env.OIP_TEXT_MAX_OUTPUT_TOKENS, contextSource: 'OIP_TEXT_CONTEXT_WINDOW', maxOutputSource: 'OIP_TEXT_MAX_OUTPUT_TOKENS' })
 }
 export function customTextModel(provider, model, config: Record<string, any> = {}) {
-  return resolveTextModel({ ...model, provider: provider.id, protocol: provider.protocol, protocolSource: '账号供应商配置', fields: PROTOCOL_FIELDS[provider.protocol] }, config)
+  return resolveTextModel({
+    ...model,
+    provider: provider.id,
+    protocol: provider.protocol,
+    protocolSource: '账号供应商配置',
+    compat: { ...(provider.compat || {}), ...(model.compat || {}) },
+    fields: PROTOCOL_FIELDS[provider.protocol],
+  }, config)
 }
 export function protocolUsage(models) {
   return PROVIDER_PROTOCOLS.map(protocol => ({ protocol, models: models.filter(model => model.protocol === protocol).map(model => model.id), status: models.some(model => model.protocol === protocol) ? '有模型使用' : '暂无模型使用' }))

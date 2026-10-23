@@ -16,6 +16,8 @@ const MAX_PROVIDERS = 12
 const MAX_MODELS = 300
 const MAX_KEY_LENGTH = 8192
 const MAX_LABEL_LENGTH = 60
+const MAX_COMPAT_ENTRIES = 40
+const MAX_COMPAT_BYTES = 16 * 1024
 const FETCH_TIMEOUT_MS = 600_000
 const MODEL_FETCH_TIMEOUT_MS = 30000
 // Preserve the existing response.text().length boundary, including CJK text;
@@ -57,12 +59,41 @@ function normalizeModel(item) {
     model[key] = value
   }
   if (typeof item.reasoning === 'boolean') model.reasoning = item.reasoning
+  if (item.input !== undefined) {
+    if (!Array.isArray(item.input) || !item.input.length || item.input.some(value => !['text', 'image'].includes(value))) throw failure('图片输入能力格式无效', 422)
+    model.input = [...new Set(item.input)]
+  }
   if (item.maxTokensField !== undefined) {
     if (!['max_tokens', 'max_completion_tokens'].includes(item.maxTokensField)) throw failure('输出字段无效', 422)
     model.maxTokensField = item.maxTokensField
     model.compat = { maxTokensField: item.maxTokensField }
   }
+  if (item.compat !== undefined) {
+    const compat = normalizeCompat(item.compat)
+    model.compat = { ...(model.compat || {}), ...compat }
+  }
+  if (item.thinkingLevelMap !== undefined) {
+    if (!item.thinkingLevelMap || typeof item.thinkingLevelMap !== 'object' || Array.isArray(item.thinkingLevelMap)) throw failure('思考档位格式无效', 422)
+    const levels = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
+    const entries = Object.entries(item.thinkingLevelMap)
+    if (entries.length > levels.length || entries.some(([key, value]) => !levels.includes(key) || value !== null && (typeof value !== 'string' || value.length > 80))) throw failure('思考档位格式无效', 422)
+    model.thinkingLevelMap = Object.fromEntries(entries)
+  }
   return model
+}
+
+function normalizeCompat(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw failure('接口兼容参数必须是对象', 422)
+  const entries = Object.entries(value)
+  if (entries.length > MAX_COMPAT_ENTRIES || JSON.stringify(value).length > MAX_COMPAT_BYTES) throw failure('接口兼容参数过多', 422)
+  const output: Record<string, string | number | boolean> = {}
+  for (const [key, raw] of entries) {
+    if (!/^[A-Za-z][A-Za-z0-9_.-]{0,63}$/.test(key)) throw failure('接口兼容参数名称无效', 422)
+    if (typeof raw !== 'string' && typeof raw !== 'boolean' && !(typeof raw === 'number' && Number.isFinite(raw))) throw failure('接口兼容参数只支持文字、数字和开关', 422)
+    if (typeof raw === 'string' && raw.length > 200) throw failure('接口兼容参数内容过长', 422)
+    output[key] = raw
+  }
+  return output
 }
 
 export function normalizeProviderPayload(payload) {
@@ -74,28 +105,51 @@ export function normalizeProviderPayload(payload) {
   if (!PROVIDER_PROTOCOLS.includes(protocol)) throw failure('API 协议不受支持', 422)
   const apiKey = String(payload?.apiKey ?? '').trim()
   if (apiKey.length > MAX_KEY_LENGTH) throw failure('API Key 过长', 422)
+  const compat = payload?.compat === undefined ? undefined : normalizeCompat(payload.compat)
   const models = Array.isArray(payload?.models) ? payload.models.map(normalizeModel) : []
   if (models.length > MAX_MODELS) throw failure('单个供应商最多 ' + MAX_MODELS + ' 个模型', 422)
   if (new Set(models.map(model => model.id)).size !== models.length) throw failure('模型 ID 不能重复', 422)
-  return { id, label, apiUrl, protocol, apiKey, models }
+  return { id, label, apiUrl, protocol, apiKey, ...(compat ? { compat } : {}), models }
+}
+
+function parseStore(bytes) {
+  const data = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes))
+  if (!data || typeof data !== 'object' || Array.isArray(data) || !Array.isArray(data.providers)) throw new Error('Invalid provider settings')
+  const ids = new Set<string>()
+  for (const provider of data.providers) {
+    if (!provider || typeof provider !== 'object' || Array.isArray(provider) || typeof provider.id !== 'string'
+      || provider.apiKey !== undefined && typeof provider.apiKey !== 'string'
+      || provider.models !== undefined && !Array.isArray(provider.models)) throw new Error('Invalid provider settings')
+    const normalized = normalizeProviderPayload(provider)
+    if (normalized.id !== provider.id || ids.has(normalized.id)) throw new Error('Duplicate or noncanonical provider ID')
+    ids.add(normalized.id)
+  }
+  return data.providers
+}
+
+// 3.0.x 按画布项目各存一份；改成应用级后，第一次读取时把各项目里的旧配置合并进来
+// （同一 ID 以最近修改的那份为准），旧文件原样保留，读不了的旧文件跳过不影响其他项目。
+function adoptProjectStores(workspaceFiles, userId, project) {
+  if (!workspaceFiles.scoped) return []
+  const rows = workspaceFiles.store.all('SELECT project_id AS project FROM workspace_files WHERE user_id=? AND path=? AND project_id<>? ORDER BY updated_at DESC', userId, PROVIDER_PATH, project)
+  const merged = new Map()
+  for (const { project: source } of rows) {
+    try {
+      for (const provider of parseStore(workspaceFiles.read(userId, PROVIDER_PATH, source).bytes))
+        if (!merged.has(provider.id)) merged.set(provider.id, provider)
+    } catch {}
+  }
+  const providers = [...merged.values()]
+  if (providers.length) writeStore(workspaceFiles, userId, providers)
+  return providers
 }
 
 function readStore(workspaceFiles, userId) {
-  const entry = workspaceFiles.list(userId).find(item => item.path === PROVIDER_PATH)
-  if (!entry) return []
+  const project = workspaceFiles.providerProject?.()
+  const entry = workspaceFiles.list(userId, project).find(item => item.path === PROVIDER_PATH)
+  if (!entry) return project ? adoptProjectStores(workspaceFiles, userId, project) : []
   try {
-    const data = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(workspaceFiles.read(userId, PROVIDER_PATH).bytes))
-    if (!data || typeof data !== 'object' || Array.isArray(data) || !Array.isArray(data.providers)) throw new Error('Invalid provider settings')
-    const ids = new Set<string>()
-    for (const provider of data.providers) {
-      if (!provider || typeof provider !== 'object' || Array.isArray(provider) || typeof provider.id !== 'string'
-        || provider.apiKey !== undefined && typeof provider.apiKey !== 'string'
-        || provider.models !== undefined && !Array.isArray(provider.models)) throw new Error('Invalid provider settings')
-      const normalized = normalizeProviderPayload(provider)
-      if (normalized.id !== provider.id || ids.has(normalized.id)) throw new Error('Duplicate or noncanonical provider ID')
-      ids.add(normalized.id)
-    }
-    return data.providers
+    return parseStore(workspaceFiles.read(userId, PROVIDER_PATH, project).bytes)
   } catch (cause) {
     // A damaged or temporarily unreadable file is not an empty configuration.
     // Reads and edits both stop, preserving every existing provider and key.
@@ -104,11 +158,11 @@ function readStore(workspaceFiles, userId) {
 }
 
 function writeStore(workspaceFiles, userId, providers) {
-  workspaceFiles.upsert(userId, PROVIDER_PATH, 'application/json', Buffer.from(JSON.stringify({ providers }), 'utf8'))
+  workspaceFiles.upsert(userId, PROVIDER_PATH, 'application/json', Buffer.from(JSON.stringify({ providers }), 'utf8'), workspaceFiles.providerProject?.())
 }
 
 function publicProvider(provider) {
-  const clone = { id: provider.id, label: provider.label, apiUrl: provider.apiUrl, protocol: provider.protocol, models: provider.models }
+  const clone = { id: provider.id, label: provider.label, apiUrl: provider.apiUrl, protocol: provider.protocol, ...(provider.compat ? { compat: provider.compat } : {}), models: provider.models }
   return { ...clone, hasKey: Boolean(provider.apiKey) }
 }
 
@@ -120,8 +174,13 @@ export function listPublicProviderModels(workspaceFiles, userId) {
   return listPublicProviders(workspaceFiles, userId).flatMap(provider => (provider.models || []).map(model => ({
     providerId: provider.id, providerLabel: provider.label, modelId: model.id, label: model.label,
     protocol: provider.protocol || 'openai-completions', configured: Boolean(provider.hasKey),
+    ...(model.reasoning ? { reasoning: true } : {}),
     ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
     ...(model.maxOutputTokens ? { maxOutputTokens: model.maxOutputTokens } : {}),
+    ...(Array.isArray(model.input) ? { input: model.input } : {}),
+    ...(model.maxTokensField ? { maxTokensField: model.maxTokensField } : {}),
+    ...(model.thinkingLevelMap ? { thinkingLevelMap: model.thinkingLevelMap } : {}),
+    ...(model.compat ? { compat: model.compat } : {}),
   })))
 }
 

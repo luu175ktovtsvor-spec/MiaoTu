@@ -292,7 +292,7 @@ onMounted(() => {
     renderer.outputColorSpace = three.SRGBColorSpace;
     renderer.toneMapping = three.ACESFilmicToneMapping;
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = three.PCFShadowMap;
+    renderer.shadowMap.type = three.PCFSoftShadowMap;
     const glowCanvas = document.createElement("canvas");
     glowCanvas.width = glowCanvas.height = 64;
     const context = glowCanvas.getContext("2d");

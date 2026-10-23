@@ -19,7 +19,7 @@ export default function DesktopRail({ active, onHome, onProjects, onCases, onAss
     <aside className="desktop-edge-rail" aria-label="妙图导航">
       <div className="desktop-edge-rail__masthead">
         <button type="button" className="desktop-edge-rail__brand" aria-label="妙图首页" onClick={onHome}>
-          <img src="/miaoimg-logo.png" alt="" /><span>妙图</span>
+          <img src="/miaoimg-logo.png" alt="" /><span className="desktop-edge-rail__wordmark">妙图<small>MiaoImg</small></span>
         </button>
       </div>
       <nav className="desktop-edge-rail__nav" aria-label="工作区">

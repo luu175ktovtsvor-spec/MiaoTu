@@ -42,18 +42,17 @@
     <settings-section :title="translate('在节点中使用')" :description="translate('在文本、图片或视频节点的模型菜单里，选择「豆包」或「Dola」分组下的模型。')">
       <p class="hint">{{ translate('在节点选择具体型号、时长和比例；仅在平台开放时提供分辨率选项，否则明确跟随平台。页面要求确认或验证时，在原窗口处理后继续取回。') }}</p>
       <local-media-info :model="{ providerId: platform + '-local', modelId: platform + '-local-video' }" />
-      <p class="hint">{{ translate('豆包、Dola 的文本模型提供普通文本回复，暂不支持 Agent 或导演台的工具调用。') }}</p>
+      <p class="hint">{{ translate('豆包、Dola 的文本模型用于文本节点的回复；Agent 和 3D 导演台请在「文本模型」里选择妙图模型或你接入的模型。') }}</p>
       <p class="hint">{{ translate('网页登录状态仅保存在这台电脑，按平台和妙图账户隔离。断开连接只清除此处的网页登录状态。') }}</p>
     </settings-section>
-    <settings-section :title="translate('网络要求与自检')" :description="translate('先让妙图自己的窗口能访问平台，再登录或提交。只改 Clash 节点但没让妙图走代理，不算连接成功。')">
+    <settings-section :title="translate('地区与网络自检')" :description="translate('平台会按当前网络出口 IP 判断可用地区，以下为实际支持情况。')">
       <details class="networkDetails" :open="platform === 'dola' && !state?.connected">
       <summary>{{ translate('查看各平台的网络要求') }}</summary>
       <div class="networkGuide">
-        <p><strong>Dola</strong><span>{{ translate('需要 Dola 开放地区的出口，例如日本、英国、东南亚；美国、加拿大、澳大利亚、印度和中国大陆出口会进入“受区域限制”页（2026-10-22 实测：日本出口可进入创作页，美国出口被限制）。还要能访问 www.dola.com/chat/ 和登录服务，使用 Google 登录时还需要 accounts.google.com。使用 Clash Verge 时，选好节点后还要开启系统代理或 TUN；节点测速成功不代表妙图窗口已经走该节点。') }}</span></p>
-        <p><strong>Clash</strong><span>{{ translate('Clash Verge 的规则模式下，GLOBAL 里选中的节点不一定就是 Dola 实际走的代理组。请确认 Dola 命中的规则或代理组已经选到可用地区，或者仅在测试时切到全局模式；最终以妙图窗口能打开 Dola 登录和创作菜单为准。节点名称或之前的延迟不代表当前可用，日本节点也可能失效；请重新测延迟并实际打开页面。') }}</span></p>
-        <p><strong>豆包</strong><span>{{ translate('豆包通常可在中国大陆直连，优先在系统代理和 TUN 关闭时测试。若其他平台需要代理，建议按域名分流，不要让豆包被迫跟着 Dola 走同一个出口。') }}</span></p>
-        <p><strong>{{ translate('自检顺序') }}</strong><span>{{ translate('确认节点延迟正常；开启系统代理或 TUN；完全关闭并重新打开平台窗口；确认页面进入创作区并能读取模型菜单。出现地区限制、超时或登录失败时分别处理。') }}</span></p>
-        <p><strong>{{ translate('验收边界') }}</strong><span>{{ translate('页面、登录和模型菜单能正常通信即可确认网络通路，不需要先发起生成请求；真正提交时再确认账户额度与生成权限。') }}</span></p>
+        <p><strong>Dola</strong><span>{{ translate('Dola 根据登录和提交时的网络出口 IP 判断地区，官方页面没有公开一份固定国家清单。2026-10-22 实测：日本可以进入创作区；美国、加拿大、澳大利亚、印度和中国大陆会进入“受区域限制”页面。其他地区以 Dola 页面是否允许进入创作区为准。') }}</span></p>
+        <p><strong>豆包</strong><span>{{ translate('豆包服务面向可访问其网页的地区，是否会提示地区限制以豆包页面为准。妙图不会根据网络名称猜测账号可用性。') }}</span></p>
+        <p><strong>{{ translate('自检') }}</strong><span>{{ translate('先确认平台页面能打开、登录框能加载，再登录并读取当前账号的模型菜单。出现地区限制、验证、超时或登录失败时分别处理。') }}</span></p>
+        <p><strong>{{ translate('验收边界') }}</strong><span>{{ translate('页面、登录和模型菜单能正常打开即确认平台连接可用；真正生成时再核对账户额度与生成权限。') }}</span></p>
       </div>
       </details>
     </settings-section>
@@ -93,7 +92,8 @@ async function perform(action?: string, silent = false, payload: Record<string, 
     assertWorkspaceScope(scope); signal.throwIfAborted();
     if (requestedRevision !== revision) return;
     if (!response.ok || data.ok !== true) throw new Error(data.error || translate('连接操作失败'));
-    state.value = data; invalidateNodeModels('media');
+    state.value = data;
+    invalidateNodeModels('media');
     if (action === 'disconnect') watching = false;
     else if (action) watching = true;
   } catch (reason) { if (!signal.aborted && requestedRevision === revision) error.value = reason instanceof Error ? reason.message : translate('连接操作失败'); }

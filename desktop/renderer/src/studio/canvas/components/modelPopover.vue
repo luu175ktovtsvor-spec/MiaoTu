@@ -23,12 +23,14 @@
         <el-form-item :label="translate('模型')">
           <el-select v-model="selectedModel" @change="reasoningEffort = ''" filterable :disabled="disabled" :placeholder="translate('选择模型')" :aria-label="translate('选择模型')" :noDataText="translate('请先在设置中添加模型')">
             <template #prefix><modelIcon v-if="selectedModelChoice" :model="selectedModelChoice.modelId" :size="18" /></template>
-            <el-option v-for="model in modelOptions" :key="model.value" :label="model.label || translate('选择模型')" :value="model.value">
-              <el-space :size="8">
-                <modelIcon :model="model.modelId" :size="16" />
-                <span>{{ model.label || translate('选择模型') }}</span>
-              </el-space>
-            </el-option>
+            <el-option-group v-for="group in modelGroups" :key="group.label" :label="group.label">
+              <el-option v-for="model in group.models" :key="model.value" :label="model.label || translate('选择模型')" :value="model.value">
+                <el-space :size="8">
+                  <modelIcon :model="model.modelId" :size="16" />
+                  <span>{{ model.label || translate('选择模型') }}</span>
+                </el-space>
+              </el-option>
+            </el-option-group>
           </el-select>
         </el-form-item>
         <el-form-item :label="translate('推理等级')">
@@ -52,6 +54,14 @@ const props = withDefaults(defineProps<{ active?: boolean; disabled?: boolean }>
 const visible = ref(false);
 // 妙图的模型来自服务端目录；前端不展示供应商和内部标识，只列显示名称。
 const modelOptions = computed(() => modelChoices.value);
+const modelGroups = computed(() => {
+  const groups = new Map<string, typeof modelOptions.value>();
+  for (const model of modelOptions.value) {
+    const label = model.providerId === "miaoimg" ? translate("妙图") : model.providerLabel || model.providerId;
+    groups.set(label, [...(groups.get(label) ?? []), model]);
+  }
+  return [...groups].map(([label, models]) => ({ label, models }));
+});
 const selectedModelChoice = computed(() => modelChoices.value.find(item => item.value === selectedModel.value));
 // 推理等级由模型自己决定（例如 DeepSeek 只有 低/高/最高），标签跟着画布语言重渲染。
 const EFFORT_LABELS: Record<string, string> = { low: "低", medium: "中", high: "高", xhigh: "极高", max: "最高" };

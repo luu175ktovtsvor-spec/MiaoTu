@@ -33,7 +33,13 @@
       <div class="inputContent"><slot name="input" /></div>
       <div class="inputActions">
         <el-select v-model="model" class="modelSelect" size="small" :loading="modelsLoading" filterable :placeholder="translate('选择模型')" :aria-label="translate('生成模型')" @visibleChange="$event && emit('loadModels')">
-          <el-option v-for="item in models" :key="item.modelId" :label="item.modelId" :value="JSON.stringify([item.providerId, item.modelId])" />
+          <el-option-group v-for="provider in modelGroups" :key="provider.id" :label="provider.label">
+            <el-option
+              v-for="item in provider.models"
+              :key="item.modelId"
+              :label="item.label"
+              :value="JSON.stringify([item.providerId, item.modelId])" />
+          </el-option-group>
         </el-select>
         <el-button class="sendButton" type="primary" round :disabled="initializing || !prompt.trim() || !model" :aria-label="translate('生成动画')" @click="sendInstruction">
           <icon-sparkles :size="14" /><span>{{ translate('生成方案') }}</span>
@@ -44,9 +50,11 @@
 </template>
 
 <script setup lang="ts">
-import { ElButton, ElOption, ElSelect } from "element-plus";
+import { computed } from "vue";
+import { ElButton, ElOption, ElOptionGroup, ElSelect } from "element-plus";
 import { IconLoader2, IconSparkles, IconMovie, IconCheck, IconAlertCircle, IconArrowBackUp } from "@tabler/icons-vue";
 import { type NodeAiModel } from "@miaoimg/nodes-scaffold/runtime";
+import { groupNodeModels } from "../../scaffold/nodeAi";
 
 import type { DirectorPlan, DirectorPlanItem, DirectorGeneration } from "./sceneAnimation";
 import { translate } from "@miaoimg/i18n/vue";
@@ -55,6 +63,7 @@ const props = defineProps<{ result?: DirectorPlan; referenceCount: number; initi
 const emit = defineEmits<{ editInstruction: [value: string]; selectPlan: [id: string]; send: []; loadModels: [] }>();
 const prompt = defineModel<string>("prompt", { default: "" });
 const model = defineModel<string>("model", { default: "" });
+const modelGroups = computed(() => groupNodeModels(props.models));
 function sendInstruction() {
   if (props.initializing || !prompt.value.trim() || !model.value) return;
   emit("send");

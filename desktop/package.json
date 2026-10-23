@@ -12,8 +12,8 @@
     "start": "npm run prepare:app && electron .",
     "verify:release-notes": "node scripts/verify-release-notes.ts",
     "prepare:app": "node scripts/prepare.ts",
-    "package:mac": "npm run verify:release-notes && npm run prepare:app && electron-builder --mac dmg zip --arm64 --x64 --publish never",
-    "package:windows": "npm run verify:release-notes && npm run prepare:app && electron-builder --win nsis zip --x64 --publish never"
+    "package:mac": "npm run verify:release-notes && npm --prefix .. run verify:mcp && npm run prepare:app && electron-builder --mac dmg zip --arm64 --x64 --publish never",
+    "package:windows": "npm run verify:release-notes && npm --prefix .. run verify:mcp && npm run prepare:app && electron-builder --win nsis zip --x64 --publish never"
   },
   "dependencies": {
     "@earendil-works/chord": "1.3.0",

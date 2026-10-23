@@ -28,8 +28,10 @@
 .desktop-edge-rail{width:240px;flex:0 0 240px;height:100dvh;display:flex;flex-direction:column;align-items:stretch;padding:74px 12px 16px;border-right:1px solid var(--color-line);background:var(--color-canvas);color:var(--color-muted);-webkit-app-region:drag}
 .desktop-edge-rail button{font:inherit;-webkit-app-region:no-drag;cursor:pointer}
 .desktop-edge-rail__masthead{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%}
-.desktop-edge-rail__brand{display:flex;width:100%;height:36px;align-items:center;justify-content:flex-start;gap:8px;padding:0 11px;border:1px solid var(--color-line);border-radius:10px;background:color-mix(in srgb,var(--color-elevate) 82%,transparent);color:var(--color-muted);font-size:13px!important;font-weight:560}
+.desktop-edge-rail__brand{display:flex;width:100%;height:42px;align-items:center;justify-content:flex-start;gap:9px;padding:0 11px;border:1px solid var(--color-line);border-radius:10px;background:color-mix(in srgb,var(--color-elevate) 82%,transparent);color:var(--color-ink);font-size:13px!important;font-weight:600}
 .desktop-edge-rail__brand img{display:block;width:24px;height:24px;object-fit:contain}
+.desktop-edge-rail__wordmark{display:flex;min-width:0;flex-direction:column;align-items:flex-start;line-height:1.05;letter-spacing:.08em}
+.desktop-edge-rail__wordmark small{margin-top:4px;color:var(--color-muted);font-size:8px;font-weight:500;letter-spacing:.18em;text-transform:none}
 .desktop-edge-rail__brand:hover,.desktop-edge-rail__brand:focus-visible{border-color:var(--color-line-strong);background:var(--color-elevate);color:var(--color-ink)}
 .desktop-edge-rail__nav{display:flex;width:100%;flex-direction:column;gap:4px;margin-top:22px}
 .desktop-edge-rail__nav button,.desktop-edge-rail__account{position:relative;display:flex;width:100%;min-height:38px;align-items:center;justify-content:flex-start;gap:11px;padding:0 12px;border:0;border-radius:10px;background:transparent;color:var(--color-muted);font-size:13px!important;line-height:1}
@@ -44,7 +46,7 @@
 .miao-desktop .studio-home{grid-template-columns:minmax(0,1fr);min-height:calc(100dvh - 56px)}
 .miao-desktop .studio-home>nav{display:none}
 .miao-desktop .studio-home__main{padding-top:26px}
-@media(max-width:900px){.desktop-edge-rail{width:200px;flex-basis:200px;padding-inline:10px}.desktop-edge-rail__brand span{display:none}.desktop-edge-rail__brand{flex:none;width:44px}.miao-desktop .studio-app:has(.desktop-edge-rail) .studio-top{padding-left:12px}.miao-desktop .studio-settings-page{left:200px}}
+@media(max-width:900px){.desktop-edge-rail{width:200px;flex-basis:200px;padding-inline:10px}.desktop-edge-rail__wordmark{display:none}.desktop-edge-rail__brand{flex:none;width:44px;justify-content:center}.miao-desktop .studio-app:has(.desktop-edge-rail) .studio-top{padding-left:12px}.miao-desktop .studio-settings-page{left:200px}}
 
 /* 账号面板：沿用客户端近黑底、单层 1px 细框与亮白强调，层次只靠间距和一层抬升面表达。
    三个状态（登录 / 注册 / 已登录）共用同一套间距变量，控件尺寸与圆角也统一。 */

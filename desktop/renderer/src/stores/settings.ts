@@ -177,6 +177,8 @@ export async function loadServerModelChoices(force = false) {
   const scope = captureWorkspaceScope();
   const pending = { controller: new AbortController(), promise: undefined as unknown as Promise<void> };
   serverModelsRequest = pending;
+  // 自己接入的供应商和妙图模型一起出现在模型选择里；读不到时只显示妙图模型。
+  void loadUserProviders(force).catch(() => []);
   pending.promise = (async () => {
     try {
       const response = await fetch("./api/imagine/config", { cache: "no-store", signal: pending.controller.signal, headers: workspaceHeaders(scope.owner) });
@@ -216,7 +218,13 @@ export async function refreshProviderChoices() {
 }
 
 export const modelChoices = computed(() => {
-  const choices = serverTextModels.value.map(model => ({ value: JSON.stringify([model.providerId, model.modelId]), ...model }));
+  // 用户在「设置 → 文本模型」里自己接入的供应商：用他自己的 Key，请求从本机直接发给该供应商，不经过妙图服务器。
+  const own = userProviders().value.filter(provider => provider.hasKey).flatMap(provider => provider.models.map(model => ({
+    providerId: provider.id, providerLabel: provider.label, modelId: model.id, label: model.label || model.id,
+    note: undefined as string | undefined, reasoning: Boolean(model.reasoning), reasoningEffort: undefined as string | undefined,
+    reasoningEfforts: undefined as string[] | undefined, contextWindow: model.contextWindow,
+  })));
+  const choices = [...serverTextModels.value, ...own].map(model => ({ value: JSON.stringify([model.providerId, model.modelId]), ...model }));
   const preferred = choices.find(model => model.modelId === serverDefaultTextModel.value);
   return preferred ? [preferred, ...choices.filter(model => model !== preferred)] : choices;
 });

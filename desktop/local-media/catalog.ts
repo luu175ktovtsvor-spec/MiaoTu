@@ -109,7 +109,7 @@ export function localReferenceRejection(model: unknown, provider: unknown, count
 export type DoubaoKind = 'image' | 'video' | 'text'
 export type DoubaoQuota = { remaining: number | null; unit: string; source: 'platform' | 'unknown'; checkedAt: string | null }
 export type LiveMenuModel = {
-  kind: 'image' | 'video'; key: string; label: string; labels: string[]
+  kind: 'image' | 'video' | 'text'; key: string; label: string; labels: string[]
   durations: number[]; defaultDuration?: number; ratios: string[]; resolutions: string[]
 }
 export type LiveMenu = { checkedAt: string; loaded: boolean; models: LiveMenuModel[] }
@@ -119,7 +119,8 @@ export type DoubaoStatus = {
   menu?: LiveMenu
 }
 export function liveModelId(site: LocalMediaSite, model: { kind: string; key: string }) {
-  const known = (site.id === 'doubao' ? DOUBAO_MODELS : DOLA_MODELS).find(item => item.kind === model.kind && 'upstreamKey' in item && item.upstreamKey === model.key)
+  const known = (site.id === 'doubao' ? DOUBAO_MODELS : DOLA_MODELS).find(item => item.kind === model.kind
+    && ('upstreamKey' in item && item.upstreamKey === model.key || 'modeKey' in item && item.modeKey === model.key))
   if (known) return known.id
   const slug = model.key.toLowerCase().replace(/[^a-z0-9.]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48)
   return `${site.provider}-${model.kind}-${slug || 'item'}`
@@ -157,7 +158,7 @@ function presentLocalModel(site: LocalMediaSite, id: string, kind: 'image' | 'vi
 }
 export function localMediaModels(site: LocalMediaSite, status: DoubaoStatus) {
   if (status.menu?.loaded && status.menu.models.length) {
-    return status.menu.models.filter(item => item.kind === 'image' || item.kind === 'video').map(item => {
+    return status.menu.models.filter((item): item is LiveMenuModel & { kind: 'image' | 'video' } => item.kind === 'image' || item.kind === 'video').map(item => {
       const id = liveModelId(site, item)
       const known = localModelSelection(id)
       const label = item.label !== item.key ? item.label : known?.label || item.label
@@ -166,9 +167,15 @@ export function localMediaModels(site: LocalMediaSite, status: DoubaoStatus) {
   }
   return []
 }
-export function localTextModels(site: LocalMediaSite) {
+export function localTextModels(site: LocalMediaSite, status?: DoubaoStatus) {
   const base = localTextModel(site)
-  return (site.id === 'doubao' ? DOUBAO_MODELS : DOLA_MODELS).filter(item => item.kind === 'text').map(item => ({ ...base, modelId: item.id, label: item.id }))
+  const live = status?.menu?.loaded ? status.menu.models.filter(item => item.kind === 'text') : []
+  if (live.length) return live.map(item => {
+    const id = liveModelId(site, item)
+    const known = localModelSelection(id)
+    return { ...base, modelId: id, label: item.label || (known && 'label' in known ? known.label : item.key) }
+  })
+  return (site.id === 'doubao' ? DOUBAO_MODELS : DOLA_MODELS).filter(item => item.kind === 'text').map(item => ({ ...base, modelId: item.id, label: item.label }))
 }
 export function localTextModel(site: LocalMediaSite) {
   return { providerId: site.provider, providerLabel: site.label, modelId: site.provider + '-text',

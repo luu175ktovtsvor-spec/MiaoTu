@@ -444,7 +444,7 @@ body[data-miaoimg-canvas-ui] .floatingAgent .messageInput { margin: 10px 12px 12
 body[data-miaoimg-canvas-ui] .floatingAgent .messageInput:focus-within { border-color: color-mix(in srgb,var(--el-color-primary) 40%,transparent); }
 body[data-miaoimg-canvas-ui] .floatingAgent :is(.senderEditor,.senderActions) { background: transparent; border: 0; }
 body[data-miaoimg-canvas-ui] .floatingAgent :is(.messageContent,.messageText) { color: var(--color-ink); }
-body[data-miaoimg-canvas-ui] .floatingAgent .userMessage .messageContent { background: var(--color-soft); border-radius: 14px; padding: 10px 12px; }
+body[data-miaoimg-canvas-ui] .floatingAgent .userMessage .messageContent { padding: 0; border-radius: 0; background: transparent; }
 body[data-miaoimg-canvas-ui] .floatingAgent .welcomeSuggestion { border: 1px solid var(--canvas-line); border-radius: 12px; background: var(--color-soft); }
 body[data-miaoimg-canvas-ui] .floatingAgent .welcomeSuggestion:hover { border-color: var(--canvas-hover-line); background: var(--color-hover); }
 body[data-miaoimg-canvas-ui] :is(.toolCall,.questionCard,.attachmentList,.mentionPopup,.subAgentMenu,.agentContextPopover) { border-color: var(--canvas-line); border-radius: 12px; background: var(--canvas-surface); color: var(--color-body); }

@@ -423,6 +423,10 @@ export class LocalMediaHost {
         const selection = liveSelection(body.model, status.menu) || localModelSelection(body.model)
         if ((kind === 'image' || kind === 'video') && !status.menu?.loaded) throw Object.assign(new Error(`${this.site.label}还没有读到当前账号的图片和视频菜单，尚未提交。请打开${this.site.label}窗口，等型号出现后再发送`), { status: 409 })
         if ((kind === 'image' || kind === 'video') && !status.menu.models.some(item => liveModelId(this.site, item) === body.model)) throw Object.assign(new Error(`${this.site.label}当前账号的创作菜单里没有这个型号，尚未提交`), { status: 422 })
+        if (kind === 'text') observation.expectedRoute = {
+          ...(selection && 'modeKey' in selection ? { modeKey: selection.modeKey } : {}),
+          ...(selection && 'upstreamKey' in selection && typeof selection.upstreamKey === 'string' ? { modeKey: selection.upstreamKey } : {}),
+        }
         if (kind === 'image' || kind === 'video') observation.expectedRoute = {
           abilityType: kind === 'video' ? 17 : 3,
           ...(selection && 'upstreamKey' in selection ? { modelKey: selection.upstreamKey } : {}),

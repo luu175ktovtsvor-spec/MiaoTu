@@ -3465,7 +3465,7 @@
   "豆包账号": "Doubao account",
   "在文本、图片或视频节点的模型菜单里，选择「豆包」或「Dola」分组下的模型。": "In a text, image or video node, pick a model under the Doubao or Dola group in the model menu.",
   "豆包与 Dola 文本模型": "Doubao and Dola text models",
-  "使用豆包或 Dola 账号自带的权益，提供普通文本回复，暂不支持 Agent 和导演台的工具调用。": "Uses the Doubao or Dola account’s own allowance for plain text replies; Agent and director tool calls are not available.",
+  "使用豆包或 Dola 账号自带的权益生成文本回复；Agent 和 3D 导演台请选择上面的妙图模型或你接入的模型。": "Uses the Doubao or Dola account’s own allowance for text replies. For the agent and the 3D director, choose a MiaoImg model or one you added above.",
   "使用 Dola 额度": "Uses Dola allowance",
   "使用豆包额度": "Uses Doubao allowance",
   "正在等待豆包或 Dola 返回文本…": "Waiting for Doubao or Dola to reply…",
@@ -3513,5 +3513,6 @@
   "暂无文本": "No text yet",
   "添加资源": "Add resources",
   "写下你想讲的故事、场景或角色设定，例如：一个来自未来的机器人，在城市屋顶看星星。输入 @ 引用素材": "Write the story, scene or character you have in mind, e.g. a robot from the future watching the stars on a city rooftop. Type @ to reference assets",
-  "直接用文字生成图片，或上传图片后用文字修改它，例如：把背景换成雪夜。输入 @ 引用素材": "Describe an image to generate, or upload one and describe the change, e.g. turn the background into a snowy night. Type @ to reference assets"
+  "直接用文字生成图片，或上传图片后用文字修改它，例如：把背景换成雪夜。输入 @ 引用素材": "Describe an image to generate, or upload one and describe the change, e.g. turn the background into a snowy night. Type @ to reference assets",
+  "豆包、Dola 的文本模型用于文本节点的回复；Agent 和 3D 导演台请在「文本模型」里选择妙图模型或你接入的模型。": "Doubao and Dola text models reply in text nodes. For the agent and the 3D director, choose a MiaoImg model or one you added in Text models."
 }

@@ -12,18 +12,18 @@
         <label>{{ translate('比例') }}<el-select v-model="settings.ratio" :disabled="busy" :aria-label="`${label}比例`" @change="ratioFromSource = false"><el-option v-for="ratio in ratioOptions" :key="ratio" :label="ratio" :value="ratio" /></el-select></label>
       </div>
     </el-popover>
-    <el-button type="primary" :icon="IconSparkles" :loading="generating" :disabled="busy || modelsLoading || !source || !selectedModel || !prompt.trim()" @click="generate">{{ translate('添加到画布') }}</el-button>
+    <el-button type="primary" :icon="IconSparkles" :loading="generating" :disabled="busy || modelsLoading || !source || !selectedModel || !settings.ratio || !prompt.trim()" @click="generate">{{ translate('生成图片') }}</el-button>
   </footer>
 </template>
 
 <script setup lang="ts">
 import { translate } from "@miaoimg/i18n/vue";
 import { computed, onMounted, onScopeDispose, ref, watch } from "vue";
-import { useNode } from "@vue-flow/core";
+import { useNode, useVueFlow } from "@vue-flow/core";
 import { ElButton, ElOption, ElOptionGroup, ElPopover, ElSelect } from "element-plus";
 import { IconSparkles } from "@tabler/icons-vue";
-import { useNodeAi, type NodeMediaModel, type NodeMediaValue } from "@miaoimg/nodes-scaffold/runtime";
-const groupNodeModels = (models: NodeMediaModel[]) => [{ id: "miaoimg", label: "妙图", models }];
+import { useNodeAi, useNodeToolsContext, type NodeMediaModel, type NodeMediaValue } from "@miaoimg/nodes-scaffold/runtime";
+import { groupNodeModels } from "../../../scaffold/nodeAi";
 import { showNodeError } from "../../../scaffold/showNodeError";
 import { useImageVariationNode } from "../useImageVariationNode";
 
@@ -37,7 +37,9 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ generated: [] }>();
 const generating = defineModel<boolean>("generating", { default: false });
-const { node } = useNode();
+const { id, node } = useNode();
+const { findNode, getEdges } = useVueFlow();
+const getNodeTools = useNodeToolsContext();
 const ai = useNodeAi();
 const createVariation = useImageVariationNode();
 const models = ref<NodeMediaModel[]>([]);
@@ -94,7 +96,7 @@ async function refreshModels() {
 }
 
 async function generate() {
-  if (disposed || busy.value || modelsLoading.value || !selectedModel.value || !props.source || !props.prompt.trim()) return;
+  if (disposed || busy.value || modelsLoading.value || !selectedModel.value || !props.source || !props.settings.ratio || !props.prompt.trim()) return;
   const controller = generationController = new AbortController();
   const source = JSON.stringify(props.source);
   const assertAvailable = () => {
@@ -102,7 +104,13 @@ async function generate() {
   };
   generating.value = true;
   try {
-    await createVariation({ model: props.settings.model || "", size: props.settings.size || "", ratio: props.settings.ratio || "", label: props.label, prompt: props.prompt }, controller.signal, assertAvailable);
+    const { nodeId, edgeId } = await createVariation({ model: props.settings.model || "", size: props.settings.size || "", ratio: props.settings.ratio || "", label: props.label, prompt: props.prompt }, controller.signal, assertAvailable);
+    const createdNode = findNode(nodeId);
+    await getNodeTools().call({ nodeId, name: "node:getConfig", args: {} }, controller.signal);
+    if (!createdNode || findNode(nodeId) !== createdNode || !getEdges.value.some(edge => edge.id === edgeId && edge.source === id && edge.sourceHandle === "image" && edge.target === nodeId && edge.targetHandle === "in")) {
+      throw new Error(translate("新节点或原图连接已变化，请在新节点中检查后生成"));
+    }
+    await getNodeTools().call({ nodeId, name: "node:generateImage", args: {} }, controller.signal);
     emit("generated");
   } catch (error) { if (!controller.signal.aborted && !disposed) showNodeError(error, `${props.label}失败`); }
   finally { generating.value = false; generationController = undefined; }

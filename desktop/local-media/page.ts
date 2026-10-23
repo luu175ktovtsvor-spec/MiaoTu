@@ -88,7 +88,10 @@ export function localMediaPage(action: string, payload: Record<string, any> = {}
     const hint = [input?.getAttribute('placeholder'), input?.getAttribute('data-placeholder'), input?.getAttribute('aria-label'), composer ? text(composer) : '', model()].filter(Boolean).join(' ')
     if (/Seedance|描述你想要的视频|describe.{0,30}video|動画/i.test(hint)) return 'video'
     if (/Seedream|描述你想要的(?:图像|图片)|describe.{0,30}image|画像/i.test(hint)) return 'image'
-    return /^(?:豆包\s+(?:快速|专家)|Fast|Pro)$/.test(model()) ? 'text' : ''
+    // Media modes are identifiable by their explicit placeholders or model
+    // families. Any other composer is the ordinary chat mode, including new
+    // account-specific text model names that are not in the built-in fallback.
+    return input ? 'text' : ''
   }
   // Dola can localize a media composer without exposing a stable model label.
   // An unknown presentation is allowed only for media: the host must still

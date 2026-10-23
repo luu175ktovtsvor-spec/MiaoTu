@@ -11,6 +11,8 @@ import { DEFAULT_PROJECT_ID, projectId } from '../server/projects.ts'
 // Desktop media stays on disk, including uploads and processing results.
 export class DesktopWorkspaceFiles extends WorkspaceFiles {
   localLargeFiles = true
+  // 自定义模型是应用级配置，不属于任何一个画布项目；所有项目共用 default 作用域里的这一份。
+  providerProject = () => DEFAULT_PROJECT_ID
   // Enabled by the desktop host only after constructor migrations and account
   // restoration. Ordinary unbound projects retain LocalStore's shared semantics.
   declare projectAccess: ((project: string) => void) | undefined

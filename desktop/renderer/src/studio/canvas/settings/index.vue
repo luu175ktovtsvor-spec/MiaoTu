@@ -237,7 +237,44 @@ body[data-miaoimg-canvas-ui] .settingsDialog.embeddedSettings .sidebar {
   border-bottom: 0 !important;
   border-right: .5px solid var(--canvas-line, #363636) !important;
 }
-.settingsSubdialog { .el-dialog__body { padding: 24px 28px; } .el-dialog__footer { padding: 0 28px 24px; } }
+.settingsSubdialog {
+  // 弹层被 teleport 到 body，拿不到设置页内嵌主题的作用域。这里必须重新映射同一套
+  // 外观变量，否则浅色模式会出现白底配白字、黑输入框。
+  --canvas-bg: var(--color-abyss);
+  --canvas-surface: var(--color-surface);
+  --canvas-node: var(--color-surface);
+  --canvas-field: var(--color-canvas);
+  --canvas-line: var(--color-line);
+  --canvas-hover-line: var(--color-line-strong);
+  --canvas-text: var(--color-ink);
+  --canvas-body: var(--color-body);
+  --canvas-muted: var(--color-muted);
+  --canvas-faint: var(--color-faint);
+  --canvas-soft: var(--color-soft, transparent);
+  --canvas-hover: var(--color-hover, transparent);
+  --el-bg-color: var(--color-abyss);
+  --el-bg-color-overlay: var(--color-surface);
+  --el-fill-color-blank: var(--color-canvas);
+  --el-text-color-primary: var(--color-ink);
+  --el-text-color-regular: var(--color-body);
+  --el-text-color-secondary: var(--color-muted);
+  --el-text-color-placeholder: var(--color-faint);
+  --el-border-color: var(--color-line);
+  --el-border-color-light: var(--color-line);
+  --el-fill-color: color-mix(in srgb, var(--color-ink) 8%, var(--color-surface));
+  --el-fill-color-light: color-mix(in srgb, var(--color-ink) 5%, var(--color-surface));
+  --el-fill-color-lighter: color-mix(in srgb, var(--color-ink) 4%, var(--color-surface));
+  --el-fill-color-extra-light: color-mix(in srgb, var(--color-ink) 3%, var(--color-surface));
+  --el-fill-color-dark: color-mix(in srgb, var(--color-ink) 12%, var(--color-surface));
+  --el-fill-color-darker: color-mix(in srgb, var(--color-ink) 16%, var(--color-surface));
+  --el-border-color-lighter: color-mix(in srgb, var(--color-line) 80%, transparent);
+  --el-border-color-extra-light: color-mix(in srgb, var(--color-line) 60%, transparent);
+  z-index: 13001 !important;
+  .el-dialog__body { padding: 24px 28px; }
+  .el-dialog__footer { padding: 0 28px 24px; }
+}
+body:has(.settingsDialog) .el-overlay:has(.settingsSubdialog) { z-index: 13000 !important; pointer-events: auto; }
+body:has(.settingsDialog) .el-popper { z-index: 13002 !important; }
 body:has(.settingsDialog) .el-modal-dialog:has(.settingsDialog),
 body:has(.settingsDialog) .el-overlay-dialog:has(.settingsDialog) { pointer-events: none; }
 body:has(.settingsDialog) .settingsDialog { pointer-events: auto; }

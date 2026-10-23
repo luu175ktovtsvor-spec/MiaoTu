@@ -52,7 +52,10 @@ export class LocalMediaRouter {
       await this.host.refresh(scope.owner, scope)
     } catch { /* the node keeps the last menu, or stays empty until the page can be read */ }
   }
-  textModels() { return localTextModels(this.site) }
+  textModels() {
+    const state = this.sessionState()
+    return localTextModels(this.site, state.available ? this.host?.view(this.account(), state.revision) || disconnectedStatus(this.site.label) : disconnectedStatus(this.site.label))
+  }
   private capture(signal?: AbortSignal): LocalMediaContext & { owner: string } {
     if (!this.host) throw Object.assign(new Error(`请在妙图桌面客户端连接${this.site.label}`), { status: 503 })
     const owner = this.account(), { revision } = this.sessionState()

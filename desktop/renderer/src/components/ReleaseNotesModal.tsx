@@ -33,22 +33,7 @@ function ReleaseNotesModal({ version, notes, onClose }: { version: string; notes
 
 export default function ReleaseNotesOnVersion() {
   const [state, setState] = useState<{ version: string; notes: ReleaseNotes } | null>(null)
-  useEffect(() => {
-    const bridge = (window as Window & { miaoDesktop?: DesktopBridge }).miaoDesktop
-    if (!bridge?.updateStatus) return
-    let cancelled = false
-    void bridge.updateStatus().then(status => {
-      const version = String(status?.currentVersion || '')
-      const notes = RELEASE_NOTES[version]
-      if (cancelled || !notes) return
-      try {
-        if (window.localStorage.getItem(`miaoimg.release-notes.${version}`)) return
-      } catch { /* storage may be unavailable; show the notes for this session */ }
-      setState({ version, notes })
-    }).catch(() => {})
-    return () => { cancelled = true }
-  }, [])
-  // 侧边栏「版本更新记录」随时打开当前版本的说明。
+  // 不随启动自动弹出；只由侧边栏「版本更新记录」按需打开。
   useEffect(() => {
     const bridge = (window as Window & { miaoDesktop?: DesktopBridge }).miaoDesktop
     const show = () => {
@@ -63,7 +48,6 @@ export default function ReleaseNotesOnVersion() {
   }, [])
   if (!state) return null
   const close = () => {
-    try { window.localStorage.setItem(`miaoimg.release-notes.${state.version}`, '1') } catch {}
     setState(null)
   }
   return <ReleaseNotesModal version={state.version} notes={state.notes} onClose={close} />

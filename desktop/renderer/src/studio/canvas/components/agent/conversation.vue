@@ -1566,9 +1566,19 @@ watch(() => !props.initialSession?.parentFile && !!workspaceStore.pendingAgentMe
         max-width: min(88%, var(--agent-content-width));
         margin-left: auto;
         margin-right: 0;
-        padding: 11px 15px;
-        border-radius: 18px;
-        background: var(--el-fill-color-light);
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        box-shadow: none;
+      }
+
+      &.userMessage .messageContent {
+        align-items: flex-end;
+      }
+
+      &.userMessage .messageText {
+        text-align: left;
       }
 
       &.editingMessage .messageBubble {

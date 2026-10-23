@@ -42,7 +42,10 @@ export function parseLiveCreationMenu(input, itemKinds = {}) {
     return [...new Set(selector.options.map(optionKey).map(Number).filter(value => Number.isInteger(value) && value > 0 && value <= 120))]
   }
   const keysOf = (selector, pattern) => selector ? [...new Set(selector.options.map(optionKey).filter(key => pattern.test(key)))] : []
-  const kindOf = (value, hint) => /seedance|ic_mini|dreamina\s+seedance|video/i.test(value) ? 'video' : /seedream|image/i.test(value) ? 'image' : hint
+  const kindOf = (value, hint) => /seedance|ic_mini|dreamina\s+seedance|video/i.test(value) ? 'video'
+    : /seedream|image/i.test(value) ? 'image'
+    : /豆包\s*(?:快速|专家)|(?:^|[\s(])(?:fast|pro)(?:\b|$)/i.test(value) ? 'text'
+    : hint
   const models = []
   const addModel = model => {
     const existing = models.find(item => item.kind === model.kind && item.key === model.key)
@@ -92,10 +95,13 @@ export function parseLiveCreationMenu(input, itemKinds = {}) {
     }
     for (const option of modelSelector.options) {
       const key = optionKey(option)
-      if (!key || !modelPattern.test(key) || ratioPattern.test(key) || resolutionPattern.test(key) || /^\d+s?$/i.test(key)) continue
       const labels = optionLabels(option)
+      const textLabel = labels.some(value => /豆包\s*(?:快速|专家)|(?:^|[\s(])(?:fast|pro)(?:\b|$)/i.test(value))
+      if (!key || !modelPattern.test(key) || ratioPattern.test(key) || resolutionPattern.test(key) || !textLabel && /^\d+s?$/i.test(key)) continue
       const parameters = configFor(option) || shared
-      const fallback = /video/.test(modelSelector.key) || parameters.durations.length || parameters.resolutions.length ? 'video' : modelSelector.key === 'model' || /image/.test(modelSelector.key) ? 'image' : undefined
+      const fallback = /video/.test(modelSelector.key) || parameters.durations.length || parameters.resolutions.length ? 'video'
+        : /image/.test(modelSelector.key) || parameters.ratios.length ? 'image'
+        : modelSelector.key === 'model' || hint === 'text' ? 'text' : undefined
       const kind = kindOf(`${key} ${labels.join(' ')}`, hint || fallback)
       if (!kind) continue
       addModel({ kind, key, label: labels.find(value => value !== key) || labels[0] || key, labels: labels.length ? labels : [key], durations: kind === 'video' ? parameters.durations : [], defaultDuration: kind === 'video' ? parameters.defaultDuration : undefined, ratios: parameters.ratios, resolutions: kind === 'video' ? parameters.resolutions : [] })
@@ -147,7 +153,7 @@ export function acceptLiveMenu(value: unknown): LiveMenuModel[] {
   if (!Array.isArray(value)) return []
   const models: LiveMenuModel[] = []
   for (const item of value.slice(0, 80) as any[]) {
-    if (!item || (item.kind !== 'image' && item.kind !== 'video') || typeof item.key !== 'string' || !MODEL_KEY.test(item.key)) continue
+    if (!item || !['image', 'video', 'text'].includes(item.kind) || typeof item.key !== 'string' || !MODEL_KEY.test(item.key)) continue
     const labels = [...new Set((Array.isArray(item.labels) ? item.labels : []).map((label: unknown) => textOf(label)).filter(Boolean))].slice(0, 6)
     const label = textOf(item.label) || labels[0] || item.key
     const durations = [...new Set<number>((Array.isArray(item.durations) ? item.durations : []).filter((duration: unknown) => Number.isInteger(duration) && Number(duration) > 0 && Number(duration) <= 120))].sort((left, right) => left - right).slice(0, 60)

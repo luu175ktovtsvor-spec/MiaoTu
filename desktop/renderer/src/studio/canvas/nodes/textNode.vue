@@ -463,7 +463,7 @@ async function generateText() {
     const pendingLocal = data.value.pendingLocalTextTask;
     if (pendingLocal && (typeof pendingLocal.id !== 'string' || !/^[A-Za-z0-9_-]+$/.test(pendingLocal.id)
       || !['doubao-local', 'dola-local'].includes(pendingLocal.providerId)
-      || !(pendingLocal.modelId === pendingLocal.providerId + '-text' || pendingLocal.providerId === 'doubao-local' && /^doubao-local-text-(fast|expert)$/.test(pendingLocal.modelId) || pendingLocal.providerId === 'dola-local' && /^dola-local-text-(fast|pro)$/.test(pendingLocal.modelId)))) throw new Error(translate('原文本任务绑定无效，请检查原任务记录；尚未重新生成。'));
+      || typeof pendingLocal.modelId !== 'string' || !(pendingLocal.modelId === pendingLocal.providerId + '-text' || pendingLocal.modelId.startsWith(pendingLocal.providerId + '-text-')))) throw new Error(translate('原文本任务绑定无效，请检查原任务记录；尚未重新生成。'));
     const choice = pendingLocal || selectedModel.value;
     if (!choice || !pendingLocal && model.value !== requestedModel) throw new Error(translate("原模型已不可用，请确认模型后重试"));
     if (!pendingLocal) preparePromptReferences();
@@ -613,6 +613,14 @@ nodeTools.register({
     if (args.fullscreen !== undefined) fullscreen.value = args.fullscreen;
     editing.value = args.open;
     return { open: editing.value, fullscreen: fullscreen.value, readOnly: !!documentError.value || generating.value };
+  },
+});
+nodeTools.register({
+  name: 'setTextStyle', description: '设置文本节点背景色，与节点工具栏的背景色选项一致；background 传空字符串表示无背景。只修改显示样式，不改正文。',
+  parameters: z.strictObject({ background: z.string().refine(value => TEXT_BACKGROUNDS.includes(value), '请使用文本节点背景色选项中的颜色') }),
+  execute({ background }) {
+    backgroundColor.value = background;
+    return { background: backgroundColor.value };
   },
 });
 </script>

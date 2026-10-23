@@ -14,6 +14,9 @@
     :bottomWidth="660"
     :style="{ width: previewUrl && videoWidth ? `${videoWidth}px` : undefined }">
     <template #topActions>
+      <el-button v-if="previewUrl" :icon="IconMusic" text :disabled="generating || deleting || uploading || uploadingDrag || actions?.processing" :title="translate('提取音轨')" :aria-label="translate('提取音轨')" @click.stop="actions?.open('extractAudio')" />
+      <el-button v-if="previewUrl" :icon="IconLayersSubtract" text :disabled="generating || deleting || uploading || uploadingDrag || actions?.processing" :title="translate('分离音视频')" :aria-label="translate('分离音视频')" @click.stop="actions?.open('separate')" />
+      <el-button v-if="previewUrl" :icon="IconScissors" text :disabled="generating || deleting || uploading || uploadingDrag || actions?.processing" :title="translate('截取片段')" :aria-label="translate('截取片段')" @click.stop="actions?.open('trim')" />
       <span ref="historyTarget" />
       <el-button :icon="IconTransfer" :loading="uploading || uploadingDrag" :disabled="generating || deleting" text :title="translate('替换视频')" :aria-label="translate('替换视频')" @click.stop="fileInput?.click()" />
       <input ref="fileInput" type="file" accept="video/*" hidden :aria-label="translate('选择替换视频')" :disabled="generating || deleting || uploading || uploadingDrag" @change="replaceOutput" />
@@ -23,7 +26,7 @@
         v-if="previewUrl"
         ref="player"
         :src="previewUrl"
-        :disabled="deleting || uploading || uploadingDrag"
+        :disabled="generating || deleting || uploading || uploadingDrag"
         :label="translate('生成视频')"
         @dimensions="resizeVideo" />
       <div v-else class="videoEmpty mediaEmpty" :aria-label="translate('暂无生成视频')">
@@ -131,6 +134,7 @@
     </template>
   </nodeSkeleton>
   <mediaHistory :target="historyTarget" mediaType="video" :current="outputFile" :disabled="generating || deleting || uploading" @select="outputs.video = { dataType: 'VIDEO', value: $event }" />
+  <videoActions ref="actions" :file="outputFile" :src="previewUrl" :disabled="generating || deleting || uploading || uploadingDrag" />
 </template>
 
 <script setup lang="ts">
@@ -138,13 +142,14 @@ import { groupNodeModels } from "../scaffold/nodeAi";
 import { nodeLocalModelLabel, nodeModelOptionLabel, nodeModelValueLabel } from '../scaffold/localModelLabel';
 import { computed, inject, nextTick, onMounted, onScopeDispose, ref, watch, watchEffect } from "vue";
 import { ElButton, ElCard, ElSelect, ElOption, ElOptionGroup, ElLoading, ElMessage } from "element-plus";
-import { IconCameraAi, IconCoins, IconSparkles, IconArrowUp, IconPlayerStop, IconTransfer, IconUpload, IconWriting, IconPhoto, IconLayersLinked, IconStack2 } from "@tabler/icons-vue";
+import { IconCameraAi, IconCoins, IconSparkles, IconArrowUp, IconPlayerStop, IconTransfer, IconUpload, IconWriting, IconPhoto, IconLayersLinked, IconStack2, IconMusic, IconLayersSubtract, IconScissors } from "@tabler/icons-vue";
 import { nodeSkeleton, nodeTools, showNodeError, isSignInRequired, useGenerationProgress, useNode, useNodeGeneration, useNodeReferences, useNodeUpload, z, type NodeMediaModel, type NodeVideoRequest, type NodeHandle } from "@miaoimg/nodes-scaffold/runtime";
 import promptInput from "@miaoimg/nodes-scaffold/promptInput";
 import videoPlayer from "@miaoimg/nodes-scaffold/videoPlayer";
 import referenceItem from "@miaoimg/nodes-scaffold/referenceItem";
 import mediaHistory from "@miaoimg/nodes-scaffold/mediaHistory";
 import generationProgress from "@miaoimg/nodes-scaffold/generationProgress";
+import videoActions from "./videoNode/videoActions.vue";
 import uploadProgress from "../components/uploadProgress.vue";
 import { beginUpload } from "../uploadStatus";
 import { assetFileType, ASSET_MAX_BYTES } from "../assetFile";
@@ -188,6 +193,7 @@ const historyTarget = ref<HTMLElement>();
 let disposed = false;
 const deleting = ref(false);
 const player = ref<InstanceType<typeof videoPlayer>>();
+const actions = ref<InstanceType<typeof videoActions>>();
 const videoWidth = ref(0);
 const videoDimensions = ref<{ width: number; height: number }>();
 const mediaMeta = computed(() => videoDimensions.value ? `${videoDimensions.value.width} × ${videoDimensions.value.height}` : "");
@@ -657,14 +663,14 @@ async function startGeneration(signal?: AbortSignal) {
 }
 
 nodeEvent.on("save", (reason) => {
-  if (reason === "reload" && (generating.value || uploading.value || deleting.value)) throw new Error(translate("视频处理中，请完成后再刷新节点"));
+  if (reason === "reload" && (generating.value || uploading.value || deleting.value || actions.value?.processing)) throw new Error(translate("视频处理中，请完成后再刷新节点"));
 });
 nodeEvent.on("delete", async () => {
   if (uploading.value) throw new Error(translate("视频正在替换，请稍后删除节点"));
   deleting.value = true;
   generationController?.abort();
   try {
-    await Promise.all([generation, player.value?.cancelAndWait()]);
+    await Promise.all([generation, player.value?.cancelAndWait(), actions.value?.cancelAndWait()]);
     if (pendingTask.value) throw new Error(translate("原任务尚未结束，请先继续取回或确认取消后再删除节点。"));
     await files.removeNodeFiles();
   } finally {
