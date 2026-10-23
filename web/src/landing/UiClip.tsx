@@ -3,13 +3,13 @@ import connectionsVideo from './assets/redesign/ui-connections.mp4'
 import connectionsPoster from './assets/redesign/ui-connections.jpg'
 import settingsVideo from './assets/redesign/ui-settings.mp4'
 import settingsPoster from './assets/redesign/ui-settings.jpg'
-import editVideo from './assets/redesign/ui-edit.mp4'
-import editPoster from './assets/redesign/ui-edit.jpg'
+import plusVideo from './assets/redesign/ui-plus.mp4'
+import plusPoster from './assets/redesign/ui-plus.jpg'
 
 const clips = {
   'ui-connections': { video: connectionsVideo, poster: connectionsPoster },
   'ui-settings': { video: settingsVideo, poster: settingsPoster },
-  'ui-edit': { video: editVideo, poster: editPoster },
+  'ui-plus': { video: plusVideo, poster: plusPoster },
 } as const
 export type UiClipName = keyof typeof clips
 

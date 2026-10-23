@@ -1,16 +1,51 @@
-.canvas-film{position:relative;scroll-margin-top:96px;text-align:left}
-.canvas-film-glow{position:absolute;inset:8% 6% -4%;z-index:0;background:radial-gradient(60% 60% at 30% 40%,rgb(120 120 255 / .32),transparent 70%),radial-gradient(50% 60% at 75% 60%,rgb(255 130 180 / .18),transparent 70%);filter:blur(60px);pointer-events:none}
-.canvas-film-screen{position:relative;z-index:1;aspect-ratio:16/9;background:#050506;border-radius:20px;overflow:hidden;box-shadow:0 0 0 1px rgb(255 255 255 / .1),0 1px 0 0 rgb(255 255 255 / .12) inset,0 50px 140px -30px rgb(0 0 0 / .8)}
+/* Hero stage: the film plays inside a video generation node on a dark canvas.
+   Colours follow the desktop canvas (3.1.0): #141414 ground, #262626 nodes,
+   #363636 borders, #4c9dff selected-edge glow. */
+.canvas-film{position:relative;scroll-margin-top:96px;text-align:left;--p:1}
+.canvas-film-stage{position:relative;perspective:1800px;perspective-origin:50% 20%}
+.canvas-film-world{position:relative;aspect-ratio:16/9;transform-style:preserve-3d;transform:rotateX(calc((1 - var(--p)) * 22deg)) translateZ(calc((1 - var(--p)) * -140px));transform-origin:50% 40%;will-change:transform}
+.canvas-film-grid{position:absolute;inset:-12% -8%;background-image:radial-gradient(circle,rgb(255 255 255 / .13) 1px,transparent 1.6px);background-size:22px 22px;mask-image:radial-gradient(closest-side,#000 40%,transparent 100%);-webkit-mask-image:radial-gradient(closest-side,#000 40%,transparent 100%);transform:translateZ(-60px);pointer-events:none}
+.canvas-film-edges{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none;fill:none}
+.canvas-film-edge-base{stroke:rgb(255 255 255 / .3);stroke-width:1.2}
+.canvas-film-flow{stroke:#4c9dff;animation:canvas-film-flow 3s linear infinite}
+.canvas-film-flow path{stroke-dashoffset:inherit}
+.canvas-film-flow path:not(.canvas-film-edge-core){stroke-linecap:round}
+.canvas-film-edge-core{stroke-width:1.6;stroke-opacity:.9}
+@keyframes canvas-film-flow{from{stroke-dashoffset:0}to{stroke-dashoffset:-300px}}
+
+.canvas-film-node{position:absolute;transform:translateZ(var(--z));transform-style:preserve-3d;animation:canvas-film-float 7s ease-in-out infinite;animation-delay:calc(var(--i) * -1.6s)}
+@keyframes canvas-film-float{0%,100%{transform:translateZ(var(--z)) translateY(0)}50%{transform:translateZ(var(--z)) translateY(-6px)}}
+.canvas-film-node-title{position:absolute;left:1px;bottom:100%;margin-bottom:6px;font-size:11px;line-height:1.4;color:#919191;white-space:nowrap;letter-spacing:.02em}
+.canvas-film-node-card{position:absolute;inset:0;border:1px solid #363636;border-radius:10px;background:#262626;overflow:hidden;box-shadow:0 24px 50px -18px rgb(0 0 0 / .8)}
+.canvas-film-node-card img{display:block;width:100%;height:100%;object-fit:cover}
+.canvas-film-node-text{padding:12px 14px;font-size:11px;line-height:1.7;color:#d4d4d4}
+.canvas-film-node-text b{display:block;font-size:12.5px;font-weight:600;color:#f7f7f7;margin-bottom:6px}
+.canvas-film-node-text p{display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden}
+.canvas-film-handle{position:absolute;right:-8px;top:50%;width:15px;height:15px;margin-top:-7.5px;border-radius:50%;border:1px solid rgb(247 247 247 / .38);background:#141414;display:grid;place-items:center}
+.canvas-film-handle::after{content:"+";font-style:normal;font-size:11px;line-height:1;color:#919191}
+.canvas-film-handle-in{right:auto;left:-8px}
+
+.canvas-film-screen-wrap{position:absolute;transform:translateZ(20px);transform-style:preserve-3d}
+.canvas-film-screen-title{font-size:12px;color:#b2b2b2}
+.canvas-film-glow{position:absolute;inset:6% 4% -6%;z-index:0;background:radial-gradient(60% 60% at 30% 40%,rgb(76 157 255 / .30),transparent 70%),radial-gradient(50% 60% at 78% 64%,rgb(150 120 255 / .16),transparent 70%);filter:blur(60px);pointer-events:none;transform:translateZ(-40px)}
+.canvas-film-screen{position:relative;z-index:1;aspect-ratio:16/9;background:#050506;border-radius:16px;overflow:hidden;box-shadow:0 0 0 1px #363636,0 50px 140px -30px rgb(0 0 0 / .85)}
 .canvas-film-screen video{display:block;width:100%;height:100%;object-fit:contain;background:transparent}
 .canvas-film-screen video:fullscreen{object-fit:contain;background:#000}
-.canvas-film-bar{position:absolute;inset:auto 0 0;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:48px 20px 18px;background:linear-gradient(to top,rgb(0 0 0 / .55),transparent);opacity:.92;transition:opacity .3s}
-.canvas-film-label{display:inline-flex;align-items:center;gap:9px;font-size:12px;color:rgb(255 255 255 / .78);letter-spacing:.08em}
-.canvas-film-label i{width:6px;height:6px;border-radius:50%;background:#ff6b8a;box-shadow:0 0 0 3px rgb(255 107 138 / .2)}
 .canvas-film-screen>.site-film-play{position:absolute;inset:0}
+.canvas-film-bar{position:absolute;inset:auto 0 0;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:48px 20px 18px;background:linear-gradient(to top,rgb(0 0 0 / .6),transparent);opacity:.92;transition:opacity .3s}
+.canvas-film-label{display:inline-flex;align-items:center;gap:9px;font-size:12px;color:rgb(255 255 255 / .8);letter-spacing:.08em}
+.canvas-film-label i{width:6px;height:6px;border-radius:50%;background:#4c9dff;box-shadow:0 0 0 3px rgb(76 157 255 / .22)}
 .canvas-film-play-hint{display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border:1px solid rgb(255 255 255 / .18);border-radius:999px;background:rgb(20 20 26 / .5);color:#fff;font-size:12px}
+
+@media(max-width:860px){
+  .canvas-film-world{aspect-ratio:auto;transform:none}
+  .canvas-film-node,.canvas-film-edges,.canvas-film-grid,.canvas-film-handle-in{display:none}
+  .canvas-film-screen-wrap{position:relative;left:auto!important;top:auto!important;width:100%!important;transform:none;margin-top:28px}
+}
 @media(max-width:720px){
-  .canvas-film-screen{border-radius:14px}
+  .canvas-film-screen{border-radius:12px}
   .canvas-film-bar{padding:32px 10px 10px}
   .canvas-film-label{display:none}
   .canvas-film-play-hint{margin-left:auto;font-size:11px}
 }
+@media(prefers-reduced-motion:reduce){.canvas-film-world{transform:none}.canvas-film-node{animation:none}.canvas-film-flow{animation:none}}

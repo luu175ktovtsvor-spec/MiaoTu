@@ -10,7 +10,7 @@ import UiClip, { type UiClipName } from './UiClip'
 import { MIAO_MANUAL_URL } from '../lib/productLinks'
 const base = '/desktop-downloads/updates/'
 const installCommand = 'curl -fsSL https://miaoimg.cn/desktop-downloads/updates/install-mac.sh | sh'
-const canvasMedia = ['ui-connections', 'ui-settings', 'ui-edit'] as const satisfies readonly UiClipName[]
+const canvasMedia = ['ui-connections', 'ui-settings', 'ui-plus'] as const satisfies readonly UiClipName[]
 
 // Fades sections in once as they enter the viewport. Content stays visible
 // without JS, and with reduced motion the CSS skips the transition.
@@ -38,7 +38,7 @@ export default function LandingPage() {
   useReveal(site)
   useEffect(() => {
     const old = document.title
-    const id = window.setTimeout(() => { document.title = lang === 'zh' ? '妙图 MiaoImg · AI 无限画布' : 'MiaoImg · Infinite canvas for creativity' }, 0)
+    const id = window.setTimeout(() => { document.title = lang === 'zh' ? '妙图 MiaoImg · AI 无限画布' : 'MiaoImg · The AI infinite canvas' }, 0)
     return () => { window.clearTimeout(id); document.title = old }
   }, [lang])
   useEffect(() => {
@@ -78,6 +78,7 @@ export default function LandingPage() {
           <p className="site-hero-platforms"><AppleLogo size={14} weight="fill"/><WindowsLogo size={14} weight="fill"/>{c.platforms}</p>
         </div>
         <div className="site-container site-hero-film"><CanvasFilm lang={lang}/></div>
+        <ol className="site-container site-steps" aria-label={c.workflow}>{c.steps.map(([title, body], i) => <li key={title} data-reveal style={{ ['--i' as string]: i }}><span className="site-step-index">0{i + 1}</span><div><h3>{title}</h3><p>{body}</p></div>{i < 2 && <i className="site-step-line" aria-hidden="true"/>}</li>)}</ol>
       </section>
 
       <section className="site-section site-canvas" id="canvas">

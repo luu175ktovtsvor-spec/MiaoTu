@@ -9,6 +9,9 @@ import re
 import struct
 import subprocess
 
+# Homepage film; it is not part of films.ts but is prepared with the catalog.
+HERO = '/showcase/turkey-3d-20261023/brand-film.mp4'
+
 
 def probe(path):
     return json.loads(subprocess.check_output([
@@ -48,9 +51,7 @@ def main():
     parser.add_argument('--report', required=True, type=Path)
     args = parser.parse_args()
     films = json.loads(args.films.read_text().split('export const films: ShowcaseFilm[] = ', 1)[1].strip().rstrip(';'))
-    urls = list(dict.fromkeys([
-        '/showcase/turkey-film-clean-20261014/brand-film.mp4',
-        *[film['video'] for film in films]]))
+    urls = list(dict.fromkeys([HERO, *[film['video'] for film in films]]))
     # First fix the four tail-index clips, then the hero and the remaining catalog.
     urls.sort(key=lambda url: (0 if re.search(r'new-13[4-7]\.mp4$', url) else 1 if 'brand-film' in url else 2))
     mapping, records = {}, []

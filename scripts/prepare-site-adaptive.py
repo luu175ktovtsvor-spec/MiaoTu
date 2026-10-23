@@ -11,7 +11,7 @@ import shutil
 import subprocess
 
 helpers = runpy.run_path(str(Path(__file__).with_name('prepare-site-playback.py')))
-probe, sha = helpers['probe'], helpers['sha']
+probe, sha, HERO = helpers['probe'], helpers['sha'], helpers['HERO']
 
 
 def playlist_stats(path):
@@ -28,7 +28,7 @@ def playlist_stats(path):
 
 
 def add_hero_rendition(args, mapping, records):
-    hero = '/showcase/turkey-film-clean-20261014/brand-film.mp4'
+    hero = HERO
     if hero not in mapping:
         return
     prepared = json.loads(args.playback.read_text())
@@ -77,7 +77,7 @@ def main():
     args = parser.parse_args()
     films = json.loads(args.films.read_text().split('export const films: ShowcaseFilm[] = ', 1)[1].strip().rstrip(';'))
     prepared = json.loads(args.playback.read_text())
-    urls = list(dict.fromkeys(['/showcase/turkey-film-clean-20261014/brand-film.mp4', *[film['video'] for film in films]]))
+    urls = list(dict.fromkeys([HERO, *[film['video'] for film in films]]))
     urls.sort(key=lambda url: (0 if 'new-136.mp4' in url else 1 if 'brand-film' in url else 2))
     mapping, records = {}, []
     locks, lock_guard = {}, threading.Lock()
