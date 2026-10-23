@@ -9,6 +9,8 @@ type Options = {
   onSaveError(error: unknown): void;
   onReloadError(error: unknown): void;
   onStopError(error: unknown): void;
+  saveTimeoutMs?: number;
+  stopTimeoutMs?: number;
 }
 
 // Own the native window transition, keeping its document and local service alive
@@ -16,6 +18,21 @@ type Options = {
 // a quit requested during reload takes precedence over starting another page.
 export function createWindowActions(options: Options) {
   const { window, save } = options
+  const timeout = (value: number | undefined, fallback: number) =>
+    Number.isFinite(value) && value! > 0 ? value! : fallback
+  const saveTimeoutMs = timeout(options.saveTimeoutMs, 15_000)
+  const stopTimeoutMs = timeout(options.stopTimeoutMs, 10_000)
+  const waitFor = <T>(work: Promise<T>, milliseconds: number, message: string, code: string): Promise<T> => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const expired = new Promise<T>((_resolve, reject) => {
+      timer = setTimeout(() => reject(Object.assign(new Error(message), { code })), milliseconds)
+    })
+    return Promise.race([work, expired]).finally(() => {
+      if (timer) clearTimeout(timer)
+    })
+  }
+  const flushSave = () => waitFor(save.flush(), saveTimeoutMs,
+    '工作区保存超时，已取消退出。请稍后重试。', 'WORKSPACE_SAVE_TIMEOUT')
   let quitting = false, quitRequested = false
   let quitRequest: Promise<void> | undefined, reloadRequest: Promise<void> | undefined
   let sessionRequest: Promise<void> | undefined
@@ -49,7 +66,7 @@ export function createWindowActions(options: Options) {
       const transition = { phase: 'saving' as 'saving' | 'view' }
       activeSession = transition
       try {
-        try { await save.flush() }
+        try { await flushSave() }
         catch (error) { if (alive()) options.onSaveError(error); throw error }
         assertCurrent()
         commit()
@@ -105,7 +122,7 @@ export function createWindowActions(options: Options) {
       await precedingSession?.catch(() => {})
       if (quitRequested || quitting || !alive()) return
       disable()
-      try { await save.flush() }
+      try { await flushSave() }
       catch (error) { if (!quitRequested && alive()) options.onSaveError(error); return }
       if (quitRequested || quitting || !alive()) return
       try { await reloadDocument() }
@@ -138,7 +155,7 @@ export function createWindowActions(options: Options) {
       await reloadRequest
       await precedingSession?.catch(() => {})
       disable()
-      try { await save.flush() }
+      try { await flushSave() }
       catch (error) {
         if (alive()) {
           quitRequested = false
@@ -149,7 +166,10 @@ export function createWindowActions(options: Options) {
         }
         // Destruction already removed the JS draft; still close the service.
       }
-      try { await options.stop() } catch (error) { options.onStopError(error) }
+      try {
+        await waitFor(options.stop(), stopTimeoutMs,
+          '妙图后台服务清理超时，已强制继续退出。', 'WORKSPACE_SHUTDOWN_TIMEOUT')
+      } catch (error) { options.onStopError(error) }
       quitting = true
       save.dispose()
       try { action() } catch { options.quit() }

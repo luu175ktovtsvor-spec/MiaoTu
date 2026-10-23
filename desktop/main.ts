@@ -485,6 +485,8 @@ restore_previous
         console.warn('妙图页面保存未完成：' + ((error as any)?.code || (error as any)?.status || 'unknown'))
         dialog.showErrorBox('工作区尚未保存，已取消操作', (error as any)?.code === 'WORKSPACE_UNRESPONSIVE'
           ? '工作区页面暂无响应，请等待恢复后再保存。'
+          : (error as any)?.code === 'WORKSPACE_SAVE_TIMEOUT'
+            ? '保存等待超时，已取消退出。当前窗口仍可继续使用，请确认画布保存状态后重试。'
           : '请查看当前画布或文档的保存状态，保存完成后重试。')
       },
       onReloadError: () => dialog.showErrorBox('工作区重新加载未完成', '请检查当前工作区的状态后重试。'),

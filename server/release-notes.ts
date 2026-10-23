@@ -10,6 +10,15 @@ export type ReleaseNotes = {
 // 更新说明直接写软件修好了什么：哪一个界面、哪一项操作，以前错在哪里，现在怎样。
 // 不写「上游」「部分问题」「体验优化」这类看不出具体改动的话。
 export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
+  '3.0.2': {
+    title: { zh: '修复关闭应用时偶发卡住', en: 'Fixes the app occasionally getting stuck while closing' },
+    fixes: [
+      { zh: '关闭妙图时，如果本机后台清理没有及时结束，窗口不再一直变灰卡住；保存完成后会继续退出。', en: 'If local background cleanup takes too long while MiaoImg is closing, the window no longer stays grey and stuck; the app continues exiting after your work is saved.' },
+      { zh: '如果保存本身超时，会取消这次关闭并恢复窗口，不再出现本机服务已经停止、界面却无法继续操作的情况。', en: 'If saving itself times out, closing is cancelled and the window becomes usable again instead of leaving local services stopped behind an unresponsive interface.' },
+    ],
+    improvements: [],
+    knownIssues: [],
+  },
   '3.0.1': {
     title: { zh: 'MiniMax H3 可选比例与提示词优化开关，Seedream 4.0 支持 4K', en: 'MiniMax H3 ratios and prompt optimisation switch, 4K for Seedream 4.0' },
     fixes: [
