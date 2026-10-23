@@ -32,7 +32,8 @@ export default function VideoPlayer({ source, poster, title }: { source: string;
     if (entry && Hls.isSupported()) {
       // Same policy as the website: begin on the sharpest step, fall back only when the link can't keep up.
       engine = new Hls({ startLevel: -1, testBandwidth: false, abrEwmaDefaultEstimate: 8_000_000, abrEwmaDefaultEstimateMax: 8_000_000,
-        capLevelToPlayerSize: false, maxBufferLength: 4, maxMaxBufferLength: 12, backBufferLength: 4, lowLatencyMode: false })
+        abrBandWidthFactor: 1, abrBandWidthUpFactor: 0.9, capLevelToPlayerSize: false,
+        maxBufferLength: 4, maxMaxBufferLength: 60, backBufferLength: 4, lowLatencyMode: false })
       video.dataset.playback = 'adaptive'
       const absolute = (text: string, base: URL) => text.split('\n').map(line => line && !line.startsWith('#') ? new URL(line, base).href : line).join('\n')
       const masterAddress = new URL(entry.master, location.origin)
@@ -49,7 +50,7 @@ export default function VideoPlayer({ source, poster, title }: { source: string;
       video.addEventListener('loadedmetadata', play, { once: true })
     }
     const stop = () => engine?.stopLoad()
-    const start = () => { engine?.startLoad(video.currentTime); engine && (engine.config.maxBufferLength = 8) }
+    const start = () => { engine?.startLoad(video.currentTime); engine && (engine.config.maxBufferLength = 30) }
     const seek = () => engine?.startLoad(video.currentTime)
     const hide = () => { if (document.hidden) { video.pause(); stop() } }
     video.addEventListener('error', failed); video.addEventListener('pause', stop)

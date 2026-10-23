@@ -17,7 +17,7 @@ export function useSitePlayback(ref: RefObject<HTMLVideoElement | null>, source:
     const start = () => {
       pauseOthers()
       if (controller.current) {
-        controller.current.config.maxBufferLength = 10
+        controller.current.config.maxBufferLength = 30
         if (stopped) controller.current.startLoad()
       }
       stopped = false
@@ -25,7 +25,7 @@ export function useSitePlayback(ref: RefObject<HTMLVideoElement | null>, source:
     const stop = () => { controller.current?.stopLoad(); stopped = true }
     const seek = () => {
       if (stopped && controller.current) {
-        controller.current.config.maxBufferLength = video.paused ? 4 : 10
+        controller.current.config.maxBufferLength = video.paused ? 4 : 30
         controller.current.startLoad(video.currentTime); stopped = false
       }
     }
@@ -38,9 +38,12 @@ export function useSitePlayback(ref: RefObject<HTMLVideoElement | null>, source:
     if (playlist && Hls.isSupported()) {
       // Start on the sharpest step instead of probing at 360p; ABR still steps
       // down when segments arrive slower than they play. No cap to the box size,
-      // so small cards and fullscreen both get the full-quality picture.
+      // so small cards and fullscreen both get the full-quality picture. Measured
+      // on a 4 Mbps link: the stock 0.95/0.7 factors fell to 360p for 8 s, these
+      // held 720p–1080p with the same single start-up stall.
       const engine = new Hls({ startLevel: -1, testBandwidth: false, abrEwmaDefaultEstimate: 8_000_000, abrEwmaDefaultEstimateMax: 8_000_000,
-        capLevelToPlayerSize: false, maxBufferLength: 4, maxMaxBufferLength: 15, backBufferLength: 5, lowLatencyMode: false, progressive: true })
+        abrBandWidthFactor: 1, abrBandWidthUpFactor: 0.9, capLevelToPlayerSize: false,
+        maxBufferLength: 4, maxMaxBufferLength: 60, backBufferLength: 5, lowLatencyMode: false, progressive: true })
       controller.current = engine
       video.dataset.playback = 'adaptive'
       engine.on(Hls.Events.LEVEL_SWITCHED, (_, data) => { video.dataset.levelHeight = String(engine.levels[data.level]?.height || 0) })
@@ -91,7 +94,7 @@ export function useSitePlayback(ref: RefObject<HTMLVideoElement | null>, source:
     const video = ref.current
     if (!video) return
     const engine = controller.current
-    if (engine) engine.config.maxBufferLength = playing ? 10 : 3
+    if (engine) engine.config.maxBufferLength = playing ? 30 : 3
     if (playing) video.play().catch(() => {})
     else video.pause()
   }, [playing, source, playlist, attempt])
