@@ -34,6 +34,9 @@ import {
   List,
   CaretDoubleLeft,
   CaretDoubleRight,
+  CaretDown,
+  SquaresFour,
+  ArrowSquareOut,
 } from "@phosphor-icons/react";
 import { useLang } from "../i18n";
 import LanguageControl from "../LanguageControl";
@@ -55,6 +58,57 @@ const sections = [
   ["payments", "充值管理", Receipt],
   ["feedback", "用户反馈", ChatCircleText],
   ["audit", "操作记录", ListChecks],
+];
+const externalDestinations = [
+  {
+    id: "site",
+    zh: "妙图官网",
+    en: "MiaoImg website",
+    host: "miaoimg.cn",
+    href: "https://miaoimg.cn",
+  },
+  {
+    id: "changelog",
+    zh: "更新日志",
+    en: "Changelog",
+    host: "miaoimg.cn/changelog",
+    href: "https://miaoimg.cn/changelog",
+  },
+  {
+    id: "update-feed",
+    zh: "桌面更新源",
+    en: "Desktop update feed",
+    host: "miaoimg.cn/desktop-downloads/updates",
+    href: "https://miaoimg.cn/desktop-downloads/updates/latest-mac.yml",
+  },
+  {
+    id: "api",
+    zh: "云枢 API",
+    en: "Yunshu API",
+    host: "api.zzyppz.cn",
+    href: "https://api.zzyppz.cn",
+  },
+  {
+    id: "yunshu-admin",
+    zh: "云枢管理",
+    en: "Yunshu admin",
+    host: "admin.zzyppz.cn",
+    href: "https://admin.zzyppz.cn",
+  },
+  {
+    id: "dola-admin",
+    zh: "Dola 管理",
+    en: "Dola admin",
+    host: "admin.zzyppz.cn/custom/yunshu-dola",
+    href: "https://admin.zzyppz.cn/custom/yunshu-dola",
+  },
+  {
+    id: "source",
+    zh: "代码仓库",
+    en: "Source repository",
+    host: "github.com/luu175ktovtsvor-spec/miaoimg",
+    href: "https://github.com/luu175ktovtsvor-spec/miaoimg",
+  },
 ];
 function readSection() {
   const key = window.location.hash.slice(1);
@@ -113,7 +167,9 @@ export default function AdminPage() {
     [modelFilter, setModelFilter] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false),
     [mobileNav, setMobileNav] = useState(false),
+    [quickLinksOpen, setQuickLinksOpen] = useState(false),
     [listLoading, setListLoading] = useState(false);
+  const quickLinksRef = useRef<HTMLDivElement>(null);
   const navigationGroups = [
     {
       label: lang === "en" ? "Workspace" : "业务管理",
@@ -135,10 +191,27 @@ export default function AdminPage() {
     setError("");
     setNotice("");
     setMobileNav(false);
+    setQuickLinksOpen(false);
     setModal(null);
     setForm({});
     setCopied(false);
   }
+  useEffect(() => {
+    if (!quickLinksOpen) return;
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      if (!quickLinksRef.current?.contains(event.target as Node))
+        setQuickLinksOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setQuickLinksOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [quickLinksOpen]);
   useEffect(() => {
     const change = () => navigate(readSection());
     window.addEventListener("hashchange", change);
@@ -1035,6 +1108,48 @@ export default function AdminPage() {
           </div>
           <div className="admin-top-actions">
             <LanguageControl compact />
+            <div className="admin-quick-links" ref={quickLinksRef}>
+              <button
+                type="button"
+                aria-haspopup="menu"
+                aria-expanded={quickLinksOpen}
+                aria-controls="admin-quick-links-menu"
+                onClick={() => setQuickLinksOpen((value) => !value)}
+              >
+                <SquaresFour size={17} />
+                {lang === "en" ? "Shortcuts" : adminText("快捷入口", lang)}
+                <CaretDown size={14} aria-hidden="true" />
+              </button>
+              {quickLinksOpen && (
+                <div
+                  id="admin-quick-links-menu"
+                  className="admin-quick-links-menu"
+                  role="menu"
+                >
+                  <span className="admin-quick-links-heading">
+                    {lang === "en" ? "Open in a new tab" : "在新标签页打开"}
+                  </span>
+                  {externalDestinations.map((destination) => (
+                    <a
+                      key={destination.id}
+                      href={destination.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      role="menuitem"
+                      onClick={() => setQuickLinksOpen(false)}
+                    >
+                      <span>
+                        <strong>
+                          {lang === "en" ? destination.en : destination.zh}
+                        </strong>
+                        <small>{destination.host}</small>
+                      </span>
+                      <ArrowSquareOut size={16} aria-hidden="true" />
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
             <button
               disabled={busy}
               onClick={() =>

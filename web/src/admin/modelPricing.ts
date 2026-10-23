@@ -22,7 +22,7 @@ export type MediaPriceSection = {
 export type PricingDraft = {
   prices: Record<
     string,
-    Record<"image" | "video", Record<string, string | number>>
+    Partial<Record<"image" | "video", Record<string, string | number>>>
   >;
   textPrices: Record<
     string,

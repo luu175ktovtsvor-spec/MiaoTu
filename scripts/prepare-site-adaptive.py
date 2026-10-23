@@ -27,47 +27,56 @@ def playlist_stats(path):
             'peak': max(int(segment.stat().st_size * 8 / duration) for segment, duration in zip(segments, durations))}
 
 
-def add_hero_rendition(args, mapping, records):
-    hero = HERO
-    if hero not in mapping:
-        return
+def add_hd_renditions(args, mapping, records):
+    """Give every source taller than 720p a 720p step between the 360p start and the original.
+
+    Without it a 1080p film needs about 8 Mbps before the player leaves 360p. The
+    published master.m3u8 stays byte-identical; the three-step list is master-hd.m3u8.
+    """
     prepared = json.loads(args.playback.read_text())
-    source = args.root / prepared.get(hero, hero).removeprefix('/showcase/')
-    folder = args.root / mapping[hero]['master'].removeprefix('/showcase/')
-    folder = folder.parent
-    medium = folder / 'medium'
-    if not (medium / 'index.m3u8').exists():
-        temporary = folder / '.medium-pending'
-        shutil.rmtree(temporary, ignore_errors=True); temporary.mkdir()
-        video = next(s for s in probe(source)['streams'] if s['codec_type'] == 'video')
-        rate = float(Fraction(video['avg_frame_rate']))
-        subprocess.run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-i', str(source),
-            '-map', '0:v:0', '-map', '0:a:0?', '-vf', 'scale=1280:720:force_original_aspect_ratio=decrease:force_divisible_by=2',
-            '-c:v', 'libx264', '-preset', 'medium', '-crf', '22', '-maxrate', '650k', '-bufsize', '650k',
-            '-pix_fmt', 'yuv420p', '-fps_mode', 'passthrough', '-g', str(round(rate * 2)), '-sc_threshold', '0',
-            '-force_key_frames', 'expr:gte(t,n_forced*2)', '-threads', '2', '-c:a', 'aac', '-b:a', '96k',
-            '-hls_time', '4', '-hls_playlist_type', 'vod', '-hls_flags', 'independent_segments',
-            '-hls_segment_filename', str(temporary / '%04d.ts'), str(temporary / 'index.m3u8')], check=True)
-        playlist_stats(temporary / 'index.m3u8')
-        temporary.rename(medium)
-    stats = playlist_stats(medium / 'index.m3u8')
-    record = next(record for record in records if record['source'] == hero)
-    if abs(stats['seconds'] - record['low']['seconds']) > .3:
-        raise ValueError('Hero middle rendition duration mismatch')
-    master = (folder / 'master.m3u8').read_text()
-    bandwidth = int(stats['peak'] * 1.1)
-    average = int(stats['bytes'] * 8 / stats['seconds'])
-    lines = master.splitlines()
-    position = next(i for i, line in enumerate(lines) if line == 'high/index.m3u8') - 1
-    lines[position:position] = [f'#EXT-X-STREAM-INF:BANDWIDTH={bandwidth},AVERAGE-BANDWIDTH={average},RESOLUTION=1280x720', 'medium/index.m3u8']
-    enhanced = '\n'.join(lines) + '\n'
-    target = folder / 'master-720.m3u8'
-    if target.exists() and target.read_text() != enhanced:
-        raise ValueError('Published hero master would change bytes')
-    target.write_text(enhanced)
-    mapping[hero]['master'] = mapping[hero]['master'].replace('master.m3u8', 'master-720.m3u8')
-    mapping[hero]['manifest'] = enhanced
-    record['master'] = mapping[hero]['master']; record['medium'] = stats
+    def build(record):
+        url = record['source']
+        folder = (args.root / mapping[url]['master'].removeprefix('/showcase/')).parent
+        high = next(s for s in probe(folder / 'high/0000.ts')['streams'] if s['codec_type'] == 'video')
+        if min(high['width'], high['height']) < 1000:
+            return
+        rendition = folder / 'hd720'
+        if not (rendition / 'index.m3u8').exists():
+            source = args.root / prepared.get(url, url).removeprefix('/showcase/')
+            temporary = folder / '.hd720-pending'
+            shutil.rmtree(temporary, ignore_errors=True); temporary.mkdir()
+            rate = float(Fraction(next(s for s in probe(source)['streams'] if s['codec_type'] == 'video')['avg_frame_rate']))
+            try:
+                subprocess.run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-i', str(source),
+                    '-map', '0:v:0', '-map', '0:a:0?', '-vf', "scale='if(gte(iw,ih),-2,720)':'if(gte(iw,ih),720,-2)'",
+                    '-c:v', 'libx264', '-preset', 'medium', '-crf', '21', '-maxrate', '2500k', '-bufsize', '5000k',
+                    '-pix_fmt', 'yuv420p', '-fps_mode', 'passthrough', '-g', str(max(1, round(rate * 2))), '-sc_threshold', '0',
+                    '-force_key_frames', 'expr:gte(t,n_forced*2)', '-threads', '2', '-c:a', 'aac', '-b:a', '128k',
+                    '-hls_time', '4', '-hls_playlist_type', 'vod', '-hls_flags', 'independent_segments',
+                    '-hls_segment_filename', str(temporary / '%04d.ts'), str(temporary / 'index.m3u8')], check=True)
+                playlist_stats(temporary / 'index.m3u8')
+                temporary.rename(rendition)
+            except BaseException:
+                shutil.rmtree(temporary, ignore_errors=True)
+                raise
+        stats = playlist_stats(rendition / 'index.m3u8')
+        if abs(stats['seconds'] - record['low']['seconds']) > .3:
+            raise ValueError('720p rendition duration mismatch: ' + url)
+        size = next(s for s in probe(rendition / '0000.ts')['streams'] if s['codec_type'] == 'video')
+        lines = (folder / 'master.m3u8').read_text().splitlines()
+        position = next(i for i, line in enumerate(lines) if line == 'high/index.m3u8') - 1
+        lines[position:position] = [f'#EXT-X-STREAM-INF:BANDWIDTH={int(stats["peak"] * 1.1)},AVERAGE-BANDWIDTH={int(stats["bytes"] * 8 / stats["seconds"])},RESOLUTION={size["width"]}x{size["height"]}', 'hd720/index.m3u8']
+        enhanced = '\n'.join(lines) + '\n'
+        target = folder / 'master-hd.m3u8'
+        if target.exists() and target.read_text() != enhanced:
+            raise ValueError('Published master would change bytes: ' + str(target))
+        target.write_text(enhanced)
+        mapping[url]['master'] = '/showcase/' + str(target.relative_to(args.root))
+        mapping[url]['manifest'] = enhanced
+        record['master'] = mapping[url]['master']; record['hd720'] = stats
+        print(f'720p step {url}', flush=True)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        list(pool.map(build, records))
 
 
 def main():
@@ -145,7 +154,7 @@ def main():
         print(f'{index + 1}/{len(urls)} adaptive {url}; low={int(low["bytes"] * 8 / low["seconds"])} bps', flush=True)
     with ThreadPoolExecutor(max_workers=2) as pool:
         list(pool.map(prepare, enumerate(urls)))
-    add_hero_rendition(args, mapping, records)
+    add_hd_renditions(args, mapping, records)
     args.output.write_text(json.dumps(mapping, indent=2) + '\n')
     args.report.write_text(json.dumps({'inspected': len(urls), 'adaptive': len(records), 'files': records}, indent=2) + '\n')
     print(f'Inspected {len(urls)} videos; {len(records)} adaptive packages ready.', flush=True)

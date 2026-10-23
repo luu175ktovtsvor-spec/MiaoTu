@@ -36,8 +36,11 @@ export function useSitePlayback(ref: RefObject<HTMLVideoElement | null>, source:
     video.addEventListener('seeking', seek)
     document.addEventListener('play', prioritize, true)
     if (playlist && Hls.isSupported()) {
-      const engine = new Hls({ startLevel: 0, abrEwmaDefaultEstimate: 650_000, capLevelToPlayerSize: true,
-        maxBufferLength: 4, maxMaxBufferLength: 15, backBufferLength: 5, lowLatencyMode: false, progressive: true })
+      // Start on the sharpest step instead of probing at 360p; ABR still steps
+      // down when segments arrive slower than they play. No cap to the box size,
+      // so small cards and fullscreen both get the full-quality picture.
+      const engine = new Hls({ startLevel: -1, testBandwidth: false, abrEwmaDefaultEstimate: 8_000_000, abrEwmaDefaultEstimateMax: 8_000_000,
+        capLevelToPlayerSize: false, maxBufferLength: 4, maxMaxBufferLength: 15, backBufferLength: 5, lowLatencyMode: false, progressive: true })
       controller.current = engine
       video.dataset.playback = 'adaptive'
       engine.on(Hls.Events.LEVEL_SWITCHED, (_, data) => { video.dataset.levelHeight = String(engine.levels[data.level]?.height || 0) })
