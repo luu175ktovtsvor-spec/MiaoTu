@@ -1634,28 +1634,6 @@
       "watermarkReview": "12 full-frame samples from the opening to 98.5 percent of duration. No platform or creator watermark observed; no watermark removal or video crop. Product labels, dialogue, and in-film titles are preserved."
     },
     {
-      "id": "new-86",
-      "title": "穿越土耳其霓虹古城、碧海与热气球天空",
-      "titleEn": "Through Turkey’s Neon Old City, Turquoise Seas and Balloon Skies",
-      "source": "https://x.com/Naiknelofar788/status/2106439652278411435",
-      "creator": "@Naiknelofar788",
-      "download": "https://media.goodcase.ai/cases/41688366787f.mp4",
-      "poster": "https://media.goodcase.ai/cases/313dd39b0f8a.jpg",
-      "collection": "https://goodcase.ai/cases/seedance-2-5-create-a-30-second-ultra-realistic-cinematic-fpv-travel-film-showcasing-the-fut-10f862c76c6a",
-      "duration": 30.144,
-      "size": 27122625,
-      "sha256": "41688366787f7be5b007884b9b686a0e4f316b0737d39ea5d802709275d3eef1",
-      "video": {
-        "codec_name": "h264",
-        "width": 1920,
-        "height": 1080
-      },
-      "theme": "travel",
-      "publicPath": "/showcase/20261014-150/new-86.mp4",
-      "posterTime": 16.278,
-      "watermarkReview": "12 full-frame samples from the opening to 98.5 percent of duration. No platform or creator watermark observed; no watermark removal or video crop. Product labels, dialogue, and in-film titles are preserved."
-    },
-    {
       "id": "new-87",
       "title": "宫廷舞厅的多色礼服",
       "titleEn": "Gowns in the palace ballroom",
@@ -14907,54 +14885,6 @@
       217,
       220
     ]
-  },
-  "canvasProject": {
-    "title": "粉色节拍 MV",
-    "source": "https://goodcase.ai/cases/doc3-kpop-mv-real-person",
-    "creator": "卡尔",
-    "originalVideo": "/showcase/20261014-150/new-135.mp4",
-    "description": "同一组三位表演者和粉色霓虹舞台。人物、舞台和三联画构图作为镜头参考；原声音轨用于剪辑节拍。镜头演示来自原作的无损片段，完整示例播放原MV。",
-    "clips": [
-      {
-        "id": "MV01",
-        "publicPath": "/showcase/native-mv-20261014/MV01.mp4",
-        "bytes": 6727522,
-        "sha256": "58e00bc9e0bfb08b7c7c4cab473a40e77bf6da236b740acfe269b4fd476e6fe8"
-      },
-      {
-        "id": "MV02",
-        "publicPath": "/showcase/native-mv-20261014/MV02.mp4",
-        "bytes": 2569464,
-        "sha256": "2a298e882d23d5c8c2ec249dc82efda278ee0e09084d35784c33a88ab467ea3e"
-      },
-      {
-        "id": "MV03",
-        "publicPath": "/showcase/native-mv-20261014/MV03.mp4",
-        "bytes": 4922320,
-        "sha256": "7abd4a7e52649d5f7227119cfae9411296f9d4a744e1204bf7054217f5d43a41"
-      },
-      {
-        "id": "mv-track",
-        "publicPath": "/showcase/native-mv-20261014/mv-track.m4a",
-        "bytes": 248259,
-        "sha256": "180c0d02d9687a9755054d64bda8a5cdd813af64db30a5ae11a3702ae83fba1b"
-      }
-    ],
-    "sourceIntervals": {
-      "MV01": [
-        2.416667,
-        6.666667
-      ],
-      "MV02": [
-        6.666667,
-        9.75
-      ],
-      "MV03": [
-        9.75,
-        13.666667
-      ]
-    },
-    "nodeAppearance": "Shared node-presentation.css from the product canvas, matching nodeSkeleton, videoGenerationNode and audioNode."
   },
   "lastExpansion": {
     "sourceCases": 832,
