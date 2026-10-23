@@ -1,7 +1,7 @@
 import { ArrowLeft, ArrowUpRight } from '@phosphor-icons/react'
 import { useEffect } from 'react'
 import { useLang } from '../i18n'
-import { RELEASE_NOTES } from '../../../desktop/renderer/src/releaseNotes'
+import { RELEASE_NOTES } from '../../../server/release-notes'
 import { MIAO_MANUAL_URL } from '../lib/productLinks'
 import './landing.css'
 

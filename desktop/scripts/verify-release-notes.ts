@@ -4,10 +4,10 @@ import { fileURLToPath } from 'node:url'
 
 const desktopDir = fileURLToPath(new URL('..', import.meta.url))
 const version = JSON.parse(readFileSync(join(desktopDir, 'package.json'), 'utf8')).version
-const source = readFileSync(join(desktopDir, 'renderer', 'src', 'releaseNotes.ts'), 'utf8')
+const source = readFileSync(join(desktopDir, '..', 'server', 'release-notes.ts'), 'utf8')
 
 if (!new RegExp(`['"]${version.replaceAll('.', '\\.')}['"]\\s*:`).test(source)) {
-  throw new Error(`缺少桌面版 ${version} 的用户更新说明：请先在 desktop/renderer/src/releaseNotes.ts 增加修复、优化和已知问题。`)
+  throw new Error(`缺少桌面版 ${version} 的用户更新说明：请先在 server/release-notes.ts 增加修复、优化和已知问题。`)
 }
 // Only inspect displayed copy; internal comments can document this rule.
 for (const [, copy] of source.matchAll(/(?:zh|en):\s*'([^']*)'/g)) {
