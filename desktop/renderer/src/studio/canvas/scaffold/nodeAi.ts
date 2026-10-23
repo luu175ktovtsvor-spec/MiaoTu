@@ -104,6 +104,8 @@ export type NodeVideoRequest = {
   duration?: number;
   generateAudio?: boolean;
   returnLastFrame?: boolean;
+  /** 秘塔 H3：关闭 Context IR 提示词优化，按原始提示词生成。 */
+  rawPrompt?: boolean;
   webSearch?: boolean;
   onTask?: (requestId: string, existing?: boolean) => void | Promise<void>;
   shouldCancel?: () => boolean;
@@ -680,6 +682,7 @@ export function useNodeAi() {
         generateAudio: request.generateAudio,
         ...(request.returnLastFrame ? { returnLastFrame: true } : {}),
         ...(request.webSearch ? { webSearch: true } : {}),
+        ...(request.rawPrompt ? { rawPrompt: true } : {}),
         // 首尾帧、普通参考图、视频与音频参考都按模型能力上传，服务端再按模型校验。
         firstFrame: firstFrame || undefined,
         lastFrame: lastFrame || undefined,
@@ -793,6 +796,7 @@ export function useNodeAi() {
       generateAudio: request.generateAudio,
       ...(request.returnLastFrame ? { returnLastFrame: true } : {}),
       ...(request.webSearch ? { webSearch: true } : {}),
+      ...(request.rawPrompt ? { rawPrompt: true } : {}),
       firstFrame: firstFrame || undefined,
       lastFrame: lastFrame || undefined,
       image: firstFrame || (mode === "singleImage" ? images[0] : undefined) || undefined,

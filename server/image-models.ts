@@ -67,6 +67,14 @@ const SEEDREAM4_SIZES = [
   { value: '1728x2304', label: '人物竖图', ratio: '3:4', detail: '小红书 · 人物 · 封面' },
   { value: '1664x2496', label: '竖版海报', ratio: '2:3', detail: '海报 · 印刷 · 电商长图' },
   { value: '1600x2848', label: '手机全屏', ratio: '9:16', detail: '抖音 · TikTok · Shorts · 故事' },
+  // 官方图片 API 的 4K 档映射值（Seedream 4.0 按张计价，4K 与 2K 同价）。
+  { value: '4096x4096', label: '4K 方形', ratio: '1:1', detail: '大幅印刷 · 高清素材' },
+  { value: '4704x3520', label: '4K 传统横图', ratio: '4:3', detail: '电商详情 · 高清产品图' },
+  { value: '5504x3040', label: '4K 横屏宽幅', ratio: '16:9', detail: '大屏 · 高清横幅' },
+  { value: '4992x3328', label: '4K 摄影横图', ratio: '3:2', detail: '风景 · 高清照片' },
+  { value: '3520x4704', label: '4K 人物竖图', ratio: '3:4', detail: '人物 · 高清封面' },
+  { value: '3328x4992', label: '4K 竖版海报', ratio: '2:3', detail: '海报 · 印刷' },
+  { value: '3040x5504', label: '4K 手机全屏', ratio: '9:16', detail: '高清壁纸 · 竖屏' },
 ]
 
 const IMAGE_CATALOG = [
@@ -178,14 +186,15 @@ const DURATIONS_4_15 = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 
 // Mode-specific limits stay on the catalog. The canvas reads parameterRules and
 // controls; it does not keep a second list keyed by model id.
-function metasoRules(ratios, extra = {}) {
+// 秘塔自家前端：纯文生视频没有「自适应」；Seedance 带首尾帧固定 adaptive，H3 带首尾帧照用所选比例。
+function metasoRules(ratios, extra = {}, frameRatios = ['adaptive']) {
   return {
     ratiosByMode: {
       text: ratios.filter(item => item !== 'adaptive'),
-      singleImage: ['adaptive'],
-      startFrameOptional: ['adaptive'],
-      endFrameOptional: ['adaptive'],
-      startEndRequired: ['adaptive'],
+      singleImage: frameRatios,
+      startFrameOptional: frameRatios,
+      endFrameOptional: frameRatios,
+      startEndRequired: frameRatios,
     },
     ...extra,
   }
@@ -228,7 +237,9 @@ const VIDEO_CATALOG = [
     audio: true, referenceLimits: { image: 9, video: 3, audio: 3, frames: 2 },
     maxDurationByResolution: { '480p': 30, '768P': 30, '1080p': 30, '2K': 15 },
     maxReferences: 9, maxCount: 1, supportsEdit: false, supportsTransparent: false,
-    parameterRules: metasoRules(METASO_H3_RATIOS, { framePlusReferences: true }),
+    parameterRules: metasoRules(METASO_H3_RATIOS, { framePlusReferences: true }, METASO_H3_RATIOS),
+    // 秘塔 H3 的 Context IR 默认开启（按次计费）；打开这一项就关闭它，按原始提示词生成。
+    controls: [{ key: 'rawPrompt', label: '原样使用提示词', type: 'boolean' }],
   },
   {
     id: 'seedance-2.0', publicId: 'seedance-2.0', label: 'Seedance 2.0', provider: 'metaso', video: true,

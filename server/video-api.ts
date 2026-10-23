@@ -274,6 +274,15 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
   if (ratio && allowedRatios.length && !allowedRatios.includes(ratio)) {
     throw failure(`当前模型不支持比例 ${ratio}，可选：${allowedRatios.join('、')}`, 422)
   }
+  // 秘塔自家前端（metaso.cn/minimax-h3）的规则：纯文生视频选「自适应」时改发 16:9；
+  // Seedance 带首尾帧固定 adaptive；H3 带首尾帧照用所选比例；参考模式原样保留。
+  // 按同样的规则纠正而不是拒绝，旧版客户端存下的参数也照常能用。
+  if (model.provider === 'metaso') {
+    const framed = isFrameMode(mode) || mode === 'singleImage' || frameEntries.length > 0
+    if (mode === 'text' && (!ratio || ratio === 'adaptive')) ratio = '16:9'
+    else if (framed && isSeedance20(model)) ratio = 'adaptive'
+    else if (!ratio) ratio = 'adaptive'
+  }
   const modeRatios = model.parameterRules?.ratiosByMode?.[mode]
   if (Array.isArray(modeRatios) && modeRatios.length && ratio && !modeRatios.includes(ratio)) {
     throw failure(`当前模式不支持比例 ${ratio}，可选：${modeRatios.join('、')}`, 422)
@@ -283,12 +292,6 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
   if (isSeedance25(model) && (isFrameMode(mode) || mode === 'singleImage' || mode === 'edit' || mode === 'extend') && (referenceImageCount || videos.length)) {
     if (ratio && ratio !== 'adaptive') throw failure('当前模式只接受自适应比例', 422)
     ratio = 'adaptive'
-  }
-  if (model.provider === 'metaso') {
-    const framed = isFrameMode(mode) || mode === 'singleImage'
-    const hasMotion = Boolean(videos.length || audios.length)
-    if (framed && !hasMotion && ratio !== 'adaptive') throw failure('图生视频只接受自适应比例', 422)
-    if (!framed && !hasMotion && (!ratio || ratio === 'adaptive')) throw failure('文生视频需要选择具体比例', 422)
   }
   if (isSeedance20(model) && videos.length && Number(payload.videoSeconds) > 15) throw failure('Seedance 2.0 系列参考视频总时长不能超过 15 秒', 422)
   if (isSeedance25(model) && videos.length && Number(payload.videoSeconds) > 30) throw failure('Seedance 2.5 参考视频总时长不能超过 30 秒', 422)
@@ -320,6 +323,10 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
     if (model.provider !== 'ark') throw failure('当前模型不支持联网搜索', 422)
     if (image || images.length || videos.length || audios.length || firstFrame || lastFrame || keyframes.length) throw failure('联网搜索只支持纯文本输入', 422)
   }
+  // 秘塔 H3 的提示词优化（Context IR）默认开启、按次计费；「原样使用提示词」时关闭。
+  // 其他模型没有这一项，收到也忽略。
+  // 排队任务会用存下的 parameters（contextIr:false）重新校验一次，两种写法都认。
+  const contextIr = model.id === 'MiniMax-H3' ? !(payload.rawPrompt === true || payload.contextIr === false) : undefined
   const arkOptions = model.provider === 'ark' ? {
     ...(isSeedance25(model) && ['image','edit','extend'].includes(mode) ? { omni_reference_task_type: mode === 'image' ? 'reference' : mode } : {}),
     ...(isSeedance25(model) && mode === 'edit' ? { duration:-1 } : {}),
@@ -351,11 +358,11 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
     : resolution
   const billableReferenceImages = referenceImageCount + keyframes.length
   const videoPricing = isCostPlusVideo(model.publicId || model.id) ? videoPricingSnapshot() : undefined
-  const cost = estimateVideoCost(model, { duration, billableDuration, resolution: billingResolution, ratio, videoSeconds, audioSeconds: Number(payload.audioSeconds)||0, generateAudio, referenceImages: billableReferenceImages, videoPricing })
+  const cost = estimateVideoCost(model, { duration, billableDuration, resolution: billingResolution, ratio, videoSeconds, audioSeconds: Number(payload.audioSeconds)||0, generateAudio, referenceImages: billableReferenceImages, contextIr, videoPricing })
   return {
-    model, prompt, mode, duration, billableDuration, resolution, ratio, image, images, videos, video, audios, referenceVoices, firstFrame, lastFrame, keyframes, generateAudio, cost, arkOptions,
+    model, prompt, mode, duration, billableDuration, resolution, ratio, image, images, videos, video, audios, referenceVoices, firstFrame, lastFrame, keyframes, generateAudio, contextIr, cost, arkOptions,
     // 服务端落盘要用这次请求的节点目录；只保留安全的相对路径。
-    parameters: { ...(videoPricing ? {videoPricing} : {}), referenceHistory: normalizeReferenceHistory(payload.referenceHistory), outputDirectory: safeOutputDirectory(payload.outputDirectory), mode, duration, billableDuration, resolution, ratio: ratio || null, image: image || null, images, videos, video: video || null, audios, referenceVoices, firstFrame: firstFrame || null, lastFrame: lastFrame || null, keyframes, generateAudio, videoSeconds, audioSeconds:Number(payload.audioSeconds)||0, referenceImages: billableReferenceImages, frames: rawFrames ?? null, seed: seed ?? null, cameraFixed: cameraFixed ?? null, returnLastFrame: returnLastFrame ?? null, webSearch },
+    parameters: { ...(videoPricing ? {videoPricing} : {}), referenceHistory: normalizeReferenceHistory(payload.referenceHistory), outputDirectory: safeOutputDirectory(payload.outputDirectory), mode, duration, billableDuration, resolution, ratio: ratio || null, image: image || null, images, videos, video: video || null, audios, referenceVoices, firstFrame: firstFrame || null, lastFrame: lastFrame || null, keyframes, generateAudio, videoSeconds, audioSeconds:Number(payload.audioSeconds)||0, referenceImages: billableReferenceImages, frames: rawFrames ?? null, seed: seed ?? null, cameraFixed: cameraFixed ?? null, returnLastFrame: returnLastFrame ?? null, webSearch, ...(contextIr === false ? { contextIr } : {}) },
   }
 }
 

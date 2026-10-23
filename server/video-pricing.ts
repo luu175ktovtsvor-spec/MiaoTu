@@ -85,7 +85,8 @@ export function costPlusVideoCost({ model, parameters = {}, usage, seconds }: Re
     const outputCredits = output * (longOutput ? Number(tier.longOutput) : unitCredits)
     const h3Policy = supplier?.h3 || {freeImages:5,extraImageCredits:5.7,contextCredits:5.7}
     const extraImageCredits = h3 ? Math.max(0, images - h3Policy.freeImages) * h3Policy.extraImageCredits * longFactor : 0
-    const contextCredits = h3 ? h3Policy.contextCredits : 0
+    // 秘塔 H3 的 Context IR 默认开启、按次单独计费；请求里关掉（context_ir_enabled:false）就不收。
+    const contextCredits = h3 && parameters.contextIr !== false ? h3Policy.contextCredits : 0
     const supplierCredits = outputCredits + billedInput * unitCredits * longFactor + extraImageCredits + contextCredits
     const costRmb = supplierCredits * snapshot.metasoRmbPerCredit
     return {

@@ -10,6 +10,19 @@ export type ReleaseNotes = {
 // 更新说明直接写软件修好了什么：哪一个界面、哪一项操作，以前错在哪里，现在怎样。
 // 不写「上游」「部分问题」「体验优化」这类看不出具体改动的话。
 export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
+  '3.0.1': {
+    title: { zh: 'MiniMax H3 可选比例与提示词优化开关，Seedream 4.0 支持 4K', en: 'MiniMax H3 ratios and prompt optimisation switch, 4K for Seedream 4.0' },
+    fixes: [
+      { zh: 'MiniMax H3 用首帧或尾帧生成视频时，以前只能选「自适应」比例，现在 7 种比例都可以选，生成的画面按所选比例输出。', en: 'MiniMax H3 first-frame and last-frame videos were limited to the adaptive ratio; all seven ratios can now be chosen and the video follows the one you pick.' },
+      { zh: 'MiniMax H3 和 Seedance 2.0 用多张参考图生成时，选「自适应」比例不再报「需要选择具体比例」。', en: 'MiniMax H3 and Seedance 2.0 no longer ask for a specific ratio when you pick adaptive with several reference images.' },
+      { zh: '旧版本画布里存下的视频比例和当前模式不符时，会自动换成可用的比例继续生成，不再直接报错。', en: 'A video ratio saved on an older canvas that no longer fits the selected mode is switched to a valid one instead of stopping with an error.' },
+    ],
+    improvements: [
+      { zh: 'MiniMax H3 的「高级设置」新增「原样使用提示词」：打开后不再做提示词优化，按你写的原文生成，每次少收这部分费用；默认仍会优化。', en: 'MiniMax H3 Advanced settings add Use prompt as written: prompt optimisation is skipped, the video follows your exact wording and that charge is removed. Optimisation stays on by default.' },
+      { zh: 'Seedream 4.0 新增 7 个 4K 尺寸（方形、横屏、竖屏等），价格和 2K 相同。', en: 'Seedream 4.0 adds seven 4K sizes (square, landscape, portrait and more) at the same price as 2K.' },
+    ],
+    knownIssues: [],
+  },
   '3.0.0': {
     title: { zh: '画布全新排布、反馈入口与更顺手的登录', en: 'A rearranged canvas, a feedback channel and simpler sign-in' },
     fixes: [

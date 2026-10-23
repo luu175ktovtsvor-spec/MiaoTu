@@ -491,7 +491,7 @@ export function upstreamVideoCostRmb({ model, parameters = {}, usage, seconds }:
     // 已知价时才回退到该模型最贵档，保证不会低估成本。
     const tierRmb = metasoResolutionTierRmb(id, resolution)
     const perSecond = tierRmb ?? tier.rmb
-    const contextIr = id === 'MiniMax-H3' ? policy.metasoContextIrRmb : 0
+    const contextIr = id === 'MiniMax-H3' && parameters.contextIr !== false ? policy.metasoContextIrRmb : 0
     // 秘塔任务查询会回自己的计费用量：output_seconds / total_seconds、input_seconds、
     // input_image_count。有上游实际用量就按它算，没有再退回参数估算。
     const usageOutputSeconds = Number(usage?.output_seconds ?? usage?.total_seconds)

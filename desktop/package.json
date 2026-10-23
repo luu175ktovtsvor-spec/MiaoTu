@@ -1,7 +1,7 @@
 {
   "name": "miaoimg-desktop",
   "productName": "妙图",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "macCredentialProtection": "local-key",
   "description": "妙图创作画布",
   "author": "MiaoImg",

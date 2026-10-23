@@ -5,7 +5,8 @@
 // 两个模型族的参数不同：
 //   - H3：resolution 480p/768P/1080p/2K，ratio 支持 adaptive/21:9/16:9/4:3/1:1/3:4/9:16；
 //   - Seedance：resolution 480p/720p（标准版另有 1080p/4K），ratio 六档，
-//     必须显式传 context_ir_enabled:false，duration 恒为 4–15 整数秒。
+//     必须显式传 context_ir_enabled:false，duration 恒为 4–15 整数秒；
+//   - H3 的 Context IR（提示词优化）默认开启、按次计费，context_ir_enabled 优先于控制台开关。
 // 声音：H3/Seedance 由模型原生输出，协议没有开关字段；火山方舟的 generate_audio 只走 ark 通道。
 import { failure } from './management-store.ts'
 import { runtimeSecret } from './runtime-secrets.ts'
@@ -104,7 +105,8 @@ async function createDirectTask(request, config, fetchImpl, signal) {
     ratio: requestRatio(request),
   }
   // 秘塔官方调用示例：Seedance 固定关闭 H3 Context IR（该字段只属于 H3 链路）。
-  if (seedance) body.context_ir_enabled = false
+  // H3 每次都显式传：不传时按秘塔控制台的全局开关走，计费就和我们的预估对不上。
+  body.context_ir_enabled = seedance ? false : request.contextIr !== false
   let response
   try {
     response = await fetchImpl(`${config.baseUrl}/api/minimax/v2/video_generation`, {
