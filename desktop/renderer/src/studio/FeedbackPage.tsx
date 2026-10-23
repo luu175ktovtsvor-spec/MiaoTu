@@ -24,7 +24,8 @@ function systemName(platform = '') {
   return platform === 'darwin' ? 'macOS' : platform === 'win32' ? 'Windows' : platform || navigator.platform
 }
 export function desktopAppVersion() {
-  return navigator.userAgent.match(/妙图\/([\d.]+)/)?.[1] || ''
+  // 安装版的应用名是「妙图」，开发版是 miaoimg-desktop-dev，两种都认。
+  return navigator.userAgent.match(/(?:妙图|miaoimg-desktop(?:-dev)?)\/(\d+\.\d+\.\d+)/)?.[1] || ''
 }
 
 type FeedbackPageProps = { csrf?: string; signedIn: boolean; lang: 'zh' | 'en'; onLogin(): void; onBack(): void; onUnread?(count: number): void }

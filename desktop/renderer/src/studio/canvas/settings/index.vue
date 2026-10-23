@@ -103,6 +103,8 @@ const visible = defineModel<boolean>({ default: false });
   .el-alert.is-light { --el-alert-bg-color: var(--canvas-soft, rgba(255, 255, 255, .045)); }
 }
 .settingsDialog { z-index: 12000 !important; display: flex; flex-direction: column; height: min(720px, calc(100dvh - 64px)); .el-dialog__header { flex-shrink: 0; } .el-dialog__body { flex: 1; min-height: 0; padding: 0; } }
+// 嵌在主内容区时只是一个页面，不能沿用弹窗的 12000 层级，否则会盖住账号面板等全局弹层。
+.settingsDialog.embeddedSettings { z-index: 1 !important; }
 .settingsDialog.embeddedSettings {
   --canvas-bg: var(--color-abyss);
   --canvas-surface: var(--color-surface);
