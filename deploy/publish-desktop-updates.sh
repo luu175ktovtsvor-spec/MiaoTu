@@ -8,7 +8,8 @@ VERSION=${1:?用法：DEPLOY_CONFIRM=I-am-the-release-manager bash deploy/publis
 REMOTE_HOST=${REMOTE_HOST:-root}
 REMOTE_DIR=${REMOTE_DIR:-/opt/miaoimg/desktop-downloads/updates}
 PUBLIC_BASE=${PUBLIC_BASE:-https://miaoimg.cn/desktop-downloads/updates}
-RELEASE_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")/../desktop/release" && pwd)
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+RELEASE_DIR=$(CDPATH='' cd -- "$SCRIPT_DIR/../desktop/release" && pwd)
 case "$VERSION" in *[!0-9.]*|'') echo "版本号不合法：$VERSION" >&2; exit 2 ;; esac
 if [ "${DEPLOY_CONFIRM:-}" != "I-am-the-release-manager" ]; then
   echo "拒绝发布：更新源会推给所有已安装的用户，只有发布负责人带口令执行。" >&2
@@ -25,7 +26,7 @@ done
 uploads+=(latest-mac.yml latest.yml)
 
 # 元数据里的每个文件都必须存在、版本一致、sha512 与实际字节一致；不一致宁可不发。
-VERIFY=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/verify-update-metadata.py
+VERIFY=$SCRIPT_DIR/verify-update-metadata.py
 python3 "$VERIFY" "$VERSION" latest-mac.yml latest.yml
 
 staging="$REMOTE_DIR/.staging-$VERSION"
