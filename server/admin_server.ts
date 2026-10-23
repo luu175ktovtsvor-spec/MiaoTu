@@ -9,6 +9,7 @@ import { WorkspaceFiles } from './workspace-files.ts'
 import { publicTextCatalog, textChannelReady } from './text-models.ts'
 import { generationDetail, probeGeneration, restoreGeneration, serveGenerationVideo } from './admin-generation.ts'
 import { HttpIncomingRequests } from './http-request-lifetime.ts'
+import { createFeedbackStore } from './feedback-store.ts'
 const configuredHost=process.env.OIP_ADMIN_HOST||'127.0.0.1'
 // The production image sets this guard because the admin API is meant to be
 // reached through the same-origin Vite server (or an SSH tunnel). Binding to
@@ -65,6 +66,7 @@ function upstreamAuditModels() {
   })
 }
 
+const feedback=createFeedbackStore(store)
 const incomingRequests = new HttpIncomingRequests('管理服务正在关闭，请稍后重试', true)
 const server=createServer(async(request,response)=>{
  let incoming
@@ -136,6 +138,15 @@ const server=createServer(async(request,response)=>{
   if(path==='/api/admin/payment-orders' && request.method==='GET'){json(response,200,store.paymentOrders(Object.fromEntries(url.searchParams)));return}
   if(path==='/api/admin/reconciliation' && request.method==='GET'){json(response,200,store.reconciliation(Object.fromEntries(url.searchParams)));return}
   if(path==='/api/admin/audit' && request.method==='GET'){json(response,200,store.audits(Object.fromEntries(url.searchParams)));return}
+  // 用户反馈：列表、详情、回复、改状态和标签。
+  if(path==='/api/admin/feedback' && request.method==='GET'){json(response,200,feedback.listForAdmin(Object.fromEntries(url.searchParams)));return}
+  const feedbackMatch=/^\/api\/admin\/feedback\/([a-f0-9-]{36})(?:\/(comments|attachments))?(?:\/([a-f0-9-]{36}))?$/.exec(path)
+  if(feedbackMatch){const [,id,action,attachmentId]=feedbackMatch
+   if(!action && request.method==='GET'){json(response,200,feedback.getForAdmin(id));return}
+   if(!action && request.method==='PATCH'){json(response,200,await mutateBody(body=>feedback.updateAsAdmin(id,body,actor)));return}
+   if(action==='comments' && request.method==='POST'){json(response,200,await mutateBody(body=>feedback.commentAsAdmin(id,body.body,actor)));return}
+   if(action==='attachments' && attachmentId && request.method==='GET'){const file=feedback.attachment(id,attachmentId);response.writeHead(200,{'content-type':file.mime,'content-length':file.size,'cache-control':'private, max-age=86400','x-content-type-options':'nosniff'});response.end(Buffer.from(file.bytes));return}
+  }
   json(response,404,{error:'未找到这个管理功能'})
  } catch(error){
   if(!response.destroyed && !response.writableEnded){

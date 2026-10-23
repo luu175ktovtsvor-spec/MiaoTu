@@ -173,7 +173,7 @@ export function localTextModels(site: LocalMediaSite) {
 export function localTextModel(site: LocalMediaSite) {
   return { providerId: site.provider, providerLabel: site.label, modelId: site.provider + '-text',
     label: site.label + '文本对话', protocol: 'local-web', supportsTools: false,
-    note: '通过本机网页登录账户生成文本；不提供 Agent 工具调用' }
+    note: `使用已连接的${site.label}账号生成文本；不提供 Agent 工具调用` }
 }
 
 // Only explicit remaining counts are authoritative. Missing values stay null;

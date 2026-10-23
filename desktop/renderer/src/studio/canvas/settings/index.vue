@@ -13,10 +13,13 @@
     </header>
     <div class="settings">
       <aside class="sidebar" :aria-label="translate('设置分类')">
-        <button v-for="item in panels" :key="item.id" class="navItem" type="button"
-          :aria-label="item.label" :aria-pressed="active.id === item.id" @click="active = item">
-          <component :is="item.icon" :size="18" aria-hidden="true" /><span>{{ item.label }}</span>
-        </button>
+        <template v-for="group in groups" :key="group.id">
+          <span class="navGroup">{{ group.label }}</span>
+          <button v-for="item in group.items" :key="item.id" class="navItem" type="button"
+            :aria-label="item.label" :aria-pressed="active.id === item.id" @click="active = item">
+            <component :is="item.icon" :size="17" aria-hidden="true" /><span>{{ item.label }}</span>
+          </button>
+        </template>
       </aside>
       <section class="content" :aria-label="active.label">
         <header class="contentHeader"><h2>{{ active.label }}</h2><p>{{ active.description }}</p></header>
@@ -34,22 +37,30 @@ import { defineAsyncComponent, defineComponent, h, shallowRef } from "vue";
 import { ElDialog } from "element-plus";
 import { IconX } from "@tabler/icons-vue";
 import { dialogTheme } from "./dialogTheme";
-import { IconPalette, IconSettings, IconInfoCircle, IconSubtitlesAi, IconPhotoVideo, IconUserCog, IconLanguage, IconLayoutGrid } from "@tabler/icons-vue";
+import { IconPalette, IconKeyboard, IconInfoCircle, IconMessageChatbot, IconPhotoVideo, IconUserCog, IconLanguage, IconComponents, IconSparkles, IconPlugConnected, IconDeviceDesktop, IconWorld } from "@tabler/icons-vue";
 const loadingPanel = defineComponent({ setup: () => () => h("div", { class: "settingsLoading", role: "status" }, translate("加载中...")) });
 const panels = [
   { id: "ui", get label() { return translate("外观"); }, get description() { return translate("调整颜色、文字大小和圆角，立即生效。"); }, icon: IconPalette, component: defineAsyncComponent({ loader: () => import("./panels/ui.vue"), loadingComponent: loadingPanel, delay: 0 }) },
   { id: "language", get label() { return translate("语言"); }, get description() { return translate("选择你熟悉的界面语言。"); }, icon: IconLanguage, component: defineAsyncComponent({ loader: () => import("./panels/language.vue"), loadingComponent: loadingPanel, delay: 0 }) },
-  { id: "general", get label() { return translate("画布与快捷键"); }, get description() { return translate("调整画布显示、动画和操作习惯。"); }, icon: IconSettings, component: defineAsyncComponent({ loader: () => import("./panels/general/index.vue"), loadingComponent: loadingPanel, delay: 0 }) },
-  { id: "nodes", get label() { return translate("画布节点"); }, get description() { return translate("选择添加节点菜单中显示的创作功能。"); }, icon: IconLayoutGrid, component: defineAsyncComponent({ loader: () => import("./panels/nodes.vue"), loadingComponent: loadingPanel, delay: 0 }) },
-  { id: "skills", get label() { return translate("创作技能"); }, get description() { return translate("选择 Agent 可以使用的创作方法。"); }, icon: IconLayoutGrid, component: defineAsyncComponent({ loader: () => import("./panels/skills.vue"), loadingComponent: loadingPanel, delay: 0 }) },
-  { id: "languageModel", get label() { return translate("文本模型"); }, get description() { return translate("选择 Agent 和文本节点默认使用的模型。"); }, icon: IconSubtitlesAi, component: defineAsyncComponent({ loader: () => import("./panels/languageModel/index.vue"), loadingComponent: loadingPanel, delay: 0 }) },
+  { id: "general", get label() { return translate("画布与快捷键"); }, get description() { return translate("调整画布显示、动画和操作习惯。"); }, icon: IconKeyboard, component: defineAsyncComponent({ loader: () => import("./panels/general/index.vue"), loadingComponent: loadingPanel, delay: 0 }) },
+  { id: "nodes", get label() { return translate("画布节点"); }, get description() { return translate("选择添加节点菜单中显示的创作功能。"); }, icon: IconComponents, component: defineAsyncComponent({ loader: () => import("./panels/nodes.vue"), loadingComponent: loadingPanel, delay: 0 }) },
+  { id: "skills", get label() { return translate("创作技能"); }, get description() { return translate("选择 Agent 可以使用的创作方法。"); }, icon: IconSparkles, component: defineAsyncComponent({ loader: () => import("./panels/skills.vue"), loadingComponent: loadingPanel, delay: 0 }) },
+  { id: "languageModel", get label() { return translate("文本模型"); }, get description() { return translate("选择 Agent 和文本节点默认使用的模型。"); }, icon: IconMessageChatbot, component: defineAsyncComponent({ loader: () => import("./panels/languageModel/index.vue"), loadingComponent: loadingPanel, delay: 0 }) },
   { id: "mediaModel", get label() { return translate("图片与视频"); }, get description() { return translate("查看模型支持的尺寸、时长、参考素材和积分。"); }, icon: IconPhotoVideo, component: defineAsyncComponent({ loader: () => import("./panels/mediaModel/index.vue"), loadingComponent: loadingPanel, delay: 0 }) },
-  ...(window.miaoDesktop ? [{ id: "doubao", get label() { return translate("豆包 与 Dola"); }, get description() { return translate("连接本机账户，在文本、图片与视频节点中使用并查看用量。"); }, icon: IconPhotoVideo, component: defineAsyncComponent({ loader: () => import("./panels/localMedia.vue"), loadingComponent: loadingPanel, delay: 0 }) }] : []),
+  ...(window.miaoDesktop ? [{ id: "doubao", get label() { return translate("豆包 与 Dola"); }, get description() { return translate("连接豆包或 Dola 账号，在文本、图片与视频节点中直接使用，并查看用量。"); }, icon: IconWorld, component: defineAsyncComponent({ loader: () => import("./panels/localMedia.vue"), loadingComponent: loadingPanel, delay: 0 }) }] : []),
   { id: "personalization", get label() { return translate("创作偏好"); }, get description() { return translate("告诉 Agent 你的习惯，让后续创作更合心意。"); }, icon: IconUserCog, component: defineAsyncComponent({ loader: () => import("./panels/personalization.vue"), loadingComponent: loadingPanel, delay: 0 }) },
-  { id: "mcp", get label() { return "MCP"; }, get description() { return translate("允许外部 Agent 连接妙图，读取和操作当前画布。"); }, icon: IconLayoutGrid, component: defineAsyncComponent({ loader: () => import("./panels/mcp/index.vue"), loadingComponent: loadingPanel, delay: 0 }) },
-  ...(window.miaoDesktop ? [{ id: "computer", get label() { return translate("本机操作"); }, get description() { return translate("让 Agent 帮你处理电脑上的文件和任务。"); }, icon: IconSettings, component: defineAsyncComponent({ loader: () => import("./panels/computer.vue"), loadingComponent: loadingPanel, delay: 0 }) }] : []),
+  { id: "mcp", get label() { return "MCP"; }, get description() { return translate("允许外部 Agent 连接妙图，读取和操作当前画布。"); }, icon: IconPlugConnected, component: defineAsyncComponent({ loader: () => import("./panels/mcp/index.vue"), loadingComponent: loadingPanel, delay: 0 }) },
+  ...(window.miaoDesktop ? [{ id: "computer", get label() { return translate("本机操作"); }, get description() { return translate("让 Agent 帮你处理电脑上的文件和任务。"); }, icon: IconDeviceDesktop, component: defineAsyncComponent({ loader: () => import("./panels/computer.vue"), loadingComponent: loadingPanel, delay: 0 }) }] : []),
   { id: "about", get label() { return translate("关于妙图"); }, get description() { return translate("应用版本和官网。"); }, icon: IconInfoCircle, component: defineAsyncComponent({ loader: () => import("./panels/about.vue"), loadingComponent: loadingPanel, delay: 0 }) },
 ];
+// 左侧按用途分组，组内顺序与上面的列表一致；只在桌面端出现的面板没有时自动跳过。
+const groups = [
+  { id: "general", get label() { return translate("通用"); }, ids: ["ui", "language", "general"] },
+  { id: "create", get label() { return translate("创作"); }, ids: ["nodes", "skills", "personalization"] },
+  { id: "models", get label() { return translate("模型"); }, ids: ["languageModel", "mediaModel", "doubao"] },
+  { id: "connect", get label() { return translate("连接"); }, ids: ["mcp", "computer"] },
+  { id: "about", get label() { return translate("其他"); }, ids: ["about"] },
+].map(group => Object.assign(group, { items: group.ids.map(id => panels.find(panel => panel.id === id)).filter((panel): panel is typeof panels[number] => !!panel) })).filter(group => group.items.length);
 defineProps<{ embedded?: boolean }>();
 const active = shallowRef(panels[0]!);
 const visible = defineModel<boolean>({ default: false });
@@ -114,6 +125,15 @@ const visible = defineModel<boolean>({ default: false });
   --el-text-color-placeholder: var(--color-faint);
   --el-border-color: var(--color-line);
   --el-border-color-light: var(--color-line);
+  // 从首页打开时不在画布作用域里，Element 的填充色会退回默认浅灰，深色下出现白块。
+  --el-fill-color: color-mix(in srgb, var(--color-ink) 8%, var(--color-surface));
+  --el-fill-color-light: color-mix(in srgb, var(--color-ink) 5%, var(--color-surface));
+  --el-fill-color-lighter: color-mix(in srgb, var(--color-ink) 4%, var(--color-surface));
+  --el-fill-color-extra-light: color-mix(in srgb, var(--color-ink) 3%, var(--color-surface));
+  --el-fill-color-dark: color-mix(in srgb, var(--color-ink) 12%, var(--color-surface));
+  --el-fill-color-darker: color-mix(in srgb, var(--color-ink) 16%, var(--color-surface));
+  --el-border-color-lighter: color-mix(in srgb, var(--color-line) 80%, transparent);
+  --el-border-color-extra-light: color-mix(in srgb, var(--color-line) 60%, transparent);
   position: absolute;
   inset: 0;
   width: auto;
@@ -144,32 +164,65 @@ const visible = defineModel<boolean>({ default: false });
     transform: translateY(-50%);
   }
   .settings {
-    width: min(100%, 1120px);
+    display: grid;
+    grid-template-columns: 232px minmax(0, 1fr);
+    width: 100%;
     height: calc(100% - 54px);
-    margin: 0 auto;
+    margin: 0;
   }
   .sidebar {
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 4px;
-    flex-shrink: 0;
-    align-content: flex-start;
-    padding: 10px 22px;
-    overflow-x: hidden;
-    overflow-y: hidden;
-    border-bottom: .5px solid var(--canvas-line, #363636);
+    gap: 2px;
+    padding: 18px 14px 24px;
+    border-right: .5px solid var(--canvas-line, #363636);
     background: transparent;
   }
-  .navItem {
-    width: auto;
-    min-height: 36px;
-    flex-shrink: 0;
-    padding: 0 12px;
-    white-space: nowrap;
+  .navItem { min-height: 36px; padding: 0 12px; border-radius: 9px; }
+  .content { align-items: stretch; }
+  .contentHeader, .contentBody, .contentFooterBar { width: min(100%, 820px); box-sizing: border-box; margin: 0 auto; }
+  .contentHeader { padding: 34px 36px 18px; }
+  .contentBody { padding: 4px 36px 40px; }
+  .contentFooterBar { padding: 14px 36px 24px; }
+}
+@media (max-width: 860px) {
+  .settingsDialog.embeddedSettings .settings { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
+  .settingsDialog.embeddedSettings .sidebar { flex-direction: row; overflow-x: auto; padding: 10px 14px; border-right: 0; border-bottom: .5px solid var(--canvas-line, #363636); }
+  .settingsDialog.embeddedSettings .navGroup { display: none; }
+  .settingsDialog.embeddedSettings .navItem { white-space: nowrap; }
+}
+// 强调色上的文字：设置可以从首页打开，那时画布样式表还没加载，这里自带一份，
+// 统一用 --color-accent-ink（浅色强调色配深字，深色强调色配白字）。
+.settingsDialog, .settingsSubdialog {
+  --settings-accent-ink: var(--canvas-accent-ink, var(--color-accent-ink, #151515));
+  .el-button--primary:not(.is-text):not(.is-link) {
+    --el-button-bg-color: var(--el-color-primary); --el-button-border-color: var(--el-color-primary); --el-button-text-color: var(--settings-accent-ink);
+    --el-button-hover-bg-color: var(--el-color-primary-light-3); --el-button-hover-border-color: var(--el-color-primary-light-3); --el-button-hover-text-color: var(--settings-accent-ink);
+    --el-button-active-bg-color: var(--el-color-primary-dark-2); --el-button-active-border-color: var(--el-color-primary-dark-2); --el-button-active-text-color: var(--settings-accent-ink);
+    --el-button-disabled-text-color: var(--settings-accent-ink);
   }
-  .contentHeader { padding: 26px 28px 16px; }
-  .contentBody { padding: 6px 28px 32px; }
-  .contentFooterBar { padding: 14px 28px 24px; }
+  .el-radio-button { --el-radio-button-checked-bg-color: var(--el-color-primary); --el-radio-button-checked-text-color: var(--settings-accent-ink); --el-radio-button-checked-border-color: var(--el-color-primary); }
+  .el-segmented { --el-segmented-item-selected-bg-color: var(--el-color-primary); --el-segmented-item-selected-color: var(--settings-accent-ink); }
+  .el-switch.is-checked .el-switch__action { background: var(--settings-accent-ink); }
+  .el-checkbox__input.is-checked .el-checkbox__inner::after { border-color: var(--settings-accent-ink); }
+  .el-tag--primary { --el-tag-text-color: var(--el-text-color-primary); }
+  // 辅助文字在浅色和深色下都至少 4.5:1：标签、滑块刻度、info 色文字跟随主题的次要文字色，
+  // 不用组件库默认灰或更浅的占位色。
+  --el-color-info: var(--el-text-color-secondary);
+  .el-tag.el-tag--info { --el-tag-text-color: var(--el-text-color-regular); --el-tag-bg-color: var(--el-fill-color); --el-tag-border-color: var(--el-border-color); }
+  .el-tag.el-tag--success { --el-tag-bg-color: color-mix(in srgb, #2fa86b 16%, var(--canvas-surface)); --el-tag-border-color: color-mix(in srgb, #2fa86b 40%, transparent); --el-tag-text-color: color-mix(in srgb, #2fa86b 70%, var(--el-text-color-primary)); }
+  .el-slider__marks-text { color: var(--el-text-color-secondary); }
+  .el-text--info, .el-text.is-truncated { color: var(--el-text-color-secondary); }
+}
+// 设置页的卡片和行：每个分区一张卡，行与行之间一条细分隔线，左说明右控件。
+.settingsDialog.embeddedSettings {
+  .contentHeader h2 { font-size: 22px; letter-spacing: -.01em; }
+  .contentBody { display: block; }
+  .settingsSection, .preview { margin: 0 0 16px; border: .5px solid var(--canvas-line); border-radius: 14px; background: var(--canvas-surface); box-shadow: none; }
+  .settingsSection .sectionHeader { margin-bottom: 14px; }
+  .settingsRow { padding: 14px 0; }
+  .settingsRow + .settingsRow { border-top: .5px solid var(--canvas-line); }
+  .settingsRow:first-child { padding-top: 2px; }
+  .settingsRow:last-child { padding-bottom: 2px; }
+  .el-radio-group + .settingsSection, .el-segmented + .settingsSection { margin-top: 18px; }
 }
 body[data-miaoimg-canvas-ui] .settingsDialog.embeddedSettings {
   border: 0 !important;
@@ -179,8 +232,8 @@ body[data-miaoimg-canvas-ui] .settingsDialog.embeddedSettings {
   filter: none !important;
 }
 body[data-miaoimg-canvas-ui] .settingsDialog.embeddedSettings .sidebar {
-  border-right: 0 !important;
-  border-bottom: .5px solid var(--canvas-line, #363636) !important;
+  border-bottom: 0 !important;
+  border-right: .5px solid var(--canvas-line, #363636) !important;
 }
 .settingsSubdialog { .el-dialog__body { padding: 24px 28px; } .el-dialog__footer { padding: 0 28px 24px; } }
 body:has(.settingsDialog) .el-modal-dialog:has(.settingsDialog),
@@ -190,8 +243,8 @@ body:has(.settingsDialog) .settingsDialog { pointer-events: auto; }
 </style>
 <style lang="scss" scoped>
 .settings { display: grid; grid-template-columns: 184px minmax(0, 1fr); height: 100%; overflow: hidden; }
-.embeddedSettings .settings { display: flex; flex-direction: column; }
 .sidebar { display: flex; flex-direction: column; gap: 4px; padding: 16px 12px; background: var(--canvas-soft, rgba(255, 255, 255, .035)); overflow-y: auto; }
+.navGroup { padding: 14px 12px 6px; color: var(--el-text-color-placeholder); font-size: 11px; font-weight: 600; letter-spacing: .04em; &:first-child { padding-top: 2px; } }
 .navItem {
   display: flex; align-items: center; flex-shrink: 0; gap: 10px; min-height: 42px; padding: 0 12px; border: 0; border-radius: 11px;
   background: transparent; color: var(--el-text-color-secondary); font: inherit; font-size: 13px; text-align: start; cursor: pointer;

@@ -3459,5 +3459,15 @@
   "想让 AI 写什么？输入 @ 引用素材": "What should AI write? Type @ to reference media.",
   "点击上传，或把图片拖进来": "Click to upload, or drop an image here",
   "点击上传，或把视频拖进来": "Click to upload, or drop a video here",
-  "点击上传，或把音频拖进来": "Click to upload, or drop audio here"
+  "点击上传，或把音频拖进来": "Click to upload, or drop audio here",
+  "连接豆包或 Dola 账号，在文本、图片与视频节点中直接使用，并查看用量。": "Connect a Doubao or Dola account to use it in text, image and video nodes and see usage.",
+  "Dola 账号": "Dola account",
+  "豆包账号": "Doubao account",
+  "在文本、图片或视频节点的模型菜单里，选择「豆包」或「Dola」分组下的模型。": "In a text, image or video node, pick a model under the Doubao or Dola group in the model menu.",
+  "豆包与 Dola 文本模型": "Doubao and Dola text models",
+  "使用豆包或 Dola 账号自带的权益，提供普通文本回复，暂不支持 Agent 和导演台的工具调用。": "Uses the Doubao or Dola account’s own allowance for plain text replies; Agent and director tool calls are not available.",
+  "使用 Dola 额度": "Uses Dola allowance",
+  "使用豆包额度": "Uses Doubao allowance",
+  "正在等待豆包或 Dola 返回文本…": "Waiting for Doubao or Dola to reply…",
+  "创作": "Create"
 }

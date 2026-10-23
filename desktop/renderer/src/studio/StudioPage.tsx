@@ -12,6 +12,7 @@ import StudioLogin from './StudioLogin'
 import StudioHome from './StudioHome'
 import StudioPicker from './StudioPicker'
 import PaymentPanel from './PaymentPanel'
+import FeedbackPage from './FeedbackPage'
 import LocalTaskRecovery from './LocalTaskRecovery'
 import PersonalAssetLibrary from './PersonalAssetLibrary'
 import { navigateWorkspace, reloadWorkspace } from '../desktop/navigation'
@@ -671,6 +672,17 @@ export default function StudioPage() {
     ...(config?.textModels || []),
   ].filter((model, index, models) => models.findIndex((item) => item.id === model.id) === index)
 
+  // 反馈有新回复时在左侧「反馈」上显示红点：打开时、回到窗口时和每两分钟读一次。
+  const [feedbackUnread, setFeedbackUnread] = useState(0)
+  useEffect(() => {
+    if (!window.miaoDesktop || !signedIn) { setFeedbackUnread(0); return }
+    let cancelled = false
+    const read = () => { if (!document.hidden) fetch('/api/imagine/feedback?status=open', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(d => { if (!cancelled && d) setFeedbackUnread(Number(d.unread) || 0) }).catch(() => {}) }
+    read()
+    const timer = window.setInterval(read, 120_000)
+    window.addEventListener('focus', read)
+    return () => { cancelled = true; window.clearInterval(timer); window.removeEventListener('focus', read) }
+  }, [signedIn])
   useEffect(() => {
     const open = () => { closeSettings(); void changeSurface('account') }
     window.addEventListener('miao-open-account-surface', open)
@@ -719,7 +731,9 @@ export default function StudioPage() {
   return (
     <div className="studio-shell studio-app">
       {window.miaoDesktop && (surface !== 'look' || settingsOpen) && <DesktopRail
-        active={settingsOpen ? 'settings' : surface === 'history' ? 'assets' : surface === 'account' ? 'account' : surface === 'look' ? 'canvas' : homeSection}
+        active={settingsOpen ? 'settings' : surface === 'history' ? 'assets' : surface === 'account' ? 'account' : surface === 'feedback' ? 'feedback' : surface === 'look' ? 'canvas' : homeSection}
+        feedbackUnread={feedbackUnread}
+        onFeedback={() => { closeSettings(); void changeSurface('feedback') }}
         onHome={() => { closeSettings(); openHomeSection('home') }}
         onProjects={() => { closeSettings(); openHomeSection('projects') }}
         onCases={() => { closeSettings(); openHomeSection('cases') }}
@@ -831,6 +845,8 @@ export default function StudioPage() {
           </aside>
         </div>
       </main>
+      ) : surface === 'feedback' ? (
+        <FeedbackPage csrf={userSession?.csrf} signedIn={signedIn} lang={lang} onLogin={() => window.dispatchEvent(new Event('miao-desktop-account'))} onBack={() => openHomeSection('home')} onUnread={setFeedbackUnread} />
       ) : surface === 'account' ? (
       <main className="studio-record">
         <button type="button" className="make-back" onClick={() => setSurface('look')}>{studioText('返回', lang)}</button>

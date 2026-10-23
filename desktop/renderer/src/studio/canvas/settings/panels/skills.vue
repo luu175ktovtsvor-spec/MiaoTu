@@ -4,9 +4,11 @@
     <p>{{ translate('Agent 按任务选择已启用的技能，也可在对话框输入 / 手动指定。') }}</p>
     <p v-if="isDesktop">{{ translate('开启本机操作后，会发现个人和当前文件夹的 .agents/skills。') }}</p>
     <p v-if="error" role="alert" class="error">{{ error }}</p>
-    <div v-for="skill in filtered" :key="skill.id" class="skillRow">
-      <div><strong>{{ skillLabel(skill) }}</strong><p>{{ translate(skill.local ? '本地技能' : skill.builtin ? '内置技能' : '工作区技能') }} · {{ skillText(skill) }}</p></div>
-      <el-switch :model-value="skill.enabled" :loading="pending === skill.id" :disabled="!!pending" :aria-label="translate('启用 {0}', { 0: skillLabel(skill) })" @change="toggle(skill, Boolean($event))" />
+    <div v-if="filtered.length" class="skillList">
+      <div v-for="skill in filtered" :key="skill.id" class="skillRow">
+        <div><strong>{{ skillLabel(skill) }}</strong><p><span class="skillSource">{{ translate(skill.local ? '本地技能' : skill.builtin ? '内置技能' : '工作区技能') }}</span>{{ skillText(skill) }}</p></div>
+        <el-switch :model-value="skill.enabled" :loading="pending === skill.id" :disabled="!!pending" :aria-label="translate('启用 {0}', { 0: skillLabel(skill) })" @change="toggle(skill, Boolean($event))" />
+      </div>
     </div>
     <p v-if="!filtered.length">{{ loading ? translate('加载中...') : translate('没有匹配的技能') }}</p>
   </div>

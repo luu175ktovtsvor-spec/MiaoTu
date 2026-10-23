@@ -1,9 +1,9 @@
 ---
 name: script-writing
-displayName: 剧本创作
-displayName_en: Screenwriting
-description: 剧本板块：原创编剧、改编、分集短剧规划、短视频脚本和剧本诊断。先判断要写哪一种，再读取对应方法。
-description_en: The screenwriting section: original scripts, adaptations, episodic short-drama planning, short-video scripts and script diagnosis.
+displayName: "剧本创作"
+displayName_en: "Screenwriting"
+description: "剧本板块：原创编剧、改编、分集短剧规划、短视频脚本和剧本诊断。先判断要写哪一种，再读取对应方法。"
+description_en: "The screenwriting section: original scripts, adaptations, episodic short-drama planning, short-video scripts and script diagnosis."
 ---
 # 剧本创作
 

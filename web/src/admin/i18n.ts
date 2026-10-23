@@ -1,6 +1,6 @@
-export const sectionEnglish={overview:'Overview',operations:'System operations',users:'Users',models:'Models & pricing',upstream:'Provider usage',generations:'Generations',payments:'Payments',audit:'Activity log'}
+export const sectionEnglish={overview:'Overview',operations:'System operations',users:'Users',models:'Models & pricing',upstream:'Provider usage',generations:'Generations',payments:'Payments',feedback:'User feedback',audit:'Activity log'}
 
-export const sectionDescriptionEnglish={overview:'Review accounts, generations and costs.',operations:'Review storage, data sync and service settings.',users:'Manage accounts, permissions and credits.',models:'Manage model availability, parameter prices and cost allocation.',upstream:'Review provider calls, estimated costs and balance records.',generations:'Review results, task status and credit usage.',payments:'Review orders and payment status. Credits arrive after successful payment.',audit:'Review account, payment and admin activity.'}
+export const sectionDescriptionEnglish={overview:'Review accounts, generations and costs.',operations:'Review storage, data sync and service settings.',users:'Manage accounts, permissions and credits.',models:'Manage model availability, parameter prices and cost allocation.',upstream:'Review provider calls, estimated costs and balance records.',generations:'Review results, task status and credit usage.',payments:'Review orders and payment status. Credits arrive after successful payment.',feedback:'Read and reply to bugs and ideas sent from the desktop app.',audit:'Review account, payment and admin activity.'}
 
 const adminEnglish: Record<string, string> = {
   "一次性密码": "One-time password",

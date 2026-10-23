@@ -900,7 +900,7 @@ export function useNodeAi() {
             finish();
             throw Object.assign(new Error(String(status.error || translate('本机文本生成未完成'))), status.status === 'cancelled' ? { name: 'AbortError', generationCancelled: true } : {});
           }
-          request.onEvent?.({ type: 'status', message: String(status.error || translate('正在等待本机账户返回文本…')) });
+          request.onEvent?.({ type: 'status', message: String(status.error || translate('正在等待豆包或 Dola 返回文本…')) });
           await wait(2000, request.signal);
           status = await pollTask(`./api/imagine/generation/${encodeURIComponent(requestId)}`, request.signal);
         }

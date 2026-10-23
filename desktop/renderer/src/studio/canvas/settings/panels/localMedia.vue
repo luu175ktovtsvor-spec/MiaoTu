@@ -1,18 +1,9 @@
 <template>
   <div class="doubaoSettings">
-    <el-radio-group v-model="platform" :aria-label="translate('本机模型来源')">
+    <el-radio-group v-model="platform" :aria-label="translate('选择平台')">
       <el-radio-button value="doubao">豆包</el-radio-button><el-radio-button value="dola">Dola</el-radio-button>
     </el-radio-group>
-    <settings-section :title="translate('网络要求')" :description="translate('先让妙图自己的窗口能访问平台，再登录或提交。只改 Clash 节点但没让妙图走代理，不算连接成功。')">
-      <div class="networkGuide">
-        <p><strong>Dola</strong><span>{{ translate('需要 Dola 开放地区的出口，例如日本、英国、东南亚；美国、加拿大、澳大利亚、印度和中国大陆出口会进入“受区域限制”页（2026-10-22 实测：日本出口可进入创作页，美国出口被限制）。还要能访问 www.dola.com/chat/ 和登录服务，使用 Google 登录时还需要 accounts.google.com。使用 Clash Verge 时，选好节点后还要开启系统代理或 TUN；节点测速成功不代表妙图窗口已经走该节点。') }}</span></p>
-        <p><strong>Clash</strong><span>{{ translate('Clash Verge 的规则模式下，GLOBAL 里选中的节点不一定就是 Dola 实际走的代理组。请确认 Dola 命中的规则或代理组已经选到可用地区，或者仅在测试时切到全局模式；最终以妙图窗口能打开 Dola 登录和创作菜单为准。节点名称或之前的延迟不代表当前可用，日本节点也可能失效；请重新测延迟并实际打开页面。') }}</span></p>
-        <p><strong>豆包</strong><span>{{ translate('豆包通常可在中国大陆直连，优先在系统代理和 TUN 关闭时测试。若其他平台需要代理，建议按域名分流，不要让豆包被迫跟着 Dola 走同一个出口。') }}</span></p>
-        <p><strong>{{ translate('自检顺序') }}</strong><span>{{ translate('确认节点延迟正常；开启系统代理或 TUN；完全关闭并重新打开平台窗口；确认页面进入创作区并能读取模型菜单。出现地区限制、超时或登录失败时分别处理。') }}</span></p>
-        <p><strong>{{ translate('验收边界') }}</strong><span>{{ translate('页面、登录和模型菜单能正常通信即可确认网络通路，不需要先发起生成请求；真正提交时再确认账户额度与生成权限。') }}</span></p>
-      </div>
-    </settings-section>
-    <settings-section :title="site.label + ' · ' + translate('本机账户')" :description="translate('登录后，在妙图文本、图片和视频节点中使用该账户。')">
+    <settings-section :title="site.id === 'dola' ? translate('Dola 账号') : translate('豆包账号')" :description="translate('登录后，在妙图文本、图片和视频节点中使用该账户。')">
       <div class="accountStatus" role="status">
         <el-tag :type="state?.connected ? 'success' : 'info'">{{ state?.connected ? translate('已连接') : translate('未连接') }}</el-tag>
         <strong v-if="state?.name">{{ state.name }}</strong>
@@ -44,15 +35,27 @@
       <p v-if="state?.checkedAt" class="hint">{{ translate('最近检查') }}：{{ new Date(state.checkedAt).toLocaleString() }}</p>
     </settings-section>
     <settings-section :title="translate('今日妙图用量')" :description="translate('仅统计此妙图账户在这台电脑发起的任务，不代表平台全账户消耗。')">
-      <settings-row v-for="kind in kinds" :key="kind.id" :label="kind.label">
-        <span>{{ translate('已受理') }} {{ usage(kind.id)?.submitted || 0 }} · {{ translate('已完成') }} {{ usage(kind.id)?.succeeded || 0 }} · {{ translate('待取回') }} {{ usage(kind.id)?.pending || 0 }}<template v-if="usage(kind.id)?.confirming"> · {{ translate('待确认') }} {{ usage(kind.id)?.confirming }}</template></span>
+      <settings-row v-for="kind in kinds" :key="kind.id" :label="kind.label" control-width="auto">
+        <span class="usageValue">{{ translate('已受理') }} {{ usage(kind.id)?.submitted || 0 }} · {{ translate('已完成') }} {{ usage(kind.id)?.succeeded || 0 }} · {{ translate('待取回') }} {{ usage(kind.id)?.pending || 0 }}<template v-if="usage(kind.id)?.confirming"> · {{ translate('待确认') }} {{ usage(kind.id)?.confirming }}</template></span>
       </settings-row>
     </settings-section>
-    <settings-section :title="translate('在节点中使用')" :description="translate('在文本、图片或视频节点的模型菜单中选择对应的“本机账户”来源。')">
+    <settings-section :title="translate('在节点中使用')" :description="translate('在文本、图片或视频节点的模型菜单里，选择「豆包」或「Dola」分组下的模型。')">
       <p class="hint">{{ translate('在节点选择具体型号、时长和比例；仅在平台开放时提供分辨率选项，否则明确跟随平台。页面要求确认或验证时，在原窗口处理后继续取回。') }}</p>
       <local-media-info :model="{ providerId: platform + '-local', modelId: platform + '-local-video' }" />
-      <p class="hint">{{ translate('本机网页文本模型提供普通文本回复，暂不支持 Agent 或导演台的工具调用。') }}</p>
+      <p class="hint">{{ translate('豆包、Dola 的文本模型提供普通文本回复，暂不支持 Agent 或导演台的工具调用。') }}</p>
       <p class="hint">{{ translate('网页登录状态仅保存在这台电脑，按平台和妙图账户隔离。断开连接只清除此处的网页登录状态。') }}</p>
+    </settings-section>
+    <settings-section :title="translate('网络要求与自检')" :description="translate('先让妙图自己的窗口能访问平台，再登录或提交。只改 Clash 节点但没让妙图走代理，不算连接成功。')">
+      <details class="networkDetails" :open="platform === 'dola' && !state?.connected">
+      <summary>{{ translate('查看各平台的网络要求') }}</summary>
+      <div class="networkGuide">
+        <p><strong>Dola</strong><span>{{ translate('需要 Dola 开放地区的出口，例如日本、英国、东南亚；美国、加拿大、澳大利亚、印度和中国大陆出口会进入“受区域限制”页（2026-10-22 实测：日本出口可进入创作页，美国出口被限制）。还要能访问 www.dola.com/chat/ 和登录服务，使用 Google 登录时还需要 accounts.google.com。使用 Clash Verge 时，选好节点后还要开启系统代理或 TUN；节点测速成功不代表妙图窗口已经走该节点。') }}</span></p>
+        <p><strong>Clash</strong><span>{{ translate('Clash Verge 的规则模式下，GLOBAL 里选中的节点不一定就是 Dola 实际走的代理组。请确认 Dola 命中的规则或代理组已经选到可用地区，或者仅在测试时切到全局模式；最终以妙图窗口能打开 Dola 登录和创作菜单为准。节点名称或之前的延迟不代表当前可用，日本节点也可能失效；请重新测延迟并实际打开页面。') }}</span></p>
+        <p><strong>豆包</strong><span>{{ translate('豆包通常可在中国大陆直连，优先在系统代理和 TUN 关闭时测试。若其他平台需要代理，建议按域名分流，不要让豆包被迫跟着 Dola 走同一个出口。') }}</span></p>
+        <p><strong>{{ translate('自检顺序') }}</strong><span>{{ translate('确认节点延迟正常；开启系统代理或 TUN；完全关闭并重新打开平台窗口；确认页面进入创作区并能读取模型菜单。出现地区限制、超时或登录失败时分别处理。') }}</span></p>
+        <p><strong>{{ translate('验收边界') }}</strong><span>{{ translate('页面、登录和模型菜单能正常通信即可确认网络通路，不需要先发起生成请求；真正提交时再确认账户额度与生成权限。') }}</span></p>
+      </div>
+      </details>
     </settings-section>
   </div>
 </template>
@@ -116,7 +119,11 @@ onUnmounted(() => { controller.abort(); if (interval) clearInterval(interval); }
 .quotaCard { display:flex; flex-direction:column; gap:10px; padding:18px; border-radius:12px; background:var(--el-fill-color-light); }
 .quotaCard strong { font-size:24px; font-variant-numeric:tabular-nums; }
 .quotaCard span,.quotaCard small,.hint { color:var(--el-text-color-secondary); font-size:12px; line-height:1.7; }
-.networkGuide { display:grid; gap:12px; }
+.networkGuide { display:grid; gap:12px; margin-top:14px; }
+.networkDetails summary { cursor:pointer; color:var(--el-text-color-regular); font-size:13px; font-weight:500; }
+.networkDetails summary:hover { color:var(--el-text-color-primary); }
+.usageValue { color:var(--el-text-color-regular); font-size:13px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.doubaoSettings > .el-radio-group { margin-bottom:18px; }
 .networkGuide p { display:grid; grid-template-columns:64px minmax(0,1fr); gap:12px; margin:0; color:var(--el-text-color-secondary); font-size:12px; line-height:1.7; }
 .networkGuide strong { color:var(--el-text-color-primary); font-weight:600; }
 .hint { margin:12px 0 0; } .error { color:var(--el-color-danger); font-size:13px; }

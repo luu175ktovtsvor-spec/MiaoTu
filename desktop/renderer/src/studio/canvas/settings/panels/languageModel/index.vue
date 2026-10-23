@@ -30,8 +30,8 @@
         <el-tag v-if="selectedModelInfo.reasoning" size="small" effect="plain">{{ translate('支持推理') }}</el-tag>
       </div>
     </settings-section>
-    <settings-section v-if="isDesktop" :title="translate('本机账户文本模型')" :description="translate('在设置 → 豆包与 Dola 中连接账户后，可在文本节点选择对应来源。')">
-      <p class="localTextHint">{{ translate('豆包 · 本机账户 / Dola · 本机账户：使用对应平台权益；提供普通文本回复，暂不支持 Agent 和导演台工具调用。') }}</p>
+    <settings-section v-if="isDesktop" :title="translate('豆包与 Dola 文本模型')" :description="translate('在设置 → 豆包与 Dola 中连接账户后，可在文本节点选择对应来源。')">
+      <p class="localTextHint">{{ translate('使用豆包或 Dola 账号自带的权益，提供普通文本回复，暂不支持 Agent 和导演台的工具调用。') }}</p>
     </settings-section>
   </div>
 </template>

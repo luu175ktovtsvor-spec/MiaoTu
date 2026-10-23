@@ -195,7 +195,7 @@ export class LocalMediaHost {
     this.assert(entry, context, signal)
     if (!entry.window || entry.window.isDestroyed()) {
       const window = new this.electron.BrowserWindow({ width: 1100, height: 820, show,
-        title: `${this.site.label} · 妙图本机路由`, autoHideMenuBar: true,
+        title: `${this.site.label} · 妙图`, autoHideMenuBar: true,
         webPreferences: { session: entry.session, nodeIntegration: false, contextIsolation: true, sandbox: true, backgroundThrottling: false },
       })
       entry.window = window

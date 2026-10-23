@@ -1,9 +1,9 @@
 ---
 name: video-create
-displayName: 视频创作
-displayName_en: Video production
-description: 视频创作板块：策划、导演、表演、补充画面、声音、字幕、动态图形、连续性和成片复查，以及口播、访谈、双人播客、演示解说、排名对比等视频形式。
-description_en: The video production section: planning, direction, performance, b-roll, sound, captions, motion graphics, continuity and review, plus talking heads, interviews, podcasts, explainers and rankings.
+displayName: "视频创作"
+displayName_en: "Video production"
+description: "视频创作板块：策划、导演、表演、补充画面、声音、字幕、动态图形、连续性和成片复查，以及口播、访谈、双人播客、演示解说、排名对比等视频形式。"
+description_en: "The video production section: planning, direction, performance, b-roll, sound, captions, motion graphics, continuity and review, plus talking heads, interviews, podcasts, explainers and rankings."
 ---
 # 视频创作
 

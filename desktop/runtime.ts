@@ -361,7 +361,7 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
         const body = await readJson(request, 256 * 1024, signal)
         signal.throwIfAborted()
         if (account !== cloud.account || revision !== cloud.authRevision || cloud.sessionChanging || cloud.authenticationExpired) throw Object.assign(new Error('账号已切换，文本任务尚未提交'), { status: 409 })
-        if (!localMediaSite(body.model, body.providerId) || localMediaKind(body.model) !== 'text') throw Object.assign(new Error('请选择本机账户文本模型'), { status: 422 })
+        if (!localMediaSite(body.model, body.providerId) || localMediaKind(body.model) !== 'text') throw Object.assign(new Error('请选择豆包或 Dola 的文本模型'), { status: 422 })
         json(response, 202, await tasks.submit(project, 'text', body)); return
       }
       if (url.pathname === '/api/desktop/register' && request.method === 'POST') { throw Object.assign(new Error('请使用邮箱验证码注册'), { status: 422 }) }
@@ -686,6 +686,16 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
           throw error
         }
         json(response, 200, { session: userSession() }); return
+      }
+      // 反馈数据只在云端：桌面端原样转发，截图随请求一起上传，所以单独放宽体积上限。
+      if (url.pathname === '/api/imagine/feedback' || url.pathname.startsWith('/api/imagine/feedback/')) {
+        if (request.method === 'GET') { await proxy(request, response, url.pathname + url.search, { method: 'GET' }); return }
+        mutate(request)
+        const account = cloud.account, revision = cloud.authRevision, signal = AbortSignal.any([incoming.signal, modelSession.signal])
+        const body = await readJson(request, 24 * 1024 * 1024, signal)
+        signal.throwIfAborted()
+        if (account !== cloud.account || revision !== cloud.authRevision || cloud.sessionChanging || cloud.authenticationExpired) throw Object.assign(new Error('账号已切换，这条反馈尚未提交'), { status: 409 })
+        await proxy(request, response, url.pathname, { method: request.method, body, signal }); return
       }
       const allowedCloud = ['/api/imagine/error-explanation', '/api/imagine/ledger', '/api/imagine/payment/orders']
       if (allowedCloud.some(path => url.pathname === path || path === '/api/imagine/payment/orders' && url.pathname.startsWith(path + '/'))) {

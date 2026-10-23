@@ -613,3 +613,41 @@ html[data-admin-theme="light"] body {
 .admin-models-table th:first-child, .admin-models-table td:first-child { min-width:220px; }
 .admin-table-hint { display:none; }
 @media(max-width:700px) { .admin-table-hint { display:block; margin:0; padding:8px 16px; font-size:12px; color:var(--a-muted); border-bottom:1px solid var(--a-line); } }
+
+/* 用户反馈：左侧列表，右侧详情与回复。 */
+.admin-feedback { display: grid; grid-template-columns: minmax(320px, 420px) minmax(0, 1fr); gap: 18px; align-items: start; }
+.admin-feedback .admin-panel { margin-bottom: 0; }
+.admin-feedback-tabs { display: inline-flex; gap: 4px; }
+.admin-feedback-tabs button { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--a-muted); cursor: pointer; }
+.admin-feedback-tabs button[aria-selected="true"] { border-color: var(--a-line); background: var(--a-hover); color: var(--a-ink, inherit); }
+.admin-feedback-tabs span { font-size: 11px; opacity: .8; }
+.admin-feedback-check { display: inline-flex; align-items: center; gap: 6px; color: var(--a-muted); font-size: 13px; }
+.admin-feedback-list ul { margin: 0; padding: 0; list-style: none; max-height: calc(100vh - 260px); overflow: auto; }
+.admin-feedback-list li + li { border-top: 1px solid var(--a-line); }
+.admin-feedback-list li button { display: flex; width: 100%; align-items: center; gap: 10px; padding: 12px 18px; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.admin-feedback-list li button:hover, .admin-feedback-list li button.active { background: var(--a-hover); }
+.admin-feedback-main { display: grid; flex: 1; min-width: 0; gap: 3px; }
+.admin-feedback-main strong { overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.admin-feedback-main small { color: var(--a-muted); font-size: 12px; }
+.admin-feedback-dot { flex-shrink: 0; color: var(--a-muted); }
+.admin-feedback-dot.open { width: 9px; height: 9px; border: 2px solid var(--a-brand); border-radius: 50%; }
+.admin-feedback-unread { display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: var(--a-bad); vertical-align: middle; }
+.admin-feedback-count { display: inline-flex; align-items: center; gap: 3px; color: var(--a-muted); font-size: 12px; }
+.admin-feedback-pages { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 12px; border-top: 1px solid var(--a-line); color: var(--a-muted); font-size: 12px; }
+.admin-feedback-detail > header h2 { margin: 0 0 4px; font-size: 17px; }
+.admin-feedback-labels { display: flex; flex-wrap: wrap; gap: 6px; padding: 14px 22px 0; }
+.admin-feedback-labels button { padding: 3px 10px; border: 1px solid var(--a-line); border-radius: 999px; background: transparent; color: var(--a-muted); font-size: 12px; cursor: pointer; }
+.admin-feedback-labels button.on { border-color: var(--a-brand); background: var(--a-brand-soft); color: var(--a-brand); }
+.admin-feedback-thread { display: grid; gap: 12px; padding: 16px 22px; }
+.admin-feedback-thread article { display: grid; gap: 8px; padding: 14px 16px; border: 1px solid var(--a-line); border-radius: 10px; }
+.admin-feedback-thread article.team { border-color: var(--a-brand); background: var(--a-brand-soft); }
+.admin-feedback-thread header { color: var(--a-muted); font-size: 12px; font-weight: 600; }
+.admin-feedback-thread p { margin: 0; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.admin-feedback-thread footer { color: var(--a-muted); font-size: 11px; }
+.admin-feedback-files { display: flex; flex-wrap: wrap; gap: 8px; }
+.admin-feedback-files a { display: block; width: 150px; height: 100px; overflow: hidden; border: 1px solid var(--a-line); border-radius: 8px; }
+.admin-feedback-files img { width: 100%; height: 100%; object-fit: cover; }
+.admin-feedback-reply { display: grid; gap: 10px; padding: 0 22px 20px; }
+.admin-feedback-reply textarea { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--a-line); border-radius: 8px; background: transparent; color: inherit; font: inherit; resize: vertical; }
+.admin-feedback-reply button { justify-self: end; display: inline-flex; align-items: center; gap: 6px; }
+@media (max-width: 980px) { .admin-feedback { grid-template-columns: 1fr; } }

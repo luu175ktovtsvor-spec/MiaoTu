@@ -1,9 +1,9 @@
 ---
 name: drama-director
-displayName: 短剧与漫剧制作
-displayName_en: Short drama and comic drama production
-description: 短剧与漫剧制作板块：从剧本到资产、机位、分镜、对白、段落衔接和视频提示词的完整流程，画布上的实际制作，单段短剧，以及写实、玄幻动作段导演。
-description_en: The short-drama and comic-drama section: the full flow from script to assets, camera set-ups, shots, dialogue, segment continuity and video prompts, hands-on canvas production, single segments, and realistic or fantasy action direction.
+displayName: "短剧与漫剧制作"
+displayName_en: "Short drama and comic drama production"
+description: "短剧与漫剧制作板块：从剧本到资产、机位、分镜、对白、段落衔接和视频提示词的完整流程，画布上的实际制作，单段短剧，以及写实、玄幻动作段导演。"
+description_en: "The short-drama and comic-drama section: the full flow from script to assets, camera set-ups, shots, dialogue, segment continuity and video prompts, hands-on canvas production, single segments, and realistic or fantasy action direction."
 ---
 # 短剧与漫剧制作
 

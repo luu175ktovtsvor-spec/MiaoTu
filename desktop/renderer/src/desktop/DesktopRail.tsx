@@ -1,6 +1,6 @@
-import { ClockCounterClockwise, FolderSimple, GearSix, House, Images, UserCircle } from '@phosphor-icons/react'
+import { ChatCircleText, ClockCounterClockwise, FolderSimple, GearSix, House, Images, UserCircle } from '@phosphor-icons/react'
 
-export type DesktopRailView = 'home' | 'projects' | 'cases' | 'assets' | 'canvas' | 'settings' | 'account'
+export type DesktopRailView = 'home' | 'projects' | 'cases' | 'assets' | 'canvas' | 'settings' | 'account' | 'feedback'
 
 type DesktopRailProps = {
   active: DesktopRailView
@@ -9,10 +9,12 @@ type DesktopRailProps = {
   onCases(): void
   onAssets(): void
   onSettings(): void
+  onFeedback(): void
   onAccount(): void
+  feedbackUnread?: number
 }
 
-export default function DesktopRail({ active, onHome, onProjects, onCases, onAssets, onSettings, onAccount }: DesktopRailProps) {
+export default function DesktopRail({ active, onHome, onProjects, onCases, onAssets, onSettings, onFeedback, onAccount, feedbackUnread = 0 }: DesktopRailProps) {
   return (
     <aside className="desktop-edge-rail" aria-label="妙图导航">
       <div className="desktop-edge-rail__masthead">
@@ -32,6 +34,9 @@ export default function DesktopRail({ active, onHome, onProjects, onCases, onAss
         </button>
         <button type="button" aria-current={active === 'assets' ? 'page' : undefined} onClick={onAssets}>
           <ClockCounterClockwise size={19} aria-hidden="true" /><span>资产</span>
+        </button>
+        <button type="button" aria-current={active === 'feedback' ? 'page' : undefined} onClick={onFeedback}>
+          <ChatCircleText size={19} aria-hidden="true" /><span>反馈</span>{feedbackUnread > 0 && <i className="desktop-edge-rail__dot" aria-label="有新回复" />}
         </button>
         <button type="button" aria-current={active === 'settings' ? 'page' : undefined} onClick={onSettings}>
           <GearSix size={19} aria-hidden="true" /><span>设置</span>

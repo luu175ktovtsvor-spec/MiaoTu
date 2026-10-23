@@ -4,7 +4,7 @@
       <settings-row :label="translate('开启 MCP')" :description="translate('允许 Claude Code、Codex 等外部编程工具操作画布。开启后把下面的配置填进对应工具。')">
         <el-switch :modelValue="mcpSettings.enabled" :loading="saving" :disabled="busy" :aria-label="translate('开启 MCP')" @change="(value) => setEnabled(value === true)" />
       </settings-row>
-      <p v-if="isDesktop">{{ translate('开启本机操作后，外部 Agent 也可导入本机素材和导出项目文件，保留原件且不覆盖已有目标。') }}</p>
+      <p v-if="isDesktop" class="mcpNote">{{ translate('开启本机操作后，外部 Agent 也可导入本机素材和导出项目文件，保留原件且不覆盖已有目标。') }}</p>
     </settings-section>
 
     <settings-section :title="translate('访问令牌')" :description="isDesktop ? translate('令牌保存在这台电脑上，正常重启后继续有效。重新生成会使旧配置失效；只发给可信的客户端。') : translate('令牌只保存摘要，仅在生成时显示一次；配置里含访问凭证，只发给可信的客户端。')">
@@ -277,6 +277,7 @@ onMounted(() => { void refreshStatus(); });
 </script>
 
 <style scoped lang="scss">
+.mcpNote { margin: 12px 0 0; padding-top: 12px; border-top: .5px solid var(--el-border-color); color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.6; }
 .mcpPanel {
   display: flex;
   flex-direction: column;

@@ -43,7 +43,7 @@
             </div>
             <div v-if="model.minimumCredits" class="modelCaps">
               <span class="capLabel">{{ translate('最低积分') }}</span>
-              <el-tag size="small" effect="plain">{{ t`${model.minimumCredits} 积分` }}</el-tag>
+              <el-tag size="small" effect="plain">{{ t`${points(model.minimumCredits)} 积分` }}</el-tag>
             </div>
           </div>
         </div>
@@ -146,14 +146,16 @@ function referenceText(model: any) {
 // 图片积分按张计：服务端给出的 creditsPerImage 已经是最终口径。
 function creditsPerImage(model: any) {
   const credits = Number(model?.creditsPerImage);
-  return Number.isFinite(credits) && credits > 0 ? t`${credits} 积分/张` : "";
+  return Number.isFinite(credits) && credits > 0 ? t`${points(credits)} 积分/张` : "";
 }
 
+// 单价由服务端相乘得出，可能带浮点尾数（如 1.7440000000000002），显示时最多保留四位小数。
+const points = (value: unknown) => String(Number(Number(value).toFixed(4)));
 function rateText(rates?: Record<string, number>) {
   if (!rates) return "";
   const entries = Object.entries(rates).filter(([key]) => key !== "default");
   if (!entries.length) return "";
-  return entries.map(([resolution, value]) => t`${resolution} ${value}/秒`).join(" · ");
+  return entries.map(([resolution, value]) => t`${resolution} ${points(value)}/秒`).join(" · ");
 }
 
 function imageCapabilities(model: any) {

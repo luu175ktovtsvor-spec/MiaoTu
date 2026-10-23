@@ -1,9 +1,9 @@
 ---
 name: asset-design
-displayName: 角色与场景设定
-displayName_en: Character and scene design
-description: 资产板块：角色设定图、三视图、表情、动作、服装、道具，场景四视图、俯视布局、短剧场景板、VR 全景、巨物场景，以及从剧本提炼资产 DNA。
-description_en: The asset section: character sheets, turnarounds, expressions, poses, costumes, props, scene turnarounds, top views, scene boards, VR panoramas, giant-scale scenes and script asset DNA.
+displayName: "角色与场景设定"
+displayName_en: "Character and scene design"
+description: "资产板块：角色设定图、三视图、表情、动作、服装、道具，场景四视图、俯视布局、短剧场景板、VR 全景、巨物场景，以及从剧本提炼资产 DNA。"
+description_en: "The asset section: character sheets, turnarounds, expressions, poses, costumes, props, scene turnarounds, top views, scene boards, VR panoramas, giant-scale scenes and script asset DNA."
 ---
 # 角色与场景设定
 

@@ -67,6 +67,7 @@ import { publicTextCatalog, textChannelReady } from './text-models.ts'
 import { createShortTextApi } from './short-text-api.ts'
 import { createReferenceMaterializer, createReferenceMediaProbe, createMediaBufferProbe, createReferenceToken, isReferenceMediaMime, REFERENCE_TTL_MS, referenceUrlShape, summarizeReferenceValue, verifyReferenceToken } from './reference-assets.ts'
 import { runtimeSecret } from './runtime-secrets.ts'
+import { createFeedbackStore } from './feedback-store.ts'
 import { createEmailOtp } from './email-otp.ts'
 import { createOAuthLogin } from './auth/oauth-login.ts'
 import { createMediaPreviews, MEDIA_PREVIEW_MIME, MEDIA_PREVIEW_VERSION } from './media-previews.ts'
@@ -95,6 +96,7 @@ const management = new ManagementStore()
 const imageReceipts = new ImageReceiptFiles(join(mediaRoot(), IMAGE_RECEIPT_DIRECTORY), IMAGE_PROXY_MAX_BYTES)
 const errorExplanations = createErrorExplanations({ management })
 const emailOtp = createEmailOtp({ management })
+const feedback = createFeedbackStore(management)
 // 密码登录按邮箱计失败次数：15 分钟内连错 5 次就暂停密码登录，只能用验证码。
 const PASSWORD_FAILURE_LIMIT = 5
 const PASSWORD_FAILURE_WINDOW_MS = 15 * 60_000
@@ -1577,6 +1579,23 @@ const server = createServer(withRequestProject(async (request, response) => {
     activeControllers.get(requestId)?.abort()
     json(response, 200, { ok: true, ...generation })
     return
+  }
+  // 用户反馈：桌面端「反馈」页。只能看和改自己提交的反馈。
+  if (url.pathname === '/api/imagine/feedback' || url.pathname.startsWith('/api/imagine/feedback/')) {
+    if (!session?.userId) throw failure('请先登录后再提交反馈', 401)
+    const [, id, action, attachmentId] = /^\/api\/imagine\/feedback(?:\/([a-f0-9-]{36}))?(?:\/(comments|status|attachments))?(?:\/([a-f0-9-]{36}))?$/.exec(url.pathname) || []
+    if (url.pathname !== '/api/imagine/feedback' && !id) throw failure('反馈接口不存在', 404)
+    if (!id && request.method === 'GET') { json(response, 200, feedback.listForUser(session.userId, url.searchParams.get('status') || 'all')); return }
+    if (!id && request.method === 'POST') { mutation(request, session); json(response, 201, feedback.create(session.userId, await readJson(request, 24 * 1024 * 1024))); return }
+    if (id && !action && request.method === 'GET') { json(response, 200, feedback.getForUser(session.userId, id)); return }
+    if (action === 'comments' && request.method === 'POST') { mutation(request, session); json(response, 200, feedback.commentAsUser(session.userId, id, (await readJson(request, SMALL_BODY_BYTES)).body)); return }
+    if (action === 'status' && request.method === 'POST') { mutation(request, session); json(response, 200, feedback.setStatusAsUser(session.userId, id, (await readJson(request, SMALL_BODY_BYTES)).status)); return }
+    if (action === 'attachments' && attachmentId && request.method === 'GET') {
+      const file = feedback.attachment(id, attachmentId, session.userId)
+      response.writeHead(200, { 'content-type': file.mime, 'content-length': file.size, 'cache-control': 'private, max-age=86400', 'x-content-type-options': 'nosniff' })
+      response.end(Buffer.from(file.bytes)); return
+    }
+    throw failure('反馈接口不存在', 404)
   }
   if (url.pathname === '/api/imagine/ledger' && request.method === 'GET') {
     if(!session?.userId)throw failure('请先登录',401)

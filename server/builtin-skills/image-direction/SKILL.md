@@ -1,9 +1,9 @@
 ---
 name: image-direction
-displayName: 图片与视觉指导
-displayName_en: Image and visual direction
-description: 图片与视觉板块：角色、场景、产品和图形的图片指导，视觉方向卡，以及从妙图灵感库挑选可追溯的参考。
-description_en: The image and visual section: image direction for characters, scenes, products and graphics, visual direction cards, and traceable references from the MiaoImg library.
+displayName: "图片与视觉指导"
+displayName_en: "Image and visual direction"
+description: "图片与视觉板块：角色、场景、产品和图形的图片指导，视觉方向卡，以及从妙图灵感库挑选可追溯的参考。"
+description_en: "The image and visual section: image direction for characters, scenes, products and graphics, visual direction cards, and traceable references from the MiaoImg library."
 ---
 # 图片与视觉指导
 

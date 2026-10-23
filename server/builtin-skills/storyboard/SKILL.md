@@ -1,9 +1,9 @@
 ---
 name: storyboard
-displayName: 分镜设计
-displayName_en: Storyboard
-description: 分镜板块：文字分镜、剧本转分镜脚本、90 秒分镜、故事分镜面板和视觉分镜九宫格。
-description_en: The storyboard section: written storyboards, script-to-shot scripts, 90-second plans, storyboard sheets and visual nine-panel grids.
+displayName: "分镜设计"
+displayName_en: "Storyboard"
+description: "分镜板块：文字分镜、剧本转分镜脚本、90 秒分镜、故事分镜面板和视觉分镜九宫格。"
+description_en: "The storyboard section: written storyboards, script-to-shot scripts, 90-second plans, storyboard sheets and visual nine-panel grids."
 ---
 # 分镜设计
 

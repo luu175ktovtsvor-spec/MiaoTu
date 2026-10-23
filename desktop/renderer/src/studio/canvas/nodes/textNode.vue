@@ -36,7 +36,7 @@
             </el-option-group>
           </el-select>
           <div class="promptActions">
-            <el-tag v-if="['doubao-local', 'dola-local'].includes(selectedModel?.providerId || '')" size="small" effect="plain">{{ translate('本机账户额度') }}</el-tag>
+            <el-tag v-if="['doubao-local', 'dola-local'].includes(selectedModel?.providerId || '')" size="small" effect="plain">{{ selectedModel?.providerId === 'dola-local' ? translate('使用 Dola 额度') : translate('使用豆包额度') }}</el-tag>
             <span v-if="data.pendingLocalTextTask && !generating" role="status">{{ translate('原任务待取回') }}</span>
             <span v-if="generating && localTextStatus" role="status">{{ localTextStatus }}</span>
             <el-button class="sendButton" :icon="IconArrowUp" :loading="generating" :disabled="(!data.pendingLocalTextTask && (!prompt.trim() || !selectedModel)) || modelsLoading || generating || !textReady || !!documentError" :title="translate(data.pendingLocalTextTask ? '继续取回原文本任务' : '生成')" :aria-label="translate(data.pendingLocalTextTask ? '继续取回原文本任务' : '生成')" @click="generateText().catch(() => {})" />

@@ -1,9 +1,9 @@
 ---
 name: video-analysis
-displayName: 拉片与复刻
-displayName_en: Breakdown and remake
-description: 拉片与复刻板块：按时间分析真实视频的镜头、动作、图文和节奏，逐镜拉片报告，以及保留参考结构制作新版本。
-description_en: The breakdown and remake section: analyse a real video over time, write shot-by-shot breakdowns, and remake a new version that keeps the reference structure.
+displayName: "拉片与复刻"
+displayName_en: "Breakdown and remake"
+description: "拉片与复刻板块：按时间分析真实视频的镜头、动作、图文和节奏，逐镜拉片报告，以及保留参考结构制作新版本。"
+description_en: "The breakdown and remake section: analyse a real video over time, write shot-by-shot breakdowns, and remake a new version that keeps the reference structure."
 ---
 # 拉片与复刻
 
