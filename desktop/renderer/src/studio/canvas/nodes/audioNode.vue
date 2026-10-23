@@ -40,18 +40,7 @@
         :src="previewUrl"
         @loadedmetadata="updateNodeInternals" />
       <input ref="fileInput" class="fileInput" type="file" accept="audio/*" :aria-label="translate('选择音频')" :disabled="uploading" @change="uploadAudio" />
-      <el-button
-        v-if="!outputs.audio"
-        class="uploadButton"
-        text
-        :loading="uploading"
-        :title="translate('上传音频')"
-        :aria-label="translate('上传音频')"
-        @dblclick.stop
-        @click="fileInput?.click()">
-        <icon-upload v-if="!uploading" :size="48" stroke="1.5" />
-        <span v-if="!uploading" class="uploadHint">{{ translate('点击上传，或把音频拖进来') }}</span>
-      </el-button>
+      <nodeEmptyState v-if="!outputs.audio" v-loading="uploading" :icon="IconMusic" :label="translate('暂无音频')" :hints="emptyHints" :disabled="uploading || uploadingDrag" @pick="pickHint" />
       <uploadProgress v-if="dragUploadEntry" :entry="dragUploadEntry" @retry="retryDragUpload" @dismiss="dismissDragUpload" />
     </div>
     <template v-if="actions?.mode === 'speed'" #bottom><div ref="speedTarget" /></template>
@@ -61,12 +50,15 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { IconMusic, IconUpload, IconTransfer, IconScissors, IconGauge, IconFileMusic } from "@tabler/icons-vue";
+import { IconMusic, IconVideo, IconClipboard, IconUpload, IconTransfer, IconScissors, IconGauge, IconFileMusic } from "@tabler/icons-vue";
 import { ElButton, ElDropdown, ElDropdownItem, ElDropdownMenu, ElMessage } from "element-plus";
 import type { AudioFormat } from "./audioNode/audioProcessing";
 import { nodeSkeleton, nodeTools, useNode, useNodeUpload, z, type NodeHandle } from "@miaoimg/nodes-scaffold/runtime";
 import { translate } from "@miaoimg/i18n/vue";
 import uploadProgress from "../components/uploadProgress.vue";
+import nodeEmptyState, { type EmptyHint } from "../components/nodeEmptyState.vue";
+import { useLinkedNode } from "../linkedNode";
+import { readClipboardFiles } from "@/lib/clipboard";
 import { beginUpload } from "../uploadStatus";
 import { assetFileType, ASSET_MAX_BYTES } from "../assetFile";
 import audioPlayer from "./audioNode/audioPlayer.vue";
@@ -143,11 +135,29 @@ nodeTools.register({
   },
 });
 
+const { canLink, createLinked } = useLinkedNode();
+const emptyHints = computed<EmptyHint[]>(() => [
+  { key: "upload", label: "上传本地音频", icon: IconUpload },
+  { key: "paste", label: "粘贴剪贴板里的音频", icon: IconClipboard },
+  ...(canLink(node, "remote-videoGenerationNode") ? [{ key: "video", label: "音频生成视频", icon: IconVideo }] : []),
+]);
+async function pickHint(key: string) {
+  if (key === "upload") return fileInput.value?.click();
+  if (key === "video") return void createLinked(node, "remote-videoGenerationNode", "视频生成");
+  const file = (await readClipboardFiles().catch(() => [])).find(item => assetFileType(item).kind === "audio");
+  if (!file) return void ElMessage.warning(translate("剪贴板里没有音频"));
+  takeAudio(file);
+}
+
 function uploadAudio(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
   input.value = "";
-  if (!file || uploading.value || uploadingDrag.value || actions.value?.processing) return;
+  if (file) takeAudio(file);
+}
+
+function takeAudio(file: File) {
+  if (uploading.value || uploadingDrag.value || actions.value?.processing) return;
   if (assetFileType(file).kind !== "audio") return void ElMessage.error(translate("请选择音频文件"));
   if (!file.size || file.size > ASSET_MAX_BYTES) return void ElMessage.error(translate("音频为空或超过当前工作区允许的大小"));
   // 和「拖文件进画布」走同一条通道：真上传进度的环形、失败可重试、写回 outputs 都由
@@ -190,15 +200,5 @@ function showError(error: unknown, fallback: string) {
     display: none;
   }
 
-  .uploadButton {
-    width: 100%;
-    height: 144px;
-    padding: 0;
-    color: var(--el-text-color-placeholder);
-
-    &:hover {
-      color: var(--el-color-primary);
-    }
-  }
 }
 </style>

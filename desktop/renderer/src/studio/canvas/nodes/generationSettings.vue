@@ -197,6 +197,8 @@ watch(ratio, value => {
 
 function ratioStyle(value: string) {
   const [width = 1, height = 1] = value.split(":").map(Number);
+  // auto 这类没有比例的值画成虚线方框，不然宽高是 NaN，只剩一个小点。
+  if (!(width > 0 && height > 0)) return { width: "16px", height: "12px", borderStyle: "dashed" };
   return { width: `${16 * Math.min(width / height, 1)}px`, height: `${16 * Math.min(height / width, 1)}px` };
 }
 </script>

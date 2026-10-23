@@ -1,4 +1,4 @@
-import { ChatCircleText, ClockCounterClockwise, FolderSimple, GearSix, House, Images, UserCircle } from '@phosphor-icons/react'
+import { ChatCircleText, ClockCounterClockwise, FolderSimple, GearSix, House, Images, Lightbulb, UserCircle } from '@phosphor-icons/react'
 
 export type DesktopRailView = 'home' | 'projects' | 'cases' | 'assets' | 'canvas' | 'settings' | 'account' | 'feedback'
 
@@ -29,12 +29,19 @@ export default function DesktopRail({ active, onHome, onProjects, onCases, onAss
         <button type="button" aria-current={active === 'projects' || active === 'canvas' ? 'page' : undefined} onClick={onProjects}>
           <FolderSimple size={19} aria-hidden="true" /><span>项目</span>
         </button>
-        <button type="button" aria-current={active === 'cases' ? 'page' : undefined} onClick={onCases}>
-          <Images size={19} aria-hidden="true" /><span>案例</span>
-        </button>
         <button type="button" aria-current={active === 'assets' ? 'page' : undefined} onClick={onAssets}>
           <ClockCounterClockwise size={19} aria-hidden="true" /><span>资产</span>
         </button>
+      </nav>
+      {/* 和 LibTV 一样分组：上面是自己的东西，「社区」下面是大家的作品。 */}
+      <p className="desktop-edge-rail__group">社区</p>
+      <nav className="desktop-edge-rail__nav" aria-label="社区">
+        <button type="button" aria-current={active === 'cases' ? 'page' : undefined} onClick={onCases}>
+          <Images size={19} aria-hidden="true" /><span>创作精选</span>
+        </button>
+      </nav>
+      <p className="desktop-edge-rail__group">更多</p>
+      <nav className="desktop-edge-rail__nav" aria-label="更多">
         <button type="button" aria-current={active === 'feedback' ? 'page' : undefined} onClick={onFeedback}>
           <ChatCircleText size={19} aria-hidden="true" /><span>反馈</span>{feedbackUnread > 0 && <i className="desktop-edge-rail__dot" aria-label="有新回复" />}
         </button>
@@ -42,6 +49,9 @@ export default function DesktopRail({ active, onHome, onProjects, onCases, onAss
           <GearSix size={19} aria-hidden="true" /><span>设置</span>
         </button>
       </nav>
+      <button type="button" className="desktop-edge-rail__account desktop-edge-rail__changelog" onClick={() => window.dispatchEvent(new Event('miao-show-release-notes'))}>
+        <Lightbulb size={19} aria-hidden="true" /><span>版本更新记录</span>
+      </button>
       <button type="button" className="desktop-edge-rail__account" aria-current={active === 'account' ? 'page' : undefined} onClick={onAccount}>
         <UserCircle size={20} aria-hidden="true" /><span>账号</span>
       </button>

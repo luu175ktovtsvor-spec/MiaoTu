@@ -42,6 +42,7 @@ import { computed, inject, onMounted, onScopeDispose, ref } from "vue";
 import { IconX, IconFolders } from "@tabler/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { locale, translate } from "@miaoimg/i18n/vue";
+import { systemTrashName } from "@/lib/systemTrash";
 import { captureWorkspaceScope, assertWorkspaceScope } from "@/lib/workspaceRemote";
 
 type ProjectItem = { id: string; name: string; createdAt: string | null; lastOpenedAt: string | null; fileCount: number };
@@ -167,7 +168,7 @@ async function renameProject() {
 async function removeProject() {
   const item = projects.value.find(entry => entry.id === currentProject.value);
   if (!item || !canRemove.value) return;
-  await ElMessageBox.confirm(translate('项目里的画布和素材会一起删除。'), translate('删除项目'), {
+  await ElMessageBox.confirm(translate('项目里的画布、素材和文档会移到电脑的{0}。想彻底释放空间，在{0}里清空即可。', { 0: translate(systemTrashName()) }), translate('删除项目'), {
     confirmButtonText: translate('删除'),
     cancelButtonText: translate('取消'),
     type: "warning",

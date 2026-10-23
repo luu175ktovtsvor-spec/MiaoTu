@@ -161,6 +161,7 @@
           </el-button>
         </el-tooltip>
         <span class="toolDivider" aria-hidden="true" />
+        <shortcutPanel />
         <el-tooltip v-if="settingsAvailable" :showArrow="false" :content="translate('设置')" placement="top" :hideAfter="0" :enterable="false" :triggerKeys="[]">
           <el-button class="toolButton" text :aria-label="translate('设置')" @click="openDesktopSettings">
             <icon-settings :size="17" />
@@ -178,6 +179,7 @@ import { MiniMap } from "@vue-flow/minimap";
 import { IconMap, IconMagnet, IconFocusCentered, IconSettings, IconPlus, IconPointer, IconHandStop, IconArrowBackUp, IconArrowForwardUp } from "@tabler/icons-vue";
 import { ElMessage } from "element-plus";
 import { arrangeCanvas } from "../arrangeCanvas";
+import shortcutPanel from "./shortcutPanel.vue";
 import { getShortcutBindings, shortcutLabel } from "@/lib/canvasShortcuts";
 import { generalSettings } from "@/stores/settings";
 import { translate } from "@miaoimg/i18n/vue";

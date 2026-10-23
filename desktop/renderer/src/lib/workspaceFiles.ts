@@ -479,7 +479,8 @@ export default function useWorkspaceFiles(source: string | (() => string | undef
     },
     // Explicit false requires the server's atomic empty-directory check.
     // Omitted/true keeps existing canvas and asset-directory cleanup behavior.
-    async remove(path: string, recursive?: boolean, signal?: AbortSignal, sourceEntries?: readonly WorkspaceSourceEntry[]) {
+    // trash: 用户亲手删的放进系统废纸篓；程序清理临时素材不带它，直接删。
+    async remove(path: string, recursive?: boolean, signal?: AbortSignal, sourceEntries?: readonly WorkspaceSourceEntry[], { trash = false }: { trash?: boolean } = {}) {
       signal?.throwIfAborted()
       if (recursive !== undefined && typeof recursive !== 'boolean') throw fileError(shellT('删除选项无效'), 422)
       const selected = await mutationSourceEntries(path, sourceEntries, signal)
@@ -488,14 +489,14 @@ export default function useWorkspaceFiles(source: string | (() => string | undef
         const list = await readList(signal)
         if (!list.nonRecursiveRemove) throw fileError(shellT('当前服务无法保证保留目录内容，删除已停止'), 501)
       }
-      await mutate({ operation: 'remove', path, recursive, ...(sourceEntries ? { sourceEntries } : {}) }, selected.revision, signal)
+      await mutate({ operation: 'remove', path, recursive, ...(trash ? { trash } : {}), ...(sourceEntries ? { sourceEntries } : {}) }, selected.revision, signal)
     },
     async removeCanvas(path: string, { directories, filesRevision, revision, recursive, sourceEntries }: { directories: string[]; filesRevision: string; revision: string | null; recursive?: boolean; sourceEntries?: readonly WorkspaceSourceEntry[] }, signal?: AbortSignal) {
       if (!/^[a-f0-9]{64}$/.test(filesRevision)) throw incompleteReceipt()
       sourceEntries = sourceEntries?.map(entry => ({ ...entry }))
       const expectedRevision = sourceEntries ? workspaceSourceRevision(sourceEntries, path) : revision
       await requireSourceEntries(sourceEntries, signal)
-      await mutate({ operation: 'remove', path, recursive, canvasCleanup: { directories, filesRevision }, ...(sourceEntries ? { sourceEntries } : {}) }, expectedRevision, signal)
+      await mutate({ operation: 'remove', path, recursive, trash: true, canvasCleanup: { directories, filesRevision }, ...(sourceEntries ? { sourceEntries } : {}) }, expectedRevision, signal)
     },
     async mkdir(path: string, signal?: AbortSignal) { await mutate({ operation: 'write', path, exclusive: true, content: '', encoding: 'text', mime: 'inode/directory' }, undefined, signal) },
   }

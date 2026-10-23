@@ -10,6 +10,7 @@ import { createLocalComputer } from './local-computer.ts'
 import { createLocalSkills } from './local-skills.ts'
 import { createPiAgentPrompt } from './pi-agent-prompt.ts'
 import { LocalStore } from './store.ts'
+import { createSystemTrash } from './system-trash.ts'
 import { CloudGateway } from './cloud.ts'
 import { LocalTasks } from './tasks.ts'
 import { MediaTools } from './media-tools.ts'
@@ -48,16 +49,32 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
   const entryHtml = createDesktopEntryHtml(webRoot)
   const store = new LocalStore(directory)
   store.cleanupTrashBackups()
+  const systemTrash = createSystemTrash({ directory, trashItem: native?.trash })
   const files = new DesktopWorkspaceFiles(store)
+  // 删除时还在 5 分钟宽限期里的素材字节当时不能回收；桌面版没有后台对账，启动时补收一次。
+  try { files.blobs.sweep({ apply: true }) } catch (error) { console.warn('[workspace] BLOB_SWEEP_PENDING', error?.code || 'UNKNOWN') }
   const workspaceCatalogTools = createWorkspaceCatalogTools({ store, files })
-  files.beforeRemove = (_userId, project, entries) => {
-    const copies: string[] = []
-    const rollback = () => { store.cleanupTrashBackups(copies) }
-    try {
-      for (const entry of entries) if (entry.mime !== 'inode/directory') copies.push(store.addTrash(project, entry.path, entry.mime, files.locate('local', entry.path, project)))
-      return rollback
-    } catch (error) { rollback(); throw error }
+  // 只有用户亲手删的（画布、文件面板）才进系统废纸篓；程序清理临时素材直接删，不往废纸篓里塞东西。
+  // 删除提交之后才交给系统；提交失败时 rollback 先于 setImmediate 执行，暂存的副本随之丢弃。
+  files.beforeRemove = (_userId, project, entries, { trash, path }) => {
+    if (!trash || !systemTrash.available) return
+    const name = `${store.projectLabel(project)} - ${path.split('/').pop() || '文件'}`
+    const staged = systemTrash.stage(name, entries, target => files.locate('local', target, project))
+    let cancelled = false
+    setImmediate(() => { if (!cancelled) systemTrash.send(staged).catch(error => console.warn('[system-trash] ITEM_PENDING', error?.code || 'UNKNOWN')) })
+    return () => { cancelled = true; systemTrash.discard(staged) }
   }
+  // 老版本藏在应用目录里的删除备份，以及上次没送进废纸篓的，都在后台交给系统，不拖慢启动。
+  void (async () => {
+    if (!systemTrash.available) return
+    await systemTrash.flush()
+    const legacy = store.legacyTrash()
+    if (!legacy.length) return
+    const staged = systemTrash.stage('妙图旧版删除的文件', legacy.map(row => ({ path: `${row.project_id}/${row.path}`, mime: row.mime })),
+      path => { const row = legacy.find(item => `${item.project_id}/${item.path}` === path); return row.disk_path ? { diskPath: row.disk_path } : { bytes: row.bytes } })
+    await systemTrash.send(staged)
+    store.dropLegacyTrash(legacy.map(row => row.id))
+  })().catch(error => console.warn('[system-trash] LEGACY_TRASH_PENDING', error?.code || 'UNKNOWN'))
   let mcp, agent, computer, tasks: LocalTasks | undefined
   const localRoutes = new Map<string, LocalMediaRouter>()
   const catalogMemory = new Map<string, { value: any; updatedAt: number }>()
@@ -539,7 +556,13 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
               assertCurrent()
               store.project(body.id)
               if (store.get("SELECT request_id FROM desktop_tasks WHERE project_id=? AND status NOT IN ('succeeded','failed','cancelled','expired')", body.id)) throw new Error('该项目还有待取回的生成任务，请先等待结果或明确取消')
-              for (const file of files.list('local', body.id)) store.addTrash(body.id, file.path, file.mime, files.locate('local', file.path, body.id))
+              // 整个项目先按原目录结构放进系统废纸篓，系统收下了才从妙图里删；放不进去就不删，告诉用户。
+              const staged = systemTrash.stage(store.projectLabel(body.id), files.list('local', body.id), path => files.locate('local', path, body.id))
+              try { await systemTrash.send(staged) } catch (error) {
+                systemTrash.discard(staged)
+                throw Object.assign(new Error('没能把项目放进废纸篓，项目未删除'), { status: 500, cause: error })
+              }
+              assertCurrent()
               const removed = files.removeProject('local', body.id)
               store.run('DELETE FROM desktop_sync WHERE project_id=? AND account=?', body.id, account)
               await agent.finishProjectRemoval('local', body.id)

@@ -28,8 +28,8 @@
         @dimensions="resizeVideo" />
       <div v-else class="videoEmpty mediaEmpty" :aria-label="translate('暂无生成视频')">
         <icon-camera-ai :size="48" stroke="1.25" aria-hidden="true" />
-        <div v-if="emptyHints.length && !refList.length" class="emptyHints nodrag nopan" role="group" :aria-label="translate('试试')">
-          <span class="emptyHintsTitle">{{ translate('试试：') }}</span>
+        <div v-if="emptyHints.length && !refList.length" class="emptyHints nodrag nopan" role="group" :aria-label="translate('尝试')">
+          <span class="emptyHintsTitle">{{ translate('尝试：') }}</span>
           <button v-for="hint in emptyHints" :key="hint.key" type="button" class="emptyHint" :disabled="generating || deleting" @pointerdown.stop @click.stop="hint.run()">
             <component :is="hint.icon" :size="16" aria-hidden="true" />{{ hint.label }}
           </button>
@@ -54,7 +54,7 @@
         <div class="promptBody">
           <div class="composerTools">
             <button type="button" class="composerChip nodrag" :disabled="generating || deleting" :aria-label="translate('添加参考素材')" @click.stop="requestReference()">
-              <icon-plus :size="14" aria-hidden="true" />{{ translate('参考') }}
+              <icon-upload :size="14" aria-hidden="true" />{{ translate('上传') }}
             </button>
           </div>
           <referenceItem
@@ -138,7 +138,7 @@ import { groupNodeModels } from "../scaffold/nodeAi";
 import { nodeLocalModelLabel, nodeModelOptionLabel, nodeModelValueLabel } from '../scaffold/localModelLabel';
 import { computed, inject, nextTick, onMounted, onScopeDispose, ref, watch, watchEffect } from "vue";
 import { ElButton, ElCard, ElSelect, ElOption, ElOptionGroup, ElLoading, ElMessage } from "element-plus";
-import { IconCameraAi, IconCoins, IconSparkles, IconArrowUp, IconPlayerStop, IconTransfer, IconPlus, IconWriting, IconPhoto, IconLayersLinked, IconStack2 } from "@tabler/icons-vue";
+import { IconCameraAi, IconCoins, IconSparkles, IconArrowUp, IconPlayerStop, IconTransfer, IconUpload, IconWriting, IconPhoto, IconLayersLinked, IconStack2 } from "@tabler/icons-vue";
 import { nodeSkeleton, nodeTools, showNodeError, isSignInRequired, useGenerationProgress, useNode, useNodeGeneration, useNodeReferences, useNodeUpload, z, type NodeMediaModel, type NodeVideoRequest, type NodeHandle } from "@miaoimg/nodes-scaffold/runtime";
 import promptInput from "@miaoimg/nodes-scaffold/promptInput";
 import videoPlayer from "@miaoimg/nodes-scaffold/videoPlayer";

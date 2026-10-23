@@ -1,6 +1,6 @@
 <template>
-  <section class="nodeMarkdownEditor">
-    <div class="editorToolbar" role="toolbar" :aria-label="translate('Markdown 编辑工具')">
+  <section class="nodeMarkdownEditor" :class="{ inline }">
+    <div v-if="!inline" class="editorToolbar" role="toolbar" :aria-label="translate('Markdown 编辑工具')">
       <button type="button" :disabled="locked || sourceMode || !ready" @mousedown.prevent @click="run('heading')">{{ translate('标题') }}</button>
       <button type="button" :disabled="locked || sourceMode || !ready" @mousedown.prevent @click="run('bold')">{{ translate('加粗') }}</button>
       <button type="button" :disabled="locked || sourceMode || !ready" @mousedown.prevent @click="run('italic')">{{ translate('斜体') }}</button>
@@ -14,7 +14,7 @@
     <p v-if="error" class="editorError" role="alert">{{ error }}</p>
     <textarea v-if="sourceMode" class="sourceEditor" :value="modelValue" :readonly="readonly" :disabled="disabled" :aria-label="ariaLabel || translate('编辑 Markdown 原文')" spellcheck="false" @input="updateSource" />
     <editor-content v-if="editor && !sourceMode" :editor="editor" class="richHost" />
-    <p class="editorHint">{{ translate('富文本会规范化 Markdown；保留原始 HTML 写法请使用原文。') }}</p>
+    <p v-if="!inline" class="editorHint">{{ translate('富文本会规范化 Markdown；保留原始 HTML 写法请使用原文。') }}</p>
   </section>
 </template>
 
@@ -34,7 +34,9 @@ const props = withDefaults(defineProps<{
   disabled?: boolean;
   ariaLabel?: string;
   writeClipboardText?: (text: string) => Promise<void>;
-}>(), { active: true });
+  // 嵌在节点里直接编辑：不带自己的工具栏，格式按钮由节点上方的浮动工具栏调用 command。
+  inline?: boolean;
+}>(), { active: true, inline: false });
 const emit = defineEmits<{ "update:modelValue": [value: string] }>();
 const sourceMode = ref(false);
 const editor = shallowRef<Editor>();
@@ -42,6 +44,14 @@ const ready = computed(() => !!editor.value);
 const error = ref("");
 const locked = computed(() => !!(props.disabled || props.readonly));
 let lastMarkdown = "";
+type TextBlock = "paragraph" | "h1" | "h2" | "h3" | "ordered" | "bullet";
+const activeBlock = ref<TextBlock>("paragraph");
+function blockOf(current: { isActive(name: string, attributes?: Record<string, unknown>): boolean }): TextBlock {
+  if (current.isActive("orderedList")) return "ordered";
+  if (current.isActive("bulletList")) return "bullet";
+  for (const level of [1, 2, 3] as const) if (current.isActive("heading", { level })) return `h${level}`;
+  return "paragraph";
+}
 
 function destroyEditor() {
   editor.value?.destroy();
@@ -68,6 +78,7 @@ function rebuild() {
           return !!text && current.commands.insertContent(parseMarkdownContent(text));
         },
       },
+      onTransaction({ editor: current }) { activeBlock.value = blockOf(current); },
       onUpdate({ editor: current }) {
         if (!props.active || sourceMode.value) return;
         lastMarkdown = serializeMarkdown(current);
@@ -101,6 +112,24 @@ function run(action: "heading" | "bold" | "italic" | "list" | "undo" | "redo") {
   else if (action === "undo") chain.undo().run();
   else chain.redo().run();
 }
+// 浮动工具栏用：段落样式、粗体、斜体、分割线。列表和标题互斥，先退出列表再改样式。
+function command(action: TextBlock | "bold" | "italic" | "rule") {
+  const current = editor.value;
+  if (!current || locked.value || !props.active) return;
+  const chain = current.chain().focus();
+  if (action === "bold") return chain.toggleBold().run();
+  if (action === "italic") return chain.toggleItalic().run();
+  if (action === "rule") return chain.setHorizontalRule().run();
+  if (action === "ordered") return chain.toggleOrderedList().run();
+  if (action === "bullet") return chain.toggleBulletList().run();
+  if (current.isActive("orderedList")) chain.toggleOrderedList();
+  else if (current.isActive("bulletList")) chain.toggleBulletList();
+  if (action === "paragraph") return chain.setParagraph().run();
+  return chain.setHeading({ level: Number(action.slice(1)) as 1 | 2 | 3 }).run();
+}
+function focus() { editor.value?.commands.focus("end"); }
+defineExpose({ command, focus, activeBlock, ready });
+
 function updateSource(event: Event) {
   if (!locked.value && props.active) emit("update:modelValue", (event.target as HTMLTextAreaElement).value);
 }
@@ -129,5 +158,8 @@ async function copyText() {
     :deep(.ProseMirror-selectednode) { outline: 2px solid var(--el-color-primary); }
   }
   .editorHint { flex-shrink: 0; margin: 6px 0 0; color: var(--el-text-color-secondary); font-size: 11px; }
+  &.inline .richHost { border: 0; background: transparent;
+    :deep(.ProseMirror) { min-height: 94px; padding: 4px 6px; cursor: text; user-select: text; }
+  }
 }
 </style>

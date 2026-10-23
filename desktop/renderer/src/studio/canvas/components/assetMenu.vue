@@ -30,6 +30,7 @@ import { translate } from "@miaoimg/i18n/vue";
 import { computed, inject, nextTick, onBeforeUnmount, ref, shallowRef } from "vue";
 import { createAssetFolder, isInternalAssetPath, assertOrganizableAssetPath } from "../saveCanvasAsset";
 import saveFile from "@/lib/saveFile";
+import { systemTrashName } from "@/lib/systemTrash";
 import { useWorkspaceContentFiles as useWorkspaceFiles } from "@/lib/workspaceFiles";
 import { ElMessage, ElMessageBox, type DropdownInstance } from "element-plus";
 import { IconChevronRight, IconFolder, IconFolderPlus } from "@tabler/icons-vue";
@@ -173,7 +174,7 @@ async function handleCommand(command: string) {
       await relocate(entry, parent === "." ? value.trim() : parent + "/" + value.trim());
     }
     if (command === "delete") {
-      await ElMessageBox.confirm("确定删除“" + entry.name + "”？", "删除素材", { type: "warning", confirmButtonText: translate("删除"), cancelButtonText: translate("取消") });
+      await ElMessageBox.confirm(translate("确定删除“{0}”？文件会移到电脑的{1}。", { 0: entry.name, 1: translate(systemTrashName()) }), translate("删除素材"), { type: "warning", confirmButtonText: translate("删除"), cancelButtonText: translate("取消") });
       lifetime.signal.throwIfAborted();
       busy.value = true;
       try {

@@ -5,6 +5,7 @@
         <el-button v-if="exitWorkspace" class="homeButton" text :icon="IconHome" :title="translate('返回主界面')" :aria-label="translate('返回主界面')" @click="exitWorkspace" />
         <el-input v-model="projectNameDraft" class="workspaceNameInput" :style="{ '--workspaceName': JSON.stringify(projectNameDraft || ' ') }" size="small" :title="directory" :disabled="!workspaceStore.project" :aria-label="translate('项目名称')"
           @keydown.stop @keydown.enter="saveProjectName" @keydown.esc.prevent="projectNameDraft = workspaceName" @blur="saveProjectName" />
+        <template v-if="projectTitle"><span class="projectTitle" :title="projectTitle">{{ projectTitle }}</span><span class="crumbDivider" aria-hidden="true">/</span></template>
         <el-divider direction="vertical" />
         <el-popover v-model:visible="canvasListVisible" trigger="click" placement="bottom-start" :width="320" :showArrow="false" :disabled="!directory">
           <template #reference>
@@ -52,6 +53,7 @@ import { ElMessage, ElMessageBox, type InputInstance } from "element-plus";
 import { IconEdit, IconCheck, IconChevronDown, IconPlus, IconTrash, IconFolders, IconHome } from "@tabler/icons-vue";
 import { useWorkspaceStore } from "@/stores/workspace";
 import useWorkspaceFiles from "@/lib/workspaceFiles";
+import { systemTrashName } from "@/lib/systemTrash";
 import { DEFAULT_PROJECT, workspaceOwner, workspaceProject } from '@/lib/workspaceRemote';
 import { getCanvasAssetDirectories, getCanvasMarkdownReferences, getRetainedCanvasPaths, isCanvasFile, normalizeCanvasName, normalizeCanvasFolder } from "@/pages/workspace/canvasFile";
 import { remapWorkspacePath, type WorkspaceFileChange, type WorkspaceFileCoordinator } from "@/pages/workspace/canvasFiles";
@@ -72,6 +74,18 @@ const projectNameDraft = ref("");
 watch([() => workspaceStore.project?.directory, workspaceName], () => {
   projectNameDraft.value = workspaceName.value;
 }, { immediate: true });
+
+// 和 LibTV 一样在左上角写「项目名 / 画布名」，让人一眼看出这张画布属于哪个项目。
+const projectTitle = ref("");
+async function loadProjectTitle() {
+  try {
+    const response = await fetch("/api/imagine/workspace/projects", { credentials: "same-origin", cache: "no-store" });
+    const data = await response.json();
+    const id = workspaceProject();
+    projectTitle.value = Array.isArray(data?.projects) ? data.projects.find((item: { id?: string; name?: string }) => item?.id === id)?.name || "" : "";
+  } catch { projectTitle.value = ""; }
+}
+watch(() => props.directory, () => void loadProjectTitle(), { immediate: true });
 
 function saveProjectName(event: Event) {
   if (event instanceof KeyboardEvent && event.isComposing) return;
@@ -318,7 +332,7 @@ async function removeCanvas(canvas: Canvas) {
   const directory = props.directory;
   try {
     const selection = await captureChange(directory, { path: canvas.id });
-    await ElMessageBox.confirm(translate("确定删除“{0}”？对应的 {1} 文件及独占的节点素材也会被删除，其他画布及 Markdown 文档仍在引用的素材会保留。此操作不可撤销。", { 0: canvas.name, 1: canvas.id }), translate('删除画布'), { type: 'warning', confirmButtonText: translate('删除'), cancelButtonText: translate('取消'), closeOnClickModal: false });
+    await ElMessageBox.confirm(translate("确定删除“{0}”？这张画布和只有它在用的素材会移到电脑的{1}，其他画布或文档还在用的素材会保留。", { 0: canvas.name, 1: translate(systemTrashName()) }), translate('删除画布'), { type: 'warning', confirmButtonText: translate('删除'), cancelButtonText: translate('取消'), closeOnClickModal: false });
     checkCanvasDirectory(directory);
     await deleteCanvas(canvas.id, undefined, selection.sourceEntries);
     ElMessage.success(translate('画布已删除'));
@@ -384,7 +398,7 @@ async function commitCanvasFileChange(directory: string, change: WorkspaceFileCh
     checkCanvasDirectory(directory, signal);
     const sourceEntries = adoptCanvasMutationEntries(directory, change.sourceEntries!);
     if (target === undefined && canvasRemoval) await files.removeCanvas(path, { ...canvasRemoval, sourceEntries, revision: workspaceSourceRevision(sourceEntries, path) }, signal);
-    else if (target === undefined) await files.remove(path, change.recursive, signal, sourceEntries);
+    else if (target === undefined) await files.remove(path, change.recursive, signal, sourceEntries, { trash: true });
     else await files.rename(path, target, signal, sourceEntries);
     checkCanvasDirectory(directory);
   };
@@ -758,6 +772,19 @@ defineExpose({ getCanvases, getFolders: () => canvasFolders.value, createCanvasF
         text-overflow: ellipsis;
       }
     }
+
+    .projectTitle {
+      flex: 0 1 auto;
+      min-width: 0;
+      max-width: 160px;
+      overflow: hidden;
+      color: var(--el-text-color-secondary);
+      font-size: 13px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .crumbDivider { flex: none; color: var(--el-text-color-placeholder); }
 
     .canvasTrigger {
       padding: 0 4px;

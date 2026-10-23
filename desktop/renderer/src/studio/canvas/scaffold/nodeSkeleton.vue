@@ -16,12 +16,13 @@
       <template #dropdown>
         <el-dropdown-menu>
           <el-dropdown-item v-if="assetOutputs.length && saveNodeToAssets" command="saveAsset" :icon="IconFolderPlus">{{ translate('保存到素材库') }}</el-dropdown-item>
-          <el-dropdown-item :divided="!!(assetOutputs.length && saveNodeToAssets)" command="copy" :icon="IconCopy">{{ translate('创建副本') }}</el-dropdown-item>
-          <el-dropdown-item command="duplicate" :icon="IconCopyPlus">{{ translate('创建副本（保留输入连线）') }}</el-dropdown-item>
-          <el-dropdown-item command="delete" :icon="IconTrash">{{ translate('删除节点') }}</el-dropdown-item>
-          <el-dropdown-item divided command="clipboard" :icon="IconCopy" :disabled="!copyNodeToClipboard || copyingToClipboard">
-            {{ translate('复制到剪贴板') }}
+          <el-dropdown-item v-if="downloadUrl" command="download" :icon="IconDownload">{{ translate('下载') }}</el-dropdown-item>
+          <el-dropdown-item :divided="!!((assetOutputs.length && saveNodeToAssets) || downloadUrl)" command="clipboard" :icon="IconClipboardCopy" :disabled="!copyNodeToClipboard || copyingToClipboard">
+            {{ translate('复制到剪贴板') }}<span v-if="shortcutHint('copy')" class="shortcutHint">{{ shortcutHint('copy') }}</span>
           </el-dropdown-item>
+          <el-dropdown-item command="copy" :icon="IconCopy">{{ translate('创建副本') }}</el-dropdown-item>
+          <el-dropdown-item command="duplicate" :icon="IconCopyPlus">{{ translate('创建副本（保留输入连线）') }}</el-dropdown-item>
+          <el-dropdown-item divided command="delete" :icon="IconTrash">{{ translate('删除') }}<span v-if="shortcutHint('delete')" class="shortcutHint">{{ shortcutHint('delete') }}</span></el-dropdown-item>
         </el-dropdown-menu>
       </template>
     </el-dropdown>
@@ -180,6 +181,7 @@ import {
   IconTrash,
   IconCopy,
   IconCopyPlus,
+  IconClipboardCopy,
   IconFolderPlus,
   IconDownload,
   IconMaximize,
@@ -193,6 +195,8 @@ import type { DropdownInstance } from "element-plus";
 import { translate } from "@miaoimg/i18n/vue";
 import type { NodeDocumentContext } from "./nodeDocument";
 import { validateConnection } from "./connection";
+import { generalSettings } from "@/stores/settings";
+import { getShortcutBindings, shortcutLabel, type CanvasShortcutAction } from "@/lib/canvasShortcuts";
 import { useNodeEvent } from "./nodeEvent";
 import type { NodeConnectionFeedback, NodeData, NodeHandle } from "./connection";
 import { isNodeOutput } from "./values";
@@ -616,6 +620,12 @@ async function copySnapshot() {
   return cloneNodeGraph([{ ...saved, data: { ...saved.data, ...patch } }], []).nodes[0]!;
 }
 
+// 右键菜单和画布右键一样，在右侧写出设置里当前的快捷键。
+function shortcutHint(action: CanvasShortcutAction) {
+  const first = getShortcutBindings(generalSettings.value.canvasShortcuts[action] || "")[0];
+  return first ? shortcutLabel(first) : "";
+}
+
 async function handleCommand(command: string) {
   // 素材默认名会存进素材库，保持画布数据的原始节点名，不写翻译结果。
   if (command === "saveAsset") {
@@ -639,6 +649,10 @@ async function handleCommand(command: string) {
     }
   }
   if (command === "delete") void deleteNode();
+  if (command === "download" && props.downloadUrl) {
+    const link = Object.assign(document.createElement("a"), { href: props.downloadUrl, download: props.downloadName || "" });
+    link.click();
+  }
   if (command === "copy" || command === "duplicate") {
     const scope = captureCanvasCopyScope();
     let snapshot: Node;
@@ -770,6 +784,7 @@ watch(
 </script>
 
 <style scoped>
+.shortcutHint { margin-left: auto; padding-left: 24px; color: var(--el-text-color-placeholder); font-size: 12px; }
 .nodeSkeleton {
   position: relative;
   width: 220px;
@@ -804,6 +819,10 @@ watch(
 
   &:hover .titleBar .nodeActions {
     visibility: visible;
+  }
+
+  &:not(:hover):not(:has(.contentCard.selected)) .titleBar .modelLabel {
+    visibility: hidden;
   }
 
   .floatingSlot {

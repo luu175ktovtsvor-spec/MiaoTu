@@ -70,7 +70,7 @@ export const generalSettings = computed(() => {
   }));
   return {
     canvasCompositingEnabled: general.canvasCompositingEnabled === true,
-    canvasEdgeAnimationEnabled: general.canvasEdgeAnimationEnabled === true,
+    canvasEdgeAnimationEnabled: general.canvasEdgeAnimationEnabled !== false,
     canvasEdgeColorMode: general.canvasEdgeColorMode === "none" || general.canvasEdgeColorMode === "custom" ? general.canvasEdgeColorMode : "theme",
     canvasEdgeColor: general.canvasEdgeColor === "#c99b5a" ? defaultUiSettings.primaryColor : typeof general.canvasEdgeColor === "string" && /^#[\da-f]{6}$/i.test(general.canvasEdgeColor) ? general.canvasEdgeColor : defaultUiSettings.primaryColor,
     canvasShortcuts: Object.fromEntries(canvasShortcutFields.map(field => {

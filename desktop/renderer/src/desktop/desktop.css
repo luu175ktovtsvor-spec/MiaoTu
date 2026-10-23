@@ -38,6 +38,9 @@
 .desktop-edge-rail__dot{position:absolute;top:9px;left:26px;width:7px;height:7px;border-radius:50%;background:var(--color-error,#e5484d);box-shadow:0 0 0 2px var(--color-surface)}
 .desktop-edge-rail__nav button[aria-current="page"]::before,.desktop-edge-rail__account[aria-current="page"]::before{position:absolute;left:-12px;width:2px;height:22px;border-radius:2px;background:var(--color-accent);content:""}
 .desktop-edge-rail__account{margin-top:auto}
+.desktop-edge-rail__changelog+.desktop-edge-rail__account{margin-top:4px}
+.desktop-edge-rail__group{margin:18px 0 6px;padding:0 12px;color:var(--color-muted);font-size:12px;opacity:.75}
+.desktop-edge-rail__group+.desktop-edge-rail__nav{margin-top:0}
 .miao-desktop .studio-home{grid-template-columns:minmax(0,1fr);min-height:calc(100dvh - 56px)}
 .miao-desktop .studio-home>nav{display:none}
 .miao-desktop .studio-home__main{padding-top:26px}
@@ -122,6 +125,32 @@
 .miao-settings-mount{position:fixed;inset:0;z-index:12000;pointer-events:none}
 
 .desktop-account-loading{display:flex;align-items:center;justify-content:center;gap:10px;min-height:160px;color:var(--da-muted);font-size:13px}.desktop-account-spinner{flex:none;animation:desktop-account-spin 1s linear infinite}@keyframes desktop-account-spin{to{transform:rotate(360deg)}}
+
+/* 登录弹窗：参照 LibTV 的居中大弹窗。左侧精选作品视频，右侧表单不带字段标题，主按钮整宽，底部切换登录方式。 */
+.desktop-account-mask.is-login{display:grid;place-items:center;padding:24px;background:rgb(10 10 14 / .55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.desktop-account-panel.is-login{position:relative;top:auto;right:auto;flex-direction:row;row-gap:0;width:min(1040px,calc(100vw - 48px));height:min(640px,calc(100dvh - 48px));max-height:none;padding:8px;overflow:hidden;border-radius:24px}
+.desktop-login-showcase{position:relative;flex:1 1 56%;min-width:0;overflow:hidden;border-radius:18px;background:var(--da-elevate)}
+.desktop-login-showcase video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.desktop-login-showcase>div{position:absolute;left:0;right:0;bottom:0;display:grid;gap:6px;padding:72px 28px 26px;background:linear-gradient(180deg,transparent,rgb(0 0 0 / .62));color:#fff}
+.desktop-login-showcase strong{font-size:22px;font-weight:700;letter-spacing:-.01em}
+.desktop-login-showcase span{font-size:13px;color:rgb(255 255 255 / .82)}
+.desktop-login-body{flex:1 1 44%;min-width:0;display:flex;flex-direction:column;justify-content:center;padding:32px 44px 0;overflow:auto}
+.desktop-login-head{display:grid;justify-items:center;gap:10px;margin-bottom:28px;text-align:center}
+.desktop-login-head .desktop-account-brand img{width:36px;height:36px}
+.desktop-account-panel.is-login h2{font-size:28px;font-weight:700}
+.desktop-login-head .desktop-account-description{margin:0}
+.desktop-account-panel.is-login form{gap:14px}
+.desktop-account-panel.is-login .desktop-account-input{min-height:48px;padding:0 6px 0 16px;border-color:var(--da-line)}
+.desktop-account-panel.is-login .desktop-account-send{min-height:36px;border:0;color:var(--da-ink);font-size:13px}
+.desktop-account-panel.is-login .desktop-account-submit{min-height:48px;margin-top:10px;border-radius:12px;font-weight:600}
+.desktop-login-note{margin:-2px 0 0;color:var(--da-faint);font-size:12px;text-align:center}
+.desktop-login-methods{display:grid;grid-template-columns:1fr 1fr;margin-top:auto;padding:20px 0 24px}
+.desktop-login-methods button{display:grid;justify-items:center;gap:8px;padding:10px 0;border:0;background:transparent;color:var(--da-muted);font-size:13px}
+.desktop-login-methods button+button{border-left:1px solid var(--da-line)}
+.desktop-login-methods button[aria-pressed=true],.desktop-login-methods button:hover:not(:disabled){color:var(--da-ink)}
+.desktop-login-body .desktop-account-forgot{margin-top:-6px}
+@media (max-width:860px){.desktop-login-showcase{display:none}.desktop-account-panel.is-login{width:min(440px,calc(100vw - 32px))}}
+@media (max-height:720px){.desktop-login-head{margin-bottom:18px}.desktop-account-panel.is-login h2{font-size:24px}.desktop-login-methods{padding:12px 0 14px}}
 
 /* 矮窗口（含最小 900×600）：收紧间距与控件高度，面板仍完整可见，不裁切。 */
 @media(max-height:720px){.desktop-account-mask{padding:16px}.desktop-account-panel{--da-section:16px;--da-title-gap:5px;--da-content-gap:20px;--da-form-gap:12px;--da-field-gap:7px;padding:22px 24px;max-height:calc(100dvh - 32px)}.desktop-account-panel h2{font-size:18px}.desktop-account-input{min-height:40px}.desktop-account-submit{min-height:40px}.desktop-account-signout{min-height:38px}.desktop-account-loading{min-height:110px}.desktop-account-balance strong{font-size:26px}}

@@ -23,6 +23,7 @@
       :min-zoom="0.2"
       :max-zoom="8"
       :nodes-connectable="true"
+      :connect-on-click="false"
       :connection-mode="ConnectionMode.Strict"
       :nodes-focusable="false"
       :edges-focusable="false"
@@ -51,7 +52,9 @@
       @edgeClick="showEdgeDisconnect"
       @paneClick="edgeDisconnect = undefined"
       @moveStart="edgeDisconnect = undefined"
-      :default-edge-options="defaultEdgeOptions">
+      :default-edge-options="defaultEdgeOptions"
+      :edge-types="edgeTypes">
+      <template #connection-line="lineProps"><glowConnectionLine v-bind="lineProps" /></template>
       <template v-for="type in remoteNodeTypes" :key="type" #[`node-${type}`]="nodeProps">
         <remoteNode
           v-bind="nodeProps"
@@ -101,6 +104,14 @@
         :disabled="!canvasId || !project?.directory" />
       <nodeSearch ref="nodeSearchRef" :disabled="!active || settingsVisible || !canvasId || !project?.directory" />
     </vue-flow>
+    <div v-if="showEmptyHint" class="emptyCanvasHint">
+      <p><IconPointer :size="18" aria-hidden="true" />{{ translate('双击画布，自由添加节点') }}</p>
+      <div class="emptyCanvasActions">
+        <button v-for="node in quickNodes" :key="node.type" type="button" @click="addQuickNode(node.type)">
+          <span class="emptyCanvasIcon"><component :is="node.icon" v-if="node.icon" :size="18" /></span>{{ translate(node.label) }}
+        </button>
+      </div>
+    </div>
     <div v-if="canvasSaveError" class="canvasSaveNotice" role="alert">
       <span>{{ canvasSaveError }}</span>
       <button type="button" :disabled="copyingConflict" @click="saveConflictCopy">{{ copyingConflict ? '正在刷新…' : '刷新画布' }}</button>
@@ -128,14 +139,14 @@
 <script setup lang="ts">
 import { hasCanvasMarker, normalizeCanvasDocument } from '../../../../../server/canvas-document.ts';
 import { isProtectedWorkspacePath } from '../../../../../server/workspace-path';
-import { computed, defineAsyncComponent, defineComponent, h, inject, markRaw, nextTick, onBeforeUnmount, onMounted, onScopeDispose, provide, ref, shallowReactive, shallowRef, watch } from "vue";
+import { computed, defineAsyncComponent, defineComponent, h, inject, markRaw, nextTick, onBeforeUnmount, onMounted, onScopeDispose, provide, ref, shallowReactive, shallowRef, watch, type Component } from "vue";
 import axios from "axios";
 import { mergeCanvasState, validCanvas, persistentCanvas } from "../../../../../server/canvas-state.ts";
 import { usePendingInsert } from './usePendingInsert';
 import { debounce } from "lodash-es";
 import { ElMessage } from "element-plus";
 import { storeToRefs } from "pinia";
-import { IconUnlink } from "@tabler/icons-vue";
+import { IconPointer, IconUnlink } from "@tabler/icons-vue";
 import { translate } from "@miaoimg/i18n/vue";
 import type { NodeDocumentContext, NodeDocumentState } from "@miaoimg/nodes-scaffold/nodeDocument";
 import "element-plus/dist/index.css";
@@ -153,6 +164,7 @@ import {
   type EdgeMouseEvent,
   type NodeTypesObject,
   type XYPosition,
+  type EdgeComponent,
 } from "@vue-flow/core";
 import { Background } from "@vue-flow/background";
 import { useCanvasTools } from "./useCanvasTools";
@@ -178,6 +190,8 @@ import { useNodeEvent } from "@miaoimg/nodes-scaffold/nodeEvent";
 import { useNodeToolsContext } from "@miaoimg/nodes-scaffold/nodeTools";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { generalSettings, nodeSettings } from "@/stores/settings";
+import glowEdge from "./components/glowEdge.vue";
+import glowConnectionLine from "./components/glowConnectionLine.vue";
 import { getShortcutBindings, shortcutLabel, shortcutMatches, shortcutPressed } from "@/lib/canvasShortcuts";
 import useWorkspaceFiles from "@/lib/workspaceFiles";
 import { createFileRevisionOwner, type WorkspaceSourceEntry } from "@/lib/workspaceFileSelection";
@@ -751,6 +765,19 @@ function addNodeAtPointer() {
 
 // The toolbar's add button opens the same node menu as a double click, just
 // above the button so the new node lands near the visible center.
+// 和 LibTV 一样，空画布中间给出提示和几个最常用的节点，点一下就建好。
+const quickNodeTypes = ["remote-imageGenerationNode", "remote-videoGenerationNode", "remote-textNode", "remote-audioNode", "remote-director3dNode"];
+const quickNodes = computed(() => quickNodeTypes.flatMap(type => availableNodes.value.filter(node => node.type === type)
+  .map(node => ({ ...node, icon: (nodeTypes.value[node.type] as { icon?: Component } | undefined)?.icon }))));
+const showEmptyHint = computed(() => canvasReady.value && !!project.value?.directory && quickNodes.value.length > 0
+  && !flowData.value.some(item => !("source" in item)));
+function addQuickNode(type: string) {
+  const rect = canvasElement.value?.getBoundingClientRect();
+  if (!rect) return;
+  // 节点按左上角落位，往左上挪一些，让新节点大致落在画面中间。
+  void nodeMenuRef.value?.createNode(type, { x: rect.left + rect.width / 2 - 300, y: rect.top + rect.height / 2 - 260 });
+}
+
 function addNodeFromToolbar(event: MouseEvent) {
   const button = (event.currentTarget as HTMLElement | null)?.getBoundingClientRect();
   const rect = canvasElement.value?.getBoundingClientRect();
@@ -1510,12 +1537,14 @@ async function loadRemoteNodes(reloadName?: string, refresh = false) {
   }
 }
 
+const edgeTypes = markRaw({ "simple-bezier": markRaw(glowEdge) as unknown as EdgeComponent });
 const defaultEdgeOptions = markRaw({
   type: "simple-bezier",
   animated: false,
   class: ({ sourceNode, targetNode }: GraphEdge) => {
     if (!sourceNode.selected && !sourceNode.dragging && !targetNode.selected && !targetNode.dragging) return "";
-    return [generalSettings.value.canvasEdgeColorMode !== "none" && "edgeActive", generalSettings.value.canvasEdgeAnimationEnabled && "animated"].filter(Boolean).join(" ");
+    // 流动光点由 glowEdge 自己画，不再用 vue-flow 的 animated 虚线。
+    return generalSettings.value.canvasEdgeColorMode !== "none" ? "edgeActive" : "";
   },
   focusable: false,
   selectable: false,
@@ -1578,6 +1607,12 @@ const defaultEdgeOptions = markRaw({
 </style>
 
 <style scoped>
+.emptyCanvasHint { position: absolute; left: 50%; top: 50%; z-index: 5; display: grid; justify-items: center; gap: 22px; transform: translate(-50%, -50%); pointer-events: none; }
+.emptyCanvasHint > p { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--el-text-color-secondary); font-size: 14px; }
+.emptyCanvasActions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; pointer-events: auto; }
+.emptyCanvasActions button { display: flex; align-items: center; gap: 12px; min-width: 168px; height: 54px; padding: 0 16px 0 8px; border: 1px solid var(--canvas-node-border, var(--el-border-color)); border-radius: 14px; background: var(--canvas-node-bg, var(--el-bg-color)); color: var(--el-text-color-primary); font: inherit; font-size: 14px; cursor: pointer; transition: border-color .15s ease, transform .15s ease; }
+.emptyCanvasActions button:hover { border-color: var(--canvas-node-border-selected, var(--el-border-color-darker)); transform: translateY(-1px); }
+.emptyCanvasIcon { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 10px; background: color-mix(in srgb, var(--el-text-color-primary) 6%, transparent); }
 .canvasSaveNotice { position: absolute; top: 64px; left: 12px; right: 12px; z-index: 100; display: flex; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid #df9d3c; border-radius: 8px; background: var(--miaoimg-glass-panel); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); color: var(--el-text-color-primary); font-size: 13px; }
 .canvasSaveNotice button { flex-shrink: 0; cursor: pointer; padding: 6px 10px; }
 </style>

@@ -15,20 +15,20 @@
           @change="(value) => updateGeneralSettings({ canvasCompositingEnabled: value === true })" />
       </settings-row>
 
-      <settings-row :label="translate('节点连线动画')" :description="translate('选中或拖动节点时，相连的线条显示流动动画；关闭后仍有高亮。')">
+      <settings-row :label="translate('节点连线动画')" :description="translate('选中或拖动节点时，相连的线条发光并有光点流动；关闭后只保留发光。')">
         <el-switch
           :modelValue="generalSettings.canvasEdgeAnimationEnabled"
           :aria-label="translate('节点连线动画')"
           @change="(value) => updateGeneralSettings({ canvasEdgeAnimationEnabled: value === true })" />
       </settings-row>
 
-      <settings-row :label="translate('节点连线高亮颜色')" :description="translate('选中或拖动节点时，相连线条的高亮颜色。')" control-width="240px">
+      <settings-row :label="translate('节点连线高亮颜色')" :description="translate('选中或拖动节点、以及拖出连线时，线条发光的颜色。')" control-width="240px">
         <el-select
           :modelValue="generalSettings.canvasEdgeColorMode"
           :aria-label="translate('节点连线颜色模式')"
           @change="(value) => updateGeneralSettings({ canvasEdgeColorMode: value })">
           <el-option :label="translate('不高亮')" value="none" />
-          <el-option :label="translate('跟随主题色')" value="theme" />
+          <el-option :label="translate('默认蓝色')" value="theme" />
           <el-option :label="translate('自选颜色')" value="custom" />
         </el-select>
         <el-color-picker

@@ -48,6 +48,19 @@ export default function ReleaseNotesOnVersion() {
     }).catch(() => {})
     return () => { cancelled = true }
   }, [])
+  // 侧边栏「版本更新记录」随时打开当前版本的说明。
+  useEffect(() => {
+    const bridge = (window as Window & { miaoDesktop?: DesktopBridge }).miaoDesktop
+    const show = () => {
+      if (!bridge?.updateStatus) return
+      void bridge.updateStatus().then(status => {
+        const version = String(status?.currentVersion || '')
+        if (RELEASE_NOTES[version]) setState({ version, notes: RELEASE_NOTES[version] })
+      }).catch(() => {})
+    }
+    window.addEventListener('miao-show-release-notes', show)
+    return () => window.removeEventListener('miao-show-release-notes', show)
+  }, [])
   if (!state) return null
   const close = () => {
     try { window.localStorage.setItem(`miaoimg.release-notes.${state.version}`, '1') } catch {}

@@ -57,20 +57,24 @@
             <icon-chevron-right class="nextIcon" :size="14" />
           </el-dropdown-item>
           <el-divider />
-          <el-dropdown-item command="undo" :icon="IconArrowBackUp" :disabled="!canUndo">{{ translate('撤销') }}</el-dropdown-item>
-          <el-dropdown-item command="redo" :icon="IconArrowForwardUp" :disabled="!canRedo">{{ translate('重做') }}</el-dropdown-item>
+          <el-dropdown-item command="undo" :icon="IconArrowBackUp" :disabled="!canUndo">{{ translate('撤销') }}<span v-if="shortcutHint('undo')" class="shortcutHint">{{ shortcutHint('undo') }}</span></el-dropdown-item>
+          <el-dropdown-item command="redo" :icon="IconArrowForwardUp" :disabled="!canRedo">{{ translate('重做') }}<span v-if="shortcutHint('redo')" class="shortcutHint">{{ shortcutHint('redo') }}</span></el-dropdown-item>
           <el-divider />
           <el-dropdown-item command="paste" :icon="IconClipboard" :disabled="!pasteNode || pasting">
-            {{ pasting ? translate("粘贴中…") : translate("从剪贴板粘贴") }}
+            {{ pasting ? translate("粘贴中…") : translate("从剪贴板粘贴") }}<span v-if="!pasting && shortcutHint('paste')" class="shortcutHint">{{ shortcutHint('paste') }}</span>
           </el-dropdown-item>
         </template>
         <template v-else>
           <el-dropdown-item v-if="!directNodes" command="actions" :icon="IconChevronLeft">{{ translate('返回操作菜单') }}</el-dropdown-item>
-          <el-dropdown-item v-else disabled>{{ translate('添加节点') }}</el-dropdown-item>
+          <el-dropdown-item v-else disabled class="menuSection">{{ translate('添加节点') }}</el-dropdown-item>
           <el-dropdown-item v-for="node in filteredNodes" :key="node.type" :command="node.type" :icon="node.icon">
             {{ translate(node.label) }}
           </el-dropdown-item>
           <el-dropdown-item v-if="(pendingHandle || pendingGroup.length) && !filteredNodes.length" disabled>{{ translate('没有可连接的节点') }}</el-dropdown-item>
+          <template v-if="directNodes && !pendingHandle && !pendingGroup.length && uploadFiles">
+            <el-dropdown-item divided disabled class="menuSection">{{ translate('添加资源') }}</el-dropdown-item>
+            <el-dropdown-item command="upload" :icon="IconUpload">{{ translate('上传') }}</el-dropdown-item>
+          </template>
         </template>
       </el-dropdown-menu>
     </template>
@@ -88,7 +92,10 @@ import { getSelectionConnections } from "../selectionConnections";
 import { getSelectionRoots } from "../selectionNodes";
 import { deleteCanvasNodes } from "../canvasNodeDeletion";
 import { arrangeSelection } from "../arrangeSelection";
+import { numberedNodeLabel } from "../linkedNode";
 import { translate } from "@miaoimg/i18n/vue";
+import { generalSettings } from "@/stores/settings";
+import { getShortcutBindings, shortcutLabel, type CanvasShortcutAction } from "@/lib/canvasShortcuts";
 import {
   IconClipboard,
   IconCopyPlus,
@@ -191,7 +198,11 @@ function startSelectionConnection() {
 }
 
 onBeforeUnmount(clearConnection);
-flow.onConnectStart(() => {
+// 单击节点两侧的「+」（按下和松开几乎在同一点）和拖到空白处一样，弹出可连接的节点菜单，选了就建好并连上。
+let connectStartPoint: { x: number; y: number } | undefined;
+flow.onConnectStart(({ event }) => {
+  const point = event && ("touches" in event ? event.touches[0] : event);
+  connectStartPoint = point ? { x: point.clientX, y: point.clientY } : undefined;
   pendingHandle.value = undefined;
   clearConnection();
   menu.value?.handleClose();
@@ -205,11 +216,17 @@ flow.onConnectEnd((event) => {
   const point = "changedTouches" in event ? event.changedTouches[0] : event;
   if (!point) return;
   const target = document.elementFromPoint(point.clientX, point.clientY);
-  if (!target?.classList.contains("vue-flow__pane") || !flow.vueFlowRef.value?.contains(target)) return;
-  void openMenu(event, true, [], { node, id: handle.id, type: handle.type, start: { ...handle } });
+  const clicked = connectStartPoint && Math.hypot(point.clientX - connectStartPoint.x, point.clientY - connectStartPoint.y) < 5
+    && target?.closest(".vue-flow__handle")?.closest(".vue-flow__node")?.getAttribute("data-id") === node.id;
+  connectStartPoint = undefined;
+  if (!clicked && (!target?.classList.contains("vue-flow__pane") || !flow.vueFlowRef.value?.contains(target))) return;
+  // 单击「+」时新节点和当前节点上下对齐，隔一段距离放在右边（输入端放左边），不压住原来的节点。
+  const width = node.dimensions.width || 600, gap = 120;
+  const placement = clicked ? { x: handle.type === "source" ? node.position.x + width + gap : node.position.x - width - gap, y: node.position.y } : undefined;
+  void openMenu(event, true, [], { node, id: handle.id, type: handle.type, start: { ...handle } }, [], placement);
 });
 
-async function openMenu(event: MouseEvent | TouchEvent, nodesOnly = false, selection: GraphNode[] = [], handle?: DraggedHandle, group: GraphNode[] = []) {
+async function openMenu(event: MouseEvent | TouchEvent, nodesOnly = false, selection: GraphNode[] = [], handle?: DraggedHandle, group: GraphNode[] = [], placement?: { x: number; y: number }) {
   event.preventDefault();
   event.stopPropagation();
   emit("history");
@@ -225,7 +242,7 @@ async function openMenu(event: MouseEvent | TouchEvent, nodesOnly = false, selec
   const point = "changedTouches" in event ? event.changedTouches[0] : event;
   if (!point) return;
   const { clientX, clientY } = point;
-  nodePosition = screenToFlowCoordinate({ x: clientX, y: clientY });
+  nodePosition = placement ? { ...placement } : screenToFlowCoordinate({ x: clientX, y: clientY });
   menuAnchor.value = { getBoundingClientRect: () => new DOMRect(clientX, clientY, 0, 0) };
   if (handle) {
     const bounds = flow.vueFlowRef.value!.getBoundingClientRect();
@@ -244,7 +261,23 @@ flow.onNodeContextMenu(() => {
   clearConnection();
   menu.value?.handleClose();
 });
-defineExpose({ openMenu, deleteSelection });
+// 右键菜单像 LibTV 一样在右侧写出快捷键，用的是设置里当前的键位。
+function shortcutHint(action: CanvasShortcutAction) {
+  const first = getShortcutBindings(generalSettings.value.canvasShortcuts[action] || "")[0];
+  return first ? shortcutLabel(first) : "";
+}
+
+// 空画布上的快捷按钮：不弹菜单，直接在指定位置建一个节点并选中。
+async function createNode(type: string, client: { x: number; y: number }) {
+  emit("history");
+  menu.value?.handleClose();
+  clearConnection();
+  pendingHandle.value = undefined;
+  pendingGroup.value = [];
+  nodePosition = screenToFlowCoordinate(client);
+  await handleCommand(type);
+}
+defineExpose({ openMenu, deleteSelection, createNode });
 
 async function handleCommand(command: unknown) {
   if (command === "nodes" || command === "actions" || command === "selection" || command === "arrange") {
@@ -311,7 +344,7 @@ async function runCommand(command: unknown) {
   if (handle && flow.findNode(handle.node.id) !== handle.node) return;
   if (group.some(source => flow.findNode(source.id) !== source)) return;
   const id = crypto.randomUUID();
-  addNodes({ id, type: node.type, position: { ...nodePosition }, data: { label: node.label } });
+  addNodes({ id, type: node.type, position: { ...nodePosition }, data: { label: numberedNodeLabel(flow.getNodes.value, node.label) } });
   if (!handle && !group.length) {
     flow.removeSelectedElements();
     flow.nodesSelectionActive.value = false;
@@ -388,6 +421,9 @@ async function deleteSelection(selection = selectedNodes.value) {
 </script>
 
 <style lang="scss" scoped>
+.shortcutHint { margin-left: auto; padding-left: 24px; color: var(--el-text-color-placeholder); font-size: 12px; }
+// 分组小标题（添加节点 / 添加资源），和 LibTV 菜单里的灰色小字一样。
+.menuSection.is-disabled { min-height: 0; padding-top: 4px; padding-bottom: 2px; color: var(--el-text-color-placeholder); font-size: 12px; cursor: default; }
 .nodeMenu {
   min-width: 180px;
 

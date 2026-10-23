@@ -33,18 +33,7 @@
         :disabled="uploading || uploadingDrag"
         @dimensions="resizeVideo" />
       <input ref="fileInput" class="fileInput" type="file" accept="video/*" :aria-label="translate('选择视频')" :disabled="uploading || exporting" @change="uploadVideo" />
-      <el-button
-        v-if="!exporting && !outputs.video"
-        class="uploadButton"
-        text
-        :loading="uploading"
-        :title="translate('上传视频')"
-        :aria-label="translate('上传视频')"
-        @dblclick.stop
-        @click="fileInput?.click()">
-        <icon-upload v-if="!uploading" :size="48" stroke="1.5" />
-        <span v-if="!uploading" class="uploadHint">{{ translate('点击上传，或把视频拖进来') }}</span>
-      </el-button>
+      <nodeEmptyState v-if="!exporting && !outputs.video" v-loading="uploading" :icon="IconVideo" :label="translate('暂无视频')" :hints="emptyHints" :disabled="uploading || uploadingDrag" @pick="pickHint" />
       <uploadProgress v-if="dragUploadEntry" :entry="dragUploadEntry" @retry="retryDragUpload" @dismiss="dismissDragUpload" />
     </div>
   </nodeSkeleton>
@@ -53,11 +42,13 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref } from "vue";
-import { IconVideo, IconUpload, IconTransfer, IconMusic, IconLayersSubtract, IconScissors } from "@tabler/icons-vue";
+import { IconVideo, IconClipboard, IconUpload, IconTransfer, IconMusic, IconLayersSubtract, IconScissors } from "@tabler/icons-vue";
 import { ElButton, ElMessage, ElProgress } from "element-plus";
 import { nodeSkeleton, nodeTools, useNode, useNodeUpload, z, type NodeHandle } from "@miaoimg/nodes-scaffold/runtime";
 import { translate } from "@miaoimg/i18n/vue";
 import uploadProgress from "../components/uploadProgress.vue";
+import nodeEmptyState, { type EmptyHint } from "../components/nodeEmptyState.vue";
+import { readClipboardFiles } from "@/lib/clipboard";
 import { beginUpload } from "../uploadStatus";
 import { assetFileType, ASSET_MAX_BYTES } from "../assetFile";
 import videoPlayer from "@miaoimg/nodes-scaffold/videoPlayer";
@@ -137,11 +128,26 @@ async function resizeVideo({ width, height }: { width: number; height: number })
   updateNodeInternals();
 }
 
+const emptyHints: EmptyHint[] = [
+  { key: "upload", label: "上传本地视频", icon: IconUpload },
+  { key: "paste", label: "粘贴剪贴板里的视频", icon: IconClipboard },
+];
+async function pickHint(key: string) {
+  if (key === "upload") return fileInput.value?.click();
+  const file = (await readClipboardFiles().catch(() => [])).find(item => assetFileType(item).kind === "video");
+  if (!file) return void ElMessage.warning(translate("剪贴板里没有视频"));
+  takeVideo(file);
+}
+
 function uploadVideo(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
   input.value = "";
-  if (!file || uploading.value || uploadingDrag.value || exporting.value || actions.value?.processing) return;
+  if (file) takeVideo(file);
+}
+
+function takeVideo(file: File) {
+  if (uploading.value || uploadingDrag.value || exporting.value || actions.value?.processing) return;
   if (assetFileType(file).kind !== "video") return void ElMessage.error(translate("请选择视频文件"));
   if (!file.size) return void ElMessage.error(translate("视频不能为空"));
   if (file.size > ASSET_MAX_BYTES) return void ElMessage.error(translate("视频不能超过 100 MB"));
@@ -180,15 +186,5 @@ function showError(error: unknown, fallback: string) {
     display: none;
   }
 
-  .uploadButton {
-    width: 100%;
-    height: 144px;
-    padding: 0;
-    color: var(--el-text-color-placeholder);
-
-    &:hover {
-      color: var(--el-color-primary);
-    }
-  }
 }
 </style>

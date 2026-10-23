@@ -134,7 +134,7 @@ export const canvasOperations = [
   { name: 'importCanvasAssets', label: '导入工作区素材', description: '将当前项目已有图片、视频、音频或文本 paths 放到画布 position，沿用界面素材拖放。普通图片、视频、音频建立节点内部副本，已有内部原片继续共享；文本正文独立保存，相对文件链接按来源目录转换并保留原目标。不下载整片到浏览器再上传，不提交生成。外部文件先用有权限的文件工具导入工作区。', parameters: canvasSchemas.importCanvasAssets },
   { name: 'createCanvasFolder', label: '新建画布文件夹', description: '在当前项目创建画布文件夹，folder 可用斜杠嵌套，禁止 agent/assets/settings/skills 保留目录。getCanvas include:folders 可读当前文件夹。', parameters: canvasSchemas.createCanvasFolder },
   { name: 'moveCanvas', label: '移动画布到文件夹', description: '移动当前项目画布并同步保存路径，folder 为空字符串移到根目录；省略 canvasId 使用当前画布，返回激活画布状态。不覆盖同名文件。', parameters: canvasSchemas.moveCanvas },
-  { name: 'deleteCanvas', label: '删除画布', description: '删除明确 canvasId 的画布及其独占素材；保留其他画布及 Markdown 文档仍在引用的素材，至少保留一张画布。此操作不可撤销，仅在用户明确要求删除该画布时使用。', parameters: canvasSchemas.deleteCanvas },
+  { name: 'deleteCanvas', label: '删除画布', description: '删除明确 canvasId 的画布及其独占素材；保留其他画布及 Markdown 文档仍在引用的素材，至少保留一张画布。删掉的画布和素材会移到系统废纸篓，仅在用户明确要求删除该画布时使用。', parameters: canvasSchemas.deleteCanvas },
   { name: 'switchPanel', label: '切换面板', description: '切换工作台面板 canvas（画布）或 document（文档）。文档保留在后台并尝试保存；保存失败仍保留草稿，退出工作区时会再次检查保存。', parameters: canvasSchemas.switchPanel },
   { name: 'getDocument', label: '读取文档', description: '读取当前文档正文、documentId、canWriteText 和选择状态。canWriteText=false 表示该打开方式不支持文本写入。写回时原样携带 documentId，并将原 text 作为 writeDocument 的 expectedText，防止写错文档或覆盖用户的新输入。供应商配置只能在设置中管理，文档工具不能读取。', parameters: canvasSchemas.getDocument },
   { name: 'openDocument', label: '打开文档', description: '打开工作区文档 path（如 .md/.markdown/.txt），或画布中的文本节点 canvasPath+nodeId，可选 handleId。两种目标只提供一种。供应商配置只能在设置中管理，不能通过文档工具打开。', parameters: canvasSchemas.openDocument },

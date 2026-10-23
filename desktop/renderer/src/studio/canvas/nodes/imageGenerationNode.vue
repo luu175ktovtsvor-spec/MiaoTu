@@ -36,8 +36,8 @@
         @error="showNodeError(translate('无法预览该图片'), translate('图片预览失败'))" />
       <div v-else class="imageEmpty mediaEmpty" :aria-label="translate('暂无生成图片')">
         <icon-photo-ai :size="48" stroke="1.25" aria-hidden="true" />
-        <div v-if="!refList.length" class="emptyHints nodrag nopan" role="group" :aria-label="translate('试试')">
-          <span class="emptyHintsTitle">{{ translate('试试：') }}</span>
+        <div v-if="!refList.length" class="emptyHints nodrag nopan" role="group" :aria-label="translate('尝试')">
+          <span class="emptyHintsTitle">{{ translate('尝试：') }}</span>
           <button type="button" class="emptyHint" :disabled="generating || deleting" @pointerdown.stop @click.stop="focusPrompt">
             <icon-writing :size="16" aria-hidden="true" />{{ translate('文字生成图片') }}
           </button>
@@ -65,7 +65,7 @@
         <div class="promptBody">
           <div class="composerTools">
             <button type="button" class="composerChip nodrag" :disabled="generating || deleting" :aria-label="translate('添加参考素材')" @click.stop="requestReference()">
-              <icon-plus :size="14" aria-hidden="true" />{{ translate('参考') }}
+              <icon-upload :size="14" aria-hidden="true" />{{ translate('上传') }}
             </button>
           </div>
           <referenceItem
@@ -87,6 +87,7 @@
             v-model:text="data.prompt"
             v-model:expanded="composerExpanded"
             :references="referenceMentions"
+            placeholder="直接用文字生成图片，或上传图片后用文字修改它，例如：把背景换成雪夜。输入 @ 引用素材"
             expandable
             expand-mode="external" />
         </div>
@@ -176,7 +177,7 @@ import { nodeLocalModelLabel, nodeModelOptionLabel, nodeModelValueLabel } from '
 import { useImagePreviewTools } from '../scaffold/useImagePreviewTools';
 import { computed, inject, nextTick, onMounted, onScopeDispose, ref, watch, watchEffect } from "vue";
 import { ElButton, ElCard, ElSelect, ElOption, ElOptionGroup, ElLoading, ElImageViewer, ElMessage } from "element-plus";
-import { IconCoins, IconPhotoAi, IconSparkles, IconArrowUp, IconPlayerStop, IconTransfer, IconLayoutGrid, IconBrush, IconPencil, IconPlus, IconWriting, IconPhotoPlus } from "@tabler/icons-vue";
+import { IconCoins, IconPhotoAi, IconSparkles, IconArrowUp, IconPlayerStop, IconTransfer, IconLayoutGrid, IconBrush, IconPencil, IconUpload, IconWriting, IconPhotoPlus } from "@tabler/icons-vue";
 import { nodeSkeleton, nodeTools, showNodeError, isSignInRequired, useGenerationProgress, useNode, useNodeGeneration, useNodeReferences, useNodeUpload, z, type NodeMediaModel, type NodeHandle } from "@miaoimg/nodes-scaffold/runtime";
 import { assertPromptReferencesConnected, isPromptModel } from "../scaffold/promptModel";
 import promptInput from "@miaoimg/nodes-scaffold/promptInput";

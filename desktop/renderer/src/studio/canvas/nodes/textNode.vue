@@ -9,15 +9,51 @@
     :downloadName="`${nodeProps.label || translate('文本')}.md`"
     :bottomWidth="660"
     @fullscreen="fullscreen = true; editing = true">
-    <div class="textContent" :class="{ empty: !outputs.text.value.trim() }">
+    <template v-if="inlineEditing" #top>
+      <!-- 节点上直接编辑时的浮动工具栏，按 LibTV 的顺序：背景色、段落样式、粗体、斜体、分割线、展开编辑。 -->
+      <el-card class="mediaToolbar textFormatBar" shadow="never" :bodyStyle="{ padding: '6px' }" @mousedown.prevent>
+        <el-popover trigger="click" placement="bottom-start" :width="212" :persistent="false" :showArrow="false">
+          <template #reference>
+            <button type="button" class="formatButton" :title="translate('背景色')" :aria-label="translate('背景色')"><span class="colorDot" :style="{ background: backgroundColor || 'var(--el-text-color-placeholder)' }" /></button>
+          </template>
+          <div class="colorGrid" role="listbox" :aria-label="translate('背景色')">
+            <button v-for="color in TEXT_BACKGROUNDS" :key="color || 'none'" type="button" role="option" :aria-selected="backgroundColor === color" :class="{ none: !color, active: backgroundColor === color }"
+              :style="{ background: color || 'transparent' }" :aria-label="color ? color : translate('无背景色')" @click="backgroundColor = color" />
+          </div>
+        </el-popover>
+        <span class="formatDivider" />
+        <el-dropdown trigger="click" :persistent="false" @command="(block: string) => inlineEditor?.command(block as TextBlockName)">
+          <button type="button" class="formatButton blockButton" :aria-label="translate('段落样式')"><icon-typography :size="17" />{{ translate(blockLabel) }}<icon-chevron-down :size="13" /></button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item v-for="item in TEXT_BLOCKS" :key="item.value" :command="item.value">
+                <span class="blockOption"><span class="blockMark">{{ item.mark }}</span>{{ translate(item.label) }}<icon-check v-if="activeBlock === item.value" :size="14" /></span>
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+        <span class="formatDivider" />
+        <button type="button" class="formatButton" :title="translate('粗体')" :aria-label="translate('粗体')" @click="inlineEditor?.command('bold')"><icon-bold :size="17" /></button>
+        <button type="button" class="formatButton" :title="translate('斜体')" :aria-label="translate('斜体')" @click="inlineEditor?.command('italic')"><icon-italic :size="17" /></button>
+        <button type="button" class="formatButton" :title="translate('分割线')" :aria-label="translate('分割线')" @click="inlineEditor?.command('rule')"><icon-minus :size="17" /></button>
+        <span class="formatDivider" />
+        <button type="button" class="formatButton" :title="translate('展开编辑')" :aria-label="translate('展开编辑')" @click="expandEditor"><icon-arrows-diagonal :size="17" /></button>
+      </el-card>
+    </template>
+    <div class="textContent" :class="{ empty: !outputs.text.value.trim() && !inlineEditing, tinted: !!backgroundColor }" :style="backgroundColor ? { '--textNodeTint': backgroundColor } : undefined" @dblclick.stop="startInlineEdit">
       <el-alert v-if="documentError" :title="documentError" type="error" :closable="false" showIcon>
         <el-button text size="small" :disabled="generating || textReloading" @click="editing = true">{{ translate('查看并复制当前正文') }}</el-button>
         <el-button text size="small" :disabled="generating" :loading="textReloading" @click="reloadText()">{{ translate('重新读取磁盘') }}</el-button>
       </el-alert>
-      <div v-if="outputs.text.value.trim() && previewReady" class="textPreview nopan nowheel" :aria-label="translate('文本内容')">
-        <markdownPreview :modelValue="outputs.text.value" :files="textReady ? textFiles : undefined" :path="textPath" :active="previewReady" />
-      </div>
-      <el-button class="editButton nodrag nopan" :icon="IconEdit" :disabled="generating || !textReady" text @dblclick.stop @click.stop="editing = true">{{ translate('编辑') }}</el-button>
+      <markdownEditor v-if="inlineEditing" ref="inlineEditor" inline class="inlineEditor nodrag nopan nowheel" v-model="outputs.text.value" :files="textReady ? textFiles : undefined" :path="textPath" :active="inlineEditing"
+        :disabled="generating || textReloading" :readonly="!!documentError" :ariaLabel="translate('编辑文本内容')" @keydown.esc.stop="inlineEditing = false" />
+      <template v-else>
+        <div v-if="outputs.text.value.trim() && previewReady" class="textPreview nopan nowheel" :aria-label="translate('文本内容')">
+          <markdownPreview :modelValue="outputs.text.value" :files="textReady ? textFiles : undefined" :path="textPath" :active="previewReady" />
+        </div>
+        <nodeEmptyState v-if="!outputs.text.value.trim()" :icon="IconFileText" :label="translate('暂无文本')" :hints="emptyHints" :disabled="generating || !textReady" @pick="pickHint" />
+        <el-button v-else class="editButton nodrag nopan" :icon="IconEdit" :disabled="generating || !textReady" text @dblclick.stop @click.stop="startInlineEdit">{{ translate('编辑') }}</el-button>
+      </template>
     </div>
     <template #bottom>
       <el-card class="promptCard" shadow="never" :bodyStyle="{ padding: '14px 16px 12px' }">
@@ -27,7 +63,7 @@
             @preview="setReferencePreview"
             @remove="removeReference" />
         </div>
-        <promptInput v-model="promptModel" v-model:text="prompt" :references="referenceMentions" placeholder="想让 AI 写什么？输入 @ 引用素材" />
+        <promptInput v-model="promptModel" v-model:text="prompt" :references="referenceMentions" placeholder="写下你想讲的故事、场景或角色设定，例如：一个来自未来的机器人，在城市屋顶看星星。输入 @ 引用素材" />
         <div class="promptFooter">
           <el-select v-model="model" class="modelSelect" filterable :loading="modelsLoading" :disabled="generating" :placeholder="translate('选择模型')" :aria-label="translate('生成模型')" :noDataText="translate('暂无可用模型')" placement="top-start" @visible-change="visible => visible && loadModels()">
             <template #prefix><icon-sparkles :size="17" /></template>
@@ -45,7 +81,7 @@
       </el-card>
     </template>
   </nodeSkeleton>
-  <el-dialog v-model="editing" :title="translate('编辑文本')" width="min(860px, calc(100vw - 32px))" :fullscreen="fullscreen" alignCenter appendToBody @closed="fullscreen = false">
+  <el-dialog v-model="editing" :title="nodeProps.label || translate('编辑文本')" width="min(860px, calc(100vw - 32px))" :fullscreen="fullscreen" alignCenter appendToBody @closed="fullscreen = false">
     <div class="textEditor" :class="{ fullscreen }">
       <markdownEditor v-model="outputs.text.value" :files="textReady ? textFiles : undefined" :path="textPath" :active="editing" :disabled="generating || textReloading" :readonly="!!documentError" :ariaLabel="translate('编辑文本内容')" />
     </div>
@@ -56,16 +92,18 @@
 import { groupNodeModels, pendingMediaTaskError } from '../scaffold/nodeAi';
 import { nodeLocalModelLabel, nodeModelOptionLabel } from '../scaffold/localModelLabel';
 import { isNodeOutput, type NodeOutput } from "@miaoimg/nodes-scaffold/values";
-import { computed, inject, onMounted, onBeforeUnmount, ref, watch } from "vue";
+import { computed, inject, nextTick, onMounted, onBeforeUnmount, ref, watch } from "vue";
 import { useVueFlow } from '@vue-flow/core';
-import { ElAlert, ElButton, ElCard, ElSelect, ElDialog, ElOption, ElMessage, ElMessageBox } from "element-plus";
-import { IconEdit, IconFileText, IconSparkles, IconArrowUp } from "@tabler/icons-vue";
+import { ElAlert, ElButton, ElCard, ElSelect, ElDialog, ElOption, ElMessage, ElMessageBox, ElPopover, ElDropdown, ElDropdownMenu, ElDropdownItem } from "element-plus";
+import { IconEdit, IconFileText, IconPhotoAi, IconVideo, IconSparkles, IconArrowUp, IconTypography, IconChevronDown, IconCheck, IconBold, IconItalic, IconMinus, IconArrowsDiagonal } from "@tabler/icons-vue";
 import { nodeSkeleton, nodeTools, useNodeGeneration, useNode, useNodeReferences, z, type NodeAiModel, type NodeHandle } from "@miaoimg/nodes-scaffold/runtime";
 import referenceItem from "@miaoimg/nodes-scaffold/referenceItem";
 import promptInput from "@miaoimg/nodes-scaffold/promptInput";
 import { translate } from "@miaoimg/i18n/vue";
 import { throttle } from "lodash-es";
 import markdownEditor from "./textNode/markdownEditor.vue";
+import nodeEmptyState, { type EmptyHint } from "../components/nodeEmptyState.vue";
+import { useLinkedNode } from "../linkedNode";
 import markdownPreview from "./textNode/markdownPreview.vue";
 import { useNodeDocumentState } from "@miaoimg/nodes-scaffold/nodeDocument";
 import { isWorkspacePath } from '../../../../../../server/workspace-path';
@@ -92,6 +130,42 @@ const persistTaskBinding = inject<(() => Promise<void>) | undefined>('persistCan
 const getCanvasSignal = inject<(() => AbortSignal) | undefined>('canvasOperationSignal', undefined);
 const editing = ref(false);
 const fullscreen = ref(false);
+// 双击节点或点「编辑」就在节点上直接改，像 LibTV 一样；取消选中或按 Esc 退出。
+const inlineEditing = ref(false);
+const inlineEditor = ref<InstanceType<typeof markdownEditor>>();
+type TextBlockName = "paragraph" | "h1" | "h2" | "h3" | "ordered" | "bullet";
+const TEXT_BLOCKS: { value: TextBlockName; label: string; mark: string }[] = [
+  { value: "paragraph", label: "正文", mark: "T" }, { value: "h1", label: "标题", mark: "H1" }, { value: "h2", label: "小标题", mark: "H2" },
+  { value: "h3", label: "副标题", mark: "H3" }, { value: "ordered", label: "有序列表", mark: "1." }, { value: "bullet", label: "无序列表", mark: "•" },
+];
+const TEXT_BACKGROUNDS = ["", "#ef4444", "#f97316", "#eab308", "#22c55e", "#06b6d4", "#3b82f6", "#8b5cf6", "#ec4899", "#737373"];
+const activeBlock = computed(() => inlineEditor.value?.activeBlock ?? "paragraph");
+const blockLabel = computed(() => TEXT_BLOCKS.find(item => item.value === activeBlock.value)?.label ?? "正文");
+function startInlineEdit() {
+  if (generating.value || !textReady.value) return;
+  if (documentError.value) { editing.value = true; return; }
+  flow.removeSelectedElements();
+  flow.addSelectedNodes([node]);
+  inlineEditing.value = true;
+  void nextTick(() => inlineEditor.value?.focus());
+}
+const { canLink, createLinked } = useLinkedNode();
+const emptyHints = computed<EmptyHint[]>(() => [
+  { key: "write", label: "自己编写内容", icon: IconEdit },
+  { key: "ai", label: "让 AI 来写", icon: IconSparkles },
+  ...(canLink(node, "remote-imageGenerationNode") ? [{ key: "image", label: "文生图片", icon: IconPhotoAi }] : []),
+  ...(canLink(node, "remote-videoGenerationNode") ? [{ key: "video", label: "文生视频", icon: IconVideo }] : []),
+]);
+function pickHint(key: string) {
+  if (key === "write") return startInlineEdit();
+  if (key === "image") return void createLinked(node, "remote-imageGenerationNode", "图片生成");
+  if (key === "video") return void createLinked(node, "remote-videoGenerationNode", "视频生成");
+  flow.removeSelectedElements();
+  flow.addSelectedNodes([node]);
+  void nextTick(() => document.querySelector<HTMLElement>(`.vue-flow__node[data-id="${CSS.escape(node.id)}"] .promptInput [contenteditable="true"]`)?.focus());
+}
+function expandEditor() { inlineEditing.value = false; fullscreen.value = true; editing.value = true; }
+watch(() => node.selected, selected => { if (!selected) inlineEditing.value = false; });
 const localTextStatus = ref('');
 const downloadUrl = ref("");
 watch([() => outputs.value.text.value, () => node.selected], ([text, selected], _previous, onCleanup) => {
@@ -101,7 +175,8 @@ watch([() => outputs.value.text.value, () => node.selected], ([text, selected], 
   downloadUrl.value = url;
   onCleanup(() => URL.revokeObjectURL(url));
 }, { immediate: true });
-const data = computed(() => node.data as typeof node.data & { prompt?: string; promptModel?: PromptModel; model?: string; textPath?: string; textSnapshot?: string; textSnapshotPath?: string; textSnapshotPaths?: Record<string, string>; pendingLocalTextTask?: { id: string; providerId: string; modelId: string } });
+const data = computed(() => node.data as typeof node.data & { background?: string; prompt?: string; promptModel?: PromptModel; model?: string; textPath?: string; textSnapshot?: string; textSnapshotPath?: string; textSnapshotPaths?: Record<string, string>; pendingLocalTextTask?: { id: string; providerId: string; modelId: string } });
+const backgroundColor = computed({ get: () => data.value.background ?? "", set: (value: string) => { data.value.background = value || undefined; } });
 const prompt = computed({ get: () => data.value.prompt ?? "", set: (value: string) => { data.value.prompt = value; } });
 const model = computed({ get: () => data.value.model ?? "", set: (value: string) => { data.value.model = value; } });
 const models = ref<NodeAiModel[]>([]);
@@ -113,6 +188,7 @@ const textGeneration = useNodeGeneration(outputs, () => textController?.abort(),
   return { text: { dataType: 'STRING', value: text.slice(0, 1000), path: textPath, totalLength: text.length, truncated: text.length > 1000 } };
 }, () => ({ phase: "running", message: localTextStatus.value, requestId: data.value.pendingLocalTextTask?.id }));
 const generating = textGeneration.generating;
+watch(generating, value => { if (value) inlineEditing.value = false; });
 const selectedModel = computed(() => models.value.find(item => JSON.stringify([item.providerId, item.modelId]) === model.value));
 const textReady = ref(false);
 const textReloading = ref(false);
@@ -551,8 +627,36 @@ nodeTools.register({
   }
 }
 
+.textFormatBar {
+  :deep(.el-card__body) { display: flex; align-items: center; gap: 2px; }
+  .formatButton { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 30px; height: 30px; padding: 0 6px; border: 0; border-radius: 8px; background: transparent; color: var(--el-text-color-primary); font: inherit; font-size: 13px; cursor: pointer;
+    &:hover { background: var(--el-fill-color-light); }
+  }
+  .colorDot { width: 18px; height: 18px; border-radius: 50%; }
+  .formatDivider { width: 1px; height: 18px; margin: 0 4px; background: var(--el-border-color); }
+}
+.colorGrid { display: grid; grid-template-columns: repeat(5, 30px); gap: 10px; padding: 4px;
+  button { width: 30px; height: 30px; border: 2px solid transparent; border-radius: 50%; cursor: pointer;
+    &.none { border-color: var(--el-border-color); background: linear-gradient(135deg, transparent 46%, var(--el-color-danger) 46% 54%, transparent 54%) !important; }
+    &.active { outline: 2px solid var(--el-text-color-primary); outline-offset: 2px; }
+  }
+}
+.blockOption { display: inline-flex; align-items: center; gap: 10px; min-width: 120px;
+  .blockMark { width: 22px; color: var(--el-text-color-secondary); font-size: 12px; font-weight: 600; }
+  svg { margin-left: auto; }
+}
+
 .textContent {
   min-height: 110px;
+
+  &.tinted {
+    margin: -8px;
+    padding: 8px;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--textNodeTint) 16%, transparent);
+  }
+
+  .inlineEditor { min-height: 110px; }
 
   &.empty {
     display: flex;

@@ -71,7 +71,7 @@ export class WorkspaceFiles {
   declare pendingBytes: any[]
   declare userMutationGuard: ((userId: any, project: string, payload: Record<string, any>) => void) | undefined
   declare userListFilter: ((userId: any, project: string, entries: any[]) => any[]) | undefined
-  declare beforeRemove: ((userId: any, project: string, entries: any[]) => (() => void) | void) | undefined
+  declare beforeRemove: ((userId: any, project: string, entries: any[], options: { trash: boolean; path: string }) => (() => void) | void) | undefined
   declare referenceOwner: ((userId: any) => string) | undefined
   declare referenceScope: ((userId: any, project: string) => WorkspaceReferenceScope) | undefined
   declare canvasCleanupReferences: ((userId: any, project: string) => readonly string[]) | undefined
@@ -870,6 +870,7 @@ export class WorkspaceFiles {
       } else if (payload.operation === 'remove') {
         this.assertCanvasOriginal(userId, project, path, { deleting: true })
         if (payload.recursive !== undefined && typeof payload.recursive !== 'boolean') throw failure('删除选项无效', 422)
+        if (payload.trash !== undefined && typeof payload.trash !== 'boolean') throw failure('删除选项无效', 422)
         const cleanup = new Set<string>()
         if (payload.canvasCleanup !== undefined) {
           const value = payload.canvasCleanup
@@ -888,7 +889,7 @@ export class WorkspaceFiles {
         if (payload.recursive === false && main.some(row => row.path !== path)) throw failure('目录内仍有文件，未删除', 409)
         this.assertCanvasCleanup(userId, project, path, cleanup, rows)
         const targets = rows.filter(row => row.path === path || row.path.startsWith(path + '/') || cleanup.has(row.path.split('/').slice(0, 2).join('/')))
-        if (payload.discard !== true) rollbackRemoval = this.beforeRemove?.(userId, project, targets)
+        if (payload.discard !== true) rollbackRemoval = this.beforeRemove?.(userId, project, targets, { trash: payload.trash === true, path })
         for (const row of targets) this.store.run(`DELETE FROM workspace_files WHERE ${where} AND path=?`, ...args, row.path)
         this.deferBytes(userId, project, targets)
       } else if (payload.operation === 'copy') {

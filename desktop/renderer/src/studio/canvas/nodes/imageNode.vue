@@ -59,18 +59,7 @@
         @load="resizeImage"
         @error="ElMessage.error(translate('无法预览该图片'))" />
       <input ref="fileInput" class="fileInput" type="file" accept="image/*" :aria-label="translate('选择图片')" :disabled="imageBusy" @change="uploadImage" />
-      <el-button
-        v-if="!outputFile"
-        class="uploadButton"
-        text
-        :loading="uploading"
-        :title="translate('上传图片')"
-        :aria-label="translate('上传图片')"
-        @dblclick.stop
-        @click="fileInput?.click()">
-        <icon-upload v-if="!uploading" :size="48" stroke="1.5" />
-        <span v-if="!uploading" class="uploadHint">{{ translate('点击上传，或把图片拖进来') }}</span>
-      </el-button>
+      <nodeEmptyState v-if="!outputFile" v-loading="uploading" :icon="IconPhoto" :label="translate('暂无图片')" :hints="emptyHints" :disabled="imageBusy" @pick="pickHint" />
       <uploadProgress v-if="dragUploadEntry" :entry="dragUploadEntry" @retry="retryDragUpload" @dismiss="dismissDragUpload" />
       <generationProgress :progress="inpaintTask.progress" :label="translate('图片生成进度')" />
     </div>
@@ -100,7 +89,7 @@
 <script setup lang="ts">
 import { useImagePreviewTools } from '../scaffold/useImagePreviewTools';
 import { computed, nextTick, onMounted, onScopeDispose, ref, watch } from "vue";
-import { IconPhoto, IconUpload, IconTransfer, IconLayoutGrid, IconBrush, IconPencil, IconSun, IconCamera, IconPanoramaHorizontal, IconPlayerStop, IconPlayerPlay } from "@tabler/icons-vue";
+import { IconPhoto, IconPhotoAi, IconVideo, IconClipboard, IconUpload, IconTransfer, IconLayoutGrid, IconBrush, IconPencil, IconSun, IconCamera, IconPanoramaHorizontal, IconPlayerStop, IconPlayerPlay } from "@tabler/icons-vue";
 import { ElButton, ElImageViewer, ElMessage } from "element-plus";
 import { nodeSkeleton, nodeTools, useNode, useNodeUpload, z, type NodeHandle, type NodeInpaintInput } from "@miaoimg/nodes-scaffold/runtime";
 import imageEditor from "@miaoimg/nodes-scaffold/imageEditor";
@@ -114,6 +103,9 @@ import imageLighting from './imageTools/components/imageLighting.vue';
 import imageMultiAngle from './imageTools/components/imageMultiAngle.vue';
 import imagePanorama from './imageTools/components/imagePanorama.vue';
 import uploadProgress from "../components/uploadProgress.vue";
+import nodeEmptyState, { type EmptyHint } from "../components/nodeEmptyState.vue";
+import { useLinkedNode } from "../linkedNode";
+import { readClipboardFiles } from "@/lib/clipboard";
 import { beginUpload } from "../uploadStatus";
 import { assetFileType, ASSET_MAX_BYTES } from "../assetFile";
 import { useMediaTaskDelivery } from "../scaffold/useMediaTaskDelivery";
@@ -263,11 +255,31 @@ async function resizeImage(event: Event) {
   updateNodeInternals();
 }
 
+const { canLink, createLinked } = useLinkedNode();
+const emptyHints = computed<EmptyHint[]>(() => [
+  { key: "upload", label: "上传本地图片", icon: IconUpload },
+  { key: "paste", label: "粘贴剪贴板里的图片", icon: IconClipboard },
+  ...(canLink(node, "remote-imageGenerationNode") ? [{ key: "image", label: "以图生图", icon: IconPhotoAi }] : []),
+  ...(canLink(node, "remote-videoGenerationNode") ? [{ key: "video", label: "图片生成视频", icon: IconVideo }] : []),
+]);
+async function pickHint(key: string) {
+  if (key === "upload") return fileInput.value?.click();
+  if (key === "image") return void createLinked(node, "remote-imageGenerationNode", "图片生成");
+  if (key === "video") return void createLinked(node, "remote-videoGenerationNode", "视频生成");
+  const file = (await readClipboardFiles().catch(() => [])).find(item => assetFileType(item).kind === "image");
+  if (!file) return void ElMessage.warning(translate("剪贴板里没有图片"));
+  takeImage(file);
+}
+
 function uploadImage(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
   input.value = "";
-  if (!file || imageBusy.value) return;
+  if (file) takeImage(file);
+}
+
+function takeImage(file: File) {
+  if (imageBusy.value) return;
   if (assetFileType(file).kind !== "image") return void ElMessage.error(translate("请选择图片文件"));
   if (!file.size || file.size > ASSET_MAX_BYTES) return void ElMessage.error(translate("图片为空或超过当前工作区允许的大小"));
   // 和「拖文件进画布」走同一条通道：真上传进度的环形、失败可重试、写回 outputs 都由
@@ -290,15 +302,5 @@ function showError(error: unknown, fallback: string) {
     display: none;
   }
 
-  .uploadButton {
-    width: 100%;
-    height: 144px;
-    padding: 0;
-    color: var(--el-text-color-placeholder);
-
-    &:hover {
-      color: var(--el-color-primary);
-    }
-  }
 }
 </style>

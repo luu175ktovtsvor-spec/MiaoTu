@@ -459,6 +459,7 @@ restore_previous
         commit()
       },
       reveal: path => shell.showItemInFolder(path),
+      trash: path => shell.trashItem(path),
       save: async (path, name) => { const result = await dialog.showSaveDialog(window, { defaultPath: join(app.getPath('downloads'), name) }); if (result.canceled || !result.filePath) return false; await copyFile(path, result.filePath, fsConstants.COPYFILE_FICLONE); return true },
     } })
     const profile = session.fromPartition('persist:miao-desktop')

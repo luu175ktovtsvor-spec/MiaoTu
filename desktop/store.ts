@@ -51,6 +51,22 @@ export class LocalStore {
       })
     } catch (error) { this.cleanupTrashBackups([diskPath]); throw error }
   }
+  // 老版本把删掉的文件悄悄备份在应用目录里，界面上看不到也不会清理。启动时把它们交给系统废纸篓，再删掉这些记录。
+  legacyTrash() { return this.all('SELECT id,project_id,path,mime,bytes,disk_path FROM desktop_trash ORDER BY deleted_at') }
+  dropLegacyTrash(ids: readonly string[]) {
+    const paths = this.transaction(() => ids.flatMap(id => {
+      const row = this.get('SELECT disk_path FROM desktop_trash WHERE id=?', id)
+      this.run('DELETE FROM desktop_trash WHERE id=?', id)
+      return row?.disk_path ? [row.disk_path] : []
+    }))
+    return paths.length ? this.cleanupTrashBackups(paths) : { removed: 0, pending: 0, failed: 0 }
+  }
+  // 放进废纸篓的文件夹用项目名命名；账号项目的显示名在 desktop_sync 里，项目已删时退回到编号。
+  projectLabel(id: string) {
+    const binding = this.get('SELECT base FROM desktop_sync WHERE project_id=?', id)
+    const row = this.get("SELECT name FROM projects WHERE user_id='local' AND id=?", id)
+    return (binding && JSON.parse(binding.base).name) || row?.name || '项目-' + String(id).slice(0, 8)
+  }
   retainTrashBackup(id: string, diskPath: string) { return this.trashBackups.retain(id, diskPath) }
   cleanupTrashBackups(paths?: readonly string[]) {
     return this.trashBackups.sweep({

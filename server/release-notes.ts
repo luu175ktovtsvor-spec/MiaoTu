@@ -10,6 +10,33 @@ export type ReleaseNotes = {
 // 更新说明直接写软件修好了什么：哪一个界面、哪一项操作，以前错在哪里，现在怎样。
 // 不写「上游」「部分问题」「体验优化」这类看不出具体改动的话。
 export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
+  '3.1.0': {
+    title: { zh: '画布节点统一风格、连线发光、快捷键面板；删除的项目放进系统废纸篓', en: 'Unified canvas nodes, glowing connections and a shortcuts panel; deleted projects go to the system Trash' },
+    fixes: [
+      { zh: '首页项目的「改名」以前点了没有反应，现在可以直接在卡片上输入新名字，回车保存。', en: 'Renaming a project on the home page used to do nothing; you can now type the new name on the card and press Enter to save.' },
+      { zh: '删除项目以前会在妙图里偷偷留一份备份，越删占的空间越大；现在不再留备份，旧版本留下的备份会在启动时一起移到废纸篓。', en: 'Deleting a project used to leave a hidden copy inside MiaoImg, so deleting took more space instead of less. No copy is kept now, and copies left by older versions are moved to the Trash on start-up.' },
+      { zh: '刚生成就删掉的图片和视频，以前会一直占着硬盘空间；现在下次启动时会自动释放。', en: 'Images and videos deleted right after they were generated used to stay on disk; their space is now released the next time MiaoImg starts.' },
+    ],
+    improvements: [
+      { zh: '删除项目、画布或素材后，文件会按原来的目录结构放进电脑的废纸篓（Windows 为回收站），想找回直接拖回来，想腾空间在废纸篓里清空即可。', en: 'Deleted projects, canvases and assets are moved to your computer\'s Trash (Recycle Bin on Windows) with their original folders, so you can drag them back or empty the Trash to free up space.' },
+      { zh: '「最近项目」卡片新增「⋯」菜单，可以打开、重命名、删除项目；「全部项目」可以按名称搜索。', en: 'Recent project cards have a ⋯ menu to open, rename or delete a project, and All projects can be searched by name.' },
+      { zh: '画布左上角显示「项目名 / 画布名」，一眼看出当前画布属于哪个项目。', en: 'The top-left corner of the canvas shows Project / Canvas so you can tell which project a canvas belongs to.' },
+      { zh: '登录改为居中大窗口：左侧播放精选作品，右侧只留邮箱、验证码或密码，底部切换登录方式；新用户不用再填昵称。', en: 'Sign-in is now a larger centred window with a featured film on the left, just email and code or password on the right, and sign-in methods at the bottom. New users no longer need to enter a nickname.' },
+      { zh: '侧边栏「案例」改名为「创作精选」。', en: 'Cases in the sidebar is renamed to Featured.' },
+      { zh: '选中画布上的节点时，和它相连的线会变成蓝色发光，并有一小段光沿线流动；拖出连线时整条线发光。', en: 'Selecting a node on the canvas makes its connections glow blue with light flowing along them, and a connection you are dragging glows along its whole length.' },
+      { zh: '单击节点两侧的「+」直接弹出节点菜单，选好就建出下游节点并自动连上。', en: 'Clicking the + on either side of a node opens the node menu; pick one and the new node is created and connected.' },
+      { zh: '空画布中间给出常用节点的快捷按钮（图片生成、视频生成、文本、音频、3D 导演台），点一下就建好。', en: 'An empty canvas shows shortcut buttons for common nodes (image generation, video generation, text, audio, 3D director) in the middle.' },
+      { zh: '文本节点可以直接在节点里编辑：上方工具栏可切换正文、标题、列表，设置加粗、斜体、文字颜色和背景色。', en: 'Text nodes can be edited in place, with a toolbar above the node for body, headings and lists, bold, italic, text colour and background.' },
+      { zh: '右键菜单里写出撤销、重做、粘贴的快捷键。', en: 'The right-click menu shows the shortcuts for undo, redo and paste.' },
+      { zh: '文本、图片、视频、音频节点空着时统一显示类型图标和「尝试：」：可以上传本地文件、粘贴剪贴板里的素材，或一键建好「文生图片」「文生视频」「图片生成视频」「音频生成视频」等下游节点并连上。', en: 'Empty text, image, video and audio nodes now share one layout with a Try: list: upload a file, paste from the clipboard, or create a connected downstream node such as text to image, text to video, image to video or audio to video.' },
+      { zh: '新建的节点名字带序号（如「图片生成 1」「文本 2」），多个同类节点一眼分得清。', en: 'New nodes are numbered (for example Image generation 1, Text 2) so nodes of the same kind are easy to tell apart.' },
+      { zh: '画布底部工具栏新增「快捷键」，按创作、缩放、移动画布、其他四栏列出当前键位。', en: 'A Shortcuts button in the bottom toolbar lists the current key bindings in four groups: create, zoom, move canvas and other.' },
+      { zh: '「添加节点」菜单底部新增「添加资源 · 上传」；节点右键菜单新增「下载」，「复制到剪贴板」「删除」旁写出快捷键。', en: 'The Add node menu gains Add resources · Upload, and the node right-click menu gains Download with shortcuts shown next to Copy to clipboard and Delete.' },
+      { zh: '生成输入框左上角的「参考」改名「上传」；图片比例为 auto 时显示虚线方框，不再只剩一个小点。', en: 'The Reference chip in the prompt box is renamed Upload, and an auto aspect ratio now shows a dashed frame instead of a tiny dot.' },
+      { zh: '首页大按钮改为「新建画布创作」；侧边栏分为常用、社区、更多三组，底部新增「版本更新记录」。', en: 'The home button now reads New canvas, the sidebar is grouped into main, community and more, and a Release notes entry sits at the bottom.' },
+    ],
+    knownIssues: [],
+  },
   '3.0.2': {
     title: { zh: '修复关闭应用时偶发卡住', en: 'Fixes the app occasionally getting stuck while closing' },
     fixes: [
