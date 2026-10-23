@@ -103,14 +103,16 @@ def main():
         text = text.replace(anchor, anchor + '\n' + include)
     switched = False
     try:
-        snippet.write_text('''location = / {
+        def html_location(route):
+            return '''location = ''' + route + ''' {
     root /opt/miaoimg/site-current;
     try_files /index.html =503;
     open_file_cache off;
     add_header Cache-Control "no-store" always;
     add_header X-Miaoimg-Site-Revision "''' + revision + '''" always;
 }
-''')
+'''
+        snippet.write_text(html_location('/') + html_location('/changelog'))
         link = base / 'site-next'; link.unlink(missing_ok=True); link.symlink_to(release)
         os.replace(link, current)
         config.write_text(text)
