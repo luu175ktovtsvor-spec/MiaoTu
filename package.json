@@ -8,6 +8,8 @@
   },
   "scripts": {
     "setup": "npm ci && npm --prefix desktop ci && npm --prefix desktop/renderer ci",
+    "verify:mcp": "node scripts/verify-mcp-tools.ts",
+    "verify:admin-pricing": "node scripts/verify-admin-pricing.ts",
     "setup:web": "npm ci && npm run data:pull && npm --prefix web ci",
     "data:pull": "node scripts/run_python.ts scripts/fetch_dataset.py",
     "data:pull:db": "node scripts/run_python.ts scripts/fetch_dataset.py --db-only",

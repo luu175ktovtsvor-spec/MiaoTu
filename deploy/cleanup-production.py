@@ -55,7 +55,7 @@ if args.accepted_revision:
     os.replace(pending, accepted_path)
 accepted = bool(revision and accepted_path.exists() and accepted_path.read_text().strip() == revision)
 previous = sorted(
-    (x for x in items if x["Name"].startswith("/" + container + ".previous-")
+    (x for x in items if x["Name"].startswith(("/" + container + ".previous", "/" + container + ".previous-"))
      and not x["State"]["Running"] and x["State"]["Status"] == "exited"),
     key=lambda x: x["Created"], reverse=True,
 )
@@ -71,7 +71,7 @@ protected_images = {x["Image"] for x in items}
 if previous or accepted:
     for line in run(["docker", "image", "ls", "--no-trunc", "--format", "{{json .}}"]).splitlines():
         image = json.loads(line)
-        if image["Repository"] not in ("miaoimg", "open-image-prompts") or image["Tag"] == "<none>":
+        if image["Repository"] not in ("miaoimg", "miaoimg-admin", "open-image-prompts") or image["Tag"] == "<none>":
             continue
         if image["ID"] in protected_images:
             continue
