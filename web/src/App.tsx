@@ -10,6 +10,7 @@ import { useLang } from './i18n'
 import LandingFallback from './landing/LandingFallback'
 import { isAdminHost } from './siteOrigins'
 const AdminPage = lazy(() => import('./admin/AdminPage'))
+const ChangelogPage = lazy(() => import('./landing/ChangelogPage'))
 const LandingPage = lazy(() => import('./landing/LandingPage'))
 
 function ArchiveSelectionBanner({ mode }) {
@@ -222,6 +223,7 @@ function App() {
       .catch(() => {})
     return () => controller.abort()
   }, [nativeDesktop, admin])
+  if (!nativeDesktop && !admin && /^\/changelog\/?$/.test(window.location.pathname)) return <Suspense fallback={<LandingFallback />}><ChangelogPage /></Suspense>
   if (!nativeDesktop && !admin && !webEnabled) return <Suspense fallback={<LandingFallback />}><LandingPage /></Suspense>
   if (isAdminHost() || window.location.pathname.startsWith('/manage')) return <Suspense fallback={null}><AdminPage /></Suspense>
   const params = new URLSearchParams(window.location.search)

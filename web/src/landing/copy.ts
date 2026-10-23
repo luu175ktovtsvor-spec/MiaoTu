@@ -2,7 +2,7 @@
 // `\n` renders as a line break (white-space: pre-line) on wide screens.
 export const landingCopy = {
   zh: {
-    nav: '主导航', lang: '语言', features: '产品', workflow: '无限画布', agent: 'Agent', examples: '创作案例', guide: '使用手册', download: '下载妙图',
+    nav: '主导航', lang: '语言', features: '产品', workflow: '无限画布', agent: 'Agent', examples: '创作案例', guide: '使用手册', changelog: '更新日志', download: '下载妙图',
     eyebrow: '妙图 MiaoImg', eyebrowTag: '为创意而生的 AI 无限画布',
     heroTitle: ['创作你的', '无限可能'],
     heroBody: '连接灵感、素材与 AI，探索每一个值得尝试的方向\n在无限画布上和 Agent 一起，把想法做成你的作品',
@@ -45,7 +45,7 @@ export const landingCopy = {
     top: '回到顶部',
   },
   en: {
-    nav: 'Main navigation', lang: 'Language', features: 'Product', workflow: 'Canvas', agent: 'Agent', examples: 'Examples', guide: 'Guide', download: 'Download',
+    nav: 'Main navigation', lang: 'Language', features: 'Product', workflow: 'Canvas', agent: 'Agent', examples: 'Examples', guide: 'Guide', changelog: 'Changelog', download: 'Download',
     eyebrow: 'MiaoImg', eyebrowTag: 'The AI infinite canvas, built for creativity',
     heroTitle: ['Create your', 'infinite possibilities'],
     heroBody: 'Connect ideas, references, and AI. Explore every direction worth trying.\nCreate with your agent on an infinite canvas, from inspiration to finished work.',

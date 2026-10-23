@@ -61,7 +61,7 @@ export default function LandingPage() {
     <header className={`site-header${scrolled ? ' is-scrolled' : ''}`}>
       <div className="site-header-inner">
         <a className="site-brand" href="/" aria-label="妙图 MiaoImg"><img src="/miaoimg-logo.png" width="30" height="30" alt="" /><span>妙图<small>MiaoImg</small></span></a>
-        <nav aria-label={c.nav}><a href="#canvas">{c.workflow}</a><a href="#features">{c.agent}</a><a href="#films">{c.examples}</a><a href={MIAO_MANUAL_URL} target="_blank" rel="noreferrer">{c.guide}<ArrowUpRight size={12}/></a></nav>
+        <nav aria-label={c.nav}><a href="#canvas">{c.workflow}</a><a href="#features">{c.agent}</a><a href="#films">{c.examples}</a><a href={MIAO_MANUAL_URL} target="_blank" rel="noreferrer">{c.guide}<ArrowUpRight size={12}/></a><a href="/changelog">{c.changelog}</a></nav>
         <div className="site-header-actions"><div className="site-language" role="group" aria-label={c.lang}>
           <button aria-pressed={lang === 'zh'} onClick={() => setLang('zh')}>中</button><button aria-pressed={lang === 'en'} onClick={() => setLang('en')}>EN</button>
         </div><a className="site-button site-button-small" href="#download">{c.download}<ArrowDown size={13} /></a></div>
@@ -124,7 +124,7 @@ export default function LandingPage() {
     <footer className="site-footer site-container">
       <div className="site-footer-top">
         <div><a className="site-brand" href="#top"><img src="/miaoimg-logo.png" width="26" height="26" alt=""/><span>妙图<small>MiaoImg</small></span></a><p className="site-footer-tag">{c.footerTag}</p></div>
-        <nav aria-label={c.nav}><a href="#canvas">{c.workflow}</a><a href="#features">{c.agent}</a><a href="#films">{c.examples}</a><a href={MIAO_MANUAL_URL} target="_blank" rel="noreferrer">{c.guide} ↗</a><a href="#download">{c.download}</a></nav>
+        <nav aria-label={c.nav}><a href="#canvas">{c.workflow}</a><a href="#features">{c.agent}</a><a href="#films">{c.examples}</a><a href={MIAO_MANUAL_URL} target="_blank" rel="noreferrer">{c.guide} ↗</a><a href="/changelog">{c.changelog}</a><a href="#download">{c.download}</a></nav>
       </div>
       <div className="site-footer-bottom"><span>© {new Date().getFullYear()} MiaoImg</span><a className="site-text-link" href="#top">{c.top}<ArrowUpRight size={13}/></a></div>
     </footer>
