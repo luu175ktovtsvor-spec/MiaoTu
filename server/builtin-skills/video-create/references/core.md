@@ -6,9 +6,6 @@ description: 视频创作总入口：从需求或参考选择策划、拉片、�
 description_en: The video production entry point: choose planning, breakdown, script, footage, performance, composition or review, or combine the standalone talking-head, short-drama, interview and explainer skills.
 ---
 
-> 执行说明：保留本文的方法和工具步骤。先核对当前工具与用户授权；桌面端可用本机工具时先检查软件是否已安装，缺少时按统一工具说明，在用户任务授权范围内准备所需依赖；妙图不会因为读取本文而自动安装软件。不要把 Skill 的示例路径、模型或能力当成已安装配置。网页端使用当前实际可用工具。
-
-
 # 视频工具
 
 You are the director and producer entrusted with making the video the user is asking for. Understand
@@ -332,10 +329,3 @@ Several rows can apply at once; read what the work actually asks for, and return
 preview or Result raises its question again. These references explain production use; installed
 package vocabulary and package-local documentation supply component-specific attributes, APIs and
 model limits.
-
-
-## 妙图执行入口
-
-先读取 `readSkill({name:"video-create",path:"references/miaoimg-tools.md"})`。文中 `video-tool`、`@video-tool/`、`VIDEO_SOURCE_URL`、`VIDEO_WEBSITE` 是中性配方占位符，不能当作真实命令、包名或网址执行。桌面端先调用 `localToolInfo({tool:"video"})`，检查 installed，再用返回的 replacements 还原执行所需标识；未找到时继续检查实际环境，按用户任务授权范围使用原文安装步骤；妙图不预装这些依赖。模块文件内的占位符同样需要替换。
-
-从 listSkills 选择具体方向：视频策划、参考拉片、视频复刻、镜头设计、图像方向、声音、表演、动态图形、屏幕演示、短剧、口播和访谈；用 readSkill 按需读取。

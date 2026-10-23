@@ -35,9 +35,16 @@ description_en: "The video production section: planning, direction, performance,
 - 镜头画面用图片或视频生成节点，口播和对白的声音素材用音频节点；已有素材导入成媒体节点，用节点自带的截取、分离、提取音轨处理。
 - 成片后按 video-review 用真实输出核对，不能只看提示词。
 
+## 原文里的占位符
+
+先读取 `readSkill({name:"video-create",path:"references/miaoimg-tools.md"})`。文中 `video-tool`、`@video-tool/`、`VIDEO_SOURCE_URL`、`VIDEO_WEBSITE` 是中性配方占位符，不能当作真实命令、包名或网址执行。桌面端先调用 `localToolInfo({tool:"video"})`，检查 installed，再用返回的 replacements 还原执行所需标识；未找到时继续检查实际环境，按用户任务授权范围使用原文安装步骤；妙图不预装这些依赖。模块文件内的占位符同样需要替换。
+
+从 listSkills 选择具体方向：视频策划、参考拉片、视频复刻、镜头设计、图像方向、声音、表演、动态图形、屏幕演示、短剧、口播和访谈；用 readSkill 按需读取。
+
 ## 读取规则
 
 - 下列每个方法都是原作者的方法原文，只改了名称；细节以原文为准，不要凭印象改写。
 - 只读当前任务需要的那一个方法，不要一次把整个板块读完。正文较长时 readSkill 会截断，用返回的 nextOffset 接着读需要的章节。
 - 方法里写到的平台、模型、时长、比例和价格是当时的示例。实际能用的模型和参数，以画布节点返回的为准（getCanvas、node:getConfig），费用每次用节点的 estimate 重新询价。
 - 方法原文里的相对路径，用该方法自己的名称读取，例如 `readSkill({name:"方法名", path:"references/…"})`。
+- 方法里要用到本机软件时，桌面端先取得授权并检查软件是否已安装；缺少时按统一工具说明，在用户任务授权范围内准备依赖。妙图不会因为读取方法就自动安装软件。生成结果保留在当前画布或用户指定的文件夹。网页端只用当前实际可用的工具。

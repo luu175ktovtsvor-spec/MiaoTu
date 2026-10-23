@@ -5,9 +5,6 @@ displayName_en: Giant-scale scene director
 description: 将普通的巨物场景描述转化为具备明确尺度参照、空间纵深、环境互动和镜头构图的图片或视频提示词。适用于巨型生物、巨神、山岳生命、遗迹巨物、天空级与不可测级巨物场景。
 description_en: Turn a giant-scale scene description into image or video prompts with clear scale references, spatial depth and shot composition. For colossal creatures, titans, mountain beings and ruins.
 ---
-
-> 执行说明：保留本文的方法和工具步骤。先核对当前工具与用户授权；桌面端可用本机工具时先检查软件是否已安装，缺少时按统一工具说明，在用户任务授权范围内准备所需依赖；妙图不会因为读取本文而自动安装软件。不要把 Skill 的示例路径、模型或能力当成已安装配置。网页端使用当前实际可用工具。
-
 # 妙图-巨物场景生成 V2.0
 ## Giant Scale Scene Director System
 
