@@ -30,8 +30,10 @@ VERIFY=$SCRIPT_DIR/verify-update-metadata.py
 python3 "$VERIFY" "$VERSION" latest-mac.yml latest.yml
 
 staging="$REMOTE_DIR/.staging-$VERSION"
-ssh "$REMOTE_HOST" "rm -rf '$staging' && mkdir -p '$staging'"
-rsync -a --progress "${uploads[@]}" "$REMOTE_HOST:$staging/"
+# 上传慢时可以中断重跑：保留 .staging 里已经传完或传了一半的文件，rsync 续传并按校验和核对。
+# 需要绕道时用 RSYNC_RSH 指定 ssh 参数（例如经本机代理）。
+ssh "$REMOTE_HOST" "mkdir -p '$staging'"
+rsync -a --partial --checksum --progress "${uploads[@]}" "$REMOTE_HOST:$staging/"
 ssh "$REMOTE_HOST" "cd '$staging' && python3 - '$VERSION' latest-mac.yml latest.yml" < "$VERIFY"
 
 ssh "$REMOTE_HOST" "set -e; cd '$staging'
