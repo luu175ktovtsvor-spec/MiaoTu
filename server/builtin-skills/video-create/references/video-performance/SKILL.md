@@ -5,7 +5,7 @@ displayName_en: Performance
 description: 设计角色的声音、态度、对白和动作关系，适用于口播、对话、短剧及旁白。
 description_en: Design a character's voice, attitude, dialogue and action relationships for talking heads, conversations, short drama and narration.
 ---
-# 人物与表演
+# 妙图-人物与表演
 
 Cast the person through appearance and sound, then let one recognizable identity express different thoughts. A-roll owns the performed passage even when another picture covers it. Voice design/clone remains a plan unless actual available tools support it.
 

@@ -5,7 +5,7 @@ displayName_en: Ranking and comparison
 description: 制作榜单、排名和对比视频，让持久状态与当前论点一起推进。
 description_en: Build ranking, tier and comparison videos where the persistent board and the current argument advance together.
 ---
-# 排名与对比视频
+# 妙图-排名与对比视频
 
 Make the board’s state tell the story. Distinguish initial content, activation and persistence. Arrange the person, claim and evidence together, and choose exact icons/data where factual identity matters.
 

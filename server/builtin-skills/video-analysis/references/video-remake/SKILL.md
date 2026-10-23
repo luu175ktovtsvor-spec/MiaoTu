@@ -5,7 +5,7 @@ displayName_en: Video remake
 description: 保留参考的视频结构与表达关系，按需求换人物、产品、语言或风格，制作新版本。
 description_en: Keep the reference video's structure and expressive relationships, and swap people, product, language or style to make a new version.
 ---
-# 视频复刻
+# 妙图-视频复刻
 
 Preserve the role, then recreate the form. Discover what a cut, picture, reveal or sound responds to and recreate that relationship for the target’s words and intention. Transform the person/product across every manifestation, not only the most obvious pixels.
 

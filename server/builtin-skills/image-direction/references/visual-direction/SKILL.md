@@ -6,7 +6,7 @@ description: 把模糊的创作意图整理成可执行的视觉方向卡，并�
 description_en: Turn a vague creative intent into an actionable visual direction card, and pick style, light, colour and composition references from the library.
 ---
 
-# 视觉方向卡
+# 妙图-视觉方向卡
 
 这个技能处理“画面应该往哪种视觉语言走”：风格气质、光线方案、色调关系、构图重心、材质和参考图组合。它可以从灵感库挑选参考，也可以在检索结果基础上归纳方向卡；它不负责把档案原文当成提示词交付。
 

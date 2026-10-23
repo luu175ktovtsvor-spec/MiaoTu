@@ -5,7 +5,7 @@ displayName_en: Interviews
 description: 制作有动机的采访相遇、提问和回应，安排共享机位与人物注意力。
 description_en: Stage motivated interview encounters, questions and responses, arranging shared camera positions and where attention goes.
 ---
-# 街访与访谈
+# 妙图-街访与访谈
 
 The guest usually carries the story; the interviewer helps the viewer discover it. Cut toward the person who matters now. Give the encounter a before and after, and make a reveal one meaningful event across its layers.
 

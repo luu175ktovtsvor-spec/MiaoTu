@@ -5,7 +5,7 @@ displayName_en: Video direction
 description: 编写动作、表演、运镜和剪辑指导，选择真实支持的图片、视频或音频参考。
 description_en: Write action, performance, camera and edit direction, and choose image, video or audio references that really exist.
 ---
-# 视频创作指导
+# 妙图-视频创作指导
 
 Direct the reason for an action. Choose temporal evidence when motion, contact or coordination would be lost in prose and stills. Let attitude shape voice, expression, posture and rhythm rather than attaching a gesture to every phrase.
 

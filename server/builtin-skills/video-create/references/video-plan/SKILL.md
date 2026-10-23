@@ -5,7 +5,7 @@ displayName_en: Creative planning
 description: 把需求、受众、目标与参考整理为创作方案，适用于新视频策划、导演提案和改版。
 description_en: Turn a brief, audience, goal and references into a creative plan; for new video concepts, director's treatments and reworks.
 ---
-# 创作策划
+# 妙图-创作策划
 
 Keep user authority in Brief and make Treatment your creative answer. Do not substitute implementation decisions for the goal. Develop the premise, viewer response, causal movement, visual world and useful continuity anchors.
 

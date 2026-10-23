@@ -5,7 +5,7 @@ displayName_en: Talking head
 description: 制作单人面向观众的自然表达，组织表演、字幕、证据画面和剪辑。
 description_en: Produce one person speaking naturally to the viewer, arranging performance, captions, evidence pictures and editing.
 ---
-# 口播视频
+# 妙图-口播视频
 
 A compelling person speaks to the viewer. One useful character-and-scene image can support several edited passages; attitude carries the piece while evidence and graphics help the viewer follow it.
 

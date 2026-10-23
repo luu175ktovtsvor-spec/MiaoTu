@@ -5,7 +5,7 @@ displayName_en: Explainer video
 description: 组织产品演示、屏幕教程、旁白与讲解者，建立可读的证据画面和图文关系。
 description_en: Organise product demos, screen tutorials, narration and presenters into legible evidence pictures and picture-text relationships.
 ---
-# 演示与解说视频
+# 妙图-演示与解说视频
 
 Build visual evidence, not noun illustration. Decide whether accepted on-camera performance or independent narration carries this passage. Preserve real screen details when they are proof; authored demonstrations serve a different role.
 

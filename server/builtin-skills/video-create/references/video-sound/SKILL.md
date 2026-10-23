@@ -5,7 +5,7 @@ displayName_en: Sound and mix
 description: 规划对白、原音、配乐和音效，按实际素材及可用工具处理声音层次。
 description_en: Plan dialogue, production sound, score and effects, and shape the sound layers from real material and the tools that exist.
 ---
-# 声音与混音
+# 妙图-声音与混音
 
 Start with what the accepted material already sounds like. Keep speech clear and add music/effects for a distinct contribution, without duplicating existing voice, action or room tone. Describe what was actually heard separately from stream metadata.
 

@@ -6,7 +6,7 @@ description: 从妙图灵感库检索可追溯的提示词与图片/视频参考
 description_en: Search the MiaoImg library for traceable prompts and image or video references, and bring a chosen reference into the current canvas.
 ---
 
-# 灵感库接入
+# 妙图-灵感库接入
 
 灵感库是只读参考资料。它不会调用生图模型，也不会替用户决定要不要生成。
 

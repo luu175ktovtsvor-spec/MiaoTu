@@ -5,7 +5,7 @@ displayName_en: Single-segment drama
 description: 组织单段短剧情或独立场景的人物关系、行为、机位、对白与连续性。连续漫剧制作和多集编剧使用专项入口。
 description_en: Organise characters, behaviour, camera positions, dialogue and continuity for one short drama segment or standalone scene. Full comic-drama production uses its own entry.
 ---
-# 单段短剧
+# 妙图-单段短剧
 
 ## 职责与交接
 

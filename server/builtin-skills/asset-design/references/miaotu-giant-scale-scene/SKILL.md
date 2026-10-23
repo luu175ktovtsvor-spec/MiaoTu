@@ -8,7 +8,7 @@ description_en: Turn a giant-scale scene description into image or video prompts
 
 > 执行说明：保留本文的方法和工具步骤。先核对当前工具与用户授权；桌面端可用本机工具时先检查软件是否已安装，缺少时按统一工具说明，在用户任务授权范围内准备所需依赖；妙图不会因为读取本文而自动安装软件。不要把 Skill 的示例路径、模型或能力当成已安装配置。网页端使用当前实际可用工具。
 
-# 巨物场景生成 SKILL V2.0
+# 妙图-巨物场景生成 V2.0
 ## Giant Scale Scene Director System
 
 **定位：巨物场景自动导演系统**

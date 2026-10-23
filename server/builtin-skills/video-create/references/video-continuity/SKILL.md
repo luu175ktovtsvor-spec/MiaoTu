@@ -5,7 +5,7 @@ displayName_en: Continuity
 description: 组织多机位、人物、产品与场景的参考关系，保持跨镜头连续性。
 description_en: Organise reference relationships across cameras, people, products and scenes to hold continuity between shots.
 ---
-# 角色与素材连续性
+# 妙图-角色与素材连续性
 
 Each new picture is a complete view. Give it the references that own the facts it needs. Keep useful dependencies shallow; reverse cameras see the same world differently, with coherent gaze, costume, props and physical relationships.
 

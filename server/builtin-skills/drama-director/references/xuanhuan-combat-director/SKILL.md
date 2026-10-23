@@ -8,7 +8,7 @@ description_en: Design shot prompts for immortal-cultivation duels, spell barrag
 
 > 执行说明：保留本文的方法和工具步骤。先核对当前工具与用户授权；桌面端可用本机工具时先检查软件是否已安装，缺少时按统一工具说明，在用户任务授权范围内准备所需依赖；妙图不会因为读取本文而自动安装软件。不要把 Skill 的示例路径、模型或能力当成已安装配置。网页端使用当前实际可用工具。
 
-# 玄幻动作导演
+# 妙图-玄幻动作导演
 
 先读取共享执行说明 readSkill({name:"drama-director",path:"references/miaoimg-adapter.md"})。详细正文位于 readSkill({name:"drama-director",path:"references/fantasy-action/source-guide.md"})，包括动作颗粒度、攻守轮换、空间收束与标准输出格式。
 

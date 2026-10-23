@@ -5,7 +5,7 @@ displayName_en: Motion graphics
 description: 设计图形层次、对比、榜单和时间变化，并形成当前工具能实现的合成方案。
 description_en: Design graphic layers, contrast, rankings and change over time, and shape a composition plan the current tools can actually produce.
 ---
-# 画面与动态图形
+# 妙图-画面与动态图形
 
 Compose an idea, not a stack of decorations. Direct the before, change and after, retaining object identity and useful state. Palette, type, edges, depth, motion and sound belong to one visual language.
 

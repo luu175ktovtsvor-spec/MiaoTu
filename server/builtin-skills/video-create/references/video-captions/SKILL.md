@@ -5,7 +5,7 @@ displayName_en: Caption design
 description: 设计字幕分句、字体、强调和说话人关系，适配已有字幕时间与真实渲染能力。
 description_en: Design caption line breaks, typography, emphasis and speaker relations, fitting existing caption timings and real rendering capability.
 ---
-# 字幕设计
+# 妙图-字幕设计
 
 Caption displays speech as delivered; typography can carry independent editorial words. Choose grouping, placement and emphasis from meaning, language and actual picture. Keep one transcript and distinguish designed motion from available measurement/rendering.
 

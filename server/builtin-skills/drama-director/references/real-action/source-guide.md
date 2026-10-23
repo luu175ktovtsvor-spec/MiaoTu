@@ -3,7 +3,7 @@ name: real-combat-director
 description: "真人写实打斗专用导演系统（R1 写实克制档）——现代格斗/警匪追逐/悬疑暗杀/喜剧打斗/儿童向打斗、以及小规模多人战斗（1v2 / 1v3 / 2v2 / 3v3）的工业化动作设计与 Seedance 2.5/2.0 投喂提示词生产。提取自 short-drama-director V6.8 的 R1 写实克制部分，保留 11 环动力链、真实格斗招式库、防守三态、闪避大幅化、多人战斗调度、镜头五要素、三手法六式、七段式投喂与合规转译。"
 ---
 
-# 真人写实打斗导演系统 (Real Combat Director) · V1.0
+# 妙图-真人写实打斗导演系统 · V1.0
 
 版本：V1.0（2026-09-17 · 从 short-drama-director V6.8 提取 R1 写实克制线，独立成包）｜**招式增强**：新增 references/martial-styles-extended.md 与 references/technique-combo-library.md（纯真实打斗；**只取神不取形**——衔接/节奏以本包为准）｜**节奏总则**：r1-combat-core.md §八（机关枪式近景对招 · 升格慢镜默认 0 处 · 严禁站桩式对打）｜**修订 2**：全包复查（节奏口径 · 数值自洽）修 27 处｜**修订 3**：残留清除（虚构身法表 · 输出面术语「定格/对峙」· 数值口径收敛）｜**修订 4**：新增多人战斗调度（`references/multi-opponent-rules.md`，同场 2~4 人 · 主角唯一锚点 · 主轴/从轴 · 三拍轮转禁站等）
 定位：面向 **AIGC 真人写实打斗** 的工业化动作设计与投喂提示词生产系统。适用题材：现代格斗、警匪追逐、悬疑暗杀、喜剧打斗、儿童向打斗；**多人战斗**（同场 2~4 人：1v2 / 1v3 / 2v2 / 3v3）走 `references/multi-opponent-rules.md`。

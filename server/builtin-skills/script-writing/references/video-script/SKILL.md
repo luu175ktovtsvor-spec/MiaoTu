@@ -5,7 +5,7 @@ displayName_en: Script and storyboard
 description: 编写独立视频、广告、口播和解说的脚本、对白、分镜及语义时间。连续分集短剧规划由分集短剧编剧负责。
 description_en: Write scripts, dialogue, storyboards and semantic timing for standalone videos, ads, talking heads and explainers. Episodic short-drama planning goes to the series writer.
 ---
-# 剧本与分镜
+# 妙图-剧本与分镜
 
 ## 职责与交接
 

@@ -5,7 +5,7 @@ displayName_en: B-roll and cutaways
 description: 为论点、动作或情绪选择补充画面，组织主体表演、素材与画面的交接。
 description_en: Choose supporting footage for a point, action or mood, and organise the handoff between performance, footage and picture.
 ---
-# 素材与补充画面
+# 妙图-素材与补充画面
 
 Give material a reason to appear. A picture can provide proof, place, action, contrast or a joke; choose exact correspondence when meaning requires it and broader coverage when a visual thought spans several pictures.
 

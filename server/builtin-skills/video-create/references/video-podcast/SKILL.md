@@ -5,7 +5,7 @@ displayName_en: Two-person podcast
 description: 制作互相回应的双人对话，组织正反机位、目光、道具和说话人关系。
 description_en: Produce two-person conversations that answer each other, arranging alternating camera positions, eyelines, props and speaker relations.
 ---
-# 双人对话与播客
+# 妙图-双人对话与播客
 
 The relationship between two people carries the argument. A question invites a claim; a reaction changes its meaning; a reply pays it off. Derive complementary views and preserve gaze, prop possession and silent listening.
 

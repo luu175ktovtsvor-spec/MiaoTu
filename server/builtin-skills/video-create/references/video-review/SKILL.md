@@ -5,7 +5,7 @@ displayName_en: Review
 description: 核对真实输出的画面、时长、尺寸、连续性、字幕与声音证据，定位需要修正的环节。
 description_en: Check real output picture, duration, dimensions, continuity, captions and sound evidence, and locate what still needs fixing.
 ---
-# 成片复查
+# 妙图-成片复查
 
 Review the actual work and its handoffs. A successful request, a plan or a healthy application does not prove the viewing experience. Fix the responsible passage or composition and retain paid accepted media.
 
