@@ -8,10 +8,10 @@ import { generationRouteMismatch, readGenerationRoute, type PlatformExpectedRout
 import { platformVideoDownload, replyVideoId } from './resources.ts'
 import { platformWatermarkPreference } from './watermark.ts'
 
-export type LocalMediaContext = { revision: number; signal?: AbortSignal; assert: () => void }
-type Observation = { conversationUrl?: string; previousUrl?: string; stable?: { key: string; samples: number }; streams?: Set<number>; expectedRoute?: PlatformExpectedRoute; upstream?: PlatformGenerationRoute; rejection?: string; dispatchSignal?: AbortSignal }
+export type LocalMediaContext = { revision: number; signal?: AbortSignal; assert: () => void; platformAccountId?: string; platformAccountLabel?: string }
+type Observation = { conversationUrl?: string; previousUrl?: string; stable?: { key: string; samples: number }; streams?: Set<number>; expectedRoute?: PlatformExpectedRoute; upstream?: PlatformGenerationRoute; routeVerified?: boolean; confirmationSent?: boolean; rejection?: string; dispatchSignal?: AbortSignal }
 type Entry = {
-  owner: string; revision: number; controller: AbortController; session: ElectronSession
+  owner: string; accountId: string; key: string; revision: number; controller: AbortController; session: ElectronSession
   window?: BrowserWindow; children: Set<BrowserWindow>; status: DoubaoStatus; menuBodies: string[]
   tail: Promise<void>; pending: Set<Promise<unknown>>; busy?: string
   observations: Map<string, Observation>; checking?: Promise<DoubaoStatus>
@@ -29,7 +29,15 @@ export class LocalMediaHost {
   readonly site: LocalMediaSite
   constructor(electron: typeof import('electron'), site: LocalMediaSite) { this.electron = electron; this.site = site }
   private conversation(value: string) {
-    try { const url = new URL(value); return url.origin === new URL(this.site.home).origin && /^\/chat\/\d{8,}\/?$/.test(url.pathname) ? url.origin + url.pathname : '' } catch { return '' }
+    try {
+      const url = new URL(value)
+      if (url.origin !== new URL(this.site.home).origin) return ''
+      // Doubao may keep a freshly-created task on /chat/ while its SPA has
+      // already rendered the new user/assistant turns. The DOM prompt match
+      // below is the binding proof in that form; the numeric URL is still
+      // preferred when the platform provides it.
+      return /^\/chat\/(?:\d{8,})\/?$/.test(url.pathname) || this.site.id === 'doubao' && url.pathname === '/chat/' ? url.origin + url.pathname : ''
+    } catch { return '' }
   }
   private navigable(value: string) { try { const url = new URL(value); return url.protocol === 'https:' && this.site.hosts.includes(url.hostname) } catch { return false } }
   private mediaUrl(value: string) {
@@ -37,9 +45,15 @@ export class LocalMediaHost {
     if (url.protocol !== 'https:' || url.username || url.password || !this.site.mediaHosts.some(host => url.hostname === host || url.hostname.endsWith('.' + host))) throw new Error('平台产物地址不在已确认的媒体域名范围')
     return url.href
   }
+  private accountId(value?: string) {
+    return typeof value === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(value) ? value : 'default'
+  }
+  private entryKey(owner: string, accountId: string) {
+    return owner + '\u0000' + accountId
+  }
   private assert(entry: Entry, context: LocalMediaContext, signal?: AbortSignal) {
     context.assert(); context.signal?.throwIfAborted(); signal?.throwIfAborted(); entry.controller.signal.throwIfAborted()
-    if (this.closing || this.entries.get(entry.owner) !== entry || entry.revision !== context.revision) throw Object.assign(new Error('本机平台会话已退场，请重新读取'), { status: 409 })
+    if (this.closing || this.entries.get(entry.key) !== entry || entry.revision !== context.revision) throw Object.assign(new Error('本机平台会话已退场，请重新读取'), { status: 409 })
   }
   private destroyWindow(entry: Entry) {
     for (const child of entry.children) if (!child.isDestroyed()) child.destroy()
@@ -93,23 +107,26 @@ export class LocalMediaHost {
   private revoke(entry: Entry) {
     entry.controller.abort(new DOMException('本机平台会话已退场', 'AbortError'))
     this.destroyWindow(entry)
-    this.retired.set(entry.owner, Math.max(this.retired.get(entry.owner) ?? -1, entry.revision))
-    if (this.entries.get(entry.owner) === entry) this.entries.delete(entry.owner)
+    this.retired.set(entry.key, Math.max(this.retired.get(entry.key) ?? -1, entry.revision))
+    if (this.entries.get(entry.key) === entry) this.entries.delete(entry.key)
   }
-  private entry(owner: string, context: LocalMediaContext) {
+  private entry(owner: string, requestedAccountId: string | undefined, context: LocalMediaContext) {
     context.assert(); context.signal?.throwIfAborted()
     if (this.closing) throw new DOMException('本机平台正在关闭', 'AbortError')
     if (!owner) throw Object.assign(new Error('请先登录妙图账户'), { status: 401 })
-    if (context.revision <= (this.retired.get(owner) ?? -1)) throw Object.assign(new Error('本机平台会话已退场，请重新读取'), { status: 409 })
-    let entry = this.entries.get(owner)
+    const accountId = this.accountId(requestedAccountId)
+    const key = this.entryKey(owner, accountId)
+    if (context.revision <= (this.retired.get(key) ?? -1)) throw Object.assign(new Error('本机平台会话已退场，请重新读取'), { status: 409 })
+    let entry = this.entries.get(key)
     if (entry && entry.revision !== context.revision) { this.revoke(entry); entry = undefined }
     if (!entry) {
-      const key = createHash('sha256').update(owner).digest('hex')
-      const profile = this.electron.session.fromPartition('persist:miao-' + this.site.id + '-' + key)
+      const partitionIdentity = accountId === 'default' ? owner : this.entryKey(owner, accountId)
+      const partitionKey = createHash('sha256').update(partitionIdentity).digest('hex')
+      const profile = this.electron.session.fromPartition('persist:miao-' + this.site.id + '-' + partitionKey)
       profile.setPermissionRequestHandler((_web, _permission, callback) => callback(false))
       profile.setPermissionCheckHandler(() => false)
-      entry = { owner, revision: context.revision, controller: new AbortController(), session: profile,
-        children: new Set(), status: disconnectedStatus(this.site.label), menuBodies: [], tail: this.tails.get(owner) || Promise.resolve(), pending: new Set(), observations: new Map(), streams: new Map() }
+      entry = { owner, accountId, key, revision: context.revision, controller: new AbortController(), session: profile,
+        children: new Set(), status: disconnectedStatus(this.site.label), menuBodies: [], tail: this.tails.get(key) || Promise.resolve(), pending: new Set(), observations: new Map(), streams: new Map() }
       {
         // Verify only generation routing fields before dispatch, then observe
         // stream lifetimes. Never retain bodies, credentials or signed URLs.
@@ -129,7 +146,7 @@ export class LocalMediaHost {
                 const data = await Promise.all((details.uploadData || []).map(async part => ({ bytes: part.bytes || (part.blobUUID ? await Promise.race([profile.getBlobData(part.blobUUID), delay(5000, undefined, { signal: current.controller.signal, ref: false })]) : undefined) })))
                 actual = readGenerationRoute(data)
               } catch { /* Unreadable routing data must never be sent blind. */ }
-              if (current.controller.signal.aborted || observation.dispatchSignal?.aborted || this.closing || this.entries.get(current.owner) !== current || current.dispatching !== id) { callback({ cancel: true }); return }
+              if (current.controller.signal.aborted || observation.dispatchSignal?.aborted || this.closing || this.entries.get(current.key) !== current || current.dispatching !== id) { callback({ cancel: true }); return }
               const mismatch = generationRouteMismatch(actual, observation.expectedRoute, this.site.label)
               if (mismatch) {
                 observation.rejection = mismatch
@@ -155,7 +172,7 @@ export class LocalMediaHost {
           observation?.streams?.delete(details.id); current.streams.delete(details.id)
         })
       }
-      this.entries.set(owner, entry)
+      this.entries.set(key, entry)
     }
     return entry
   }
@@ -187,8 +204,8 @@ export class LocalMediaHost {
     // A replacement revision reuses this owner's tail too: non-cancellable
     // cookie/storage cleanup must finish before the same partition is reopened.
     const tail = work.then(() => {}, () => {})
-    entry.tail = tail; this.tails.set(entry.owner, tail)
-    void tail.then(() => { if (this.tails.get(entry.owner) === tail) this.tails.delete(entry.owner) })
+    entry.tail = tail; this.tails.set(entry.key, tail)
+    void tail.then(() => { if (this.tails.get(entry.key) === tail) this.tails.delete(entry.key) })
     return this.track(entry, work)
   }
   private async window(entry: Entry, context: LocalMediaContext, signal: AbortSignal, show = false) {
@@ -287,12 +304,12 @@ export class LocalMediaHost {
     }
     throw new Error(`${this.site.label}${stage}尚未完成，本次尚未发送`)
   }
-  view(owner: string, revision: number): DoubaoStatus {
-    const entry = this.entries.get(owner)
+  view(owner: string, accountId: string | undefined, revision: number): DoubaoStatus {
+    const entry = this.entries.get(this.entryKey(owner, this.accountId(accountId)))
     return entry?.revision === revision && !entry.controller.signal.aborted && !this.closing ? entry.status : disconnectedStatus(this.site.label)
   }
-  async hasSavedLogin(owner: string, context: LocalMediaContext) {
-    const entry = this.entry(owner, context)
+  async hasSavedLogin(owner: string, accountId: string | undefined, context: LocalMediaContext) {
+    const entry = this.entry(owner, accountId, context)
     const cookies = await entry.session.cookies.get({ url: this.site.home })
     return cookies.some(cookie => /^(sessionid|sessionid_ss|sid_tt)$/.test(cookie.name) && !!cookie.value)
   }
@@ -375,8 +392,8 @@ export class LocalMediaHost {
     }
     return entry.status
   }
-  login(owner: string, context: LocalMediaContext) {
-    const entry = this.entry(owner, context)
+  login(owner: string, accountId: string | undefined, context: LocalMediaContext) {
+    const entry = this.entry(owner, accountId, context)
     return this.queue(entry, context, 'login', async signal => {
       await this.window(entry, context, signal, true)
       const login = await this.run(entry, context, signal, 'login').catch(() => { this.assert(entry, context, signal) })
@@ -384,8 +401,8 @@ export class LocalMediaHost {
       return this.refreshEntry(entry, context, signal)
     })
   }
-  refresh(owner: string, context: LocalMediaContext) {
-    const entry = this.entry(owner, context)
+  refresh(owner: string, accountId: string | undefined, context: LocalMediaContext) {
+    const entry = this.entry(owner, accountId, context)
     if (!entry.checking) {
       const work = this.queue(entry, context, 'refresh', signal => this.refreshEntry(entry, context, signal))
       entry.checking = work
@@ -394,8 +411,8 @@ export class LocalMediaHost {
     }
     return entry.checking
   }
-  disconnect(owner: string, context: LocalMediaContext, assertIdle: () => void) {
-    const entry = this.entry(owner, context)
+  disconnect(owner: string, accountId: string | undefined, context: LocalMediaContext, assertIdle: () => void) {
+    const entry = this.entry(owner, accountId, context)
     return this.queue(entry, context, 'disconnect', async signal => {
       assertIdle(); this.assert(entry, context, signal)
       this.destroyWindow(entry)
@@ -405,8 +422,8 @@ export class LocalMediaHost {
       return entry.status
     })
   }
-  submit(owner: string, id: string, kind: DoubaoKind, body: Record<string, any>, checkpoint: (state: Record<string, any>) => void, context: LocalMediaContext) {
-    const entry = this.entry(owner, context)
+  submit(owner: string, accountId: string | undefined, id: string, kind: DoubaoKind, body: Record<string, any>, checkpoint: (state: Record<string, any>) => void, context: LocalMediaContext) {
+    const entry = this.entry(owner, accountId, context)
     return this.queue(entry, context, 'submit', async signal => {
       if (process.env.MIAO_DESKTOP_NO_GENERATION === '1') throw Object.assign(new Error('本次开发验收禁止真实模型调用'), { status: 403 })
       let dispatched = false
@@ -544,14 +561,14 @@ export class LocalMediaHost {
             throw new Error(observation.rejection)
           }
           const url = this.conversation(entry.window!.webContents.getURL())
-          if (url && url !== previous && (!observation.expectedRoute || observation.upstream)) {
-            {
-              const page = await this.run(entry, context, signal, 'result', { prompt: body.prompt, kind, duration: observation.upstream?.duration, ratio: observation.upstream?.ratio, resolution: observation.upstream?.resolution })
-              if (this.conversation(page.url) !== url || page.userPrompt?.trim() !== body.prompt.trim()) continue
-            }
+          if (url) {
+            const page = await this.run(entry, context, signal, 'result', { prompt: body.prompt, kind, duration: observation.upstream?.duration, ratio: observation.upstream?.ratio, resolution: observation.upstream?.resolution })
+            const sameTask = page.userPrompt?.trim() === body.prompt.trim() && (this.conversation(page.url) === url || page.turns >= 2)
+            if (!sameTask) continue
             observation.conversationUrl = url
+            observation.routeVerified = Boolean(observation.upstream)
             if (entry.unbound === id) entry.unbound = undefined
-            checkpoint({ phase: 'accepted', conversationUrl: url, kind, ...(selection ? { modelLabel: selection.label } : {}), ...(observation.upstream ? { upstream: observation.upstream } : {}) })
+            checkpoint({ phase: 'accepted', conversationUrl: url, kind, ...(selection ? { modelLabel: selection.label } : {}), ...(observation.upstream ? { upstream: observation.upstream } : {}), routeVerified: observation.routeVerified })
             return { ok: true, requestId: id, status: 'running' }
           }
         }
@@ -565,13 +582,13 @@ export class LocalMediaHost {
         if (!dispatched) { entry.observations.delete(id); throw error }
         this.assert(entry, context, signal)
       } finally {
-        if (entry.dispatching === id && (!dispatched || !observation.expectedRoute || observation.upstream)) entry.dispatching = undefined
+        if (entry.dispatching === id && (!dispatched || !observation.expectedRoute || observation.upstream || observation.conversationUrl)) entry.dispatching = undefined
       }
       return { ok: true, requestId: id, status: 'running', submissionUncertain: true, error: `提交结果待确认，请打开${this.site.label}窗口核对原任务` }
     })
   }
-  poll(owner: string, id: string, kind: DoubaoKind, state: Record<string, any>, checkpoint: (state: Record<string, any>) => void, expectedPrompt: string, context: LocalMediaContext) {
-    const entry = this.entry(owner, context)
+  poll(owner: string, accountId: string | undefined, id: string, kind: DoubaoKind, state: Record<string, any>, checkpoint: (state: Record<string, any>) => void, expectedPrompt: string, context: LocalMediaContext) {
+    const entry = this.entry(owner, accountId, context)
     return this.queue(entry, context, 'poll', async signal => {
       const observation = entry.observations.get(id) || {}
       entry.observations.set(id, observation)
@@ -583,13 +600,14 @@ export class LocalMediaHost {
         return { ok: false, requestId: id, status: 'failed', error: observation.rejection }
       }
       let location = this.conversation(state.conversationUrl || observation.conversationUrl || '')
-      if (!location && entry.unbound === id) {
+      if (!location && entry.window && !entry.window.isDestroyed()) {
         const candidate = this.conversation(entry.window?.webContents.getURL() || '')
-        if (candidate && candidate !== observation.previousUrl && (!observation.expectedRoute || observation.upstream)) {
+        if (candidate) {
           const page = await this.run(entry, context, signal, 'result', { prompt: expectedPrompt, kind })
-          if (page.userPrompt?.trim() === expectedPrompt.trim()) {
+          if (page.userPrompt?.trim() === expectedPrompt.trim() && page.turns >= 2) {
             location = candidate; observation.conversationUrl = candidate; entry.unbound = undefined
-            state = { ...state, phase: 'accepted', conversationUrl: candidate, ...(observation.upstream ? { upstream: observation.upstream } : {}) }; checkpoint(state)
+            observation.routeVerified = Boolean(observation.upstream)
+            state = { ...state, phase: 'accepted', conversationUrl: candidate, routeVerified: observation.routeVerified, ...(observation.upstream ? { upstream: observation.upstream } : {}) }; checkpoint(state)
             if (entry.dispatching === id) entry.dispatching = undefined
           }
         }
@@ -603,7 +621,7 @@ export class LocalMediaHost {
       await this.navigate(entry, context, signal, location)
       const page = await this.run(entry, context, signal, 'snapshot')
       if (page.login || page.challenge || page.regionBlocked || page.dialog) return { ok: true, requestId: id, status: 'running', error: `原任务等待${this.site.label}页面处理，请打开${this.site.label}窗口继续` }
-      const requested = { prompt: expectedPrompt, kind, duration: state.upstream?.duration, ratio: state.upstream?.ratio, resolution: state.upstream?.resolution }
+      const requested = { prompt: expectedPrompt, kind, label: state.modelLabel, duration: state.upstream?.duration, ratio: state.upstream?.ratio, resolution: state.upstream?.resolution }
       const readResult = () => this.run(entry, context, signal, 'result', requested)
       let result = await readResult()
       // A loaded document is not a loaded conversation. Keep the browser
@@ -616,6 +634,19 @@ export class LocalMediaHost {
       if (result.userPrompt?.trim() !== expectedPrompt.trim()) return { ok: true, requestId: id, status: 'running', error: `${this.site.label}当前消息与原任务无法核对，请打开原对话检查；不会提取其他消息的产物` }
       for (let sample = 0; sample < 4; sample++) {
         const items = result.items.filter((item: any) => item.kind === kind).map((item: any) => ({ ...item, url: this.mediaUrl(item.url) }))
+        if (kind !== 'text' && result.confirmationReady && !result.hasVideoCard && !result.running && !observation.confirmationSent) {
+          await this.run(entry, context, signal, 'focus')
+          await this.input(entry, context, signal, 'Input.insertText', { text: '确定' })
+          const target = await this.run(entry, context, signal, 'confirmationTarget', requested)
+          if (!target) return { ok: true, requestId: id, status: 'running', error: `${this.site.label}要求确认的模型或参数与原任务不一致，请打开原对话检查；不会自动确认` }
+          await this.click(entry, context, signal, target)
+          observation.confirmationSent = true
+          checkpoint({ ...state, phase: 'accepted', ...(state.modelLabel ? { modelLabel: state.modelLabel } : {}), autoConfirmation: 'sent' })
+          await delay(750, undefined, { signal })
+          result = await readResult()
+          if (this.conversation(result.url) !== location || result.userPrompt?.trim() !== expectedPrompt.trim()) break
+          continue
+        }
         // Completed media is stronger evidence than incidental words in the
         // assistant's explanation. Do not strand an original behind a broad
         // "please confirm" / "cannot generate" text match.
@@ -640,7 +671,7 @@ export class LocalMediaHost {
         observation.stable = { key, samples }
         const completedText = (observation.streams?.size || 0) === 0 && result.complete === true
         if ((kind === 'text' ? !!result.text?.trim() && completedText : items.length) && !result.running && samples >= 3) {
-          let downloadSource: 'platform-download' | undefined
+          let downloadSource: 'platform-download' | 'platform-player' | undefined
           if (kind === 'video') {
             const window = entry.window!
             let download: { url: string } | undefined
@@ -655,9 +686,18 @@ export class LocalMediaHost {
             // only the download the platform itself marks without_watermark.
             const after = await readResult()
             if (entry.window !== window || this.conversation(after.url) !== location || after.userPrompt?.trim() !== expectedPrompt.trim() || after.replyId !== result.replyId || after.running) return { ok: true, requestId: id, status: 'running' }
-            if (!download?.url) return { ok: true, requestId: id, status: 'running', error: `${this.site.label}已出片。画布只保存平台确认的无 AI 明水印原片，正在继续取回，不会写入播放器文件` }
-            items[0] = { ...items[0], url: download.url, watermark: { status: 'platform-confirmed', source: 'platform-download' } }
-            downloadSource = 'platform-download'
+            if (!download?.url) {
+              // A platform player can already contain the completed video even
+              // when its optional no-watermark download endpoint is absent or
+              // blocked in the current account/region. Preserve the result so
+              // the task cannot remain pending forever, and label the source
+              // honestly instead of claiming a watermark-free original.
+              items[0] = { ...items[0], watermark: { status: 'platform-player', source: 'platform-player', noWatermarkConfirmed: false } }
+              downloadSource = 'platform-player'
+            } else {
+              items[0] = { ...items[0], url: download.url, watermark: { status: 'platform-confirmed', source: 'platform-download', noWatermarkConfirmed: true } }
+              downloadSource = 'platform-download'
+            }
           }
           checkpoint({ ...state, phase: 'completed', ...(observation.upstream ? { upstream: observation.upstream } : {}), ...(downloadSource ? { downloadSource } : {}) })
           entry.observations.delete(id)
@@ -672,8 +712,8 @@ export class LocalMediaHost {
       return { ok: true, requestId: id, status: 'running' }
     })
   }
-  bindCurrent(owner: string, id: string, prompt: string, kind: DoubaoKind, context: LocalMediaContext) {
-    const entry = this.entry(owner, context)
+  bindCurrent(owner: string, accountId: string | undefined, id: string, prompt: string, kind: DoubaoKind, context: LocalMediaContext) {
+    const entry = this.entry(owner, accountId, context)
     // Capture the page the user chose before joining the DOM queue. A queued
     // observer must not silently replace that choice with another conversation.
     const window = entry.window
@@ -692,8 +732,8 @@ export class LocalMediaHost {
       return url
     })
   }
-  cancel(owner: string, id: string, state: Record<string, any>, expectedPrompt: string, context: LocalMediaContext) {
-    const entry = this.entry(owner, context)
+  cancel(owner: string, accountId: string | undefined, id: string, state: Record<string, any>, expectedPrompt: string, context: LocalMediaContext) {
+    const entry = this.entry(owner, accountId, context)
     return this.queue(entry, context, 'cancel', async signal => {
       const location = this.conversation(state.conversationUrl || entry.observations.get(id)?.conversationUrl || '')
       if (!location) throw new Error(`请先取回原${this.site.label}对话，再确认是否停止生成`)
@@ -709,8 +749,8 @@ export class LocalMediaHost {
         error: clicked ? `已请求停止原${this.site.label}任务，请核对停止状态；妙图会继续取回原结果` : `尚未找到原${this.site.label}任务的停止按钮，请稍后重试或在平台窗口处理；原任务仍保留` }
     })
   }
-  download(owner: string, value: string, context: LocalMediaContext): Promise<Response> {
-    const entry = this.entry(owner, context)
+  download(owner: string, accountId: string | undefined, value: string, context: LocalMediaContext): Promise<Response> {
+    const entry = this.entry(owner, accountId, context)
     const signal = AbortSignal.any([entry.controller.signal, ...(context.signal ? [context.signal] : [])])
     return this.track(entry, (async () => {
       let url = this.mediaUrl(value)
@@ -729,10 +769,10 @@ export class LocalMediaHost {
     })())
   }
   retire(owner: string) {
-    const entry = this.entries.get(owner)
-    if (!entry) return Promise.resolve()
-    this.revoke(entry)
-    return Promise.allSettled([...entry.pending]).then(() => {})
+    const entries = [...this.entries.values()].filter(entry => entry.owner === owner)
+    if (!entries.length) return Promise.resolve()
+    for (const entry of entries) this.revoke(entry)
+    return Promise.allSettled(entries.flatMap(entry => [...entry.pending])).then(() => {})
   }
   stop() {
     if (!this.stopped) {

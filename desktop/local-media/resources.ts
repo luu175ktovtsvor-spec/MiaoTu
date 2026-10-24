@@ -38,7 +38,7 @@ export function replyVideoId(data: any, replyId: string, conversationId: string)
 export async function platformVideoDownload(payload: { platform: string; conversationUrl: string; replyId: string }, readVideo: typeof replyVideoId): Promise<{ url: string } | undefined> {
   const origin = payload.platform === 'dola' ? 'https://www.dola.com' : payload.platform === 'doubao' ? 'https://www.doubao.com' : ''
   const target = new URL(payload.conversationUrl)
-  if (!origin || target.origin !== origin || !/^\/chat\/\d{8,40}\/?$/.test(target.pathname) || !/^\d{8,40}$/.test(payload.replyId)) return
+  if (!origin || target.origin !== origin || !/^\/chat\/(?:\d{8,40})?\/?$/.test(target.pathname) || !/^\d{8,40}$/.test(payload.replyId)) return
   const current = () => location.origin === origin && location.pathname.replace(/\/$/, '') === target.pathname.replace(/\/$/, '')
   if (!current()) return
   const controller = new AbortController()
@@ -79,7 +79,11 @@ export async function platformVideoDownload(payload: { platform: string; convers
         return current() ? JSON.parse(text) : undefined
       } finally { reader.releaseLock() }
     }
-    const conversationId = target.pathname.split('/').filter(Boolean).at(-1)!
+    const conversationId = target.pathname.split('/').filter(Boolean).at(-1)
+    // The blank /chat/ route has no conversation ID, so its optional
+    // no-watermark endpoint cannot be addressed. The caller will retain the
+    // already-rendered player URL and mark it as unconfirmed.
+    if (!conversationId) return
     const chain = await post('/im/chain/single', { cmd: 3100, uplink_body: { pull_singe_chain_uplink_body: {
       conversation_id: conversationId, anchor_index: Number.MAX_SAFE_INTEGER, conversation_type: 3, direction: 1, limit: 20, ext: {},
       filter: { index_list: [] }, evaluate_ab_params: '', evaluate_common_params: '',

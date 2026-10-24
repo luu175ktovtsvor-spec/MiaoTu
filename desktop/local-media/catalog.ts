@@ -149,6 +149,7 @@ function presentLocalModel(site: LocalMediaSite, id: string, kind: 'image' | 'vi
     imageSizes: [], imageRatios: imageParameters?.ratios || [],
     ratios: parameters?.ratios || imageParameters?.ratios || [],
     durations: parameters?.durations || [],
+    resolutions: parameters?.resolutions || [],
     ...(parameters?.defaultDuration ? { defaultDuration: parameters.defaultDuration } : {}),
     durationResolutionMap: parameters ? [{ duration: parameters.durations, resolution: parameters.resolutions }] : [],
     billingSource: site.provider,

@@ -1,6 +1,6 @@
 <template>
   <div v-if="capabilities" class="localMediaInfo" :class="{ compact }" :aria-label="translate('账号模型能力')">
-    <p class="watermarkPolicy">{{ translate('生成前，妙图会自动打开账号里的「去除 AI 水印」，只保存平台确认已去掉 AI 水印的原片。') }}</p>
+    <p class="watermarkPolicy">{{ translate('生成前，妙图会自动打开账号里的「去除 AI 水印」；优先保存平台确认的原片，平台只提供播放器地址时也会保留结果并标明取回来源。') }}</p>
     <p>{{ referenceHint }}</p>
     <template v-if="!compact">
       <p>{{ translate(capabilities.platform === 'doubao' ? '普通豆包账号会保留豆包品牌标识，订阅账号没有。' : 'Dola 免费和付费账号都会去除 AI 水印；品牌标识按 Dola 返回的为准。') }}</p>

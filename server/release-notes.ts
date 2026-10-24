@@ -10,6 +10,18 @@ export type ReleaseNotes = {
 // 更新说明直接写软件修好了什么：哪一个界面、哪一项操作，以前错在哪里，现在怎样。
 // 不写「上游」「部分问题」「体验优化」这类看不出具体改动的话。
 export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
+  '3.1.5': {
+    title: { zh: '豆包生成可以直接完成并取回', en: 'Doubao generation completes and returns automatically' },
+    fixes: [
+      { zh: '豆包生成视频时，妙图会按原提示词、模型、时长和比例继续核对多轮消息；平台需要参数确认时会自动完成确认，不需要用户再打开豆包点「确定」。生成完成后即使没有去水下载地址，也会保存平台播放器原片，不会一直卡在「提交结果待确认」。', en: 'For Doubao video generation, MiaoImg now follows the original prompt, model, duration and ratio across confirmation turns and completes a matching parameter confirmation automatically. After generation, a completed platform player result is preserved even without a no-watermark download URL, so the task no longer remains stuck on submission confirmation.' },
+      { zh: '豆包与 Dola 的设置页会列出当前账号实际开放的图片、视频和文本模型，显示节点模型 ID、平台模型 ID、比例、时长与分辨率。', en: 'The Doubao and Dola settings now list the image, video and text models actually available to the connected account, including the node model ID, platform model ID, ratios, durations and resolutions.' },
+      { zh: '豆包和 Dola 支持添加多个独立网页账号，可以为每个账号单独重命名、切换、登录和清除登录状态；新任务会固定记下提交时使用的账号，切换默认账号不会改写原任务归属。', en: 'Doubao and Dola now support multiple isolated web accounts with separate names, switching, sign-in and sign-out. New tasks record the account used at submission, and changing the active account does not move existing tasks to another account.' },
+    ],
+    improvements: [
+      { zh: '豆包视频的比例、时长和清晰度仍按平台当前菜单发送；能读到平台请求回执时会继续核对，读不到时也会保留任务并明确记录未核验状态。', en: 'Doubao video ratio, duration and resolution still follow the current platform menu; MiaoImg verifies the platform request when a receipt is available and keeps the task with an explicit unverified state when it is not.' },
+    ],
+    knownIssues: [],
+  },
   '3.1.4': {
     title: { zh: '豆包和 Dola 选中后文字清晰可读', en: 'Doubao and Dola labels stay readable when selected' },
     fixes: [

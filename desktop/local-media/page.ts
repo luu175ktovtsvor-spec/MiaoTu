@@ -10,6 +10,7 @@ export function localMediaPage(action: string, payload: Record<string, any> = {}
   }
   const elements = (selector: string, root: ParentNode = document) => Array.from(root.querySelectorAll(selector)).filter(visible) as HTMLElement[]
   const normalize = (value: string) => value.replace(/\u200b|\ufeff/g, '').replace(/\r\n/g, '\n').trim()
+  const promptKey = (value: string) => normalize(value).replace(/\s+(?=[，。！？；：、“”‘’…（）【】《》])/g, '')
   const text = (element?: Element) => normalize((element as HTMLElement)?.innerText || '')
   const label = (element: Element) => (element.getAttribute('aria-label') || element.getAttribute('title') || text(element)).replace(/\s+/g, ' ').trim()
   const enabled = (element: Element) => !element.hasAttribute('disabled') && element.getAttribute('aria-disabled') !== 'true' && element.getAttribute('data-disabled') !== 'true'
@@ -189,14 +190,16 @@ export function localMediaPage(action: string, payload: Record<string, any> = {}
     const pending = elements('[aria-busy="true"],[data-status="uploading"],[class*="uploading"],[role="progressbar"]', composer).length > 0
     return { count: images.length, pending }
   }
-  if (action === 'result' || action === 'cancel' || action === 'activateVideo') {
-    // A blank /chat page has no conversation. Sidebar project/history cards
-    // must never count as user turns or prevent a fresh submission.
-    if (!conversation) return { url: location.href, turns: 0, userPrompt: '', text: '', replyText: '', items: [], running: false }
+  if (action === 'result' || action === 'cancel' || action === 'activateVideo' || action === 'confirmationTarget') {
     const declaredMessages = elements('[data-message-id],[data-message-role],[data-role="user"],[data-role="assistant"]')
     const candidates = (declaredMessages.length ? declaredMessages : elements('[class*="message-item"],[class*="messageItem"],[class*="inner-item"]'))
       .filter(element => !element.closest('nav,aside,[data-testid="flow_chat_sidebar"],#flow_chat_sidebar,[class*="sidebar"]') && !element.contains(input || document.body))
     const messages = candidates.filter(element => !candidates.some(other => other !== element && other.contains(element)))
+    // Doubao keeps a newly-created chat at /chat/ until its SPA history state
+    // settles. Treat it as a conversation only when actual message elements
+    // already exist; an untouched blank home page remains non-conversational.
+    const activeConversation = conversation || location.pathname === '/chat/' && messages.length > 0
+    if (!activeConversation) return { url: location.href, turns: 0, userPrompt: '', text: '', replyText: '', items: [], running: false }
     const role = (element: HTMLElement) => {
       const roleElement = element.querySelector('[data-message-role],[data-role="user"],[data-role="assistant"]')
       const declared = element.getAttribute('data-message-role') || element.getAttribute('data-role') || roleElement?.getAttribute('data-message-role') || roleElement?.getAttribute('data-role')
@@ -207,49 +210,87 @@ export function localMediaPage(action: string, payload: Record<string, any> = {}
       return ''
     }
     const users = messages.filter(element => role(element) === 'user')
-    const user = users.at(-1)
-    const replies = messages.filter((element, index) => role(element) === 'assistant' && user && index > messages.indexOf(user))
-    const reply = replies.at(-1)
-    const userContent = user?.querySelector('[data-testid="message_text_content"],[class*="message-content"],[class*="messageContent"]') || user
-    const rawUserPrompt = text(userContent)
+    const userContent = (user: HTMLElement) => user.querySelector('[data-testid="message_text_content"],[class*="message-content"],[class*="messageContent"]') || user
     // Media skills decorate the displayed user turn with their own prefix.
     // Accept only that exact prefix plus this job's full prompt; never strip
     // arbitrary prose or adopt a different message from the conversation.
     const expected = payload.prompt ? normalize(String(payload.prompt)) : ''
     const prefixes = payload.kind === 'image' ? ['生成图片：', 'Create Images:', 'Create images:', 'Create image:', 'Generate image:', '画像を作成：'] : payload.kind === 'video' ? ['生成视频：', 'Create Videos:', 'Create videos:', 'Create video:', 'Generate video:', '動画を作成：'] : []
-    const prefix = prefixes.find(value => rawUserPrompt.startsWith(value))
-    const decoratedPrompt = prefix ? normalize(rawUserPrompt.slice(prefix.length)) : ''
-    const videoPrompt = payload.kind === 'video' && prefix ? decoratedPrompt.match(/^([\s\S]+)[，,]\s*(自动|Auto|[0-9]+:[0-9]+)[，,]\s*([0-9]+)s[，,]\s*(720p|1080p)$/) : null
-    const videoMatches = videoPrompt && videoPrompt[1] === expected && (!payload.ratio || videoPrompt[2] === payload.ratio || payload.ratio === 'auto' && /^(自动|Auto)$/.test(videoPrompt[2])) && (payload.duration === undefined || Number(videoPrompt[3]) === payload.duration) && (!payload.resolution || videoPrompt[4] === payload.resolution)
-    // Every canvas submission starts its own conversation. A later user turn
-    // makes that binding ambiguous, even if it repeats the same prompt.
-    const userPrompt = users.length !== 1 ? '' : prefix && expected && (decoratedPrompt === expected || videoMatches) ? expected : rawUserPrompt
-    const matches = !payload.prompt || userPrompt === normalize(String(payload.prompt))
-    const videoCard = reply ? unique(elements('[class*="block-video-"]', reply)) : undefined
+    const userMatch = (user: HTMLElement) => {
+      const raw = text(userContent(user))
+      const prefix = prefixes.find(value => raw.startsWith(value))
+      const decorated = normalize(prefix ? raw.slice(prefix.length) : raw)
+      if (!payload.prompt) return { decorated }
+      // Doubao may append confirmation turns and encode the selected output
+      // after the prompt. The implicit-auto summary omits the ratio:
+      // `<prompt>，6s，720p`; an explicit ratio is also possible.
+      const video = payload.kind === 'video' ? decorated.match(/^([\s\S]+?)[，,]\s*(?:(自动|Auto|\d+:\d+)[，,]\s*)?(\d+)s[，,]\s*(\d{3,4}p)$/i) : null
+      const image = payload.kind === 'image' ? decorated.match(/^([\s\S]+?)[，,]\s*(自动|Auto|\d+:\d+)$/i) : null
+      const promptPart = video?.[1] || image?.[1] || decorated
+      if (promptKey(promptPart) !== promptKey(expected)) return
+      const duration = video?.[3]
+      const resolution = video?.[4]
+      const ratio = video?.[2] || image?.[2]
+      if (payload.duration !== undefined && Number(duration) !== payload.duration) return
+      if (payload.resolution && resolution?.toLowerCase() !== String(payload.resolution).toLowerCase()) return
+      if (payload.ratio && payload.ratio !== 'auto' && ratio !== payload.ratio) return
+      return { decorated }
+    }
+    const matchedUsers = users.filter(user => !!userMatch(user))
+    // A generation can be split into several user turns by the platform's
+    // parameter confirmation. Bind the unique original prompt, then inspect
+    // every assistant reply after it, including the eventual video message.
+    const user = matchedUsers.length === 1 ? matchedUsers[0] : undefined
+    const matches = !payload.prompt || !!user
+    const userPrompt = matches ? payload.prompt ? expected : text(userContent(user!)) : ''
+    const userIndex = user ? messages.indexOf(user) : -1
+    const replies = userIndex >= 0 ? messages.filter((element, index) => role(element) === 'assistant' && index > userIndex) : []
+    const reply = replies.at(-1)
+    const videoCards = replies.map(item => unique(elements('[class*="block-video-"]', item))).filter(Boolean) as HTMLElement[]
+    const videoCard = videoCards.at(-1)
+    const laterUsers = users.map(element => messages.indexOf(element)).filter(index => index > userIndex)
+    const nextUserIndex = laterUsers.length ? Math.min(...laterUsers) : messages.length
+    const pendingReplies = userIndex >= 0
+      ? messages.filter((element, index) => role(element) === 'assistant' && index > userIndex && index < nextUserIndex)
+      : []
+    const confirmationText = pendingReplies.map(item => text(item)).join('\n')
+    const confirmedModel = cleanModel(confirmationText.match(/(?:模型|Model)[：:]\s*([^\n]+)/i)?.[1] || '')
+    const confirmedDuration = Number(confirmationText.match(/(?:时长|Duration)[：:]\s*(\d+)\s*秒?/i)?.[1])
+    const confirmedRatio = confirmationText.match(/(?:比例|Ratio)[：:]\s*(自动|Auto|\d+:\d+)/i)?.[1]
+    const confirmationRequested = /(?:视频|图片)生成参数确认|请.{0,8}确认参数|please confirm.{0,20}(?:parameters|settings)/i.test(confirmationText)
+    const confirmationReady = matches && confirmationRequested
+      && (!modelLabels().length || modelLabels().includes(confirmedModel))
+      && (payload.duration === undefined || confirmedDuration === payload.duration)
+      && (!payload.ratio || payload.ratio === 'auto' || confirmedRatio === payload.ratio)
+    if (action === 'confirmationTarget') return confirmationReady && normalize(value()) === '确定' ? point(send()) : null
     if (action === 'cancel') return matches ? point(unique(controls().filter(element => /^(停止生成|停止回答|停止|Stop generating|Stop)$/.test(label(element))))) : null
     if (action === 'activateVideo') {
-      if (!matches || !reply || reply.querySelector('video')) return null
-      const play = videoCard || unique(buttons(reply).filter(element => /^(播放|Play)$/.test(label(element))))
+      if (!matches || !videoCard || videoCard.querySelector('video')) return null
+      const play = videoCard
       return point(play)
     }
     const items: any[] = []
-    if (reply && matches) {
-      for (const image of Array.from(reply.querySelectorAll('img'))) {
+    if (matches) {
+      const taskReplies = replies as HTMLElement[]
+      for (const image of taskReplies.flatMap(item => Array.from(item.querySelectorAll('img')))) {
         const url = image.currentSrc || image.src
         if (image.getAttribute('aria-hidden') !== 'true' && /^https:\/\//.test(url) && image.complete && image.naturalWidth >= 512 && image.naturalHeight >= 256 && !items.some(item => item.url === url)) items.push({ kind: 'image', url })
       }
-      for (const video of Array.from(reply.querySelectorAll('video'))) if (video.currentSrc || video.src) items.push({ kind: 'video', url: video.currentSrc || video.src })
+      for (const video of taskReplies.flatMap(item => Array.from(item.querySelectorAll('video')))) {
+        const source = video.currentSrc || video.src || video.querySelector('source')?.src
+        if (source && !items.some(item => item.url === source)) items.push({ kind: 'video', url: source })
+      }
     }
     const content = (reply?.querySelector('[data-testid="message_text_content"],[class*="markdown"]') || reply)?.cloneNode(true) as HTMLElement | undefined
     content?.querySelectorAll('button,time,[class*="message-action"],[class*="suggest-message"]').forEach(element => element.remove())
     content?.querySelectorAll('br').forEach(element => element.replaceWith('\n'))
     content?.querySelectorAll('p,li,pre,h1,h2,h3,h4,blockquote').forEach(element => element.append('\n'))
     const responseText = normalize(content?.textContent || '')
-    const replyText = text(reply).slice(-1200)
+    const replyText = replies.map(item => text(item)).join('\n').slice(-2400)
     const running = controls().some(element => /^(停止生成|停止回答|停止|Stop generating|Stop)$/.test(label(element))) || !!reply && elements('[role="progressbar"],[class*="loading-spinner"],[class*="generating"]', reply).length > 0
     const complete = !!reply && elements('[class*="message-action"],[class*="messageAction"],[data-testid*="message_action"]', reply).length > 0 && !running
     const replyId = reply?.getAttribute('data-message-id') || reply?.querySelector('[data-message-id]')?.getAttribute('data-message-id') || ''
-    return { url: location.href, turns: messages.length, userPrompt, text: matches ? responseText : '', replyText, replyId, items, running, complete, hasVideoCard: matches && !!videoCard,
+    return { url: location.href, turns: messages.length, userPrompt, text: matches ? responseText : '', replyText, replyId, items, running, complete, hasVideoCard: matches && !!videoCard, confirmationReady,
       failed: /生成失败|无法生成|未能生成|不符合.*规范|unable to generate|generation failed|couldn.t generate/i.test(replyText), needsConfirmation: /请.{0,8}确认|是否确认|确认后.{0,8}(开始|生成)|please confirm|confirm.{0,30}generat/i.test(replyText) }
   }
   throw new Error(`未知${platform}页面操作`)
