@@ -1,7 +1,7 @@
 #!/bin/sh
 # Published alongside the matching native release; never runs during deployment.
 set -eu
-VERSION=0.2.20
+VERSION=3.1.1
 BASE="https://miaoimg.cn/desktop-downloads/updates"
 case "$(uname -m)" in
   arm64) DMG="miaoimg-desktop-mac-arm64.dmg" ;;
