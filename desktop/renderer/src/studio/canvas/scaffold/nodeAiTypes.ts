@@ -21,6 +21,10 @@ export type BaseNodeMediaModel = Omit<MediaModel, "mode"> & {
 // 图片、视频节点使用的可选能力。
 export interface NodeMediaModelExtensions {
   maxReferences?: number;
+  // 本机豆包/Dola 先展示已核对的预置，账号菜单返回后覆盖并标记来源。
+  parameterSource?: 'preset' | 'account';
+  parameterPreset?: { durations?: number[]; defaultDuration?: number; resolutions?: string[]; ratios?: string[]; imageSizeTiers?: string[] };
+  connected?: boolean;
   customSize?: boolean;
   sizeRule?: { minPixels: number; maxPixels: number; minRatio: number; maxRatio: number; multipleOf?: number; maxEdge?: number } | null;
   // 尺寸表带 value / ratio 对照：节点按比例挑尺寸（pickSize）要用。

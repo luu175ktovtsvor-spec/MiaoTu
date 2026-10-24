@@ -19,7 +19,7 @@ export const DOUBAO_MODELS = [
   { id: 'doubao-local-video-seedance-2.0-fast', kind: 'video', label: 'Seedance 2.0 Fast', upstreamKey: 'seedance_v2.0' },
   { id: 'doubao-local-video-seedance-2.0-mini', kind: 'video', label: 'Seedance 2.0 Mini', upstreamKey: 'seedance_v2.0_mini' },
 ] as const
-// Labels come from the signed-in Dola get_item_conf on 2026-10-20.
+// Labels come from the signed-in Dola get_item_conf checked on 2026-10-24.
 // Closed controls may show the short selected caption, so both forms are accepted.
 // Ordinary 2.0 is never an alias for Fast. This account did not list 2.5.
 export const DOLA_MODELS = [
@@ -30,6 +30,47 @@ export const DOLA_MODELS = [
   { id: 'dola-local-video-seedance-2.0-fast', kind: 'video', label: 'Dreamina Seedance 2.0 Fast', upstreamKey: 'seedance_v2.0', labels: ['Dreamina Seedance 2.0 Fast', '2.0 Fast'] },
   { id: 'dola-local-video-seedance-1.0', kind: 'video', label: 'Dreamina Seedance 1.0', upstreamKey: 'ic_mini', labels: ['Dreamina Seedance 1.0', '1.0'] },
 ] as const
+const range = (min: number, max: number) => Array.from({ length: max - min + 1 }, (_, index) => min + index)
+const DOUBAO_VIDEO_RATIOS = ['auto', '3:4', '4:3', '9:16', '16:9', '1:1', '21:9']
+const DOLA_VIDEO_RATIOS = ['auto', '3:4', '4:3', '9:16', '16:9', '1:1', '21:9']
+const DOUBAO_IMAGE_RATIOS = ['auto', '9:16', '2:3', '3:4', '1:1', '4:3', '3:2', '16:9']
+const DOLA_IMAGE_RATIOS = ['auto', '9:16', '2:3', '3:4', '1:1', '4:3', '3:2', '16:9']
+export type LocalMediaParameterPreset = {
+  durations?: number[]
+  defaultDuration?: number
+  resolutions?: string[]
+  ratios?: string[]
+  imageSizeTiers?: string[]
+}
+// Last verified consumer-page capabilities. They make the node usable before
+// the asynchronous account menu arrives. A loaded live menu always replaces
+// these values, and submission still requires that live menu.
+export const LOCAL_MEDIA_PARAMETER_PRESETS: Readonly<Record<string, LocalMediaParameterPreset>> = Object.freeze({
+  'doubao-local-image-seedream-5.0-flash': { ratios: DOUBAO_IMAGE_RATIOS, imageSizeTiers: ['1K', '1.5K', '2K'] },
+  'doubao-local-image-seedream-5.0-pro': { ratios: DOUBAO_IMAGE_RATIOS, imageSizeTiers: ['1K', '1.5K', '2K'] },
+  'doubao-local-image-seedream-4.5': { ratios: DOUBAO_IMAGE_RATIOS, imageSizeTiers: ['2K', '4K'] },
+  'doubao-local-image-seedream-4.0': { ratios: DOUBAO_IMAGE_RATIOS, imageSizeTiers: ['1K', '2K', '4K'] },
+  'doubao-local-video-seedance-2.5': {
+    durations: range(4, 30), defaultDuration: 10, resolutions: ['720p', '1080p'], ratios: DOUBAO_VIDEO_RATIOS,
+  },
+  'doubao-local-video-seedance-2.0': {
+    durations: range(4, 15), defaultDuration: 10, resolutions: [], ratios: DOUBAO_VIDEO_RATIOS,
+  },
+  'doubao-local-video-seedance-2.0-fast': {
+    durations: range(4, 15), defaultDuration: 10, resolutions: [], ratios: DOUBAO_VIDEO_RATIOS,
+  },
+  'doubao-local-video-seedance-2.0-mini': {
+    durations: range(4, 15), defaultDuration: 10, resolutions: [], ratios: DOUBAO_VIDEO_RATIOS,
+  },
+  'dola-local-image-seedream-5.0-pro': { ratios: DOLA_IMAGE_RATIOS },
+  'dola-local-image-seedream-4.5': { ratios: DOLA_IMAGE_RATIOS },
+  'dola-local-video-seedance-2.0-fast': {
+    durations: range(4, 10), defaultDuration: 10, resolutions: [], ratios: DOLA_VIDEO_RATIOS,
+  },
+  'dola-local-video-seedance-1.0': {
+    durations: range(4, 10), defaultDuration: 10, resolutions: [], ratios: DOLA_VIDEO_RATIOS,
+  },
+})
 export function localModelSelection(model: unknown) { return [...DOUBAO_MODELS, ...DOLA_MODELS].find(item => item.id === model) }
 const LOCAL_MEDIA_ID = /^(doubao-local|dola-local)-(image|video|text)(?:-[a-z0-9.]{1,64})?$/
 export function localMediaSite(model: unknown, provider?: unknown) {
@@ -60,11 +101,14 @@ export function localVideoParameters(model: unknown, menu?: LiveMenu) {
   if (!site || localMediaKind(model) !== 'video') return
   if (menu?.loaded) {
     const live = menu.models.find(item => item.kind === 'video' && liveModelId(site, item) === model)
-    if (!live) return { durations: [] as number[], resolutions: [] as string[], ratios: [] as string[] }
-    return { durations: live.durations, defaultDuration: live.defaultDuration, resolutions: live.resolutions, ratios: live.ratios }
+    if (!live) return { durations: [] as number[], resolutions: [] as string[], ratios: [] as string[], source: 'account' as const }
+    return { durations: live.durations, defaultDuration: live.defaultDuration, resolutions: live.resolutions, ratios: live.ratios, source: 'account' as const }
   }
-  // Before this account's menu arrives, do not offer another account's durations or ratios.
-  return { durations: [] as number[], resolutions: [] as string[], ratios: [] as string[] }
+  const preset = typeof model === 'string' ? LOCAL_MEDIA_PARAMETER_PRESETS[model] : undefined
+  return {
+    durations: preset?.durations || [], ...(preset?.defaultDuration ? { defaultDuration: preset.defaultDuration } : {}),
+    resolutions: preset?.resolutions || [], ratios: preset?.ratios || [], source: 'preset' as const,
+  }
 }
 // The desktop adapter's accepted inputs/outputs, not an assertion that every
 // upstream account exposes every creation feature. UI and admission share it.
@@ -73,9 +117,11 @@ export function localImageParameters(model: unknown, menu?: LiveMenu) {
   if (!site || localMediaKind(model) !== 'image') return
   if (menu?.loaded) {
     const live = menu.models.find(item => item.kind === 'image' && liveModelId(site, item) === model)
-    if (!live) return { ratios: [] as string[] }
-    return live.ratios.length ? { ratios: live.ratios } : undefined
+    if (!live) return { ratios: [] as string[], source: 'account' as const }
+    return { ratios: live.ratios, source: 'account' as const }
   }
+  const preset = typeof model === 'string' ? LOCAL_MEDIA_PARAMETER_PRESETS[model] : undefined
+  return { ratios: preset?.ratios || [], source: 'preset' as const }
 }
 export function localMediaCapabilities(model: unknown, provider?: unknown) {
   const site = localMediaSite(model, provider), kind = localMediaKind(model)
@@ -141,9 +187,12 @@ function presentLocalModel(site: LocalMediaSite, id: string, kind: 'image' | 'vi
   const parameters = kind === 'video' ? localVideoParameters(id, menu) : undefined
   const imageParameters = kind === 'image' ? localImageParameters(id, menu) : undefined
   const capabilities = localMediaCapabilities(id, site.provider)!
+  const parameterPreset = LOCAL_MEDIA_PARAMETER_PRESETS[id]
+  const known = localModelSelection(id)
   return {
     providerId: site.provider, providerLabel: site.label,
     modelId: id, label,
+    ...(known && 'upstreamKey' in known ? { upstreamModelId: known.upstreamKey } : {}),
     type: kind, mode: capabilities.references.maxImages ? ['text', ['imageReference:' + capabilities.references.maxImages]] : ['text'], maxReferences: capabilities.references.maxImages, maxCount: 1,
     sizes: [],
     imageSizes: [], imageRatios: imageParameters?.ratios || [],
@@ -152,6 +201,8 @@ function presentLocalModel(site: LocalMediaSite, id: string, kind: 'image' | 'vi
     resolutions: parameters?.resolutions || [],
     ...(parameters?.defaultDuration ? { defaultDuration: parameters.defaultDuration } : {}),
     durationResolutionMap: parameters ? [{ duration: parameters.durations, resolution: parameters.resolutions }] : [],
+    parameterSource: parameters?.source || imageParameters?.source || 'preset',
+    ...(parameterPreset ? { parameterPreset } : {}),
     billingSource: site.provider,
     localCapabilities: capabilities,
     note, connected,
@@ -165,6 +216,14 @@ export function localMediaModels(site: LocalMediaSite, status: DoubaoStatus) {
       const label = item.label !== item.key ? item.label : known?.label || item.label
       return presentLocalModel(site, id, item.kind, label, status.menu, status.connected, `来自当前${site.label}账号的创作菜单`)
     })
+  }
+  // An empty loaded menu is an authoritative account result, not a loading
+  // state. Do not fall back to presets in that case.
+  if (status.menu?.loaded) return []
+  if (status.connected) {
+    return (site.id === 'doubao' ? DOUBAO_MODELS : DOLA_MODELS)
+      .filter((item): item is (typeof item) & { kind: 'image' | 'video' } => item.kind === 'image' || item.kind === 'video')
+      .map(item => presentLocalModel(site, item.id, item.kind, item.label, undefined, true, `已连接${site.label}；先显示预置参数，读取当前账号菜单后自动校正`))
   }
   return []
 }

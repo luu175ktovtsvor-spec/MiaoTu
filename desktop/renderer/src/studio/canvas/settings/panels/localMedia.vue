@@ -31,7 +31,10 @@
         <article v-for="item in mediaModels" :key="item.providerId + ':' + item.modelId" class="modelCard">
           <header>
             <strong>{{ item.label }}</strong>
-            <el-tag size="small" effect="plain">{{ item.type === 'video' ? translate('视频') : translate('图片') }}</el-tag>
+            <span class="modelTags">
+              <el-tag size="small" effect="plain">{{ item.type === 'video' ? translate('视频') : translate('图片') }}</el-tag>
+              <el-tag size="small" :type="item.parameterSource === 'preset' ? 'info' : 'success'" effect="plain">{{ translate(item.parameterSource === 'preset' ? '预置参数' : '当前账号菜单') }}</el-tag>
+            </span>
           </header>
           <div class="modelIdLine"><span>{{ translate('节点模型 ID') }}</span><code>{{ item.modelId }}</code></div>
           <div v-if="item.upstreamModelId" class="modelIdLine"><span>{{ translate('平台模型 ID') }}</span><code>{{ item.upstreamModelId }}</code></div>
@@ -97,7 +100,7 @@ import settingsRow from '../components/settingsRow.vue';
 import localMediaInfo from '../../nodes/localMediaInfo.vue';
 type Kind = 'image' | 'video' | 'text';
 type Quota = { remaining: number | null; unit: string; source: string };
-type LocalModel = { providerId: string; modelId: string; upstreamModelId?: string; label: string; type: 'image' | 'video' | 'text'; durations?: number[]; ratios?: string[]; resolutions?: string[] };
+type LocalModel = { providerId: string; modelId: string; upstreamModelId?: string; label: string; type: 'image' | 'video' | 'text'; durations?: number[]; ratios?: string[]; resolutions?: string[]; parameterSource?: 'preset' | 'account' };
 type PlatformAccount = { id: string; label: string; createdAt: string; active: boolean };
 type State = { available: boolean; connected: boolean; name: string; message: string; checkedAt: string | null; accountId?: string; accounts?: PlatformAccount[]; image: Quota; video: Quota; text: Quota; models?: LocalModel[]; textModels?: LocalModel[]; usage: Record<Kind, { submitted: number; succeeded: number; pending: number; confirming: number }>; pending: { id: string; kind: Kind; status: string; createdAt: string; needsBinding: boolean; accountId?: string; accountLabel?: string }[] };
 const state = ref<State>(), error = ref(''), busy = ref(false);
@@ -168,6 +171,7 @@ onUnmounted(() => { controller.abort(); if (interval) clearInterval(interval); }
 .accountStatus { font-size:13px; color:var(--el-text-color-secondary); }
 .accountList { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:16px; }
 .accountItem { display:flex; align-items:center; gap:10px; min-width:150px; padding:10px 13px; border:1px solid var(--el-border-color); border-radius:12px; background:transparent; color:var(--el-text-color-secondary); text-align:left; cursor:pointer; }
+.modelTags { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
 .accountItem:hover { color:var(--el-text-color-primary); background:var(--el-fill-color-light); }
 .accountItem.active { color:var(--el-text-color-primary); border-color:var(--el-color-primary); background:color-mix(in srgb,var(--el-color-primary) 9%,transparent); }
 .accountItem:disabled { cursor:default; opacity:.65; }

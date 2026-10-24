@@ -69,7 +69,7 @@ export class LocalMediaRouter {
     const pending = owner ? this.store.all("SELECT request_id,kind,status,created_at,json_extract(result,'$.routeState.conversationUrl') AS conversation_url,COALESCE(json_extract(result,'$.routeState.platformAccountId'),'default') AS account_id,json_extract(result,'$.routeState.platformAccountLabel') AS account_label FROM desktop_tasks WHERE account=? AND status NOT IN ('succeeded','failed','cancelled','expired') AND json_extract(result,'$.route')=? ORDER BY created_at", owner, this.site.provider)
       .map(row => ({ id: row.request_id, kind: row.kind, status: row.status, createdAt: row.created_at, needsBinding: !row.conversation_url, accountId: row.account_id, accountLabel: row.account_label || accounts.accounts.find(item => item.id === row.account_id)?.label || '默认账号' })) : []
     const upstreamId = (modelId: string) => status.menu?.models.find(item => liveModelId(this.site, item) === modelId)?.key || ''
-    const models = state.available ? localMediaModels(this.site, status).map(model => ({ ...model, upstreamModelId: upstreamId(model.modelId) })) : []
+    const models = state.available ? localMediaModels(this.site, status).map(model => ({ ...model, upstreamModelId: upstreamId(model.modelId) || model.upstreamModelId || '' })) : []
     const textModels = state.available ? localTextModels(this.site, status).map(model => ({ ...model, upstreamModelId: upstreamId(model.modelId) })) : []
     return { ok: true, ...status, available: !!this.host, accountId: active.id, accounts: accounts.accounts.map(item => ({ ...item, active: item.id === active.id })), models, textModels, usage: { image: usage('image'), video: usage('video'), text: usage('text') }, pending }
   }

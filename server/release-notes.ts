@@ -10,6 +10,19 @@ export type ReleaseNotes = {
 // 更新说明直接写软件修好了什么：哪一个界面、哪一项操作，以前错在哪里，现在怎样。
 // 不写「上游」「部分问题」「体验优化」这类看不出具体改动的话。
 export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
+  '3.1.7': {
+    title: { zh: '豆包与 Dola 的模型参数提前显示', en: 'Doubao and Dola model parameters appear immediately' },
+    fixes: [
+      { zh: '已连接豆包或 Dola 后，图片与视频节点会先显示已核对的时长、比例和清晰度，避免菜单加载期间参数空白；账号菜单返回后自动更新为实际可选值。', en: 'Connected Doubao and Dola image and video nodes show verified duration, ratio and quality presets while the account menu loads, then update to the choices available to that account.' },
+      { zh: 'Dola 视频预置修正为 4–10 秒，图片与视频补齐自动比例；没有独立清晰度或尺寸选项的模型会明确显示跟随平台。', en: 'Dola video presets now offer 4–10 seconds, and image and video ratios include Auto. Models without separate quality or size controls clearly follow the platform.' },
+    ],
+    improvements: [
+      { zh: '账号设置会区分“预置参数”和“当前账号菜单”，方便确认参数来源。', en: 'Account settings distinguish preset parameters from the current account menu.' },
+    ],
+    knownIssues: [
+      { zh: '参数预置不代表账号已获得生成权限；发送前仍需登录并读取当前账号菜单。', en: 'Presets do not grant generation access; sending still requires signing in and loading the current account menu.' },
+    ],
+  },
   '3.1.6': {
     title: { zh: 'Dola 图片生成可以直接返回画布', en: 'Dola image generation returns directly to the canvas' },
     fixes: [
