@@ -43,6 +43,7 @@ jobs:
         run: node --input-type=module -e "if (!process.env.MIAO_ACCEPT_EMAIL || !process.env.MIAO_ACCEPT_PASSWORD) throw new Error('Existing authorized acceptance credentials are required before packaging')"
       - name: 安装依赖
         run: |
+          npm ci
           npm --prefix desktop/renderer ci
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm --prefix desktop ci
