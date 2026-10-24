@@ -131,7 +131,7 @@ onUnmounted(() => { controller.abort(); if (interval) clearInterval(interval); }
 }
 .doubaoSettings > .el-radio-group :deep(.el-radio-button.is-active .el-radio-button__inner) {
   background:var(--el-color-primary);
-  color:var(--el-color-white);
+  color:var(--settings-accent-ink, #151515);
   box-shadow:0 0 0 1px var(--el-color-primary),0 0 18px -4px var(--el-color-primary);
 }
 .networkGuide p { display:grid; grid-template-columns:64px minmax(0,1fr); gap:12px; margin:0; color:var(--el-text-color-secondary); font-size:12px; line-height:1.7; }

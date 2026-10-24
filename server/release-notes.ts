@@ -10,6 +10,14 @@ export type ReleaseNotes = {
 // 更新说明直接写软件修好了什么：哪一个界面、哪一项操作，以前错在哪里，现在怎样。
 // 不写「上游」「部分问题」「体验优化」这类看不出具体改动的话。
 export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
+  '3.1.4': {
+    title: { zh: '豆包和 Dola 选中后文字清晰可读', en: 'Doubao and Dola labels stay readable when selected' },
+    fixes: [
+      { zh: '修复设置里选中 Dola 后白色胶囊配白色文字的问题，现在选中和未选中状态都能清楚看见。', en: 'Fixed the selected Dola pill using white text on a white background; both selected and unselected states are now readable.' },
+    ],
+    improvements: [],
+    knownIssues: [],
+  },
   '3.1.3': {
     title: { zh: '项目删除遇到残缺文件时也能正常完成', en: 'Project deletion now completes even when old files are missing' },
     fixes: [
