@@ -116,7 +116,24 @@ onUnmounted(() => { controller.abort(); if (interval) clearInterval(interval); }
 .quotaCard span,.quotaCard small,.hint { color:var(--el-text-color-secondary); font-size:12px; line-height:1.7; }
 .networkGuide { display:grid; gap:12px; margin-top:14px; }
 .usageValue { color:var(--el-text-color-regular); font-size:13px; font-variant-numeric:tabular-nums; white-space:nowrap; }
-.doubaoSettings > .el-radio-group { margin-bottom:18px; }
+.doubaoSettings > .el-radio-group { display:inline-flex; width:max-content; gap:10px; margin-bottom:18px; }
+.doubaoSettings > .el-radio-group :deep(.el-radio-button__inner) {
+  min-width:82px;
+  border:0;
+  border-radius:999px !important;
+  background:transparent;
+  box-shadow:inset 0 0 0 1px var(--el-border-color);
+  transition:background .2s,color .2s,box-shadow .2s;
+}
+.doubaoSettings > .el-radio-group :deep(.el-radio-button__inner:hover) {
+  color:var(--el-text-color-primary);
+  box-shadow:inset 0 0 0 1px var(--el-border-color-hover,var(--el-border-color));
+}
+.doubaoSettings > .el-radio-group :deep(.el-radio-button.is-active .el-radio-button__inner) {
+  background:var(--el-color-primary);
+  color:var(--el-color-white);
+  box-shadow:0 0 0 1px var(--el-color-primary),0 0 18px -4px var(--el-color-primary);
+}
 .networkGuide p { display:grid; grid-template-columns:64px minmax(0,1fr); gap:12px; margin:0; color:var(--el-text-color-secondary); font-size:12px; line-height:1.7; }
 .networkGuide strong { color:var(--el-text-color-primary); font-weight:600; }
 .hint { margin:12px 0 0; } .error { color:var(--el-color-danger); font-size:13px; }

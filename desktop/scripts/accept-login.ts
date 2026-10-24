@@ -280,6 +280,11 @@ try {
   const navigation = await evaluate('performance.timeOrigin')
   await signIn(); await canvas()
   report.checks.push('existing authorized account opens canvas'); await capture('signed-in'); save()
+  if (process.env.MIAO_ACCEPT_SMOKE === '1') {
+    await signout()
+    report.checks.push('packaged app logout completed')
+    report.ok = true
+  } else {
   await signout(); await signIn(); await canvas()
   if (await evaluate('performance.timeOrigin') !== navigation) throw new Error('Login or logout reloaded the page')
   report.checks.push('logout and password login work without reloading'); save()
@@ -298,6 +303,7 @@ try {
   report.checks.push('unreachable proxy shows a login connection error'); await capture('connection-error'); save()
   await stop(); await start(); await signIn(); await canvas()
   report.checks.push('login succeeds after connection is restored'); await signout(); report.ok = true
+  }
 } catch (error) { report.ok = false; report.error = error.message; try { await capture('failure') } catch {} process.exitCode = 1 }
 finally {
   try { if (ws?.readyState === 1 && await evaluate(`[...document.querySelectorAll('.studio-top button')].some(b => (b.innerText||'').trim() === '账号')`)) await signout() }
