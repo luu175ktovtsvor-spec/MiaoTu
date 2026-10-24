@@ -57,7 +57,7 @@ async function click(selector) { let point; await wait(async () => { point = awa
 async function fill(selector, value) { await click(selector); await evaluate(`document.querySelector(${JSON.stringify(selector)}).select()`); await command('Input.insertText', { text: value }) }
 const exists = selector => evaluate(`!!document.querySelector(${JSON.stringify(selector)})`)
 async function canvas() { await wait(async () => !(await exists('#desktop-account-email')) && await evaluate(`[...document.querySelectorAll('.studio-top button')].some(b => (b.innerText||'').trim() === '账号')`), 'authenticated canvas', 60000); if (await exists('.release-notes-close')) { await evaluate(`document.querySelector('.release-notes-close')?.click()`); await wait(() => !exists('.release-notes-close'), 'release notes closed', 15000) } }
-async function signout() { await evaluate(`window.dispatchEvent(new Event('miao-desktop-account'))`); await wait(() => exists('.desktop-account-signout'), 'account panel', 30000); await click('.desktop-account-signout'); await wait(() => !exists('.desktop-account-signout') && !exists('#desktop-account-email'), 'signed out', 45000); await openAccountPanel() }
+async function signout() { await evaluate(`window.dispatchEvent(new Event('miao-desktop-account'))`); await wait(() => exists('.desktop-account-signout'), 'account panel', 30000); await click('.desktop-account-signout'); await wait(() => !exists('.desktop-account-signout'), 'signed out', 45000); await openAccountPanel() }
 async function openAccountPanel() {
   if (await exists('#desktop-account-email')) return
   // The release-notes mask can still cover the shell for a moment during its
@@ -76,7 +76,8 @@ async function assertLoginForm() {
   await wait(() => exists('#desktop-account-password'), 'password field')
   await evaluate(`[...document.querySelectorAll('.desktop-login-methods button')].find(b => /验证码登录/.test(b.textContent || ''))?.click()`)
   await wait(() => exists('#desktop-account-code'), 'code field after mode switch')
-  report.checks.push('sign-in exposes separate password and email-code modes')
+  const modeCheck = 'sign-in exposes separate password and email-code modes'
+  if (!report.checks.includes(modeCheck)) report.checks.push(modeCheck)
   save()
 }
 function acceptanceCode() {
