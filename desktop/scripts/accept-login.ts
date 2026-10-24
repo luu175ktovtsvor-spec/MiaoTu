@@ -69,6 +69,10 @@ async function openAccountPanel() {
 }
 async function assertLoginForm() {
   await wait(() => exists('#desktop-account-email'), 'email field')
+  if (!(await exists('#desktop-account-code'))) {
+    await wait(() => evaluate(`!![...document.querySelectorAll('.desktop-login-methods button')].find(b => /验证码登录/.test(b.textContent || ''))`), 'email-code sign-in mode')
+    await evaluate(`[...document.querySelectorAll('.desktop-login-methods button')].find(b => /验证码登录/.test(b.textContent || ''))?.click()`)
+  }
   await wait(() => exists('#desktop-account-code'), 'code field')
   await wait(() => exists('.desktop-account-send'), 'code request button')
   await wait(() => evaluate(`!![...document.querySelectorAll('.desktop-login-methods button')].find(b => /密码登录/.test(b.textContent || ''))`), 'password sign-in mode')
