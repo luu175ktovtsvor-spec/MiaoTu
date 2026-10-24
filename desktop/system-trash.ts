@@ -21,10 +21,29 @@ export function createSystemTrash({ directory, trashItem }: { directory: string;
       for (const entry of entries) {
         const out = join(target, ...entry.path.split('/'))
         if (entry.mime === 'inode/directory') { mkdirSync(out, { recursive: true }); continue }
-        const file = read(entry.path)
+        // A stale workspace index must not make the whole project undeletable.
+        // Older cleanup/import paths can leave a row after its source bytes have
+        // already gone; there is nothing left to put in the system Trash for
+        // that row, so skip only the missing item and continue the transaction.
+        let file: TrashSource
+        try { file = read(entry.path) } catch (error) {
+          if (error?.code === 'ENOENT' || error?.status === 404) {
+            console.warn('[system-trash] MISSING_SOURCE_SKIPPED', entry.path)
+            continue
+          }
+          throw error
+        }
         mkdirSync(dirname(out), { recursive: true })
-        if (file.diskPath) copyFileSync(file.diskPath, out, constants.COPYFILE_FICLONE)
-        else writeFileSync(out, file.bytes || new Uint8Array())
+        try {
+          if (file.diskPath) copyFileSync(file.diskPath, out, constants.COPYFILE_FICLONE)
+          else writeFileSync(out, file.bytes || new Uint8Array())
+        } catch (error) {
+          if (error?.code === 'ENOENT') {
+            console.warn('[system-trash] MISSING_SOURCE_SKIPPED', entry.path)
+            continue
+          }
+          throw error
+        }
       }
       return { holder, target }
     } catch (error) { discard({ holder, target }); throw error }

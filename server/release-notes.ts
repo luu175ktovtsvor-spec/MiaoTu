@@ -10,6 +10,14 @@ export type ReleaseNotes = {
 // 更新说明直接写软件修好了什么：哪一个界面、哪一项操作，以前错在哪里，现在怎样。
 // 不写「上游」「部分问题」「体验优化」这类看不出具体改动的话。
 export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
+  '3.1.3': {
+    title: { zh: '项目删除遇到残缺文件时也能正常完成', en: 'Project deletion now completes even when old files are missing' },
+    fixes: [
+      { zh: '项目索引里还记着、但电脑上已经不存在的旧文件，不会再让「最近项目」删除失败；现有文件照常移到废纸篓，残缺记录会一起清掉。', en: 'Old files missing from the computer no longer make Recent Projects deletion fail; existing files still go to Trash and stale records are cleared.' },
+    ],
+    improvements: [],
+    knownIssues: [],
+  },
   '3.1.2': {
     title: { zh: '豆包和 Dola 的设置标签分开显示', en: 'Doubao and Dola settings now use separate labels' },
     fixes: [],
