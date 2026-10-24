@@ -15,7 +15,9 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
     fixes: [
       { zh: '项目索引里还记着、但电脑上已经不存在的旧文件，不会再让「最近项目」删除失败；现有文件照常移到废纸篓，残缺记录会一起清掉。', en: 'Old files missing from the computer no longer make Recent Projects deletion fail; existing files still go to Trash and stale records are cleared.' },
     ],
-    improvements: [],
+    improvements: [
+      { zh: '视频模型的时长和清晰度选项按各自实际支持的范围显示：MiniMax H3 的 480p、768P 和 1080p 最长 30 秒，2K 最长 15 秒；其他模型也分别显示自己的可用范围。', en: 'Video duration and resolution choices now follow each model’s actual capabilities: MiniMax H3 supports up to 30 seconds at 480p, 768P and 1080p, and up to 15 seconds at 2K; other models show their own supported ranges too.' },
+    ],
     knownIssues: [],
   },
   '3.1.2': {
