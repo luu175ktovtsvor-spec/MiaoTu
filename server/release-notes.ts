@@ -10,6 +10,19 @@ export type ReleaseNotes = {
 // 更新说明直接写软件修好了什么：哪一个界面、哪一项操作，以前错在哪里，现在怎样。
 // 不写「上游」「部分问题」「体验优化」这类看不出具体改动的话。
 export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
+  '3.1.6': {
+    title: { zh: 'Dola 图片生成可以直接返回画布', en: 'Dola image generation returns directly to the canvas' },
+    fixes: [
+      { zh: 'Dola 当前版本的比例、时长滑动条和提示词格式已经重新适配；图片生成完成后会直接保存原图并写回节点，不再停在待确认。', en: 'MiaoImg now follows Dola’s current ratio controls, duration slider and prompt format. Completed images are saved as originals and written back to the node instead of remaining unconfirmed.' },
+      { zh: 'Dola 不再因为旧版去水印设置接口不存在而阻止发送；平台没有返回可核对的水印选项时，妙图会按实际下载文件保存并如实标明状态。', en: 'Dola is no longer blocked when its older no-watermark settings endpoint is unavailable. If the platform does not expose a verifiable option, MiaoImg saves the returned file and states the actual status.' },
+    ],
+    improvements: [
+      { zh: 'Dola 路由回执使用账号当前真实能力编号和模型标识核对，图片、视频不会因为写死旧编号而被误拦。', en: 'Dola routing receipts now use the account’s current ability type and model key, so image and video requests are not rejected by an outdated hard-coded ability number.' },
+    ],
+    knownIssues: [
+      { zh: 'Dola 视频是否可用仍取决于账号权益和平台状态。本次账号生成图片成功；视频请求由 Dola 返回“视频生成失败、额度未扣除”，妙图会显示失败，不会重新下单。', en: 'Dola video availability still depends on account entitlements and platform status. Image generation succeeded in testing; Dola returned “video generation failed, quota not deducted” for video, and MiaoImg reports the failure without resubmitting.' },
+    ],
+  },
   '3.1.5': {
     title: { zh: '豆包生成可以直接完成并取回', en: 'Doubao generation completes and returns automatically' },
     fixes: [

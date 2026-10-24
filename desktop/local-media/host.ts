@@ -445,7 +445,7 @@ export class LocalMediaHost {
           ...(selection && 'upstreamKey' in selection && typeof selection.upstreamKey === 'string' ? { modeKey: selection.upstreamKey } : {}),
         }
         if (kind === 'image' || kind === 'video') observation.expectedRoute = {
-          abilityType: kind === 'video' ? 17 : 3,
+          ...(kind === 'video' ? { abilityType: 17 } : this.site.id === 'doubao' ? { abilityType: 3 } : {}),
           ...(selection && 'upstreamKey' in selection ? { modelKey: selection.upstreamKey } : {}),
           ...(kind === 'image' && body.ratio ? { ratio: body.ratio } : {}),
           ...(kind === 'video' ? { duration: body.duration, ratio: body.ratio, resolution: body.resolution, ...(this.site.id === 'doubao' ? { implicitResolution: '720p' } : {}) } : {}),
@@ -457,21 +457,23 @@ export class LocalMediaHost {
           await entry.window!.loadURL(this.site.home)
           await this.ready(entry, context, 'snapshot', value => value.hasEditor && !value.dialog && !value.login && !value.challenge, signal, '新对话加载')
           if (kind !== 'text') {
+            let watermarkPreference = { aiRemovalEnabled: false, checked: false }
             try {
               const watermark = await entry.window!.webContents.executeJavaScript(`(${platformWatermarkPreference.toString()})(${JSON.stringify(this.site.id)},true)`)
               this.assert(entry, context, signal)
-              if (watermark?.confirmed !== true) throw new Error('设置未确认')
+              if (this.site.id === 'doubao' && watermark?.confirmed !== true) throw new Error('设置未确认')
               if (watermark.changed) {
                 // A direct settings save must also refresh the native page's
                 // cached creation configuration before it builds the request.
                 await entry.window!.loadURL(this.site.home)
                 await this.ready(entry, context, 'snapshot', value => value.hasEditor && !value.dialog && !value.login && !value.challenge, signal, '水印设置刷新')
               }
+              watermarkPreference = { aiRemovalEnabled: watermark?.confirmed === true, checked: true }
             } catch {
               this.assert(entry, context, signal)
-              throw Object.assign(new Error(`${this.site.label}去 AI 明水印设置未确认，本次尚未发送；请打开平台的水印管理，确认图片、视频去除选项及账户权限后重试`), { status: 422 })
+              if (this.site.id === 'doubao') throw Object.assign(new Error(`${this.site.label}去 AI 明水印设置未确认，本次尚未发送；请打开平台的水印管理，确认图片、视频去除选项及账户权限后重试`), { status: 422 })
             }
-            checkpoint({ phase: 'preparing', kind, watermarkPreference: { aiRemovalEnabled: true } })
+            checkpoint({ phase: 'preparing', kind, watermarkPreference })
           }
           const capability = await this.ready(entry, context, 'capability', value => !!value, signal, '生成入口加载', { kind })
           if (!capability?.selected) await this.click(entry, context, signal, capability)
@@ -487,21 +489,27 @@ export class LocalMediaHost {
           }
           const listedRatio = body.ratio && (body.ratio !== 'auto' || !!status.menu?.models.some(item => liveModelId(this.site, item) === body.model && item.ratios.includes('auto')))
           if ((kind === 'video' || kind === 'image') && listedRatio && (this.site.id === 'dola' || kind === 'image')) {
-            const target = await this.ready(entry, context, 'dolaRatioOpen', value => !!value, signal, '比例控件加载', { ratio: body.ratio })
-            if (!target.selected) {
-              await this.click(entry, context, signal, target)
-              await this.click(entry, context, signal, await this.ready(entry, context, 'dolaParameterSelect', value => !!value, signal, '比例选项加载', { value: body.ratio }))
+            if (this.site.id === 'dola') {
+              const control = await this.ready(entry, context, 'parametersOpen', value => !!value, signal, '比例控件加载')
+              if (!control.selected) await this.click(entry, context, signal, control)
+              await this.click(entry, context, signal, await this.ready(entry, context, 'parameterOption', value => !!value, signal, '比例选项加载', { value: body.ratio === 'auto' ? '自动' : body.ratio }))
+            } else {
+              const target = await this.ready(entry, context, 'dolaRatioOpen', value => !!value, signal, '比例控件加载', { ratio: body.ratio })
+              if (!target.selected) {
+                await this.click(entry, context, signal, target)
+                await this.click(entry, context, signal, await this.ready(entry, context, 'dolaParameterSelect', value => !!value, signal, '比例选项加载', { value: body.ratio }))
+              }
             }
             await this.ready(entry, context, 'parameters', value => value?.ratio === body.ratio, signal, '比例回读')
             if (kind === 'image') await this.key(entry, context, signal, 'Escape')
           }
           if (kind === 'video' && this.site.id === 'dola') {
             if (body.duration !== undefined) {
-              const target = await this.ready(entry, context, 'dolaDurationOpen', value => !!value, signal, '时长控件加载', { duration: body.duration })
-              if (!target.selected) {
-                await this.click(entry, context, signal, target)
-                await this.click(entry, context, signal, await this.ready(entry, context, 'dolaParameterSelect', value => !!value, signal, '时长选项加载', { value: body.duration + 's' }))
-              }
+              const control = await this.ready(entry, context, 'parametersOpen', value => !!value, signal, '时长控件加载')
+              if (!control.selected) await this.click(entry, context, signal, control)
+              await this.click(entry, context, signal, await this.ready(entry, context, 'durationTarget', value => !!value, signal, '时长控件加载', { duration: body.duration }))
+              await this.key(entry, context, signal, 'Home')
+              for (let index = 0; index < body.duration - 4; index++) await this.key(entry, context, signal, 'ArrowRight')
               await this.ready(entry, context, 'parameters', value => value?.duration === body.duration, signal, '时长回读')
             }
             await this.key(entry, context, signal, 'Escape')

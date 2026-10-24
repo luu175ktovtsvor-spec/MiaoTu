@@ -3,7 +3,7 @@
     <p class="watermarkPolicy">{{ translate('生成前，妙图会自动打开账号里的「去除 AI 水印」；优先保存平台确认的原片，平台只提供播放器地址时也会保留结果并标明取回来源。') }}</p>
     <p>{{ referenceHint }}</p>
     <template v-if="!compact">
-      <p>{{ translate(capabilities.platform === 'doubao' ? '普通豆包账号会保留豆包品牌标识，订阅账号没有。' : 'Dola 免费和付费账号都会去除 AI 水印；品牌标识按 Dola 返回的为准。') }}</p>
+      <p>{{ translate(capabilities.platform === 'doubao' ? '普通豆包账号会保留豆包品牌标识，订阅账号没有。' : 'Dola 按平台实际返回的原片保存；去 AI 水印和品牌标识状态以返回文件为准。') }}</p>
       <p>{{ translate(capabilities.kind === 'video' ? '按平台给的原片保存（MP4 或 WebM），不转码、不改分辨率。' : '按平台给的原图保存（PNG、JPEG 或 WebP）。') }}</p>
     </template>
   </div>

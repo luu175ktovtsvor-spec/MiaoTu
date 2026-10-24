@@ -43,7 +43,7 @@ export function readGenerationRoute(data: readonly { bytes?: Uint8Array }[] | un
 
 export function generationRouteMismatch(actual: PlatformGenerationRoute | undefined, expected: PlatformExpectedRoute, platform = '平台') {
   if (!actual) return `${platform}生成请求的模型参数无法识别，已阻止发送，请更新平台适配`
-  if (expected.abilityType !== undefined && actual.abilityType !== expected.abilityType) return `${platform}实际请求的生成能力与节点不一致，已阻止发送`
+  if (expected.abilityType !== undefined && actual.abilityType !== expected.abilityType) return `${platform}实际请求的生成能力 ${actual.abilityType ?? '未知'} 与节点 ${expected.abilityType} 不一致，已阻止发送`
   if (expected.modelKey !== undefined && actual.modelKey !== expected.modelKey || expected.modeKey !== undefined && actual.modeKey !== expected.modeKey) return `${platform}实际请求的模型与节点选择不一致，已阻止发送`
   if (expected.duration !== undefined && actual.duration !== expected.duration) return `${platform}实际请求的时长与节点选择不一致，已阻止发送`
   // 视频请求一定会带比例。生图只在请求里出现比例字段时核对，避免把未知字段名当成不一致。

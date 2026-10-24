@@ -64,6 +64,10 @@ export function localMediaPage(action: string, payload: Record<string, any> = {}
   }
   const parameters = () => {
     if (platform === 'Dola') {
+      const summary = text(parameterControl()).match(/^(自动|Auto|[0-9]+:[0-9]+)\s*·\s*([0-9]+)s$/i)
+      if (summary) return { ratio: /^(Auto|自动)$/i.test(summary[1]) ? 'auto' : summary[1], duration: Number(summary[2]) }
+      const imageSummary = text(parameterControl()).match(/^比例\s*(自动|Auto|自動|[0-9]+:[0-9]+)$/i)
+      if (imageSummary) return { ratio: /^(Auto|自动|自動)$/i.test(imageSummary[1]) ? 'auto' : imageSummary[1] }
       const duration = text(standaloneParameter('duration')).match(/(\d+)\s*s$/i)
       const ratio = text(standaloneParameter('ratio')).match(/\d+:\d+|Auto|自动|自動/i)?.[0]
       return { duration: duration ? Number(duration[1]) : undefined, ratio: ratio && /^(Auto|自动|自動)$/i.test(ratio) ? 'auto' : ratio }
@@ -137,6 +141,10 @@ export function localMediaPage(action: string, payload: Record<string, any> = {}
   }
   if (action === 'parameters') return parameters()
   if (action === 'parametersOpen') return parameterControl()?.getAttribute('data-state') === 'open' ? { selected: true } : point(parameterControl())
+  if (action === 'parameterOption') {
+    const wanted = String(payload.value || '')
+    return point(unique(buttons().filter(element => !element.closest(messageSelector) && label(element) === wanted)))
+  }
   if (action === 'parameterRatio') {
     const menu = unique(elements('[role="menu"]'))
     return menu ? point(unique(buttons(menu).filter(element => label(element) === (payload.ratio === 'auto' ? '自动' : payload.ratio)))) : null
@@ -224,7 +232,7 @@ export function localMediaPage(action: string, payload: Record<string, any> = {}
       // Doubao may append confirmation turns and encode the selected output
       // after the prompt. The implicit-auto summary omits the ratio:
       // `<prompt>，6s，720p`; an explicit ratio is also possible.
-      const video = payload.kind === 'video' ? decorated.match(/^([\s\S]+?)[，,]\s*(?:(自动|Auto|\d+:\d+)[，,]\s*)?(\d+)s[，,]\s*(\d{3,4}p)$/i) : null
+      const video = payload.kind === 'video' ? decorated.match(/^([\s\S]+?)[，,]\s*(?:(自动|Auto|\d+:\d+)[，,]\s*)?(\d+)s(?:[，,]\s*(\d{3,4}p))?$/i) : null
       const image = payload.kind === 'image' ? decorated.match(/^([\s\S]+?)[，,]\s*(自动|Auto|\d+:\d+)$/i) : null
       const promptPart = video?.[1] || image?.[1] || decorated
       if (promptKey(promptPart) !== promptKey(expected)) return
