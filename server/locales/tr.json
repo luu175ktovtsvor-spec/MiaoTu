@@ -450,7 +450,6 @@
   "分组中存在不可删除的节点": "Grupta silinemeyen düğümler var",
   "否": "Hayır",
   "服务地址": "Hizmet adresi",
-  "服务端未确认重发，请重新打开对话后重试": "Sunucu yeniden göndermeyi onaylamadı. Lütfen görüşmeyi yeniden açın ve tekrar deneyin.",
   "服务器部署只能使用 data/workspaces 内的工作区": "Sunucu dağıtımı yalnızca data/workspaces içindeki çalışma alanlarını kullanabilir",
   "服务器部署只能使用服务器工作区": "Sunucu dağıtımları yalnızca sunucu çalışma alanlarını kullanabilir",
   "服务器工作区{0}": "Sunucu çalışma alanı {0}",
@@ -1414,7 +1413,6 @@
   "文件路径超出技能目录": "Dosya yolu beceriler dizinini aşıyor",
   "文件路径无效": "Geçersiz dosya yolu",
   "文件名需为小驼峰格式，例如 imageNode.umd.js": "Dosya adının imageNode.umd.js gibi lowerCamelCase biçiminde olması gerekir",
-  "文件名与节点导出名不一致：{0} 需要导出 toonflowNodes.{1}，请按实际节点名修改文件名": "Dosya adı, düğüm dışa aktarma adıyla tutarsız: {0}'nun toonflowNodes.{1}'yu dışa aktarması gerekiyor, lütfen dosya adını gerçek düğüm adına göre değiştirin",
   "文件内容不能包含空字符": "Dosya içeriği NUL karakterleri içeremez",
   "文件已被其他操作修改。当前草稿已保留，请先复制需要保留的内容，再重新加载最新版本。": "Dosya başka işlemlerle değiştirildi. Mevcut taslak muhafaza edildi. Lütfen korunması gereken içeriği kopyalayın ve ardından en son sürümü yeniden yükleyin.",
   "文件已创建": "Dosya oluşturuldu",
@@ -2063,5 +2061,6 @@
   "已达到 1000 个文件的检查上限，已停止。以下为部分结果，可缩小查找文本后重试。": "1000 dosyalık kontrol sınırına ulaşıldığı için durduruldu. Aşağıda kısmi sonuçlar yer alıyor; aranan metni daraltıp yeniden deneyin.",
   "已达到 20 MiB 文本的搜索上限，已停止。以下为部分结果，可缩小查找文本后重试。": "20 MiB metin arama sınırına ulaşıldığı için durduruldu. Aşağıda kısmi sonuçlar yer alıyor; aranan metni daraltıp yeniden deneyin.",
   "已达到 500 处匹配的展示上限，已停止。以下为部分结果，可缩小查找文本后重试。": "500 eşleşmelik gösterim sınırına ulaşıldığı için durduruldu. Aşağıda kısmi sonuçlar yer alıyor; aranan metni daraltıp yeniden deneyin.",
-  "正在搜索磁盘文件…": "Diskteki dosyalar aranıyor…"
+  "正在搜索磁盘文件…": "Diskteki dosyalar aranıyor…",
+  "重发没有确认成功，请重新打开这段对话后再试": "Sunucu yeniden göndermeyi onaylamadı. Lütfen görüşmeyi yeniden açın ve tekrar deneyin."
 }

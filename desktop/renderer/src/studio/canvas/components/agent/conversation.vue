@@ -1210,7 +1210,7 @@ async function sendMessage(source?: AgentMessage, queued?: QueuedAgentMessage) {
         default: applyEvent(event);
       }
     }
-    if (source && !accepted) throw new Error(translate("服务端未确认重发，请重新打开对话后重试"));
+    if (source && !accepted) throw new Error(translate("重发没有确认成功，请重新打开这段对话后再试"));
     finishStats("success");
     emit("sent", mentionPlainText(prompt, mentions) || attachments[0]?.name || "新对话");
   } catch (error) {

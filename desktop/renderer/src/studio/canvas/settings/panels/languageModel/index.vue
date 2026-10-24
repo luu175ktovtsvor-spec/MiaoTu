@@ -40,7 +40,7 @@
       <p v-else-if="!providers.length" class="localTextHint">{{ translate('还没有接入自己的供应商。') }}</p>
       <ul v-else class="ownProviders">
         <li v-for="provider in providers" :key="provider.id">
-          <span class="providerMark" aria-hidden="true">{{ Array.from(provider.label)[0] }}</span>
+          <span class="providerMark" aria-hidden="true"><modelIcon :model="provider.models?.[0]?.id || ''" :provider="`${provider.label} ${provider.apiUrl || ''}`" :size="20" /></span>
           <div class="providerCopy">
             <strong>{{ provider.label }}</strong>
             <small dir="ltr">{{ protocolLabel(provider.protocol) }} · {{ hostOf(provider.apiUrl) }}</small>

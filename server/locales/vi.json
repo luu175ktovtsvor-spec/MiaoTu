@@ -450,7 +450,6 @@
   "分组中存在不可删除的节点": "Có những nút trong nhóm không thể xóa được.",
   "否": "Không",
   "服务地址": "Địa chỉ dịch vụ",
-  "服务端未确认重发，请重新打开对话后重试": "Máy chủ không xác nhận việc gửi lại, vui lòng mở lại cuộc trò chuyện và thử lại.",
   "服务器部署只能使用 data/workspaces 内的工作区": "Việc triển khai máy chủ chỉ có thể sử dụng không gian làm việc trong data/workspaces",
   "服务器部署只能使用服务器工作区": "Việc triển khai máy chủ chỉ có thể sử dụng không gian làm việc của máy chủ",
   "服务器工作区{0}": "Không gian làm việc của máy chủ{0}",
@@ -1414,7 +1413,6 @@
   "文件路径超出技能目录": "Đường dẫn file vượt quá thư mục kỹ năng",
   "文件路径无效": "Đường dẫn tệp không hợp lệ",
   "文件名需为小驼峰格式，例如 imageNode.umd.js": "Tên tệp phải theo dạng lowerCamelCase, ví dụ imageNode.umd.js",
-  "文件名与节点导出名不一致：{0} 需要导出 toonflowNodes.{1}，请按实际节点名修改文件名": "Tên tệp không nhất quán với tên xuất nút: {0} cần xuất toonflowNodes.{1}, vui lòng sửa đổi tên tệp theo tên nút thực tế.",
   "文件内容不能包含空字符": "Nội dung tệp không thể chứa ký tự null",
   "文件已被其他操作修改。当前草稿已保留，请先复制需要保留的内容，再重新加载最新版本。": "Các tập tin đã được sửa đổi bởi các hoạt động khác. Bản thảo hiện tại đã được giữ lại. Hãy sao chép nội dung cần giữ lại rồi tải lại phiên bản mới nhất.",
   "文件已创建": "Đã tạo tệp",
@@ -2063,5 +2061,6 @@
   "已达到 1000 个文件的检查上限，已停止。以下为部分结果，可缩小查找文本后重试。": "Đã đạt giới hạn kiểm tra 1000 tệp và dừng. Dưới đây là một phần kết quả; hãy thu hẹp văn bản cần tìm rồi thử lại.",
   "已达到 20 MiB 文本的搜索上限，已停止。以下为部分结果，可缩小查找文本后重试。": "Đã đạt giới hạn tìm kiếm 20 MiB văn bản và dừng. Dưới đây là một phần kết quả; hãy thu hẹp văn bản cần tìm rồi thử lại.",
   "已达到 500 处匹配的展示上限，已停止。以下为部分结果，可缩小查找文本后重试。": "Đã đạt giới hạn hiển thị 500 vị trí khớp và dừng. Dưới đây là một phần kết quả; hãy thu hẹp văn bản cần tìm rồi thử lại.",
-  "正在搜索磁盘文件…": "Đang tìm kiếm tệp trên đĩa…"
+  "正在搜索磁盘文件…": "Đang tìm kiếm tệp trên đĩa…",
+  "重发没有确认成功，请重新打开这段对话后再试": "Máy chủ không xác nhận việc gửi lại, vui lòng mở lại cuộc trò chuyện và thử lại."
 }

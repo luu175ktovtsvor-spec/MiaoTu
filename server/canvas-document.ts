@@ -1,5 +1,3 @@
-import legacy from '../docs/compatibility/canvas-v1.json' with { type: 'json' }
-
 export type CanvasPosition = { x: number; y: number }
 export type CanvasViewport = CanvasPosition & { zoom: number }
 export type CanvasElement = { id: string; [field: string]: unknown }
@@ -31,7 +29,7 @@ export function canvasNodePosition(node: { id: string; position?: CanvasPosition
 }
 
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
-export const canvasMarkerKeys = ['miaoimgCanvas', ...legacy.canvasMarkers]
+export const canvasMarkerKeys = ['miaoimgCanvas']
 export function hasCanvasMarker(value: unknown): value is Record<string, unknown> {
   return record(value) && canvasMarkerKeys.some(key => value[key] === true)
 }
@@ -52,26 +50,35 @@ export function normalizeCanvasDocument(value: unknown): CanvasDocument {
   }
   if (!value.nodes.every(node => record(node.position) && Number.isFinite(node.position.x) && Number.isFinite(node.position.y))
     || !value.edges.every(edge => typeof edge.source === 'string' && typeof edge.target === 'string')) throw new Error('画布位置或连线格式无效')
-  const result = { ...Object.fromEntries(legacy.canvasMarkers.map(key => [key, true])), miaoimgCanvas: true, schemaVersion: 1, ...value } as CanvasDocument
+  const result = { miaoimgCanvas: true, schemaVersion: 1, ...value } as CanvasDocument
   result.miaoimgCanvas = true
   result.schemaVersion = 1
-  // Existing website and installed readers still inspect their historical flag.
-  // Keep that compatibility flag alongside the current schema until they migrate.
-  for (const key of legacy.canvasMarkers) result[key] = true
+  // Early canvas generations wrote brand-named boolean markers beside the
+  // current miaoimgCanvas marker. Strip those markers by shape so saved files,
+  // exports and Trash copies never retain a retired brand name.
+  for (const key of Object.keys(result)) {
+    if (key !== 'miaoimgCanvas' && /canvas$/i.test(key) && result[key] === true) delete result[key]
+  }
   return result
 }
 
+export function sanitizeCanvasText(text: string): string | null {
+  let value: unknown
+  try { value = JSON.parse(text) } catch { return null }
+  if (!hasCanvasMarker(value)) return null
+  return JSON.stringify(normalizeCanvasDocument(value))
+}
+
 export function workspaceRequestHeaders(): Record<string, string> {
-  return Object.fromEntries(['x-miaoimg-workspace', ...legacy.workspaceHeaders].map(name => [name, '1']))
+  return { 'x-miaoimg-workspace': '1' }
 }
 
 export function isWorkspaceRequest(headers: Record<string, string | string[] | undefined>): boolean {
-  return ['x-miaoimg-workspace', ...legacy.workspaceHeaders].some(name => headers[name] === '1')
+  return headers['x-miaoimg-workspace'] === '1'
 }
 
 export function pluginExportNames(kind: 'node' | 'extension'): string[] {
-  const current = kind === 'node' ? 'miaoimgNodes' : 'miaoimgExts'
-  return [current, ...Object.entries(legacy.globals).filter(([, value]) => value === current).map(([key]) => key)]
+  return [kind === 'node' ? 'miaoimgNodes' : 'miaoimgExts']
 }
 
 export function inspectPluginExports(source: string, kind: 'node' | 'extension'): string[] {
@@ -82,18 +89,15 @@ export function inspectPluginExports(source: string, kind: 'node' | 'extension')
 }
 
 export function usesCanvasHost(source: string, current: string): boolean {
-  return [current, ...Object.entries(legacy.globals).filter(([, name]) => name === current).map(([name]) => name)].some(name => source.includes(name))
+  return source.includes(current)
 }
 
 export function readPluginMetadata(source: string, kind: 'node' | 'extension'): unknown {
-  const names = kind === 'node' ? ['miaoimgNode', ...legacy.nodeMarkers] : ['miaoimgExt', ...legacy.extensionMarkers]
-  const match = new RegExp(`^/\\*! (?:${names.join('|')}):([^\\r\\n]*?) \\*/(?:\\r?\\n|$)`).exec(source)
+  const name = kind === 'node' ? 'miaoimgNode' : 'miaoimgExt'
+  const match = new RegExp(`^/\\*! ${name}:([^\\r\\n]*?) \\*/(?:\\r?\\n|$)`).exec(source)
   return match ? JSON.parse(match[1]) : null
 }
 
-export const legacyHostGlobals: Readonly<Record<string, string>> = legacy.globals
-export const legacyCanvasEvents: Readonly<Record<string, string>> = legacy.events
-export const legacyCanvasStorage: Readonly<Record<string, string>> = legacy.storage
 export function canvasInjectionKey(name: string): symbol {
-  return Symbol.for(legacy.symbols[name] || name)
+  return Symbol.for(name)
 }

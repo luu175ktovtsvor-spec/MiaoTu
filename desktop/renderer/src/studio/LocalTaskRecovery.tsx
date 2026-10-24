@@ -6,7 +6,7 @@ export default function LocalTaskRecovery({ recovery, lang }: { recovery?: Local
   if (!recovery?.items?.length) return null
   return (
     <details className="local-task-recovery">
-      <summary>{studioText('查看本机保留的 {saved}/{total} 份原件', lang, { saved: recovery.saved, total: recovery.total })}</summary>
+      <summary>{studioText('查看已保存的 {saved}/{total} 份原件', lang, { saved: recovery.saved, total: recovery.total })}</summary>
       <p>{studioText('未保存的服务器暂存文件已过期。可从原节点的历史记录恢复已保存文件。', lang)}</p>
       <ol>
         {recovery.items.map(item => (

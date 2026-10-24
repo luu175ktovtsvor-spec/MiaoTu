@@ -167,9 +167,9 @@ export default function PersonalAssetLibrary({ csrf, owner, lang, project, onOpe
       <header className="asset-library__header">
         <div>
           <h2 id="personal-assets-title">{studioText('个人资产库', lang)}</h2>
-          <p>{studioText('这里收录本机项目里的图片、视频和音频，画面文件只保存在你的电脑上。', lang)}</p>
+          <p>{studioText('按项目查看妙图项目里的图片、视频和音频，文件都保存在这台电脑上。', lang)}</p>
         </div>
-        <div className="asset-library__actions">
+        {projects.length > 0 && <div className="asset-library__actions">
           <label>
             <span>{studioText('项目', lang)}</span>
             <select value={selectedProject} onChange={event => chooseProject(event.target.value)} disabled={!projects.length}>
@@ -177,7 +177,7 @@ export default function PersonalAssetLibrary({ csrf, owner, lang, project, onOpe
             </select>
           </label>
           {selectedProject && <button type="button" onClick={() => onOpenProject(selectedProject)}>{studioText('打开项目', lang)} <ArrowSquareOut size={14} /></button>}
-        </div>
+        </div>}
       </header>
 
       <div className="asset-library__toolbar">
@@ -196,7 +196,7 @@ export default function PersonalAssetLibrary({ csrf, owner, lang, project, onOpe
         <span>{selected ? studioText('{n} 个媒体文件', lang, { n: visible.length }) : ''}</span>
       </div>
 
-      {status === 'loading' && <p className="asset-library__state">{studioText('正在读取本机资产…', lang)}</p>}
+      {status === 'loading' && <p className="asset-library__state">{studioText('正在读取资产…', lang)}</p>}
       {status === 'error' && (
         <div className="asset-library__error" role="alert">
           <span>{error}</span>
@@ -206,7 +206,7 @@ export default function PersonalAssetLibrary({ csrf, owner, lang, project, onOpe
       {status === 'ready' && projects.length === 0 && (
         <div className="asset-library__empty">
           <FolderSimple size={24} />
-          <strong>{studioText('还没有本机项目', lang)}</strong>
+          <strong>{studioText('还没有妙图项目', lang)}</strong>
           <span>{studioText('新建项目并把素材放进画布后，会显示在这里。', lang)}</span>
         </div>
       )}

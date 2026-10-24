@@ -475,7 +475,7 @@ restore_previous
     profile.setPermissionCheckHandler((web, permission, origin, details) => allowPointerLock(web, permission, details.requestingUrl || origin, details.isMainFrame))
     profile.setPermissionRequestHandler((web, permission, done, details) => done(allowPointerLock(web, permission, details.requestingUrl, details.isMainFrame)))
     const icon = join(root, '../web/miaoimg-logo.png')
-    window = new BrowserWindow({ ...bounds, minWidth: 900, minHeight: 600, title: '妙图', icon, backgroundColor: '#111114', titleBarStyle: 'hidden', trafficLightPosition: { x: 14, y: 20 }, show: false,
+    window = new BrowserWindow({ ...bounds, minWidth: 900, minHeight: 600, title: '妙图', icon, backgroundColor: '#0b0b0c', titleBarStyle: 'hidden', trafficLightPosition: { x: 14, y: 20 }, show: false,
       webPreferences: { preload: join(root, 'preload.cjs'), partition: 'persist:miao-desktop', nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true },
     })
     saveBarrier = createSaveBarrier(window.webContents)
@@ -504,7 +504,7 @@ restore_previous
     }
     window.webContents.setWindowOpenHandler(({ url }: Record<string, any>) => {
       if (new URL(url).origin === runtime.address) {
-        const media = new BrowserWindow({ parent: window, title: '妙图 · 预览', width: 1080, height: 760, backgroundColor: '#111114', webPreferences: { partition: 'persist:miao-desktop', nodeIntegration: false, contextIsolation: true, sandbox: true } })
+        const media = new BrowserWindow({ parent: window, title: '妙图 · 预览', width: 1080, height: 760, backgroundColor: '#0b0b0c', webPreferences: { partition: 'persist:miao-desktop', nodeIntegration: false, contextIsolation: true, sandbox: true } })
         media.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
         media.webContents.on('will-navigate', (event, target) => { if (new URL(target).origin !== runtime.address) event.preventDefault() })
         media.loadURL(url); return { action: 'deny' }

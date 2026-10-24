@@ -235,6 +235,7 @@ const progress = useGenerationProgress({
   realPercent: upstreamPercent,
   modelId: () => selectedModel.value?.modelId ?? "",
   kind: "video",
+  durationSeconds: () => (Number(data.value.duration) > 0 ? Number(data.value.duration) : null),
 });
 const selectedMode = computed(() => selectedModel.value?.mode?.find((item) => JSON.stringify(item) === data.value.mode) as NodeVideoRequest["mode"]);
 const frameMode = computed(() => ["startEndRequired", "endFrameOptional", "startFrameOptional"].includes(String(selectedMode.value)));

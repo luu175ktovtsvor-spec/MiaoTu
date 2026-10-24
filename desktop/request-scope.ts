@@ -11,6 +11,11 @@ const projectIndependent = new Set([
   '/api/desktop/local-text/models',
 ])
 
+// 账号层面的数据（积分流水、反馈、充值订单、改密码、报错说明）只在云端，与当前打开哪个项目无关；
+// 当前项目刚被删除时，这些页面也必须照常打开。
+const accountRoutes = ['/api/imagine/ledger', '/api/imagine/feedback', '/api/imagine/payment/orders', '/api/imagine/password', '/api/imagine/error-explanation']
+
 export function requiresDesktopProject(pathname: string) {
-  return !projectIndependent.has(pathname)
+  if (projectIndependent.has(pathname)) return false
+  return !accountRoutes.some(route => pathname === route || pathname.startsWith(route + '/'))
 }

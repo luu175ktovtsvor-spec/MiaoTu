@@ -497,12 +497,12 @@ export function useNodeAi() {
 
   async function generateImage(request: NodeImageRequest, signal?: AbortSignal): Promise<NodeImageResult[]> {
     const localMedia = ['doubao-local', 'dola-local'].includes(request.providerId);
-    if (localMedia && request.edit) throw new Error(translate('当前本机路由不支持局部重绘'));
+    if (localMedia && request.edit) throw new Error(translate('这个模型不能局部重绘，请换一个支持局部重绘的模型'));
     const models = await loadMediaModels();
     const model = models.find(item => item.providerId === request.providerId && item.modelId === request.modelId);
     const files = getFiles();
     const referencePayload = await imageReferencePayload(files, request, model);
-    if (localMedia && 'references' in referencePayload) throw new Error(translate('请先将参考图片保存到本机项目，再使用本机模型生成'));
+    if (localMedia && 'references' in referencePayload) throw new Error(translate('请先把参考图片保存到项目里，再用这个模型生成'));
     const size = localMedia ? 'auto' : pickSize(model, request.size, request.ratio || ratioOf(model, request.size));
     signal?.throwIfAborted();
     const clientRequestId = crypto.randomUUID();
@@ -602,7 +602,7 @@ export function useNodeAi() {
 
   async function estimateImage(request: Omit<NodeImageRequest, "directory" | "onStatus">, signal?: AbortSignal): Promise<NodeCreditEstimate> {
     if (['doubao-local', 'dola-local'].includes(request.providerId)) {
-      if (request.edit) throw new Error(translate('当前本机路由不支持局部重绘'));
+      if (request.edit) throw new Error(translate('这个模型不能局部重绘，请换一个支持局部重绘的模型'));
       return requestJson('./api/imagine/estimate', { providerId: request.providerId, model: request.modelId, size: 'auto' }, signal) as Promise<NodeCreditEstimate>;
     }
     const models = await loadMediaModels();
@@ -631,10 +631,10 @@ export function useNodeAi() {
 
   async function generateVideo(request: NodeVideoRequest, signal?: AbortSignal): Promise<NodeVideoResult[]> {
     const localMedia = ['doubao-local', 'dola-local'].includes(request.providerId);
-    if (localMedia && (request.videos?.length || request.audios?.length || request.firstFrame || request.lastFrame)) throw new Error(translate('当前本机路由不支持视频、音频或首尾帧参考'));
+    if (localMedia && (request.videos?.length || request.audios?.length || request.firstFrame || request.lastFrame)) throw new Error(translate('这个模型只能参考图片，请移除视频、音频或首尾帧'));
     const files = getFiles();
     const localReferences = localMedia ? await imageReferencePayload(files, request, (await loadMediaModels()).find(item => item.providerId === request.providerId && item.modelId === request.modelId)) : {};
-    if ('references' in localReferences) throw new Error(translate('请先将参考图片保存到本机项目，再使用本机模型生成'));
+    if ('references' in localReferences) throw new Error(translate('请先把参考图片保存到项目里，再用这个模型生成'));
     // 本地素材换成服务端签发的公网只读地址：上游才能抓取，也不会把大视频塞进 data URL。
     const toReference = (path: string) => /^https?:/i.test(path)
       ? Promise.resolve(path)
@@ -774,7 +774,7 @@ export function useNodeAi() {
 
   async function estimateVideo(request: Omit<NodeVideoRequest, "directory" | "onStatus">, signal?: AbortSignal): Promise<NodeCreditEstimate> {
     if (['doubao-local', 'dola-local'].includes(request.providerId)) {
-      if (request.videos?.length || request.audios?.length || request.firstFrame || request.lastFrame) throw new Error(translate('当前本机路由不支持视频、音频或首尾帧参考'));
+      if (request.videos?.length || request.audios?.length || request.firstFrame || request.lastFrame) throw new Error(translate('这个模型只能参考图片，请移除视频、音频或首尾帧'));
       return requestJson('./api/imagine/video/estimate', { providerId: request.providerId, model: request.modelId, duration: request.duration, resolution: request.resolution || undefined, ratio: request.ratio || undefined }, signal) as Promise<NodeCreditEstimate>;
     }
     const toReference = (path: string) => /^https?:/i.test(path)
@@ -864,8 +864,8 @@ export function useNodeAi() {
       let prompt = '';
       if (recovering) await confirmMediaTask(request, requestId, true);
       else {
-        if (request.tools?.length) throw new Error(translate('本机网页登录模型暂不提供 Agent 工具调用，请选择其他文本模型'));
-        if (request.references?.some(item => item.dataType !== 'STRING')) throw new Error(translate('当前本机文本路由只支持文字引用，请移除图片或视频引用'));
+        if (request.tools?.length) throw new Error(translate('用豆包或 Dola 账号登录的文本模型不能调用 Agent 工具，请换一个文本模型'));
+        if (request.references?.some(item => item.dataType !== 'STRING')) throw new Error(translate('这个文本模型只能引用文字，请移除图片或视频引用'));
         prompt = [request.systemPrompt || '', request.prompt.trim(), ...(request.references || []).map(item => String(item.value || '').trim())].filter(Boolean).join('\n\n');
         request.signal?.throwIfAborted();
         // A failed binding save is still before dispatch and must not send.
@@ -902,7 +902,7 @@ export function useNodeAi() {
           }
           if (['failed', 'cancelled', 'expired'].includes(String(status.status))) {
             finish();
-            throw Object.assign(new Error(String(status.error || translate('本机文本生成未完成'))), status.status === 'cancelled' ? { name: 'AbortError', generationCancelled: true } : {});
+            throw Object.assign(new Error(String(status.error || translate('文本生成没有完成'))), status.status === 'cancelled' ? { name: 'AbortError', generationCancelled: true } : {});
           }
           request.onEvent?.({ type: 'status', message: String(status.error || translate('正在等待豆包或 Dola 返回文本…')) });
           await wait(2000, request.signal);

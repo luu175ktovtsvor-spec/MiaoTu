@@ -1,4 +1,3 @@
-import { installCanvasCompatibility } from '@/lib/canvasCompatibility'
 // MiaoImg 节点插件（UMD bundle）通过 window.miaoimgNodeHost 拿到宿主运行时：
 // 插件构建时把 vue / @vue-flow/core / element-plus 外置到这些全局上。
 // 这里在画布启动时把它们挂出去，插件脚本才能加载。
@@ -21,7 +20,6 @@ let extendedHost: Promise<void> | undefined
 export function installNodeHost() {
   if (installed || typeof window === 'undefined') return
   installed = true
-  installCanvasCompatibility()
   window.miaoimgNodeHost = { ...(window.miaoimgNodeHost || {}), vue, vueFlow, elementPlus }
   window.miaoimgNodes = window.miaoimgNodes || {}
 }

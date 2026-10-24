@@ -3,7 +3,6 @@
 import { spawn } from 'node:child_process'
 import { mkdirSync, writeFileSync, createWriteStream } from 'node:fs'
 import { join, resolve } from 'node:path'
-import compatibility from '../../docs/compatibility/canvas-v1.json' with { type: 'json' }
 const [exe, outputArg, ...appArgs] = process.argv.slice(2)
 if (!exe || !outputArg) throw new Error('Usage: node accept-login.ts <app executable> <isolated output directory> [app arguments]')
 const output = resolve(outputArg); mkdirSync(output, { recursive: true })
@@ -94,7 +93,7 @@ async function signIn() {
 }
 async function capture(name) { const { data } = await command('Page.captureScreenshot', { format: 'png' }); writeFileSync(join(output, name + '.png'), Buffer.from(data, 'base64')) }
 async function canvasReview() {
-  return evaluate(`(${(async function (historicalMarkers) {
+  return evaluate(`(${(async function () {
     performance.setResourceTimingBufferSize(2000);
     const status = await (await fetch('/api/desktop/status')).json();
     if (status.sync.enabled !== false) throw new Error('Isolated package must have synchronization disabled');
@@ -228,7 +227,8 @@ async function canvasReview() {
     const stored = await call('workspaceFiles', { action: 'readText', path: canvas.canvasId, maxBytes: 200000 });
     if (stored.truncated) throw new Error('Canvas receipt is incomplete');
     const documentBytes = JSON.parse(stored.text);
-    if (documentBytes.miaoimgCanvas !== true || documentBytes.schemaVersion !== 1 || historicalMarkers.some(key => documentBytes[key] !== true || stored.text.indexOf(JSON.stringify(key)) > 512)) throw new Error('Saved canvas is not compatible with installed readers');
+    if (documentBytes.miaoimgCanvas !== true || documentBytes.schemaVersion !== 1
+      || Object.keys(documentBytes).some(key => key !== 'miaoimgCanvas' && /canvas$/i.test(key) && documentBytes[key] === true)) throw new Error('Saved canvas contains a retired marker');
     const missing = expected.filter(name => !completed.has(name));
     if (missing.length) throw new Error('Canvas operations not exercised: ' + missing.join(', '));
     await fetch('/api/imagine/mcp', { method: 'PUT', headers, body: JSON.stringify({ enabled: false }) });
@@ -239,7 +239,7 @@ async function canvasReview() {
     await new Promise(r => setTimeout(r, 3500));
     if (attempts() !== closedAttempts) throw new Error('Disabled MCP channel kept reconnecting');
     return { synchronizationDisabled: true, externalConnectionStopped: true, installedReaderCompatibility: true, canvasId: canvas.canvasId, canvasOperations: expected, contentPreserved: true, independentCanvasCopy: true, movedDocumentSaved: true, closedDocumentSaved: true, copiedNodes: pasted.nodeCount, nodeTypes: overview.availableNodeTypes.map(x => x.type), discovered };
-  }).toString()})(${JSON.stringify(compatibility.canvasMarkers)})`, 180000);
+  }).toString()})()`, 180000);
 }
 
 async function stop() {

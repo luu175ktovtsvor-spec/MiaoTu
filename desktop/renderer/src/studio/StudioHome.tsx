@@ -128,7 +128,7 @@ export default function StudioHome({ csrf, owner, active = 'home', initialSectio
   async function remove(item: ProjectItem) {
     setMenuFor(null)
     const bin = systemTrashName()
-    if (item.id === 'default' || !window.confirm(`删除「${item.name}」？\n\n项目里的画布、素材和文档会移到电脑的${bin}。想彻底释放空间，在${bin}里清空即可。`)) return
+    if (!window.confirm(`删除「${item.name}」？\n\n项目里的画布、素材和文档会移到电脑的${bin}。想彻底释放空间，在${bin}里清空即可。`)) return
     setBusy(true)
     try {
       await mutate('/api/imagine/workspace/projects/remove', { id: item.id })
@@ -179,7 +179,7 @@ export default function StudioHome({ csrf, owner, active = 'home', initialSectio
                 {menuFor === item.id && <div className="studio-home__menu" role="menu">
                   <button type="button" role="menuitem" onClick={() => { setMenuFor(null); onOpen(item.id) }}>打开</button>
                   <button type="button" role="menuitem" onClick={() => startRename(item)}>重命名</button>
-                  {item.id !== 'default' && <button type="button" role="menuitem" className="is-danger" onClick={() => remove(item)}>删除项目</button>}
+                  <button type="button" role="menuitem" className="is-danger" onClick={() => remove(item)}>删除项目</button>
                 </div>}
               </article>
             ))}

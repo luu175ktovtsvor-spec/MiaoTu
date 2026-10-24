@@ -2,12 +2,19 @@
 name: asset-design
 displayName: "角色与场景设定"
 displayName_en: "Character and scene design"
-description: "资产板块：角色设定图、三视图、表情、动作、服装、道具，场景四视图、俯视布局、短剧场景板、VR 全景、巨物场景，以及从剧本提炼资产 DNA。"
-description_en: "The asset section: character sheets, turnarounds, expressions, poses, costumes, props, scene turnarounds, top views, scene boards, VR panoramas, giant-scale scenes and script asset DNA."
+description: "把角色、场景、道具做成稳定可复用的设定图：角色设定图、三视图、表情、动作、服装、道具，场景四视图、俯视布局、短剧场景板、VR 全景、巨物场景，以及从剧本提炼资产清单和视觉 DNA。"
+description_en: "Reusable design sheets for characters, scenes and props: turnarounds, expressions, poses, costumes, props, scene views, top views, scene boards, VR panoramas, giant scenes and script asset DNA."
 ---
 # 角色与场景设定
 
 负责把角色、场景、道具做成稳定可复用的设定图，保证后面每个镜头里人物和场景都是同一个。
+
+## 什么时候用别的板块
+
+| 任务 | 用哪个板块 |
+| --- | --- |
+| 正在按短剧漫剧全流程做剧集，需要锁定整部剧的资产清单 | 短剧漫剧全流程（drama-director）里的 `sd-asset-engine`；它需要单张设定图时再回到本板块的方法 |
+| 整体视觉风格、单张图片的画面指导 | 图片与视觉指导（image-direction） |
 
 ## 先选方法
 
@@ -35,8 +42,8 @@ description_en: "The asset section: character sheets, turnarounds, expressions, 
 
 ## 读取规则
 
-- 下列每个方法都是原作者的方法原文，只改了名称；细节以原文为准，不要凭印象改写。
-- 只读当前任务需要的那一个方法，不要一次把整个板块读完。正文较长时 readSkill 会截断，用返回的 nextOffset 接着读需要的章节。
-- 方法里写到的平台、模型、时长、比例和价格是当时的示例。实际能用的模型和参数，以画布节点返回的为准（getCanvas、node:getConfig），费用每次用节点的 estimate 重新询价。
-- 方法原文里的相对路径，用该方法自己的名称读取，例如 `readSkill({name:"方法名", path:"references/…"})`。
-- 方法里要用到本机软件时，桌面端先取得授权并检查软件是否已安装；缺少时按统一工具说明，在用户任务授权范围内准备依赖。妙图不会因为读取方法就自动安装软件。生成结果保留在当前画布或用户指定的文件夹。网页端只用当前实际可用的工具。
+- 方法正文是完整的专业方法：照正文执行，不凭印象改写、压缩，也不换成别的流程。
+- 只读当前任务需要的那一个方法和章节，不一次读完整个板块。正文被截断时，用返回的 nextOffset 接着读需要的部分。
+- 正文里的平台、模型、时长、比例和价格是写作时的示例；实际能用的模型和参数以画布节点返回的为准（getCanvas、node:getConfig），费用每次用节点的 estimate 询价。
+- 正文里的相对路径，用该方法的 ID 读取：`readSkill({name:"方法 ID", path:"references/…"})`。
+- 正文要求用本机软件时，桌面端先确认本机操作已授权并检查软件是否已安装；没有安装时，只在用户的任务需要、且在授权范围内准备。网页端只用当前实际可用的工具；生成结果放在当前画布或用户指定的文件夹。

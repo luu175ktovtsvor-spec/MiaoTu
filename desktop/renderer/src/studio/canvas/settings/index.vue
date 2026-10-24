@@ -22,7 +22,7 @@
         </template>
       </aside>
       <section class="content" :aria-label="active.label">
-        <header class="contentHeader"><h2>{{ active.label }}</h2><p>{{ active.description }}</p></header>
+        <header class="contentHeader"><p v-if="activeGroup" class="contentKicker">{{ activeGroup.label }}</p><h2>{{ active.label }}</h2><p>{{ active.description }}</p></header>
         <div class="contentBody">
           <transition name="el-fade-in" mode="out-in"><keep-alive include="personalization"><component :is="active.component" /></keep-alive></transition>
         </div>
@@ -33,7 +33,7 @@
 </template>
 <script setup lang="ts">
 import { translate } from "@miaoimg/i18n/vue";
-import { defineAsyncComponent, defineComponent, h, shallowRef } from "vue";
+import { computed, defineAsyncComponent, defineComponent, h, shallowRef } from "vue";
 import { ElDialog } from "element-plus";
 import { IconX } from "@tabler/icons-vue";
 import { dialogTheme } from "./dialogTheme";
@@ -63,6 +63,7 @@ const groups = [
 ].map(group => Object.assign(group, { items: group.ids.map(id => panels.find(panel => panel.id === id)).filter((panel): panel is typeof panels[number] => !!panel) })).filter(group => group.items.length);
 defineProps<{ embedded?: boolean }>();
 const active = shallowRef(panels[0]!);
+const activeGroup = computed(() => groups.find(group => group.items.includes(active.value)));
 const visible = defineModel<boolean>({ default: false });
 </script>
 <style lang="scss">

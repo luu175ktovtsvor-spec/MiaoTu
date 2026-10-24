@@ -16,7 +16,7 @@ A few decisive strokes carry the picture. Direct a complete view through Capture
 - `readSkill({name:"video-create",path:"references/miaoimg-tools.md"})`：执行节点、媒体、费用或文件操作前阅读；本轮已读则复用。
 - `readSkill({name:"image-direction",path:"references/prompt-optimization.md"})`：需要构建、诊断或修复图片提示词时读取完整的四步优化、编辑保护和质量检查方法。
 
-这些是详细创作参考，不止简要提示词。readSkill 截断时用 nextOffset 继续当前所需章节；不要一次加载整个参考库。共享参考只保存一份，此技能可独立调用，也可由“视频创作”总入口组合调用。
+这些是详细创作参考，不止简要提示词。readSkill 截断时用 nextOffset 继续当前所需章节；不要一次加载整个参考库。共享参考只保存一份，此技能可独立调用，也可由「视频复刻与创作」板块组合调用。
 
 ## 从指导到实际作品
 

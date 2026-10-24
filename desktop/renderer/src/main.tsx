@@ -8,6 +8,7 @@ import App from './App'
 import { LangProvider } from './LangProvider'
 import DesktopBar from './desktop/DesktopBar'
 import { initializeClientAppearance } from './clientAppearance'
+import './studio/shellRefresh.css'
 
 initializeClientAppearance(true)
 

@@ -86,10 +86,20 @@ export class LocalStore {
     const binding = this.get('SELECT account,base FROM desktop_sync WHERE project_id=?', id)
     if (binding && (binding.account !== this.activeAccount || JSON.parse(binding.base).removed)) throw Object.assign(new Error('账号项目不存在'), { status: 404 })
     const row = this.get("SELECT * FROM projects WHERE user_id='local' AND id=?", id)
-    if (!row) throw Object.assign(new Error('本地项目不存在'), { status: 404 })
+    if (!row) throw Object.assign(new Error('这个项目已经不在了，请回到首页重新选择项目'), { status: 404 })
     return { id: row.id, name: binding ? JSON.parse(binding.base).name || row.name : row.id === 'default' && row.name === '本机项目' ? '项目' : row.name, source: binding ? 'account' : 'local', createdAt: row.created_at, lastOpenedAt: row.last_opened_at }
   }
-  projects() { return this.all("SELECT id FROM projects WHERE user_id='local' AND (id NOT IN (SELECT project_id FROM desktop_sync) OR id IN (SELECT project_id FROM desktop_sync WHERE account=? AND COALESCE(json_extract(base,'$.removed'),0)=0)) ORDER BY created_at", this.activeAccount).map(row => this.project(row.id)) }
+  projects() {
+    return this.all("SELECT id FROM projects WHERE user_id='local' AND (id NOT IN (SELECT project_id FROM desktop_sync) OR id IN (SELECT project_id FROM desktop_sync WHERE account=? AND COALESCE(json_extract(base,'$.removed'),0)=0)) ORDER BY created_at", this.activeAccount)
+      .map(row => this.project(row.id))
+      // `default` is the local runtime's empty fallback scope. Once the user has
+      // deleted its contents it should disappear like any other project, while
+      // the empty row stays internally available for recovery and new sessions.
+      .filter(project => project.id !== 'default' || Boolean(
+        this.get("SELECT 1 FROM workspace_files WHERE user_id='local' AND project_id='default' AND mime<>'inode/directory' LIMIT 1")
+        || this.get("SELECT 1 FROM workspace_state WHERE user_id='local' AND project_id='default' AND (workspace<>'{}' OR assets<>'[]' OR canvas_files<>'{}') LIMIT 1")
+      ))
+  }
   createProject(name, id: string = randomUUID()) {
     if (typeof name !== 'string' || !name.trim() || name.length > 40 || /[\x00-\x1f]/.test(name)) throw new Error('项目名称无效')
     this.run('INSERT INTO projects VALUES(?,?,?,?,NULL)', 'local', id, name.trim(), new Date().toISOString())

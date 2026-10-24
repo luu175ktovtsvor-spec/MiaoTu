@@ -64,7 +64,7 @@ export default function StudioPicker({ value, options, onChange, label, placehol
 
   return <div className="studio-picker">
     <button ref={triggerRef} type="button" className={`studio-picker__button ${compact ? 'is-compact' : ''}`} aria-label={`${label}${lang === 'en' ? ': ' : '：'}${selected?.label || resolvedPlaceholder}`} aria-haspopup="listbox" aria-controls={menuId} aria-expanded={open} disabled={disabled || !options.length} onClick={() => setOpen(!open)} onKeyDown={(event) => { if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); setOpen(true) } }}>
-      {!compact && <Icon size={17} className="studio-picker__icon" />}
+      {selected?.leading ? selected.leading : !compact && <Icon size={17} className="studio-picker__icon" />}
       <span><strong>{selected?.label || resolvedPlaceholder}</strong>{!compact && selected?.detail && <small>{selected.detail}</small>}</span>
       <CaretDown size={14} className={open ? 'is-open' : ''} />
     </button>
@@ -72,7 +72,7 @@ export default function StudioPicker({ value, options, onChange, label, placehol
       {options.map((option, index) => <div role="presentation" key={option.value}>
         {option.group && (index === 0 || option.group !== options[index - 1]?.group) && <p className="studio-picker__group">{option.group}</p>}
         <button type="button" role="option" aria-selected={option.value === value} disabled={option.disabled} className={`studio-picker__option ${option.value === value ? 'is-selected' : ''}`} onClick={() => { onChange(option.value); setOpen(false); triggerRef.current.focus() }}>
-          <Icon size={17} className="studio-picker__icon" /><span><strong>{option.label}</strong>{option.detail && <small>{option.detail}</small>}</span>{option.value === value && <Check size={16} />}
+          {option.leading ?? <Icon size={17} className="studio-picker__icon" />}<span><strong>{option.label}</strong>{option.detail && <small>{option.detail}</small>}</span>{option.value === value && <Check size={16} />}
         </button>
       </div>)}
     </div>, document.body)}

@@ -450,7 +450,6 @@
   "分组中存在不可删除的节点": "Ada node dalam grup yang tidak dapat dihapus",
   "否": "Tidak",
   "服务地址": "Alamat layanan",
-  "服务端未确认重发，请重新打开对话后重试": "Server tidak mengkonfirmasi pengiriman ulang. Silakan buka kembali percakapan dan coba lagi.",
   "服务器部署只能使用 data/workspaces 内的工作区": "Penyebaran server hanya dapat menggunakan ruang kerja dalam data/workspaces",
   "服务器部署只能使用服务器工作区": "Penerapan server hanya dapat menggunakan ruang kerja server",
   "服务器工作区{0}": "Ruang kerja server {0}",
@@ -1414,7 +1413,6 @@
   "文件路径超出技能目录": "Jalur file melebihi direktori keterampilan",
   "文件路径无效": "Jalur file tidak valid",
   "文件名需为小驼峰格式，例如 imageNode.umd.js": "Nama file harus dalam format lowerCamelCase, seperti imageNode.umd.js",
-  "文件名与节点导出名不一致：{0} 需要导出 toonflowNodes.{1}，请按实际节点名修改文件名": "Nama file tidak sesuai dengan nama ekspor node: {0} perlu mengekspor toonflowNodes.{1}, harap ubah nama file sesuai dengan nama node sebenarnya",
   "文件内容不能包含空字符": "Konten file tidak boleh berisi karakter nol",
   "文件已被其他操作修改。当前草稿已保留，请先复制需要保留的内容，再重新加载最新版本。": "File telah dimodifikasi oleh operasi lain. Draf saat ini telah dipertahankan. Silakan salin konten yang perlu dipertahankan lalu muat ulang versi terbaru.",
   "文件已创建": "File dibuat",
@@ -2063,5 +2061,6 @@
   "已达到 1000 个文件的检查上限，已停止。以下为部分结果，可缩小查找文本后重试。": "Batas pemeriksaan 1000 berkas tercapai; pencarian dihentikan. Berikut hasil sebagian; persempit teks pencarian lalu coba lagi.",
   "已达到 20 MiB 文本的搜索上限，已停止。以下为部分结果，可缩小查找文本后重试。": "Batas pencarian teks 20 MiB tercapai; pencarian dihentikan. Berikut hasil sebagian; persempit teks pencarian lalu coba lagi.",
   "已达到 500 处匹配的展示上限，已停止。以下为部分结果，可缩小查找文本后重试。": "Batas tampilan 500 kecocokan tercapai; pencarian dihentikan. Berikut hasil sebagian; persempit teks pencarian lalu coba lagi.",
-  "正在搜索磁盘文件…": "Mencari berkas di disk…"
+  "正在搜索磁盘文件…": "Mencari berkas di disk…",
+  "重发没有确认成功，请重新打开这段对话后再试": "Server tidak mengkonfirmasi pengiriman ulang. Silakan buka kembali percakapan dan coba lagi."
 }

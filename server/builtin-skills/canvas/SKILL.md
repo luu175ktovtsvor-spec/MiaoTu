@@ -28,7 +28,7 @@ metadata:
 
 故事或视频制作先读取 [制作阶段与确认](references/videoProduction.md#0-逐阶段协作)。默认只落实当前已确认阶段；先逐步收集信息，再展示阶段成果并询问调整，等用户明确继续。不因用户说“做一个短片”就一次创建全部分镜与生成节点，也不把提问失败、跳过或沉默当作确认。
 
-默认从本次完整剧本生成角色、场景、道具资产，再拆为多镜头片段；一片段对应一份视频提示词和一个视频节点，资产直接用于多参生成。写资产提示词前读取 [资产规范](../workflow/references/assets.md)，写视频提示词前读取 [视频制作工作流](../workflow/SKILL.md) 里的 Seedance 分段规则，角色面部特写与正侧背完整三视图不能省成通用单张剧情图。
+默认从本次完整剧本生成角色、场景、道具资产，再拆为多镜头片段；一片段对应一份视频提示词和一个视频节点，资产直接用于多参生成。写资产提示词前读取 [资产规范](references/workflow/references/assets.md)，写视频提示词前读取 [视频制作工作流](references/workflow/SKILL.md) 里的 Seedance 分段规则，角色面部特写与正侧背完整三视图不能省成通用单张剧情图。
 
 文档内链接相对当前文件目录。跨技能先通过 `listSkills` 确认实际 ID，再使用 `readSkill({name:"目标技能ID",path:"技能内路径"})`；相对链接归一化后不能含 `..`。编剧按任务选择 `miaotu-film-screenwriting`、`video-script` 或 `short-drama-factory`，不调用不存在的 `script` 技能或 `available_skills` 工具。依赖缺失时说明缺项，仅继续不依赖它的工作，不凭简介补造规范。
 

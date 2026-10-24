@@ -63,7 +63,6 @@ ENV NODE_ENV=production \
 # 运行期只复制服务端、静态 bundle、词典和最小 Vite 预览依赖。
 COPY --from=verification --chown=node:node /app/package*.json /app/
 COPY --from=verification --chown=node:node /app/LICENSE /app/LICENSE
-COPY --from=verification --chown=node:node /app/docs/compatibility /app/docs/compatibility
 COPY --from=verification --chown=node:node /app/node_modules /app/node_modules
 COPY --from=verification --chown=node:node /app/server /app/server
 COPY --from=verification --chown=node:node /app/runtime /app/runtime
@@ -109,7 +108,6 @@ FROM base AS admin-runtime
 ENV NODE_ENV=production OIP_ADMIN_PORT=4184 OIP_ADMIN_LOCAL_ONLY=true OIP_ADMIN_WEB_PORT=4173 OIP_DATA_DIR=/app/data
 COPY --from=admin-build --chown=node:node /app/package*.json /app/
 COPY --chown=node:node LICENSE /app/LICENSE
-COPY --chown=node:node docs/compatibility /app/docs/compatibility
 COPY --from=admin-build --chown=node:node /app/node_modules /app/node_modules
 COPY --from=admin-build --chown=node:node /app/web/admin-dist /app/admin-web
 COPY --chown=node:node web/public/miaoimg-logo.png /app/admin-web/miaoimg-logo.png

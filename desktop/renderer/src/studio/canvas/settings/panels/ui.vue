@@ -201,6 +201,16 @@ function resetUi() {
 .settingSlider {
   // 两端的刻度文字以滑块位置居中，不给够横向留白会顶出内容列。
   padding: 0 24px;
+  // 刻度文字挂在滑块下方、不占高度，下面留出它的位置，不压到下一行的分隔线。
+  margin-bottom: 30px;
+
+  :deep(.el-slider__marks-text) {
+    margin-top: 14px;
+    color: var(--el-text-color-secondary);
+    font-size: 12px;
+    letter-spacing: .04em;
+    white-space: nowrap;
+  }
 
   :deep(.el-slider__stop) {
     background-color: var(--el-text-color-secondary);

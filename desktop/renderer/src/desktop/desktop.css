@@ -142,7 +142,10 @@
 .desktop-account-panel.is-login h2{font-size:28px;font-weight:700}
 .desktop-login-head .desktop-account-description{margin:0}
 .desktop-account-panel.is-login form{gap:14px}
-.desktop-account-panel.is-login .desktop-account-input{min-height:48px;padding:0 6px 0 16px;border-color:var(--da-line)}
+.desktop-account-panel.is-login .desktop-account-input{min-height:48px;padding:0 6px 0 0;border-width:0 0 1px;border-color:var(--da-line-strong);border-radius:0;background:transparent}
+.desktop-account-panel.is-login .desktop-account-input:hover{border-color:var(--da-line-strong)}
+.desktop-account-panel.is-login .desktop-account-input:focus-within{border-color:var(--da-accent);box-shadow:none}
+.desktop-account-panel.is-login .desktop-account-input input{padding:14px 0}
 .desktop-account-panel.is-login .desktop-account-send{min-height:36px;border:0;color:var(--da-ink);font-size:13px}
 .desktop-account-panel.is-login .desktop-account-submit{min-height:48px;margin-top:10px;border-radius:12px;font-weight:600}
 .desktop-login-note{margin:-2px 0 0;color:var(--da-faint);font-size:12px;text-align:center}

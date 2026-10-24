@@ -27,6 +27,8 @@ export type ProgressInput = {
   elapsedSeconds: number;
   modelId: string;
   kind: ProgressKind;
+  // 视频请求的片长（秒）；视频耗时随片长增长，估算要用它。「自动」或未知时不传。
+  durationSeconds?: number | null;
   // 本轮已见过的真值峰值。不传就退回 realPercent；给了就用它兜底，避免上游偶尔回一次
   // null 让数字倒退。createProgressTracker 会替你维护这个值。
   realPeak?: number | null;
@@ -49,49 +51,62 @@ const ESTIMATE_RATE = 1.5;
 // 上游已经出图/出片、正在写回画布时停在 95%（只有估算通道需要这个占位）。
 const SAVING_PERCENT = 95;
 
-// 每个模型的典型耗时（秒），估算分母。两个消费者必须用同一个分母，所以和计算放在一起。
+// 每个模型的典型耗时，估算分母。两个消费者必须用同一个分母，所以和计算放在一起。
+// 视频的耗时随片长增长，所以写成「固定部分 + 每输出一秒要多少秒」；图片只有固定部分。
 //
-// 数据来源：生产库 generations 表的真实结算记录（服务器挂载 /opt/miaoimg/.oip/runtime-data/
-// management.sqlite，容器内是 /app/data/management.sqlite）。口径：
-//   SELECT model, (julianday(finished_at) - julianday(started_at)) * 86400 AS seconds
-//   FROM generations WHERE status='succeeded' AND finished_at IS NOT NULL;
-// 按模型分组取中位数（偶数个样本取中间两条的均值后四舍五入）；样本只有 1 条的模型直接取
-// 那一条。采样时间 2026-10-06，样本量很小（每个模型 1–8 条），只当作量级参考。
-// 复算（在服务器上跑）：
-//   sqlite3 /opt/miaoimg/.oip/runtime-data/management.sqlite \
-//     "SELECT model, (julianday(finished_at)-julianday(started_at))*86400 s FROM generations
-//      WHERE status='succeeded' AND finished_at IS NOT NULL ORDER BY model, s;"
-const TYPICAL_SECONDS: Record<string, number> = {
-  // 图片：seedream-flash 8 条中位数 22.8s，gpt-image-2 5 条中位数 25.9s，
-  // seedream-5-pro / sunburst / seedream-4-0 各只有 1 条实测（96.8s / 52.8s / 11.8s）。
-  "doubao-seedream-5-0-flash": 23,
-  "doubao-seedream-5-0-pro": 97,
-  "doubao-seedream-4-0": 12,
-  "gpt-image-2": 26,
-  "gpt-image-2.5-sunburst": 53,
-  // 视频：MiniMax-H3 8 条中位数 39.0s，seedance mini / fast 各 1 条（102.7s / 145.9s）。
-  "MiniMax-H3": 39,
-  "seedance-2.0-mini": 103,
-  "seedance-2.0-fast": 146,
+// 数据来源：生产库 generations 表里成功记录的 started_at → finished_at（不含排队），
+// 2026-10-23 采样。服务器上复算：
+//   sqlite3 -readonly /opt/miaoimg/.oip/runtime-data/management.sqlite \
+//     "SELECT model, json_extract(parameters,'$.duration'), json_extract(parameters,'$.resolution'),
+//             (julianday(finished_at)-julianday(started_at))*86400
+//      FROM generations WHERE status='succeeded' AND started_at IS NOT NULL ORDER BY model;"
+// 样本：gpt-image-2 113 条均值 29.9s；Grok Video 1.5 34 条（6s≈33、8s≈40、10s≈53、15s≈65–141）；
+// MiniMax-H3 768P 15 条（4s≈24–62、12s≈85–153、15s≈87–209）；Seedance 2.0 Mini 8 条（4s 片 134–258s，
+// 秘塔平台固定开销大）；Grok 经典版 8s 1 条 74s；Grok Image 2.0 2 条约 17s。
+// 方舟 Seedance（2.5 / 2.0 Fast）上游会报真实百分比，估算只在真值到达前兜底。
+type Timing = { base: number; perSecond?: number };
+const TYPICAL: Record<string, Timing> = {
+  // 图片
+  "gpt-image-2": { base: 30 },
+  "gpt-image-2.5-sunburst": { base: 53 },
+  "doubao-seedream-5-0-flash": { base: 25 },
+  "doubao-seedream-5-0-pro": { base: 97 },
+  "doubao-seedream-4-0": { base: 12 },
+  "grok-imagine-image": { base: 17 },
+  // 视频
+  "grok-imagine-video-1.5": { base: 0, perSecond: 5.5 },
+  "grok-imagine-video": { base: 0, perSecond: 9 },
+  "MiniMax-H3": { base: 10, perSecond: 8 },
+  "seedance-2.0-mini": { base: 120, perSecond: 17 },
+  // 秘塔 Seedance 2.0 标准版暂无样本：同一平台，先按 Mini 的量级。
+  "seedance-2.0": { base: 120, perSecond: 17 },
 };
-// 没有实测样本的模型用这个兜底；取得比上面大多数样本略大，宁可走得慢也不提前顶到 CAP。
-const DEFAULT_SECONDS: Record<ProgressKind, number> = { image: 30, video: 90 };
+// 没有实测样本的模型用这个兜底；取得偏大，宁可走得慢也不提前顶到 CAP。
+const DEFAULT_TIMING: Record<ProgressKind, Timing> = { image: { base: 30 }, video: { base: 30, perSecond: 10 } };
+// 片长没给或是「自动」时按 10 秒估。
+const DEFAULT_VIDEO_SECONDS = 10;
 
-export function typicalSeconds(modelId: string, kind: ProgressKind): number {
+// 目录里的 ID 带平台前缀和日期后缀（doubao-seedance-2-0-fast-260128、doubao-seedream-5-0-pro-260628），
+// 先精确匹配，再按最长前缀匹配，最后把方舟写法归一（2-0 → 2.0，去掉 doubao- 和日期）再找一次。
+function timingFor(modelId: string, kind: ProgressKind): Timing {
   const id = String(modelId || "").trim();
-  // 目录里的 id 可能带版本后缀（内部出现过 doubao-seedream-5-0-pro-260628 这种），
-  // 先精确匹配，再退回最长前缀匹配。
-  const exact = TYPICAL_SECONDS[id];
-  if (exact) return exact;
-  const match = Object.keys(TYPICAL_SECONDS)
-    .filter((key) => id.startsWith(key))
-    .sort((left, right) => right.length - left.length)[0];
-  return match ? TYPICAL_SECONDS[match]! : DEFAULT_SECONDS[kind];
+  const lookup = (value: string) => TYPICAL[value] ?? TYPICAL[Object.keys(TYPICAL)
+    .filter((key) => value.startsWith(key))
+    .sort((left, right) => right.length - left.length)[0] ?? ""];
+  const normalized = id.replace(/^doubao-/, "").replace(/-\d{6}$/, "").replace(/(\d)-(\d)/g, "$1.$2");
+  return lookup(id) ?? lookup(normalized) ?? DEFAULT_TIMING[kind];
+}
+
+export function typicalSeconds(modelId: string, kind: ProgressKind, durationSeconds?: number | null): number {
+  const timing = timingFor(modelId, kind);
+  if (kind !== "video" || !timing.perSecond) return timing.base;
+  const seconds = Number(durationSeconds) > 0 ? Number(durationSeconds) : DEFAULT_VIDEO_SECONDS;
+  return timing.base + timing.perSecond * seconds;
 }
 
 // 无真值通道的估算值，0 → ESTIMATE_CAP 单调递增。
-export function estimatedPercent(input: Pick<ProgressInput, "elapsedSeconds" | "modelId" | "kind">): number {
-  const typical = Math.max(1, typicalSeconds(input.modelId, input.kind));
+export function estimatedPercent(input: Pick<ProgressInput, "elapsedSeconds" | "modelId" | "kind" | "durationSeconds">): number {
+  const typical = Math.max(1, typicalSeconds(input.modelId, input.kind, input.durationSeconds));
   const ratio = Math.max(0, input.elapsedSeconds) / typical;
   return Math.min(ESTIMATE_CAP, Math.round(ESTIMATE_CAP * (1 - Math.exp(-ESTIMATE_RATE * ratio))));
 }

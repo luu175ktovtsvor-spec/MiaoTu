@@ -23,18 +23,25 @@ const SKILLS_DIR = 'skills'
 const MAX_SKILL_BYTES = 200 * 1024
 // 随产品发布的内置技能（对应上游 packages/skills）：所有账号可用，只读。
 const BUILTIN_SKILLS_DIR = fileURLToPath(new URL('./builtin-skills/', import.meta.url))
-// 2026-10-22 起内置技能按创作板块合并为 8 个。被合并的技能原文整目录保留在新技能的
-// references/<旧 ID>/ 下；旧 ID 仍可用 readSkill 读取，对话里已有的引用和技能之间的互相引用都不会断。
-const BUILTIN_SKILL_GROUPS: Record<string, string[]> = {
-  'script-writing': ['miaotu-film-screenwriting', 'miaotu-original-screenplay-adaptation', 'miaotu-film-script-analysis', 'short-drama-factory', 'video-script'],
+// 内置技能按创作板块分成 8 个；每个方法的正文完整放在所属板块的 references 下。
+// 方法 ID 和旧 ID 都在这里登记，readSkill 用它们找到正文；值为字符串时目录是 references/<ID>，
+// 值为 [ID, 目录] 时用给定目录（短剧漫剧全流程把作者的整套技能放在 references/suite/ 下，保持原有的相对路径）。
+const DRAMA_SUITE = ['short-drama-director', 'sd-decision-engine', 'sd-recon-engine', 'sd-script-engine', 'sd-overseas-engine', 'sd-jieshuo-engine', 'sd-asset-engine', 'sd-storyboard-engine', 'sd-combat-engine', 'sd-xuanhuan-engine', 'sd-real-engine', 'sd-feed-engine', 'sd-qc-engine']
+const BUILTIN_SKILL_GROUPS: Record<string, Array<string | [string, string]>> = {
+  'canvas': ['workflow'],
+  'script-writing': ['miaotu-film-screenwriting', 'miaotu-original-screenplay-adaptation', 'miaotu-film-script-analysis', 'short-drama-factory'],
   'asset-design': ['miaotu-character-turnaround', 'miaotu-character-orthographic', 'miaotu-character-expression', 'miaotu-character-pose', 'miaotu-character-costume', 'miaotu-character-prop', 'miaotu-script-asset-dna', 'miaotu-scene-turnaround', 'miaotu-scene-top-view-layout', 'miaotu-ai-drama-scene-layout', 'miaotu-vr-panorama', 'miaotu-giant-scale-scene'],
   'storyboard': ['miaotu-script-to-video', 'miaotu-90s-script-to-video', 'miaotu-storyboard-panel', 'miaotu-visual-storyboard-grid'],
-  'drama-director': ['workflow', 'video-short-drama', 'real-combat-director', 'xuanhuan-combat-director'],
-  'video-create': ['video-plan', 'video-direction', 'video-performance', 'video-broll', 'video-sound', 'video-captions', 'video-graphics', 'video-review', 'video-continuity', 'video-talking-head', 'video-interview', 'video-podcast', 'video-explainer', 'video-ranking'],
-  'video-analysis': ['miaotu-video-shot-analysis', 'video-remake'],
+  // 套装里的写实、玄幻打戏引擎取代了作者早先单独发布的两个动作导演；旧 ID 指向套装里的对应引擎。
+  'drama-director': [...DRAMA_SUITE.map(name => [name, `references/suite/${name}`] as [string, string]), ['real-combat-director', 'references/suite/sd-real-engine'], ['xuanhuan-combat-director', 'references/suite/sd-xuanhuan-engine']],
+  'video-create': ['video-remake', 'video-plan', 'video-script', 'video-direction', 'video-performance', 'video-broll', 'video-sound', 'video-captions', 'video-graphics', 'video-review', 'video-continuity', 'video-talking-head', 'video-interview', 'video-podcast', 'video-explainer', 'video-ranking', 'video-short-drama'],
+  'video-analysis': ['miaotu-video-shot-analysis'],
   'image-direction': ['visual-direction', 'inspiration-library'],
 }
-const BUILTIN_SKILL_ALIASES = new Map(Object.entries(BUILTIN_SKILL_GROUPS).flatMap(([skill, olds]) => olds.map(old => [old, { skill, base: `references/${old}` }] as const)))
+const BUILTIN_SKILL_ALIASES = new Map(Object.entries(BUILTIN_SKILL_GROUPS).flatMap(([skill, methods]) => methods.map(method => {
+  const [id, base] = typeof method === 'string' ? [method, `references/${method}`] : method
+  return [id, { skill, base }] as const
+})))
 // 内置目录随镜像发布，元数据只读一次；账号自定义技能仍读取当前项目索引。
 let builtinCatalog
 
@@ -175,7 +182,11 @@ export function createSkillStore({ workspaceFiles, localSkills }: Record<string,
     const parts = skillReferenceParts(relative)
     const path = skillPath(name)
     const preferences = skillPreferences(userId)
-    if (preferences[name] === false || preferences[BUILTIN_SKILL_ALIASES.get(name)?.skill || ''] === false) throw failure('技能已停用，请先在技能设置中启用', 403)
+    // 停用的技能不再列出，入口也不能读取。内置板块之间共享的参考文件（例如拉片、图片指导引用的视频方法）
+    // 不随所在板块一起停用，否则停用一个板块会让其他已启用板块读不到正文。
+    const section = BUILTIN_SKILL_ALIASES.get(name)?.skill
+    const builtin = Boolean(section) || builtinSkillNames().includes(name)
+    if ((preferences[name] === false || preferences[section || ''] === false) && (relative === 'SKILL.md' || !builtin)) throw failure('技能已停用，请先在技能设置中启用', 403)
     const entry = workspaceEntry(userId, path)
     if (entry) {
       if (relative === 'SKILL.md') return workspaceFiles.read(userId, path)

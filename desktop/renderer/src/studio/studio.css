@@ -123,8 +123,9 @@
 .reference-add:disabled { cursor: wait; opacity: .5; }
 .studio-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
 .studio-error { margin: 8px 0 0; color: #dc8774; font-size: 10px; }
-.studio-banner { margin: 14px 0 -4px; border: 1px solid color-mix(in srgb,var(--color-accent) 22%,transparent); background: color-mix(in srgb,var(--color-accent) 8%,transparent); padding: 9px 10px; color: var(--studio-warm); font-size: 10px; }
-.studio-banner--error { border-color: rgba(220,135,116,.25); background: rgba(220,135,116,.08); color: #dc8774; }
+/* 提示条：不画框、不铺底色，只用左侧一根细线表示状态（提示蓝、错误红），文字保持正文颜色。 */
+.studio-banner { margin: 14px 0 -4px; border: 0; border-left: 2px solid #4c9dff; border-radius: 0; background: none; padding: 2px 0 2px 12px; color: var(--color-body); font-size: 13px; line-height: 1.7; }
+.studio-banner--error { border-left-color: #e5484d; background: none; color: var(--color-body); }
 .studio-banner__action { margin-left: 10px; border: 0; background: transparent; color: inherit; cursor: pointer; font-size: inherit; text-decoration: underline; text-underline-offset: 3px; }
 .inspector-footer { position: sticky; z-index: 2; bottom: 0; margin: 0 -8px 0 -1px; padding: 16px 8px 4px 1px; background: linear-gradient(180deg, rgba(12,12,14,0), rgba(12,12,14,.97) 26%); }
 .cost-preview { display: flex; align-items: baseline; gap: 5px; margin-top: 0; border: 1px solid var(--studio-line); background: rgba(23,25,27,.82); padding: 10px 11px; color: #92958e; font-size: 10px; }
@@ -712,7 +713,7 @@
 .studio-top a:hover, .studio-top button:hover { color: var(--color-ink); }
 .studio-top button[aria-current="page"] { color: var(--color-brass); }
 .studio-record { width: min(960px, 100%); margin: 0 auto; padding: 28px 24px 64px; overflow: auto; }
-.studio-record h1 { margin: 18px 0 8px; color: var(--color-ink); font: 500 clamp(32px, 4vw, 44px)/1.1 Fraunces, "Songti SC", "Noto Serif SC", serif; letter-spacing: -.03em; }
+.studio-record h1 { margin: 18px 0 8px; color: var(--color-ink); font: 650 clamp(32px, 4vw, 44px)/1.15 var(--font-sans); letter-spacing: -.01em; }
 .studio-record > p { color: var(--color-body); }
 .record-toolbar { display: flex; align-items: center; gap: 12px; margin: 18px 0 6px; color: var(--color-muted); font-size: 12px; }
 .record-toolbar .studio-picker { width: min(240px, 100%); }
@@ -871,7 +872,7 @@
 .composer-extra { display: grid; gap: 12px; margin-top: 12px; padding-top: 12px; border-top: 1px solid rgb(244 244 245 / .08); }
 .extra-picks { display: flex; flex-wrap: wrap; gap: 8px; }
 .extra-picks .studio-picker { width: min(168px, 100%); }
-.studio-app .studio-banner { margin: 8px 0 0; border-radius: 8px; }
+.studio-app .studio-banner { margin: 8px 0 0; border-radius: 0; }
 @media (max-width: 720px) {
   .studio-top { gap: 16px; padding-inline: 16px; }
   .studio-who { display: none; }
@@ -1427,6 +1428,10 @@
 .feedback-page h1 { margin: 6px 0 4px; }
 .feedback-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; }
 .feedback-heading p { margin: 0; color: var(--color-body); font-size: 14px; }
+.feedback-contact { display: flex; align-items: center; gap: 16px; margin-top: 8px; padding: 14px 16px; border: 1px solid var(--color-line); border-radius: 16px; }
+.feedback-contact img { flex: none; width: 72px; height: 72px; padding: 4px; border-radius: 10px; background: #fff; }
+.feedback-contact p { display: grid; gap: 4px; margin: 0; color: var(--color-muted); font-size: 13px; line-height: 1.7; }
+.feedback-contact strong { color: var(--color-ink); font-size: 14px; font-weight: 600; }
 .feedback-primary, .feedback-secondary { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; gap: 7px; min-height: 38px; padding: 0 16px; border-radius: 999px; font-size: 13px; font-weight: 600; cursor: pointer; }
 .feedback-primary { border: 1px solid var(--color-accent); background: var(--color-accent); color: var(--color-accent-ink); }
 .feedback-primary:hover:not(:disabled) { filter: brightness(1.06); }

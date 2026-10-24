@@ -90,7 +90,7 @@ function setDocumentLanguageOwner(owned: boolean) {
   for (const listener of [...ownerListeners]) listener(owned)
 }
 
-// 画布挂载时认领、卸载时交回（见 studio/ToonflowStudioMount.tsx）。
+// 画布挂载时认领、卸载时交回（见 studio/MiaoCanvasMount.tsx）。
 export function claimDocumentLanguage() { setDocumentLanguageOwner(true) }
 export function releaseDocumentLanguage() { setDocumentLanguageOwner(false) }
 

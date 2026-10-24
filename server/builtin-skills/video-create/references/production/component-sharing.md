@@ -86,7 +86,7 @@ like these to the package that already owns the component:
     "type": "git",
     "url": "git+https://github.com/studio/score-strip.git"
   },
-  "license": "MIT"
+  "license": "your-license"
 }
 ```
 

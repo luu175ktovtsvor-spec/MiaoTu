@@ -1,7 +1,7 @@
 {
   "name": "miaoimg-desktop",
   "productName": "妙图",
-  "version": "3.1.0",
+  "version": "3.1.1",
   "macCredentialProtection": "local-key",
   "description": "妙图创作画布",
   "author": "MiaoImg",
@@ -77,6 +77,31 @@
       "notarize": false,
       "entitlements": "assets/mac-entitlements.plist",
       "entitlementsInherit": "assets/mac-entitlements.plist"
+    },
+    "dmg": {
+      "window": {
+        "width": 620,
+        "height": 420
+      },
+      "contents": [
+        {
+          "x": 160,
+          "y": 180,
+          "type": "file"
+        },
+        {
+          "x": 460,
+          "y": 180,
+          "type": "link",
+          "path": "/Applications"
+        },
+        {
+          "x": 310,
+          "y": 330,
+          "type": "file",
+          "path": "assets/首次使用，请右键打开.command"
+        }
+      ]
     },
     "win": {
       "icon": "assets/icon.ico",

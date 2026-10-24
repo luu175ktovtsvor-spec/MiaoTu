@@ -3,7 +3,6 @@ import { createRequire } from 'node:module'
 import { extname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { isDesktopResourcePath } from './desktop-resources.ts'
-import { THIRD_PARTY_NOTICES } from './third-party-notices.ts'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
 const requireBuild = createRequire(join(root, 'desktop/renderer/package.json'))
@@ -39,10 +38,6 @@ export async function compileDesktop() {
   }
   await compileTree(join(root, 'server'), join(output, 'server'))
   await compileTree(join(root, 'desktop'), join(output, 'desktop'))
-  await copyResources(join(root, 'docs/compatibility'), join(output, 'docs/compatibility'))
-  await mkdir(join(output, 'docs/licenses'), { recursive: true })
-  await writeFile(join(output, 'docs/licenses/THIRD_PARTY_NOTICES.txt'), THIRD_PARTY_NOTICES)
-  await copyResources(join(root, 'LICENSE'), join(output, 'docs/licenses/LICENSE.txt'))
   await copyResources(join(root, 'desktop/renderer/dist'), join(output, 'web'))
   await writeFile(join(output, 'version.json'), JSON.stringify({ desktop: JSON.parse(await readFile(join(root, 'desktop/package.json'), 'utf8')).version, web: JSON.parse(await readFile(join(root, 'desktop/renderer/package.json'), 'utf8')).version }))
   return output

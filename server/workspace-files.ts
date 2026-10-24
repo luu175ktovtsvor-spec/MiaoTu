@@ -503,17 +503,18 @@ export class WorkspaceFiles {
   // 顺序是刻意的——先让索引消失（用户立刻看不到这个项目），再删字节。
   // 反过来先删字节的话，中途失败会留下「索引还在、文件打不开」的项目，用户看得见但全 404；
   // 现在最坏是残留一个没有索引的项目目录，用户看不见，由 media-reconcile 报出来并回收。
-  removeProject(userId, project) {
+  removeProject(userId, project, { preserveDefault = false }: { preserveDefault?: boolean } = {}) {
     const id = requestedProject(project)
     if (!this.scoped) throw failure('工作区还没有迁移到多项目，请先运行 node scripts/migrate-projects.ts --apply', 409)
-    if (id === DEFAULT_PROJECT_ID) throw failure('默认项目不能删除')
+    if (id === DEFAULT_PROJECT_ID && !preserveDefault) throw failure('默认项目不能删除')
     return this.withDeferredBytes(() => {
       const root = this.projectRoot(userId, id)
       const stats = this.store.get('SELECT COUNT(*) AS rows, COALESCE(SUM(size),0) AS bytes FROM workspace_files WHERE user_id=? AND project_id=?', userId, id)
       const rows = this.store.all('SELECT path,blob FROM workspace_files WHERE user_id=? AND project_id=?', userId, id)
       this.store.run('DELETE FROM workspace_files WHERE user_id=? AND project_id=?', userId, id)
       this.store.run('DELETE FROM workspace_state WHERE user_id=? AND project_id=?', userId, id)
-      this.store.run('DELETE FROM projects WHERE user_id=? AND id=?', userId, id)
+      if (id === DEFAULT_PROJECT_ID) this.store.run("UPDATE projects SET last_opened_at=NULL WHERE user_id=? AND id=?", userId, id)
+      else this.store.run('DELETE FROM projects WHERE user_id=? AND id=?', userId, id)
       this.deferBytes(userId, id, rows, { projectRoot: root })
       return { rows: stats.rows, bytes: stats.bytes }
     })

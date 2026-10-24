@@ -10,6 +10,32 @@ export type ReleaseNotes = {
 // 更新说明直接写软件修好了什么：哪一个界面、哪一项操作，以前错在哪里，现在怎样。
 // 不写「上游」「部分问题」「体验优化」这类看不出具体改动的话。
 export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
+  '3.1.1': {
+    title: { zh: '客户端换上官网的配色与控件、登录输入更简洁、所有项目都能删除', en: 'Client styling now matches the website, cleaner sign-in fields and every project can be deleted' },
+    fixes: [
+      { zh: '账号和密码登录输入区不再有外框，只留底部细线；输入时细线亮起一道蓝光。', en: 'Email and password fields no longer have a frame, only an underline that lights up in blue while typing.' },
+      { zh: '画布文件和删除到废纸篓的副本只写妙图自己的格式标记，不再带旧的兼容字段；旧画布照常打开，之后保存或删除时会自动清理。', en: 'Canvas files and copies sent to the Trash carry only the MiaoImg format marker; older canvases still open and drop the old field when saved or deleted.' },
+      { zh: '「最近项目」和「全部项目」里的每个项目都能删除，默认项目也不再例外；项目内容会先放进电脑废纸篓。', en: 'Every project in Recent and All projects can now be deleted, including the default project; its contents go to the computer Trash first.' },
+      { zh: '停用某个创作技能板块后，其他板块用到的共享方法不再读不到；例如停用「视频复刻与创作」后，「视频拉片」和「图片与视觉指导」照常可用。', en: 'Turning off one creative skill section no longer stops other sections from reading the methods they share; for example, video breakdown and image direction keep working when video remake and production is off.' },
+      { zh: '删除当前项目后，积分流水、反馈和充值页面不再一直报「项目不存在」；打开时如果记住的项目已经删除，会自动回到默认项目。', en: 'After the open project is deleted, the credit ledger, feedback and top-up pages no longer fail with a missing-project error; a deleted remembered project falls back to the default one.' },
+      { zh: '生成进度的估算按各模型的实际耗时重新校准，视频按所选片长计算，不再很快跑到九成后长时间不动。', en: 'Generation progress estimates are recalibrated from real run times per model, and videos account for the chosen length, so the bar no longer races to 90% and stalls.' },
+      { zh: '设置的语言列表里，俄语等西里尔文字不再被拉开成一个字母一格。', en: 'Cyrillic language names such as Russian are no longer spread out letter by letter in the language list.' },
+    ],
+    improvements: [
+      { zh: '首页、项目、资产、创作精选、反馈、账号和设置沿用原来的布局，配色、字体、卡片、按钮、输入框和选中状态改为与官网一致。', en: 'Home, projects, assets, featured work, feedback, account and settings keep their layout, with colors, type, cards, buttons, fields and selected states matching the website.' },
+      { zh: '创作技能重新整理：「短剧与漫剧制作」升级为完整的「短剧漫剧全流程」，从立项、剧本、资产、分镜、打戏到视频提示词和出稿质检一条线做完；「视频创作」改名「视频复刻与创作」，复刻、单段剧情短片和短视频脚本都归到这里；「拉片与复刻」改为只做分析的「视频拉片」；视频制作工作流并入「画布操作手册」。', en: 'Creative skills are reorganised: short drama and comic drama production becomes a full pipeline from set-up and script to assets, storyboards, action, video prompts and QC; video production is renamed video remake and production and now holds remakes, single-scene drama and short-video scripts; breakdown and remake becomes analysis-only video breakdown; the production workflow joins the canvas guide.' },
+      { zh: '设置里的「创作技能」改为卡片排列：每个技能显示来源和开关，顶部显示已启用数量。', en: 'Creative skills in Settings are now shown as cards with their source and switch, and the number enabled at the top.' },
+      { zh: '设置里的「图片与视频」改为模型卡片：每个模型显示官方标识，时长、分辨率、比例、参考素材和积分分行列出；自动时长、自适应比例和各分辨率的时长上限直接写清楚。文本模型和画布里的模型选择也换成官方标识。', en: 'Images and video in Settings now shows a card per model with its official logo and its duration, resolution, ratio, reference and credit details, including auto duration, adaptive ratio and per-resolution limits. Text models and the canvas model picker use official logos too.' },
+      { zh: '资产、生成记录、保存提示和报错里的说法改得更直白，例如「本机项目」改成「妙图项目」、文件「保存在这台电脑上」，不再出现「路由」这类内部用词。', en: 'Wording in assets, history, save notices and errors is plainer, for example MiaoImg projects and files stored on this computer, without internal terms.' },
+      { zh: '生成进度改成节点底部的蓝色进度条：从左往右推进，百分比跟着进度走；上传进度同样改成进度条。', en: 'Generation progress is now a glowing blue bar along the bottom of the node, with the percentage moving along it; uploads use the same bar.' },
+      { zh: '提示和报错不再是带底色的框，只用左侧一根细线标出状态。生成历史的模型筛选按图片、视频分组，显示模型名和官方标识；充值页的支付方式改成小巧的选项，配支付宝官方标识。', en: 'Notices and errors are a thin line instead of a tinted box. The history model filter is grouped by image and video with model names and official logos; the top-up page shows a compact payment choice with the official Alipay logo.' },
+      { zh: '「豆包与 Dola」设置的说明重写：直接写明可用地区，其余说法也改得更直白。', en: 'The Doubao and Dola settings are rewritten in plain language and state the supported regions directly.' },
+      { zh: 'macOS 安装镜像增加「首次使用」辅助程序，可自动复制应用、清理下载隔离并启动。', en: 'The macOS disk image now includes a first-use helper that copies the app, clears the download quarantine and launches it.' },
+    ],
+    knownIssues: [
+      { zh: 'macOS 未签名版本第一次运行「首次使用」辅助程序时，可能需要在文件上右键选择「打开」一次。', en: 'The unsigned macOS build may require right-clicking the first-use helper and choosing Open once.' },
+    ],
+  },
   '3.1.0': {
     title: { zh: '画布节点统一风格、连线发光、快捷键面板；删除的项目放进系统废纸篓', en: 'Unified canvas nodes, glowing connections and a shortcuts panel; deleted projects go to the system Trash' },
     fixes: [

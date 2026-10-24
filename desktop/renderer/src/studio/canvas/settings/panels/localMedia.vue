@@ -3,7 +3,7 @@
     <el-radio-group v-model="platform" :aria-label="translate('选择平台')">
       <el-radio-button value="doubao">豆包</el-radio-button><el-radio-button value="dola">Dola</el-radio-button>
     </el-radio-group>
-    <settings-section :title="site.id === 'dola' ? translate('Dola 账号') : translate('豆包账号')" :description="translate('登录后，在妙图文本、图片和视频节点中使用该账户。')">
+    <settings-section :title="site.id === 'dola' ? translate('Dola 账号') : translate('豆包账号')" :description="translate('登录后，就能在文本、图片和视频节点里用这个账号生成；用的是账号自己的额度，不扣妙图积分。')">
       <div class="accountStatus" role="status">
         <el-tag :type="state?.connected ? 'success' : 'info'">{{ state?.connected ? translate('已连接') : translate('未连接') }}</el-tag>
         <strong v-if="state?.name">{{ state.name }}</strong>
@@ -15,46 +15,41 @@
         <el-button :disabled="busy || !state?.connected" @click="disconnect">{{ translate('断开连接') }}</el-button>
       </div>
       <p v-if="error" class="error" role="alert">{{ error }}</p>
-      <p v-if="state && !state.available" class="hint">{{ translate('请从妙图桌面客户端打开此设置。') }}</p>
+      <p v-if="state && !state.available" class="hint">{{ translate('请在妙图桌面版里打开这个设置。') }}</p>
     </settings-section>
-    <settings-section v-if="state?.pending?.length" :title="translate('原任务待取回')" :description="translate('提交编号丢失时，先在平台窗口找到原对话，再关联当前对话；妙图会核对原提示词，不会重发。')">
+    <settings-section v-if="state?.pending?.length" :title="translate('还有结果没取回')" :description="translate('在平台窗口里打开那段对话，再点「关联当前对话」；妙图核对提示词后取回结果，不会重新生成。')">
       <settings-row v-for="task in state.pending" :key="task.id" :label="kinds.find(kind => kind.id === task.kind)?.label || task.kind" :description="new Date(task.createdAt).toLocaleString()">
         <el-button v-if="task.needsBinding" :disabled="busy" @click="perform('bind-current', false, { requestId: task.id })">{{ translate('关联当前对话') }}</el-button>
-        <span v-else>{{ translate('正在查询原任务') }}</span>
+        <span v-else>{{ translate('正在取回') }}</span>
       </settings-row>
     </settings-section>
-    <settings-section :title="site.label + ' ' + translate('剩余额度')" :description="translate('仅显示平台明确提供的剩余值；页面未提供时显示未知。')">
+    <settings-section :title="site.label + ' ' + translate('剩余额度')" :description="translate('数字来自你的平台账号。')">
       <div class="quotaGrid">
         <div v-for="kind in kinds" :key="kind.id" class="quotaCard">
           <span>{{ kind.label }}</span>
-          <strong>{{ quota(kind.id)?.remaining == null ? translate('未知') : `${quota(kind.id)?.remaining} ${quota(kind.id)?.unit}` }}</strong>
-          <small>{{ quota(kind.id)?.source === 'platform' ? translate('平台页面返回') : translate('平台尚未提供可读取的额度') }}</small>
+          <strong>{{ quota(kind.id)?.remaining == null ? '—' : `${quota(kind.id)?.remaining} ${quota(kind.id)?.unit}` }}</strong>
+          <small v-if="quota(kind.id)?.remaining == null">{{ translate('平台没有显示剩余额度') }}</small>
         </div>
       </div>
-      <p class="hint">{{ translate('额度仍属于平台账户。此路由使用该账户权益，不扣妙图积分。') }}</p>
-      <p v-if="state?.checkedAt" class="hint">{{ translate('最近检查') }}：{{ new Date(state.checkedAt).toLocaleString() }}</p>
+      <p v-if="state?.checkedAt" class="hint">{{ translate('上次更新') }}：{{ new Date(state.checkedAt).toLocaleString() }}</p>
     </settings-section>
-    <settings-section :title="translate('今日妙图用量')" :description="translate('仅统计此妙图账户在这台电脑发起的任务，不代表平台全账户消耗。')">
+    <settings-section :title="translate('今天在妙图里的用量')" :description="translate('这台电脑上，用这个账号在妙图里提交的生成。')">
       <settings-row v-for="kind in kinds" :key="kind.id" :label="kind.label" control-width="auto">
-        <span class="usageValue">{{ translate('已受理') }} {{ usage(kind.id)?.submitted || 0 }} · {{ translate('已完成') }} {{ usage(kind.id)?.succeeded || 0 }} · {{ translate('待取回') }} {{ usage(kind.id)?.pending || 0 }}<template v-if="usage(kind.id)?.confirming"> · {{ translate('待确认') }} {{ usage(kind.id)?.confirming }}</template></span>
+        <span class="usageValue">{{ translate('提交') }} {{ usage(kind.id)?.submitted || 0 }} · {{ translate('完成') }} {{ usage(kind.id)?.succeeded || 0 }} · {{ translate('待取回') }} {{ usage(kind.id)?.pending || 0 }}<template v-if="usage(kind.id)?.confirming"> · {{ translate('确认中') }} {{ usage(kind.id)?.confirming }}</template></span>
       </settings-row>
     </settings-section>
-    <settings-section :title="translate('在节点中使用')" :description="translate('在文本、图片或视频节点的模型菜单里，选择「豆包」或「Dola」分组下的模型。')">
-      <p class="hint">{{ translate('在节点选择具体型号、时长和比例；仅在平台开放时提供分辨率选项，否则明确跟随平台。页面要求确认或验证时，在原窗口处理后继续取回。') }}</p>
+    <settings-section :title="translate('在节点里使用')" :description="translate('在文本、图片或视频节点的模型菜单里，选「豆包」或「Dola」分组下的模型。')">
       <local-media-info :model="{ providerId: platform + '-local', modelId: platform + '-local-video' }" />
-      <p class="hint">{{ translate('豆包、Dola 的文本模型用于文本节点的回复；Agent 和 3D 导演台请在「文本模型」里选择妙图模型或你接入的模型。') }}</p>
-      <p class="hint">{{ translate('网页登录状态仅保存在这台电脑，按平台和妙图账户隔离。断开连接只清除此处的网页登录状态。') }}</p>
+      <p class="hint">{{ translate('时长、比例等选项按平台实际提供的显示；平台窗口要求验证时，在窗口里完成后会自动继续。') }}</p>
+      <p class="hint">{{ translate('豆包、Dola 的文本模型只在文本节点里用；Agent 和 3D 导演台请在「文本模型」里换成其他模型。') }}</p>
+      <p class="hint">{{ translate('登录状态只保存在这台电脑上，每个妙图账号分开保存；断开连接会清除它。') }}</p>
     </settings-section>
-    <settings-section :title="translate('地区与网络自检')" :description="translate('平台会按当前网络出口 IP 判断可用地区，以下为实际支持情况。')">
-      <details class="networkDetails" :open="platform === 'dola' && !state?.connected">
-      <summary>{{ translate('查看各平台的网络要求') }}</summary>
+    <settings-section :title="translate('支持的地区')" :description="translate('平台按你登录和生成时所用网络的地区判断能不能用。')">
       <div class="networkGuide">
-        <p><strong>Dola</strong><span>{{ translate('Dola 根据登录和提交时的网络出口 IP 判断地区，官方页面没有公开一份固定国家清单。2026-10-22 实测：日本可以进入创作区；美国、加拿大、澳大利亚、印度和中国大陆会进入“受区域限制”页面。其他地区以 Dola 页面是否允许进入创作区为准。') }}</span></p>
-        <p><strong>豆包</strong><span>{{ translate('豆包服务面向可访问其网页的地区，是否会提示地区限制以豆包页面为准。妙图不会根据网络名称猜测账号可用性。') }}</span></p>
-        <p><strong>{{ translate('自检') }}</strong><span>{{ translate('先确认平台页面能打开、登录框能加载，再登录并读取当前账号的模型菜单。出现地区限制、验证、超时或登录失败时分别处理。') }}</span></p>
-        <p><strong>{{ translate('验收边界') }}</strong><span>{{ translate('页面、登录和模型菜单能正常打开即确认平台连接可用；真正生成时再核对账户额度与生成权限。') }}</span></p>
+        <p><strong>Dola</strong><span>{{ translate('可用：日本、英国和东南亚等地区。不可用：中国大陆、美国、加拿大、澳大利亚、印度。') }}</span></p>
+        <p><strong>豆包</strong><span>{{ translate('在中国大陆的网络下可直接使用。') }}</span></p>
+        <p><strong>{{ translate('受限时') }}</strong><span>{{ translate('换到可用地区的网络后，重新打开平台窗口并登录。') }}</span></p>
       </div>
-      </details>
     </settings-section>
   </div>
 </template>
@@ -101,7 +96,7 @@ async function perform(action?: string, silent = false, payload: Record<string, 
 }
 watch(platform, () => { routeController.abort(); routeController = new AbortController(); revision++; busy.value = false; watching = false; state.value = undefined; error.value = ''; void perform(); });
 async function disconnect() {
-  try { await ElMessageBox.confirm(translate('清除此妙图账户在本机保存的网页登录状态？'), translate('断开连接') + ' ' + site.value.label, { type: 'warning', confirmButtonText: translate('断开连接'), cancelButtonText: translate('取消') }); }
+  try { await ElMessageBox.confirm(translate('清除这台电脑上保存的网页登录状态？'), translate('断开连接') + ' ' + site.value.label, { type: 'warning', confirmButtonText: translate('断开连接'), cancelButtonText: translate('取消') }); }
   catch { return; }
   await perform('disconnect');
 }
@@ -120,8 +115,6 @@ onUnmounted(() => { controller.abort(); if (interval) clearInterval(interval); }
 .quotaCard strong { font-size:24px; font-variant-numeric:tabular-nums; }
 .quotaCard span,.quotaCard small,.hint { color:var(--el-text-color-secondary); font-size:12px; line-height:1.7; }
 .networkGuide { display:grid; gap:12px; margin-top:14px; }
-.networkDetails summary { cursor:pointer; color:var(--el-text-color-regular); font-size:13px; font-weight:500; }
-.networkDetails summary:hover { color:var(--el-text-color-primary); }
 .usageValue { color:var(--el-text-color-regular); font-size:13px; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .doubaoSettings > .el-radio-group { margin-bottom:18px; }
 .networkGuide p { display:grid; grid-template-columns:64px minmax(0,1fr); gap:12px; margin:0; color:var(--el-text-color-secondary); font-size:12px; line-height:1.7; }

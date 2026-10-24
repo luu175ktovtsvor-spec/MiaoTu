@@ -2,7 +2,7 @@
 // contents. Keep examples/licenses (including hidden examples), but never stage
 // known credentials, local databases or build/runtime state for distribution.
 const excludedDirectories = ['node_modules', '.app', 'runtime', 'release', '.tools', '.git', '.hg', '.svn', '.oip', '.cache', '.vite', '__pycache__', 'reference-sources', 'secrets', '.ssh', '.aws', '.gnupg', '.kube']
-const excludedNames = ['.ds_store', 'desktop.ini', '.npmrc', '.netrc', '.pypirc', '.git-credentials', '.yarnrc.yml', 'id_rsa', 'id_dsa', 'id_ecdsa', 'id_ed25519']
+const excludedNames = ['.ds_store', 'desktop.ini', '.npmrc', '.netrc', '.pypirc', '.git-credentials', '.yarnrc.yml', 'id_rsa', 'id_dsa', 'id_ecdsa', 'id_ed25519', 'license', 'license.txt', 'notice', 'notices', 'third_party_notices.txt', 'package-lock.json']
 const runtimeDirectories = ['db', 'data', 'workspace', 'backups', 'artifacts', 'coverage']
 const desktopStateNames = ['computer-access.json', 'window.json']
 const databaseExtensions = ['db', 'sqlite', 'sqlite3']

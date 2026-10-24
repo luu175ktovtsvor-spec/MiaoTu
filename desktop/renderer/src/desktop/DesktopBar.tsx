@@ -116,7 +116,7 @@ export default function DesktopBar({ children }: { children: ReactNode }) {
     <div key={account?.id || account?.workspaceKey || 'local'}>{children}</div>
     {native.platform !== 'darwin' && <div className="desktop-window-buttons"><button aria-label="最小化" onClick={() => native.minimize()}>−</button><button aria-label="最大化" onClick={() => native.maximize()}>□</button><button aria-label="关闭" onClick={() => native.close()}>×</button></div>}
     {open && <div className={'desktop-account-mask' + (loginView ? ' is-login' : '')} onClick={event => { if (event.target === event.currentTarget) close() }}>
-      <section ref={panel} className={'desktop-account-panel' + (loginView ? ' is-login' : '')} role="dialog" aria-modal="true" aria-labelledby="desktop-account-title" aria-describedby="desktop-account-description" tabIndex={-1} onKeyDown={event => {
+      <section ref={panel} className={'desktop-account-panel' + (loginView ? ' is-login' : '')} role="dialog" aria-modal="true" aria-labelledby="desktop-account-title" aria-describedby={loginView || !account ? 'desktop-account-description' : undefined} tabIndex={-1} onKeyDown={event => {
         if (event.key === 'Escape') { event.stopPropagation(); close() }
         if (event.key !== 'Tab') return
         const controls = Array.from(panel.current?.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled)') || [])
@@ -165,7 +165,7 @@ export default function DesktopBar({ children }: { children: ReactNode }) {
         </> : <>
         <div className="desktop-account-brand"><img src="/miaoimg-logo.png" alt="" /><span>妙图</span></div>
         <h2 id="desktop-account-title">账号</h2>
-        <p id="desktop-account-description" className="desktop-account-description">{account ? '账号与积分。画布和素材保存在这台电脑。' : '正在读取账号状态。'}</p>
+        {!account && <p id="desktop-account-description" className="desktop-account-description">正在读取账号状态。</p>}
         {loading ? <div className="desktop-account-loading" role="status"><SpinnerGap size={22} className="desktop-account-spinner" />正在读取账号…</div> : (!state || state.statusUnavailable) ? <>
           <p role="alert" className="desktop-account-error">{error || '暂时无法读取账号，请重试'}</p>
           <button className="desktop-account-submit" onClick={() => setRefresh(value => value + 1)}>重试</button>

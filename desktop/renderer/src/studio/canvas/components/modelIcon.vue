@@ -1,22 +1,17 @@
 <template>
-  <span class="modelIcon" :class="family" :style="{ width: `${size}px`, height: `${size}px`, fontSize: `${Math.round(size * 0.5)}px` }" aria-hidden="true">{{ label }}</span>
+  <span class="modelIcon" :class="{ isMark: Boolean(mark), isFallback: !mark }" :style="{ width: `${size}px`, height: `${size}px`, fontSize: `${Math.round(size * 0.5)}px` }" aria-hidden="true">
+    <span v-if="mark" class="modelMark" v-html="mark" />
+    <template v-else>{{ initial }}</template>
+  </span>
 </template>
 
 <script setup lang="ts">
 import { computed } from "vue";
+import { modelLogoSvg } from "../assets/model-logos";
 
-// 按模型家族给不同徽标：妙图模型目录里的几家各自一个字母 + 颜色，便于在列表里一眼区分。
-const props = withDefaults(defineProps<{ model: string; size?: number }>(), { size: 16 });
-const family = computed(() => {
-  const model = String(props.model || "").toLowerCase();
-  if (/grok/.test(model)) return "grok";
-  if (/seedream|seedance|doubao|volc/.test(model)) return "seed";
-  if (/gpt|openai|chatgpt|codex/.test(model)) return "gpt";
-  if (/qwen|wanx|wanvideo|tongyi/.test(model)) return "qwen";
-  if (/claude|anthropic/.test(model)) return "claude";
-  return "other";
-});
-const label = computed(() => ({ gpt: "G", grok: "X", seed: "豆", qwen: "Q", claude: "C", other: "AI" }[family.value]));
+const props = withDefaults(defineProps<{ model: string; provider?: string; size?: number }>(), { size: 16, provider: "" });
+const mark = computed(() => modelLogoSvg(props.model, props.provider));
+const initial = computed(() => Array.from(String(props.provider || props.model || "AI").trim())[0]?.toUpperCase() || "A");
 </script>
 
 <style scoped>
@@ -25,16 +20,20 @@ const label = computed(() => ({ gpt: "G", grok: "X", seed: "豆", qwen: "Q", cla
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  border-radius: 50%;
-  font-weight: 700;
   line-height: 1;
-  color: #0b0c0e;
-  background: #c4c2ba;
 }
-.modelIcon.gpt { background: #10a37f; color: #fff; }
-.modelIcon.grok { background: #1b1b1f; color: #fff; border: 1px solid rgba(255, 255, 255, .35); }
-.modelIcon.seed { background: #2f6bff; color: #fff; }
-.modelIcon.qwen { background: #6f42c1; color: #fff; }
-.modelIcon.claude { background: #d97757; color: #fff; }
-.modelIcon.other { background: var(--el-color-primary, #f2f2f2); color: var(--canvas-accent-ink, #151515); }
+.modelMark,
+.modelMark :deep(svg) {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.modelIcon.isMark { color: var(--el-text-color-primary, currentColor); }
+.modelIcon.isFallback {
+  border-radius: 30%;
+  background: var(--el-fill-color, rgba(255, 255, 255, .08));
+  box-shadow: inset 0 0 0 1px var(--el-border-color, rgba(255, 255, 255, .12));
+  color: var(--el-text-color-regular, currentColor);
+  font-weight: 650;
+}
 </style>

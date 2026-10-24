@@ -156,6 +156,10 @@ export default function FeedbackPage({ csrf, signedIn, lang, onLogin, onBack, on
               </li>
             ))}
           </ul>}
+        <aside className="feedback-contact">
+          <img src="/wechat-qrcode.png" alt="" width="72" height="72" />
+          <p><strong>{t('着急的话，微信扫码联系负责人', 'In a hurry? Scan with WeChat to reach the person in charge')}</strong>{t('反馈照样会在这里留档和回复。', 'Your feedback is still kept and answered here.')}</p>
+        </aside>
       </> : view === 'new' ? <>
         <button type="button" className="feedback-back" onClick={() => { setView('list'); setError('') }}><ArrowLeft size={15} aria-hidden="true" />{t('返回列表', 'Back to list')}</button>
         <h1>{t('新建反馈', 'New feedback')}</h1>

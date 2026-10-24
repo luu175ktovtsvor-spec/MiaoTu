@@ -5,7 +5,7 @@
         <el-button :icon="IconEdit" @click="openPrompt">{{ translate('编辑') }}</el-button>
       </settings-row>
 
-      <settings-row :label="translate('供应商开发工具')" :description="translate('查看服务端模型目录和自定义供应商配置，不含 Key。')" control-width="160px">
+      <settings-row :label="translate('供应商开发工具')" :description="translate('查看妙图的模型目录和自定义供应商配置，不含 Key。')" control-width="160px">
         <el-button :icon="IconCode" @click="openProviders">{{ translate('供应商调试') }}</el-button>
       </settings-row>
 

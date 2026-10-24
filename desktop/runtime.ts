@@ -1,5 +1,5 @@
 import { createServer } from 'node:http'
-import { isWorkspaceRequest, workspaceRequestHeaders } from '../server/canvas-document.ts'
+import { isWorkspaceRequest, sanitizeCanvasText, workspaceRequestHeaders } from '../server/canvas-document.ts'
 import { createReadStream, readFileSync, statSync, existsSync, mkdirSync, rmSync, chmodSync } from 'node:fs'
 import { join, resolve, extname, sep } from 'node:path'
 import { randomBytes, randomUUID, createHash } from 'node:crypto'
@@ -51,6 +51,15 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
   store.cleanupTrashBackups()
   const systemTrash = createSystemTrash({ directory, trashItem: native?.trash })
   const files = new DesktopWorkspaceFiles(store)
+  const sanitizeTrashSource = (source: { diskPath?: string | null; bytes?: Uint8Array | null }, mime: string) => {
+    if (mime !== 'application/json') return source
+    const bytes = source.bytes || (source.diskPath ? readFileSync(source.diskPath) : null)
+    if (!bytes) return source
+    const sanitized = sanitizeCanvasText(Buffer.from(bytes).toString('utf8'))
+    return sanitized === null ? source : { bytes: Buffer.from(sanitized) }
+  }
+  const trashSource = (project: string, path: string, mime: string) =>
+    sanitizeTrashSource(files.locate('local', path, project), mime)
   // 删除时还在 5 分钟宽限期里的素材字节当时不能回收；桌面版没有后台对账，启动时补收一次。
   try { files.blobs.sweep({ apply: true }) } catch (error) { console.warn('[workspace] BLOB_SWEEP_PENDING', error?.code || 'UNKNOWN') }
   const workspaceCatalogTools = createWorkspaceCatalogTools({ store, files })
@@ -59,7 +68,7 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
   files.beforeRemove = (_userId, project, entries, { trash, path }) => {
     if (!trash || !systemTrash.available) return
     const name = `${store.projectLabel(project)} - ${path.split('/').pop() || '文件'}`
-    const staged = systemTrash.stage(name, entries, target => files.locate('local', target, project))
+    const staged = systemTrash.stage(name, entries, target => trashSource(project, target, entries.find(entry => entry.path === target)?.mime || ''))
     let cancelled = false
     setImmediate(() => { if (!cancelled) systemTrash.send(staged).catch(error => console.warn('[system-trash] ITEM_PENDING', error?.code || 'UNKNOWN')) })
     return () => { cancelled = true; systemTrash.discard(staged) }
@@ -71,7 +80,10 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
     const legacy = store.legacyTrash()
     if (!legacy.length) return
     const staged = systemTrash.stage('妙图旧版删除的文件', legacy.map(row => ({ path: `${row.project_id}/${row.path}`, mime: row.mime })),
-      path => { const row = legacy.find(item => `${item.project_id}/${item.path}` === path); return row.disk_path ? { diskPath: row.disk_path } : { bytes: row.bytes } })
+      path => {
+        const row = legacy.find(item => `${item.project_id}/${item.path}` === path)
+        return sanitizeTrashSource(row.disk_path ? { diskPath: row.disk_path } : { bytes: row.bytes }, row.mime)
+      })
     await systemTrash.send(staged)
     store.dropLegacyTrash(legacy.map(row => row.id))
   })().catch(error => console.warn('[system-trash] LEGACY_TRASH_PENDING', error?.code || 'UNKNOWN'))
@@ -547,7 +559,6 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
         if (url.pathname.endsWith('/remove')) {
           if (typeof body?.id !== 'string' || !body.id) throw Object.assign(new Error('缺少项目编号'), { status: 422 })
           store.project(body.id)
-          if (body.id === 'default') throw new Error('默认项目保留')
           if (store.get("SELECT request_id FROM desktop_tasks WHERE project_id=? AND status NOT IN ('succeeded','failed','cancelled','expired')", body.id)) throw new Error('该项目还有待取回的生成任务，请先等待结果或明确取消')
           await mcp.withProjectRemoval('local', body.id, async () => {
             assertCurrent()
@@ -557,13 +568,15 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
               store.project(body.id)
               if (store.get("SELECT request_id FROM desktop_tasks WHERE project_id=? AND status NOT IN ('succeeded','failed','cancelled','expired')", body.id)) throw new Error('该项目还有待取回的生成任务，请先等待结果或明确取消')
               // 整个项目先按原目录结构放进系统废纸篓，系统收下了才从妙图里删；放不进去就不删，告诉用户。
-              const staged = systemTrash.stage(store.projectLabel(body.id), files.list('local', body.id), path => files.locate('local', path, body.id))
+              const projectEntries = files.list('local', body.id)
+              const staged = systemTrash.stage(store.projectLabel(body.id), projectEntries, path =>
+                trashSource(body.id, path, projectEntries.find(entry => entry.path === path)?.mime || ''))
               try { await systemTrash.send(staged) } catch (error) {
                 systemTrash.discard(staged)
                 throw Object.assign(new Error('没能把项目放进废纸篓，项目未删除'), { status: 500, cause: error })
               }
               assertCurrent()
-              const removed = files.removeProject('local', body.id)
+              const removed = files.removeProject('local', body.id, { preserveDefault: true })
               store.run('DELETE FROM desktop_sync WHERE project_id=? AND account=?', body.id, account)
               await agent.finishProjectRemoval('local', body.id)
               json(response, 200, { ok: true, ...removed })

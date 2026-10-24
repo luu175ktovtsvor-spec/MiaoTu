@@ -259,7 +259,7 @@ export async function saveSettings(update?: (current: Record<string, unknown>) =
     finally { applyingSettings = false; }
   }
   try { persistSettings(); }
-  catch { throw new Error("本机设置未能保存，请检查可用空间和存储权限后重试"); }
+  catch { throw new Error("设置没有保存成功，请检查电脑的可用空间和存储权限后重试"); }
   return true;
 }
 

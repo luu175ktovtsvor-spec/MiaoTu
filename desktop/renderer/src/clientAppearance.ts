@@ -1,7 +1,8 @@
 // The React shell and Vue canvas share one palette, including before login.
+// The default dark values follow the public site (web/src/landing/landing.css).
 export type AppearanceMode = 'system' | 'light' | 'dark' | 'custom'
 export const APPEARANCE_STORAGE_KEY = 'miaoimg.canvas.settings'
-export const defaultBackground = '#111114'
+export const defaultBackground = '#0b0b0c'
 const hex = (value: unknown): value is string => typeof value === 'string' && /^#[\da-f]{6}$/i.test(value)
 const channels = (color: string) => [1, 3, 5].map(offset => parseInt(color.slice(offset, offset + 2), 16))
 const luminance = (color: string) => channels(color).map(value => {
@@ -22,7 +23,7 @@ export function appearancePalette(ui: ReturnType<typeof normalizeAppearance>, sy
   const background = ui.theme === 'custom' ? ui.backgroundColor : (ui.theme === 'dark' || (ui.theme === 'system' && systemDark)) ? defaultBackground : '#f4f4f6'
   const light = luminance(background) > .179
   const base = background === defaultBackground
-  const surface = base ? '#1e1e24' : mix(background, 255, light ? .64 : .06)
+  const surface = base ? '#18181a' : mix(background, 255, light ? .64 : .06)
   const accent = light && ui.primaryColor === '#f2f2f2' ? '#25252c' : ui.primaryColor
   const foreground = light ? '24 24 29' : '255 255 255'
   return {
@@ -30,13 +31,13 @@ export function appearancePalette(ui: ReturnType<typeof normalizeAppearance>, sy
     tokens: {
       '--color-abyss': background, '--color-canvas': background,
       '--color-surface': surface,
-      '--color-elevate': base ? '#25252c' : mix(background, light ? 0 : 255, light ? .035 : .10),
-      '--color-overlay': base ? '#2b2b32' : mix(background, 255, light ? .9 : .13),
-      '--color-ink': light ? '#18181d' : '#fafafa',
-      '--color-body': light ? '#34343c' : '#dedede',
-      '--color-muted': light ? '#5b5b66' : '#b2b2b2',
-      '--color-faint': light ? '#696975' : '#929292',
-      '--color-line': `rgb(${foreground} / .12)`, '--color-line-strong': `rgb(${foreground} / .22)`,
+      '--color-elevate': base ? '#1e1e21' : mix(background, light ? 0 : 255, light ? .035 : .10),
+      '--color-overlay': base ? '#262626' : mix(background, 255, light ? .9 : .13),
+      '--color-ink': light ? '#18181d' : '#f7f7f7',
+      '--color-body': light ? '#34343c' : '#d4d4d4',
+      '--color-muted': light ? '#5b5b66' : '#a1a1a6',
+      '--color-faint': light ? '#696975' : '#808087',
+      '--color-line': `rgb(${foreground} / ${base ? '.08' : '.12'})`, '--color-line-strong': `rgb(${foreground} / ${base ? '.15' : '.22'})`,
       '--color-hover': `rgb(${foreground} / .06)`, '--color-soft': `rgb(${foreground} / .035)`,
       '--color-grid': `rgb(${foreground} / ${light ? '.16' : '.10'})`,
       '--color-accent': accent, '--color-accent-ink': luminance(accent) > .179 ? '#151515' : '#ffffff',

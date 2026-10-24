@@ -18,6 +18,7 @@ export function historyProgress(item: HistoryItem, tracker: ReturnType<typeof cr
     elapsedSeconds: Number.isFinite(startedAt) ? Math.max(0, (now - startedAt) / 1000) : 0,
     modelId: item.model || '',
     kind: item.kind === 'video' || item.video ? 'video' : 'image',
+    durationSeconds: Number(item.duration) > 0 ? Number(item.duration) : null,
   }), status }
 }
 

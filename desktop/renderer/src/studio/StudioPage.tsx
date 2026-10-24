@@ -11,6 +11,7 @@ import LanguageControl from '../LanguageControl'
 import StudioLogin from './StudioLogin'
 import StudioHome from './StudioHome'
 import StudioPicker from './StudioPicker'
+import ModelLogo from './ModelLogo'
 import PaymentPanel from './PaymentPanel'
 import FeedbackPage from './FeedbackPage'
 import LocalTaskRecovery from './LocalTaskRecovery'
@@ -166,6 +167,21 @@ export default function StudioPage() {
     setLibraryHandoffError('')
     handoffAttemptRef.current = ''
     setWorkspaceReady(true)
+    // 记住的项目可能已经被删（例如在别的账号或登出时删掉）。不存在就回到默认项目，
+    // 否则之后每个请求都带着一个不存在的项目，页面会一直报「项目不存在」。
+    if (initial && nextProject !== DEFAULT_PROJECT) {
+      void fetch('/api/imagine/workspace/projects', { cache: 'no-store' })
+        .then(response => response.ok ? response.json() : null)
+        .then(data => {
+          if (!Array.isArray(data?.projects) || data.projects.some((item: { id?: string }) => item.id === nextProject)) return
+          if (workspaceOwnerRef.current !== owner || projectRef.current !== nextProject) return
+          rememberProject(owner, DEFAULT_PROJECT)
+          projectRef.current = DEFAULT_PROJECT
+          setActiveProject(DEFAULT_PROJECT)
+          setProject(DEFAULT_PROJECT)
+        })
+        .catch(() => {})
+    }
   }, [])
 
   const openSettings = useCallback(() => {
@@ -666,10 +682,10 @@ export default function StudioPage() {
     else setNotice(studioText(item.delivery?.status === 'saved' ? '文件已交付桌面，请在生成时使用的电脑上打开。' : item.delivery?.status === 'expired' ? '服务器暂存已过期；如已保存，请在原电脑查看。' : '该记录没有可展示的媒体', lang))
   }
 
+  // 生成历史只有图片和视频：按类型分组、显示模型名和官方标识；文本模型不会出现在这里。
   const historyModels = [
-    ...(config?.models || []),
-    ...(config?.videoModels || []),
-    ...(config?.textModels || []),
+    ...(historyKind === 'video' ? [] : (config?.models || []).map((model) => ({ ...model, group: studioText('图片模型', lang) }))),
+    ...(historyKind === 'image' ? [] : (config?.videoModels || []).map((model) => ({ ...model, group: studioText('视频模型', lang) }))),
   ].filter((model, index, models) => models.findIndex((item) => item.id === model.id) === index)
 
   // 反馈有新回复时在左侧「反馈」上显示红点：打开时、回到窗口时和每两分钟读一次。
@@ -779,14 +795,13 @@ export default function StudioPage() {
               <section className="asset-login">
                 <ClockCounterClockwise size={28} aria-hidden="true" />
                 <h2>{studioText('登录后可查看生成记录', lang)}</h2>
-                <p>{studioText('生成记录存放在妙图账号里；本机项目素材仍然可以离线查看。', lang)}</p>
+                <p>{studioText('生成记录存放在妙图账号里；项目里的素材保存在这台电脑上，离线也能查看。', lang)}</p>
                 <button type="button" onClick={openAccountSurface}>{studioText('登录查看', lang)}</button>
               </section>
             ) : (
               <section className="panel-section asset-history" aria-labelledby="generation-history-title">
                 <div className="panel-section__head">
                   <h3 id="generation-history-title">{studioText('生成历史', lang)}</h3>
-                  <span>{studioText('记录', lang)}</span>
                 </div>
                 <div className="record-toolbar">
                   <div className="studio-seg" role="group" aria-label={studioText('生成类型', lang)}>
@@ -798,7 +813,7 @@ export default function StudioPage() {
                     compact
                     label={studioText('模型筛选', lang)}
                     value={historyModel}
-                    options={[{ value: '', label: studioText('全部模型', lang) }, ...historyModels.map((model) => ({ value: model.id, label: model.id }))]}
+                    options={[{ value: '', label: studioText('全部模型', lang) }, ...historyModels.map((model) => ({ value: model.id, label: model.label || model.id, group: model.group, leading: <ModelLogo model={model.id} size={18} /> }))]}
                     onChange={(value) => { setHistoryModel(value); setHistoryPage(1) }}
                   />
                   <span>{historyState.total ? studioRecords(historyState.total, lang) : ''}</span>
@@ -861,7 +876,6 @@ export default function StudioPage() {
         <div className="panel-section">
           <div className="panel-section__head">
             <h3>{studioText('积分流水', lang)}</h3>
-            <span>{studioText('流水', lang)}</span>
           </div>
           {ledgerState.status === 'loading' && <p>{studioText('正在读取额度流水…', lang)}</p>}
           {ledgerState.status === 'error' && <p className="studio-banner studio-banner--error" role="alert">{ledgerState.error}</p>}

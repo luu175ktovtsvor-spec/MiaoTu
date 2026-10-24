@@ -50,6 +50,8 @@ export type HistoryItem = {
   chargedPoints?: number | null;
   cost?: { points?: number | null; reservedPoints?: number | null } | null;
   progress?: number | string | null;
+  // 视频请求的片长（秒），结果里带了才有；进度估算按片长计。
+  duration?: number | null;
   submissionUncertain?: boolean;
   created_at?: string;
   started_at?: string | null;

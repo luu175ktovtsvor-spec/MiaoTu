@@ -80,12 +80,12 @@ export function HistoryCard({ item, lang, locale, onOpen, progress, now }: { ite
   const previewUrl = video?.thumbnailUrl || image?.thumbnailUrl || ''
   const delivery = item.delivery?.target === 'desktop' ? item.delivery : null
   const deliveryLabel = delivery?.status === 'saved'
-    ? (typeof window !== 'undefined' && window.miaoDesktop ? '已保存到本机' : '已交付桌面')
+    ? (typeof window !== 'undefined' && window.miaoDesktop ? '已保存到这台电脑' : '已交付桌面')
     : delivery?.status === 'expired' ? '服务器暂存已过期' : delivery && item.status === 'succeeded' ? '等待桌面保存' : ''
   // 提交/生成仍用预扣额度；保存中的生成已经结算，显示实扣。
   const inFlight = ACTIVE_STATUSES.has(item.status)
   const rowView = progress?.[item.requestId]
-  const statusLabel = recovery?.saved > 0 ? recovery.saved < recovery.total ? '部分已保存' : '本机文件可用'
+  const statusLabel = recovery?.saved > 0 ? recovery.saved < recovery.total ? '部分已保存' : '文件已在这台电脑上'
     : item.status === 'saving' && item.error ? '保存暂未完成' : STATUS_LABEL[rowView?.status || item.status] || item.status
   const unsettled = inFlight && item.status !== 'saving'
   // 本机视频任务快照只在 cost 里带积分；都没有就不显示，不能拼出 undefined。

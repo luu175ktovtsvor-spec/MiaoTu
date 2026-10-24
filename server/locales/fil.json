@@ -450,7 +450,6 @@
   "分组中存在不可删除的节点": "May mga node sa grupo na hindi matatanggal",
   "否": "Hindi",
   "服务地址": "Address ng serbisyo",
-  "服务端未确认重发，请重新打开对话后重试": "Hindi kinumpirma ng server ang muling pagpapadala. Mangyaring muling buksan ang pag-uusap at subukang muli.",
   "服务器部署只能使用 data/workspaces 内的工作区": "Ang pag-deploy ng server ay maaari lamang gumamit ng mga workspace sa loob ng data/workspaces",
   "服务器部署只能使用服务器工作区": "Ang mga deployment ng server ay maaari lamang gumamit ng mga workspace ng server",
   "服务器工作区{0}": "Workspace ng server {0}",
@@ -1414,7 +1413,6 @@
   "文件路径超出技能目录": "Ang path ng file ay lumampas sa direktoryo ng mga kasanayan",
   "文件路径无效": "Di-wastong landas ng file",
   "文件名需为小驼峰格式，例如 imageNode.umd.js": "Ang pangalan ng file ay kailangang nasa lowerCamelCase na format, gaya ng imageNode.umd.js",
-  "文件名与节点导出名不一致：{0} 需要导出 toonflowNodes.{1}，请按实际节点名修改文件名": "Ang pangalan ng file ay hindi naaayon sa pangalan ng pag-export ng node: Kailangang i-export ng {0} ang toonflowNodes.{1}, mangyaring baguhin ang pangalan ng file ayon sa aktwal na pangalan ng node",
   "文件内容不能包含空字符": "Ang nilalaman ng file ay hindi maaaring maglaman ng mga null na character",
   "文件已被其他操作修改。当前草稿已保留，请先复制需要保留的内容，再重新加载最新版本。": "Ang file ay binago ng iba pang mga operasyon. Ang kasalukuyang draft ay pinanatili. Pakikopya ang nilalaman na kailangang panatilihin at pagkatapos ay i-reload ang pinakabagong bersyon.",
   "文件已创建": "Nagawa ang file",
@@ -2063,5 +2061,6 @@
   "已达到 1000 个文件的检查上限，已停止。以下为部分结果，可缩小查找文本后重试。": "Naabot ang limitasyon ng pagsusuri na 1000 file; itinigil ang paghahanap. Narito ang ilang resulta; paliitin ang tekstong hinahanap at subukan muli.",
   "已达到 20 MiB 文本的搜索上限，已停止。以下为部分结果，可缩小查找文本后重试。": "Naabot ang limitasyon ng paghahanap na 20 MiB teksto; itinigil ang paghahanap. Narito ang ilang resulta; paliitin ang tekstong hinahanap at subukan muli.",
   "已达到 500 处匹配的展示上限，已停止。以下为部分结果，可缩小查找文本后重试。": "Naabot ang limitasyon ng pagpapakita na 500 tugma; itinigil ang paghahanap. Narito ang ilang resulta; paliitin ang tekstong hinahanap at subukan muli.",
-  "正在搜索磁盘文件…": "Hinahanap ang mga file sa disk…"
+  "正在搜索磁盘文件…": "Hinahanap ang mga file sa disk…",
+  "重发没有确认成功，请重新打开这段对话后再试": "Hindi kinumpirma ng server ang muling pagpapadala. Mangyaring muling buksan ang pag-uusap at subukang muli."
 }

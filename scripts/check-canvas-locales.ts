@@ -4,7 +4,6 @@
 //
 // 用法：node scripts/check-canvas-locales.ts    （有问题时退出码非 0）
 import { readFileSync } from 'node:fs'
-import legacy from '../docs/compatibility/canvas-v1.json' with { type: 'json' }
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -19,7 +18,8 @@ const FILES = [
 
 // 插件宿主标识保持原样；待清理的历史品牌由兼容清单集中定义。
 const ALLOWED_TOKENS = ['miaoimgNodes']
-const BRAND_RES = [...legacy.retiredBrands.map(brand => new RegExp(brand, 'i')), /github\.com/i]
+const RETIRED_BRANDS = ['Toonflow', 'HBAI']
+const BRAND_RES = [...RETIRED_BRANDS.map(brand => new RegExp(brand, 'i')), /github\.com/i]
 const allowed = new RegExp(ALLOWED_TOKENS.join('|'), 'gi')
 
 const readJson = (path) => JSON.parse(readFileSync(path, 'utf8'))

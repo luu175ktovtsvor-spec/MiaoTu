@@ -74,8 +74,8 @@ const toolStatusLabels = computed<Record<string, string>>(() => ({
 }));
 const toolLabels: Record<string, string> = {
   webSearch: "搜索网页", webFetch: "读取网页", browser: "操作浏览器", read: "读取本地文件", write: "写入本地文件", edit: "修改本地文件",
-  ls: "查看文件夹", find: "查找文件", grep: "搜索文件内容", bash: "运行本机命令", powershell: "运行本机命令",
-  importLocalFile: "导入本地素材", exportWorkspaceFile: "导出工作区文件", localToolInfo: "检查本机软件",
+  ls: "查看文件夹", find: "查找文件", grep: "搜索文件内容", bash: "在电脑上运行命令", powershell: "在电脑上运行命令",
+  importLocalFile: "导入本地素材", exportWorkspaceFile: "导出工作区文件", localToolInfo: "检查电脑上的软件",
   listSkills: "查看可用技能", readSkill: "读取创作方法", getCanvas: "查看画布", getCanvasNodes: "查看画布节点", getAppState: "查看工作区",
   nodeTools: "操作画布节点", getNodeTools: "查看节点能力", addNode: "添加节点", deleteNodes: "删除节点", moveNodes: "移动节点", renameNodes: "重命名节点",
   addCanvas: "新建画布", switchCanvas: "切换画布", renameCanvas: "重命名画布", findCanvasNodes: "查找画布节点", getCanvasEdges: "查看画布连线",

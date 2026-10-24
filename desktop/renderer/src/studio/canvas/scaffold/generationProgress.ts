@@ -24,6 +24,8 @@ export type GenerationProgressOptions = {
   realPercent?: Ref<number | null>;
   modelId: () => string;
   kind: ProgressKind;
+  // 视频请求的片长（秒）；「自动」或未知时返回 null。视频耗时随片长增长，估算要用它。
+  durationSeconds?: () => number | null | undefined;
 };
 
 export function useGenerationProgress(options: GenerationProgressOptions) {
@@ -94,6 +96,7 @@ export function useGenerationProgress(options: GenerationProgressOptions) {
       elapsedSeconds: activeSeconds.value,
       modelId: options.modelId(),
       kind: options.kind,
+      durationSeconds: options.durationSeconds?.() ?? null,
     });
   }, { immediate: true, flush: "sync" });
 

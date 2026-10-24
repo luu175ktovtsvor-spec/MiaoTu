@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import { useLang } from '../i18n'
 import { studioPoint, studioPointParts, studioText } from './studioText'
+// 支付宝官方标识（Simple Icons，CC0）。
+import alipayLogo from './assets/alipay.svg?raw'
 
 // 充值面板：只展示金额与积分，不出现任何模型价格或供应商信息。
 // 换算口径全前端只有一处措辞（「1 积分 = 1 元」），写在余额卡里；
@@ -264,7 +266,7 @@ export default function PaymentPanel({ payment, csrf, onPaid, points }) {
             <div className="pay__methods" role="radiogroup" aria-label={studioText('支付方式', lang)}>
               {paymentTypes.map((type) => (
                 <button key={type} type="button" role="radio" aria-checked={paymentType === type} className={`pay__method pay__method--${type}`} onClick={() => setPaymentType(type)}>
-                  {type === 'alipay' ? <i aria-hidden="true" /> : null}
+                  {type === 'alipay' ? <span className="pay__method-logo" aria-hidden="true" dangerouslySetInnerHTML={{ __html: alipayLogo }} /> : null}
                   <span>{methodLabel(type)}</span>
                 </button>
               ))}
