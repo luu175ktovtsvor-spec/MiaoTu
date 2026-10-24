@@ -4,8 +4,8 @@ set -eu
 VERSION=3.1.2
 BASE="https://miaoimg.cn/desktop-downloads/updates"
 case "$(uname -m)" in
-  arm64) DMG="miaoimg-desktop-mac-arm64.dmg" ;;
-  *) DMG="miaoimg-desktop-mac-x64.dmg" ;;
+  arm64) DMG="miaoimg-desktop-mac-arm64-${VERSION}.dmg" ;;
+  *) DMG="miaoimg-desktop-mac-x64-${VERSION}.dmg" ;;
 esac
 if [ -w /Applications ]; then TARGET=/Applications; else TARGET="$HOME/Applications"; mkdir -p "$TARGET"; fi
 if pgrep -f "$TARGET/妙图.app/Contents/MacOS/妙图" >/dev/null 2>&1; then

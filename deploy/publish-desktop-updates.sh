@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 # 发布桌面版更新源：已安装的妙图读取 latest.yml（Windows）和 latest-mac.yml（macOS），
-# 官网下载按钮和 install-mac.sh 使用固定文件名 miaoimg-desktop-*。
-# 顺序：本地核对 sha512 → 上传到 .staging → 服务器再核对一次 → 安装包落位并更新固定文件名
+# 安装包和官网的正式下载文件名都带版本号；旧的固定别名只用于兼容已有链接。
+# 顺序：本地核对 sha512 → 上传到 .staging → 服务器再核对一次 → 安装包落位并更新版本文件名
 # → latest*.yml 最后落位 → 从公网回读版本。中途中断时线上仍指向旧版本。
 VERSION=${1:?用法：DEPLOY_CONFIRM=I-am-the-release-manager bash deploy/publish-desktop-updates.sh <版本号>}
 REMOTE_HOST=${REMOTE_HOST:-root}
@@ -39,6 +39,10 @@ ssh "$REMOTE_HOST" "cd '$staging' && python3 - '$VERSION' latest-mac.yml latest.
 ssh "$REMOTE_HOST" "set -e; cd '$staging'
 for file in ${uploads[*]}; do case \"\$file\" in latest*.yml) ;; *) mv -f \"\$file\" '$REMOTE_DIR/' ;; esac; done
 cd '$REMOTE_DIR'
+ln -f '妙图-$VERSION-arm64.dmg' 'miaoimg-desktop-mac-arm64-$VERSION.dmg'
+ln -f '妙图-$VERSION-x64.dmg' 'miaoimg-desktop-mac-x64-$VERSION.dmg'
+ln -f '妙图-$VERSION-Windows-x64.exe' 'miaoimg-desktop-windows-$VERSION.exe'
+# 兼容已经发出去的固定下载地址；新文档和新安装脚本使用上面的版本化地址。
 ln -f '妙图-$VERSION-arm64.dmg' miaoimg-desktop-mac-arm64.dmg
 ln -f '妙图-$VERSION-x64.dmg' miaoimg-desktop-mac-x64.dmg
 ln -f '妙图-$VERSION-Windows-x64.exe' miaoimg-desktop-windows.exe
@@ -50,7 +54,13 @@ for meta in latest-mac.yml latest.yml; do
   published=$(curl -fsS --max-time 30 "$PUBLIC_BASE/$meta?ts=$(date +%s)" | sed -n 's/^version: //p' | tr -d "'\"")
   [ "$published" = "$VERSION" ] || { echo "公网 $meta 仍是 $published" >&2; exit 1; }
 done
-for alias in miaoimg-desktop-mac-arm64.dmg miaoimg-desktop-mac-x64.dmg miaoimg-desktop-windows.exe; do
+for alias in \
+  "miaoimg-desktop-mac-arm64-$VERSION.dmg" \
+  "miaoimg-desktop-mac-x64-$VERSION.dmg" \
+  "miaoimg-desktop-windows-$VERSION.exe" \
+  miaoimg-desktop-mac-arm64.dmg \
+  miaoimg-desktop-mac-x64.dmg \
+  miaoimg-desktop-windows.exe; do
   curl -fsSI --max-time 30 "$PUBLIC_BASE/$alias" > /dev/null || { echo "公网 $alias 无法下载" >&2; exit 1; }
 done
 echo "更新源已发布：$VERSION"
