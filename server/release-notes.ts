@@ -10,6 +10,14 @@ export type ReleaseNotes = {
 // 更新说明直接写软件修好了什么：哪一个界面、哪一项操作，以前错在哪里，现在怎样。
 // 不写「上游」「部分问题」「体验优化」这类看不出具体改动的话。
 export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
+  '3.1.2': {
+    title: { zh: '豆包和 Dola 的设置标签分开显示', en: 'Doubao and Dola settings now use separate labels' },
+    fixes: [],
+    improvements: [
+      { zh: '「豆包与 Dola」的平台切换改成两个有间距的独立圆角标签，选中状态清楚，不再连成一片。', en: 'The Doubao and Dola selector now uses two separate rounded pills with clear spacing, so the selected state is easy to see.' },
+    ],
+    knownIssues: [],
+  },
   '3.1.1': {
     title: { zh: '客户端换上官网的配色与控件、登录输入更简洁、所有项目都能删除', en: 'Client styling now matches the website, cleaner sign-in fields and every project can be deleted' },
     fixes: [
@@ -29,7 +37,7 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
       { zh: '资产、生成记录、保存提示和报错里的说法改得更直白，例如「本机项目」改成「妙图项目」、文件「保存在这台电脑上」，不再出现「路由」这类内部用词。', en: 'Wording in assets, history, save notices and errors is plainer, for example MiaoImg projects and files stored on this computer, without internal terms.' },
       { zh: '生成进度改成节点底部的蓝色进度条：从左往右推进，百分比跟着进度走；上传进度同样改成进度条。', en: 'Generation progress is now a glowing blue bar along the bottom of the node, with the percentage moving along it; uploads use the same bar.' },
       { zh: '提示和报错不再是带底色的框，只用左侧一根细线标出状态。生成历史的模型筛选按图片、视频分组，显示模型名和官方标识；充值页的支付方式改成小巧的选项，配支付宝官方标识。', en: 'Notices and errors are a thin line instead of a tinted box. The history model filter is grouped by image and video with model names and official logos; the top-up page shows a compact payment choice with the official Alipay logo.' },
-      { zh: '「豆包与 Dola」的平台切换改成两个有间距的独立圆角标签，不再连在一起；设置说明也改得更直白并写明可用地区。', en: 'The Doubao and Dola selector now uses two separate rounded pills with clear spacing, and the settings text is plainer and states the supported regions directly.' },
+      { zh: '「豆包与 Dola」设置的说明重写：直接写明可用地区，其余说法也改得更直白。', en: 'The Doubao and Dola settings are rewritten in plain language and state the supported regions directly.' },
       { zh: 'macOS 安装镜像增加「首次使用」辅助程序，可自动复制应用、清理下载隔离并启动。', en: 'The macOS disk image now includes a first-use helper that copies the app, clears the download quarantine and launches it.' },
     ],
     knownIssues: [
