@@ -67,15 +67,16 @@ async function openAccountPanel() {
   await wait(async () => await evaluate(`(()=>{const b=[...document.querySelectorAll('.studio-top button')].find(x=>/登录/.test((x.innerText||'').trim()));if(!b)return false;b.click();return true})()`), 'sign-in entry', 30000)
   await wait(() => exists('#desktop-account-email'), 'email field')
 }
-async function assertCodeLoginForm() {
+async function assertLoginForm() {
   await wait(() => exists('#desktop-account-email'), 'email field')
-  await wait(() => exists('#desktop-account-password'), 'password field')
   await wait(() => exists('#desktop-account-code'), 'code field')
   await wait(() => exists('.desktop-account-send'), 'code request button')
-  if (await exists('#desktop-account-tab-password')) throw new Error('Password-only login tab is still present')
-  const description = await evaluate(`document.querySelector('#desktop-account-description')?.textContent || ''`)
-  if (!String(description).includes('验证码') || !String(description).includes('密码')) throw new Error('Sign-in page does not ask for the password and email code together')
-  report.checks.push('sign-in shows password and email code on one page')
+  await wait(() => evaluate(`!![...document.querySelectorAll('.desktop-login-methods button')].find(b => /密码登录/.test(b.textContent || ''))`), 'password sign-in mode')
+  await evaluate(`[...document.querySelectorAll('.desktop-login-methods button')].find(b => /密码登录/.test(b.textContent || ''))?.click()`)
+  await wait(() => exists('#desktop-account-password'), 'password field')
+  await evaluate(`[...document.querySelectorAll('.desktop-login-methods button')].find(b => /验证码登录/.test(b.textContent || ''))?.click()`)
+  await wait(() => exists('#desktop-account-code'), 'code field after mode switch')
+  report.checks.push('sign-in exposes separate password and email-code modes')
   save()
 }
 function acceptanceCode() {
@@ -83,12 +84,16 @@ function acceptanceCode() {
 }
 async function signIn() {
   await openAccountPanel()
-  await assertCodeLoginForm()
+  await assertLoginForm()
   const code = acceptanceCode()
-  if (!/^\d{6}$/.test(code)) throw new Error('Sign-in requires the email code together with the password; authenticated checks were not run')
   await fill('#desktop-account-email', account.email)
-  await fill('#desktop-account-password', account.password)
-  await fill('#desktop-account-code', code)
+  if (/^\d{6}$/.test(code)) {
+    await fill('#desktop-account-code', code)
+  } else {
+    await evaluate(`[...document.querySelectorAll('.desktop-login-methods button')].find(b => /密码登录/.test(b.textContent || ''))?.click()`)
+    await wait(() => exists('#desktop-account-password'), 'password field for sign-in')
+    await fill('#desktop-account-password', account.password)
+  }
   await click('.desktop-account-submit')
 }
 async function capture(name) { const { data } = await command('Page.captureScreenshot', { format: 'png' }); writeFileSync(join(output, name + '.png'), Buffer.from(data, 'base64')) }
@@ -248,11 +253,7 @@ async function stop() {
   for (const p of pending.values()) { clearTimeout(p.timer); p.reject(new Error('Application closed')) } pending.clear()
 }
 try {
-  await start(); await openAccountPanel(); await assertCodeLoginForm()
-  if (!/^\d{6}$/.test(acceptanceCode())) {
-    report.authenticatedChecks = 'skipped: email code was not provided'
-    report.ok = true
-  } else {
+  await start(); await openAccountPanel(); await assertLoginForm()
   const navigation = await evaluate('performance.timeOrigin')
   await signIn(); await canvas()
   report.checks.push('existing authorized account opens canvas'); await capture('signed-in'); save()
@@ -269,12 +270,11 @@ try {
   if (restored !== account.email) throw new Error('Saved account was not restored')
   report.checks.push('restart restores the same account'); await capture('restored'); save()
   await signout(); await stop(); await start(['--proxy-server=http://127.0.0.1:9'])
-  await openAccountPanel(); await assertCodeLoginForm(); await signIn()
+  await openAccountPanel(); await assertLoginForm(); await signIn()
   await wait(() => evaluate(`document.querySelector('[role="alert"]')?.textContent.includes('暂时连接不上妙图')`), 'network error message', 35000)
   report.checks.push('unreachable proxy shows a login connection error'); await capture('connection-error'); save()
   await stop(); await start(); await signIn(); await canvas()
   report.checks.push('login succeeds after connection is restored'); await signout(); report.ok = true
-  }
 } catch (error) { report.ok = false; report.error = error.message; try { await capture('failure') } catch {} process.exitCode = 1 }
 finally {
   try { if (ws?.readyState === 1 && await evaluate(`[...document.querySelectorAll('.studio-top button')].some(b => (b.innerText||'').trim() === '账号')`)) await signout() }

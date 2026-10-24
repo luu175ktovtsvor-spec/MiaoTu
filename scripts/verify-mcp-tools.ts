@@ -34,7 +34,7 @@ const walk = (directory: string) => {
     if (!/\.(vue|ts)$/.test(name)) continue
     const text = readFileSync(path, 'utf8')
     for (const match of text.matchAll(/nodeTools\.register\s*\(\s*\{[\s\S]*?name\s*:\s*['"]([A-Za-z][A-Za-z0-9]*)['"]/g)) {
-      const file = relative(canvasRoot, path)
+      const file = relative(canvasRoot, path).replaceAll('\\', '/')
       registrations.set(file, new Set([...(registrations.get(file) ?? []), match[1]]))
     }
   }
