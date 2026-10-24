@@ -57,7 +57,25 @@ async function click(selector) { let point; await wait(async () => { point = awa
 async function fill(selector, value) { await click(selector); await evaluate(`document.querySelector(${JSON.stringify(selector)}).select()`); await command('Input.insertText', { text: value }) }
 const exists = selector => evaluate(`!!document.querySelector(${JSON.stringify(selector)})`)
 async function canvas() { await wait(async () => !(await exists('#desktop-account-email')) && await evaluate(`[...document.querySelectorAll('.studio-top button')].some(b => (b.innerText||'').trim() === '账号')`), 'authenticated canvas', 60000); if (await exists('.release-notes-close')) { await evaluate(`document.querySelector('.release-notes-close')?.click()`); await wait(() => !exists('.release-notes-close'), 'release notes closed', 15000) } }
-async function signout() { await evaluate(`window.dispatchEvent(new Event('miao-desktop-account'))`); await wait(() => exists('.desktop-account-signout'), 'account panel', 30000); await evaluate(`document.querySelector('.desktop-account-signout')?.click()`); await wait(() => !exists('.desktop-account-signout'), 'signed out', 45000); await openAccountPanel() }
+async function signout() {
+  await evaluate(`window.dispatchEvent(new Event('miao-desktop-account'))`)
+  await wait(() => exists('.desktop-account-signout'), 'account panel', 30000)
+  await evaluate(`document.querySelector('.desktop-account-signout')?.click()`)
+  const until = Date.now() + 45000
+  let diagnostic
+  while (Date.now() < until) {
+    diagnostic = await evaluate(`({
+      signout: !!document.querySelector('.desktop-account-signout'),
+      busy: document.querySelector('.desktop-account-signout')?.disabled || false,
+      error: document.querySelector('.desktop-account-error')?.textContent || '',
+      login: !!document.querySelector('#desktop-account-email')
+    })`)
+    if (!diagnostic.signout) return await openAccountPanel()
+    if (diagnostic.error) throw new Error('Sign out failed: ' + diagnostic.error)
+    await delay(250)
+  }
+  throw new Error('Timed out: signed out ' + JSON.stringify(diagnostic))
+}
 async function openAccountPanel() {
   if (await exists('#desktop-account-email')) return
   // The release-notes mask can still cover the shell for a moment during its
