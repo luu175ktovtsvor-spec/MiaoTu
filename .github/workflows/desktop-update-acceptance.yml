@@ -38,6 +38,15 @@ jobs:
           if ($result.ExitCode -ne 0) { throw 'Previous installer failed' }
           $app = Join-Path $destination '妙图.exe'
           Get-Process | Where-Object { $_.Path -eq $app } | Stop-Process
+          # Windows electron-updater reads the installed feed config; the Mac-only
+          # environment override does not change it. Adjust this isolated copy.
+          if ($env:MIAO_DESKTOP_UPDATE_FEED) {
+            $feedConfig = Join-Path $destination 'resources/app-update.yml'
+            $config = Get-Content $feedConfig -Raw
+            if ($config -notmatch '(?m)^url:') { throw 'Installed update feed URL missing' }
+            $config = [regex]::Replace($config, '(?m)^url:.*$', ('url: ' + $env:MIAO_DESKTOP_UPDATE_FEED))
+            [IO.File]::WriteAllText($feedConfig, $config, [Text.UTF8Encoding]::new($false))
+          }
           node desktop/scripts/accept-update.ts $app (Join-Path $env:RUNNER_TEMP 'update-proof') $env:EXPECTED_VERSION
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 保存验收记录
