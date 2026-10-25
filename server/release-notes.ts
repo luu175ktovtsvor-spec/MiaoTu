@@ -17,7 +17,7 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
       { zh: '切换作品时同步切换提示词，译文读取失败可单独重试。', en: 'Prompts follow the selected film immediately, and failed translations can be retried separately.' },
     ],
     improvements: [
-      { zh: '移出 9 条带水印或外部标记的作品，补入 36 条合格遗漏作品，精选共 682 条；新增视频支持分段自适应播放。', en: 'Removed 9 films with watermarks or external marks and added 36 eligible missing films, bringing the selection to 682. New films support adaptive playback.' },
+      { zh: '视频精选支持分段自适应播放。', en: 'Selected films support adaptive playback.' },
     ],
     knownIssues: [],
   },
