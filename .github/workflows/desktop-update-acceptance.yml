@@ -6,8 +6,11 @@ on:
         description: Temporary release containing the previous installer
         required: true
       expected_version:
-        description: Version already published to the public update feed
+        description: Expected version in the update feed
         required: true
+      update_feed:
+        description: Optional isolated feed for acceptance before publishing
+        required: false
 permissions:
   contents: write
 jobs:
@@ -24,6 +27,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PREVIOUS_RELEASE: ${{ inputs.previous_release }}
           EXPECTED_VERSION: ${{ inputs.expected_version }}
+          MIAO_DESKTOP_UPDATE_FEED: ${{ inputs.update_feed }}
         shell: pwsh
         run: |
           gh release download $env:PREVIOUS_RELEASE --pattern '*.exe' --dir previous

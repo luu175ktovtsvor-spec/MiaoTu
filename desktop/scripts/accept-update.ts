@@ -37,6 +37,15 @@ try {
     await delay(500)
   }
   if (report.after.version !== expected || !report.after.canCheck || !report.after.canInstall) throw new Error('Expected installable update was not discovered')
+  await evaluate('window.miaoDesktop.downloadUpdate()')
+  const downloadUntil = Date.now() + 180000
+  while (Date.now() < downloadUntil) {
+    report.download = await evaluate('window.miaoDesktop.updateStatus()'); save()
+    if (report.download.state === 'failed') throw new Error('Installed updater download failed')
+    if (report.download.state === 'ready' && report.download.version === expected) break
+    await delay(500)
+  }
+  if (report.download?.state !== 'ready' || report.download.version !== expected) throw new Error('Expected update download did not complete')
   report.ok = true
 } catch (error) { report.ok = false; report.error = error.message; process.exitCode = 1 }
 finally {
