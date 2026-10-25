@@ -62,56 +62,112 @@ const sections = [
   ["feedback", "用户反馈", ChatCircleText],
   ["audit", "操作记录", ListChecks],
 ];
-const externalDestinations = [
+const externalDestinationGroups = [
   {
-    id: "site",
-    zh: "妙图官网",
-    en: "MiaoImg website",
-    host: "miaoimg.cn",
-    href: "https://miaoimg.cn",
+    "id": "upstream",
+    "zh": "上游与对账",
+    "en": "Providers & billing",
+    "items": [
+      {
+        "id": "ark-usage",
+        "zh": "火山方舟 · 用量统计",
+        "en": "Volcengine · API usage",
+        "host": "console.volcengine.com/ark",
+        "href": "https://console.volcengine.com/ark/region:cn-beijing/usageTracking"
+      },
+      {
+        "id": "volc-billing",
+        "zh": "火山引擎 · 费用中心",
+        "en": "Volcengine · Billing center",
+        "host": "console.volcengine.com/finance",
+        "href": "https://console.volcengine.com/finance/"
+      },
+      {
+        "id": "metaso",
+        "zh": "秘塔 · 视频 / API 用量",
+        "en": "Metaso · Video / API usage",
+        "host": "metaso.cn/minimax-h3",
+        "href": "https://metaso.cn/minimax-h3"
+      },
+      {
+        "id": "yunshu-admin",
+        "zh": "云枢管理 · 用量与账号",
+        "en": "Yunshu admin · Usage & accounts",
+        "host": "admin.zzyppz.cn",
+        "href": "https://admin.zzyppz.cn"
+      },
+      {
+        "id": "api",
+        "zh": "云枢 API",
+        "en": "Yunshu API",
+        "host": "api.zzyppz.cn",
+        "href": "https://api.zzyppz.cn"
+      },
+      {
+        "id": "dola-admin",
+        "zh": "Dola 管理",
+        "en": "Dola admin",
+        "host": "admin.zzyppz.cn/custom/yunshu-dola",
+        "href": "https://admin.zzyppz.cn/custom/yunshu-dola"
+      },
+      {
+        "id": "zpay",
+        "zh": "ZPAY · 商户与订单",
+        "en": "ZPAY · Merchant & orders",
+        "host": "member.z-pay.cn/member",
+        "href": "https://member.z-pay.cn/member"
+      }
+    ]
   },
   {
-    id: "changelog",
-    zh: "更新日志",
-    en: "Changelog",
-    host: "miaoimg.cn/changelog",
-    href: "https://miaoimg.cn/changelog",
+    "id": "product",
+    "zh": "产品与更新",
+    "en": "Product & updates",
+    "items": [
+      {
+        "id": "site",
+        "zh": "妙图官网",
+        "en": "MiaoImg website",
+        "host": "miaoimg.cn",
+        "href": "https://miaoimg.cn"
+      },
+      {
+        "id": "changelog",
+        "zh": "更新日志",
+        "en": "Changelog",
+        "host": "miaoimg.cn/changelog",
+        "href": "https://miaoimg.cn/changelog"
+      },
+      {
+        "id": "update-feed",
+        "zh": "桌面更新源",
+        "en": "Desktop update feed",
+        "host": "miaoimg.cn/desktop-downloads/updates",
+        "href": "https://miaoimg.cn/desktop-downloads/updates/latest-mac.yml"
+      }
+    ]
   },
   {
-    id: "update-feed",
-    zh: "桌面更新源",
-    en: "Desktop update feed",
-    host: "miaoimg.cn/desktop-downloads/updates",
-    href: "https://miaoimg.cn/desktop-downloads/updates/latest-mac.yml",
-  },
-  {
-    id: "api",
-    zh: "云枢 API",
-    en: "Yunshu API",
-    host: "api.zzyppz.cn",
-    href: "https://api.zzyppz.cn",
-  },
-  {
-    id: "yunshu-admin",
-    zh: "云枢管理",
-    en: "Yunshu admin",
-    host: "admin.zzyppz.cn",
-    href: "https://admin.zzyppz.cn",
-  },
-  {
-    id: "dola-admin",
-    zh: "Dola 管理",
-    en: "Dola admin",
-    host: "admin.zzyppz.cn/custom/yunshu-dola",
-    href: "https://admin.zzyppz.cn/custom/yunshu-dola",
-  },
-  {
-    id: "source",
-    zh: "代码仓库",
-    en: "Source repository",
-    host: "github.com/luu175ktovtsvor-spec/miaoimg",
-    href: "https://github.com/luu175ktovtsvor-spec/miaoimg",
-  },
+    "id": "development",
+    "zh": "开发与发布",
+    "en": "Development & releases",
+    "items": [
+      {
+        "id": "source",
+        "zh": "代码仓库",
+        "en": "Source repository",
+        "host": "github.com/luu175ktovtsvor-spec/miaoimg",
+        "href": "https://github.com/luu175ktovtsvor-spec/miaoimg"
+      },
+      {
+        "id": "builds",
+        "zh": "安装包构建 · Actions",
+        "en": "Installer builds · Actions",
+        "host": "github.com/luu175ktovtsvor-spec/miaoimg/actions",
+        "href": "https://github.com/luu175ktovtsvor-spec/miaoimg/actions"
+      }
+    ]
+  }
 ];
 function readSection() {
   const key = window.location.hash.slice(1);
@@ -1133,23 +1189,28 @@ export default function AdminPage() {
                   <span className="admin-quick-links-heading">
                     {lang === "en" ? "Open in a new tab" : "在新标签页打开"}
                   </span>
-                  {externalDestinations.map((destination) => (
-                    <a
-                      key={destination.id}
-                      href={destination.href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      role="menuitem"
-                      onClick={() => setQuickLinksOpen(false)}
-                    >
-                      <span>
-                        <strong>
-                          {lang === "en" ? destination.en : destination.zh}
-                        </strong>
-                        <small>{destination.host}</small>
-                      </span>
-                      <ArrowSquareOut size={16} aria-hidden="true" />
-                    </a>
+                  {externalDestinationGroups.map((group) => (
+                    <div key={group.id} role="group" aria-label={lang === "en" ? group.en : group.zh}>
+                      <div className="admin-quick-links-heading">{lang === "en" ? group.en : group.zh}</div>
+                      {group.items.map((destination) => (
+                        <a
+                          key={destination.id}
+                          href={destination.href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          role="menuitem"
+                          onClick={() => setQuickLinksOpen(false)}
+                        >
+                          <span>
+                            <strong>
+                              {lang === "en" ? destination.en : destination.zh}
+                            </strong>
+                            <small>{destination.host}</small>
+                          </span>
+                          <ArrowSquareOut size={16} aria-hidden="true" />
+                        </a>
+                      ))}
+                    </div>
                   ))}
                 </div>
               )}

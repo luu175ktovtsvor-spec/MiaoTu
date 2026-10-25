@@ -475,11 +475,18 @@ html[data-admin-theme="dark"] body {
   right: 0;
   display: grid;
   width: min(330px, calc(100vw - 28px));
+  max-height: min(680px, calc(100dvh - 140px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 6px;
   border: 1px solid var(--a-line);
   border-radius: 7px;
   background: var(--a-surface);
   box-shadow: 0 10px 28px rgb(0 0 0 / .12);
+}
+
+.admin-quick-links-menu > [role="group"] {
+  min-width: 0;
 }
 
 .admin-quick-links-heading {
@@ -2614,6 +2621,10 @@ html[data-admin-theme="dark"] body {
     width: 100%;
     justify-content: space-between;
     padding-left: 0;
+  }
+
+  .admin-top-actions > button {
+    min-width: 36px;
   }
 
   .admin-quick-links {
