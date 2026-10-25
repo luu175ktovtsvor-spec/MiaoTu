@@ -10,6 +10,17 @@ export type ReleaseNotes = {
 // 更新说明直接写软件修好了什么：哪一个界面、哪一项操作，以前错在哪里，现在怎样。
 // 不写「上游」「部分问题」「体验优化」这类看不出具体改动的话。
 export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
+  '3.1.8': {
+    title: { zh: '视频精选补齐提示词与译文', en: 'Complete prompts and translations for selected films' },
+    fixes: [
+      { zh: '视频精选补齐原始提示词和中文译文，详情页可切换原文与译文；复制及带入画布继续使用原文。', en: 'Selected films now include complete original prompts and Chinese translations, with a switch in the detail view. Copying and using a prompt on the canvas keeps the original text.' },
+      { zh: '切换作品时同步切换提示词，译文读取失败可单独重试。', en: 'Prompts follow the selected film immediately, and failed translations can be retried separately.' },
+    ],
+    improvements: [
+      { zh: '移出 9 条带水印或外部标记的作品，补入 36 条合格遗漏作品，精选共 682 条；新增视频支持分段自适应播放。', en: 'Removed 9 films with watermarks or external marks and added 36 eligible missing films, bringing the selection to 682. New films support adaptive playback.' },
+    ],
+    knownIssues: [],
+  },
   '3.1.7': {
     title: { zh: '豆包与 Dola 的模型参数提前显示', en: 'Doubao and Dola model parameters appear immediately' },
     fixes: [

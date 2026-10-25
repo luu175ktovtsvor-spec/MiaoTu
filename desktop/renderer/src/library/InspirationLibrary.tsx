@@ -9,12 +9,12 @@ import PromptGallery from '../components/PromptGallery'
 import GallerySessionPanel from '../components/GallerySessionPanel'
 import SmartImage from '../components/ui/SmartImage'
 import catalog from './showcase.json'
+import { readOriginalPrompt, readPromptTranslation } from './showcasePrompts'
 import './inspiration.css'
 
 const VideoPlayer = lazy(() => import('./VideoPlayer'))
 type Film = (typeof catalog.films)[number]
 const PAGE_SIZE = 24
-const promptCache = new Map<string, Record<string, string>>()
 const excerpt = (text: string, length = 50) => String(text || '').replace(/\s+/g, ' ').trim().slice(0, length)
 
 function Search({ value, onChange, onSubmit, inputRef, label }: any) {
@@ -70,7 +70,7 @@ function ImageLibrary({ selectionMode, notify, inputRef }: any) {
     <GallerySessionPanel session={archive.gallerySession} missingReferences={archive.missingSessionReferences} onCopied={notify} />
     <div className="inspiration-image-gallery"><PromptGallery items={items} loading={archive.loading} error={archive.error} hasMore={archive.hasMore} onLoadMore={archive.loadMore} onRetry={archive.retry} onReset={archive.resetFilters} onSelect={(item: any) => setSelectedId(item.tweet_id)} onCopied={notify} hasActiveFilters={archive.hasActiveFilters} tagLabels={tagLabels} preserveOrder={!!archive.gallerySession} Card={ImageCard} /></div>
     {archive.datasetVersion && <p className="inspiration-muted">{zh ? '图库持续更新 · 数据版本 ' : 'Continuously updated · Dataset '}{archive.datasetVersion}</p>}
-    {selected >= 0 && <FilmDetail archiveItem={items[selected]} film={{ id: items[selected].tweet_id, title: [excerpt(items[selected].localized_prompt || items[selected].prompt_text, 90), excerpt(items[selected].localized_prompt || items[selected].prompt_text, 90)], category: items[selected].videos?.length ? ['视频提示词', 'Video prompt'] : ['图片提示词', 'Image prompt'], poster: firstImageSources(items[selected])[0] || '', video: '', hasPrompt: !!items[selected].prompt_text, model: items[selected].tool === 'None' ? '' : items[selected].tool, sourceUrl: items[selected].tweet_url } as Film} onClose={close} onStep={step} selectionMode={selectionMode} notify={notify} />}
+    {selected >= 0 && <FilmDetail key={items[selected].tweet_id} archiveItem={items[selected]} film={{ id: items[selected].tweet_id, title: [excerpt(items[selected].localized_prompt || items[selected].prompt_text, 90), excerpt(items[selected].localized_prompt || items[selected].prompt_text, 90)], category: items[selected].videos?.length ? ['视频提示词', 'Video prompt'] : ['图片提示词', 'Image prompt'], poster: firstImageSources(items[selected])[0] || '', video: '', hasPrompt: !!items[selected].prompt_text, model: items[selected].tool === 'None' ? '' : items[selected].tool, sourceUrl: items[selected].tweet_url } as Film} onClose={close} onStep={step} selectionMode={selectionMode} notify={notify} />}
   </>
 }
 
@@ -85,9 +85,13 @@ function FilmDetail({ film, archiveItem, onClose, onStep, selectionMode, notify 
   const [retry, setRetry] = useState(0)
   const [mediaIndex, setMediaIndex] = useState(0)
   const [showTranslation, setShowTranslation] = useState(false)
+  const [filmTranslation, setFilmTranslation] = useState<{ zh: boolean; text: string } | null>(null)
+  const [translationFailed, setTranslationFailed] = useState(false)
+  const [translationRetry, setTranslationRetry] = useState(0)
   const archiveMedia = useMemo(() => archiveItem ? mediaItems(archiveItem).sort((a, b) => Number(b.type.startsWith('video')) - Number(a.type.startsWith('video'))) : [], [archiveItem])
   const currentMedia = archiveMedia[mediaIndex]
-  const translated = archiveItem?.localized_prompt && archiveItem.localized_prompt !== archiveItem.prompt_text ? archiveItem.localized_prompt : ''
+  const localized = archiveItem ? archiveItem.localized_prompt : filmTranslation?.zh === zh ? filmTranslation.text : ''
+  const translated = localized && localized !== prompt ? localized : ''
   const published = archiveItem?.created_at ? new Date(archiveItem.created_at) : null
   const publishedAt = published && !Number.isNaN(published.getTime()) ? new Intl.DateTimeFormat(zh ? 'zh-CN' : 'en').format(published) : ''
   const closeRef = useRef<HTMLButtonElement>(null)
@@ -98,18 +102,24 @@ function FilmDetail({ film, archiveItem, onClose, onStep, selectionMode, notify 
     const controller = new AbortController()
     setPrompt(archiveItem?.prompt_text || ''); setFailed(false); setLoading(Boolean(file)); setCopied(false); setMediaIndex(0); setShowTranslation(false)
     if (file) {
-      const ready = promptCache.get(file)
-      const load = ready ? Promise.resolve(ready) : fetch('./' + file, { signal: controller.signal }).then(async response => {
-        if (!response.ok) throw new Error('prompt unavailable')
-        const result = await response.json()
-        if (promptCache.size >= 12) promptCache.delete(promptCache.keys().next().value!)
-        promptCache.set(file, result)
-        return result
-      })
-      load.then(data => { if (!controller.signal.aborted) { if (!data[film.id]) throw new Error('missing prompt'); setPrompt(data[film.id]) } }).catch(error => { if (error.name !== 'AbortError') setFailed(true) }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
+      readOriginalPrompt(file, film.id, controller.signal)
+        .then(text => { if (!controller.signal.aborted) setPrompt(text) })
+        .catch(() => { if (!controller.signal.aborted) setFailed(true) })
+        .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     }
     return () => { controller.abort(); clearTimeout(copyTimer.current) }
   }, [film.id, retry, archiveItem?.prompt_text])
+  useEffect(() => {
+    const controller = new AbortController()
+    setFilmTranslation(null); setTranslationFailed(false); setShowTranslation(false)
+    const file = 'translationFile' in film ? String(film.translationFile) : ''
+    if (!archiveItem && file) {
+      readPromptTranslation(file, film.id, zh ? 'zh-Hans' : 'en', controller.signal)
+        .then(text => { if (!controller.signal.aborted) setFilmTranslation({ zh, text }) })
+        .catch(() => { if (!controller.signal.aborted) setTranslationFailed(true) })
+    }
+    return () => controller.abort()
+  }, [film.id, zh, archiveItem, translationRetry])
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null
     const overflow = document.body.style.overflow
@@ -146,6 +156,7 @@ function FilmDetail({ film, archiveItem, onClose, onStep, selectionMode, notify 
         <div className="inspiration-film-context"><span>{film.category[locale]}</span><h2 id="film-detail-title">{film.title[locale]}</h2>{'summary' in film && <p>{film.summary[locale] || film.summary[0]}</p>}{archiveItem?.author && <p>@{archiveItem.author}{publishedAt && ` · ${publishedAt}`}</p>}<a href={archiveItem ? currentMedia?.sourceUrl || archiveItem.tweet_url : film.video} target="_blank" rel="noreferrer">{zh ? (currentMedia?.type === 'image' ? '查看原图' : '打开完整原片') : 'Open original media'}<ArrowUpRight size={14} /></a></div></div>
       <aside className="inspiration-prompt-panel"><div className="inspiration-prompt-heading"><BookOpen size={18} /><h3>{zh ? (showTranslation ? '提示词译文' : '原始提示词') : (showTranslation ? 'Translated prompt' : 'Original prompt')}</h3>{'model' in film && <small>{film.model}</small>}</div>
         {translated && <button className="inspiration-translate" onClick={() => setShowTranslation(value => !value)}>{zh ? (showTranslation ? '查看原文' : '查看译文') : (showTranslation ? 'View original' : 'View translation')}</button>}
+        {translationFailed && prompt && <button className="inspiration-translate" onClick={() => setTranslationRetry(value => value + 1)}>{zh ? '译文暂时无法读取 · 重试' : 'Translation unavailable · Retry'}</button>}
         <div className="inspiration-prompt-scroll">{loading ? <p className="inspiration-muted">{zh ? '正在读取提示词…' : 'Loading prompt…'}</p> : failed ? <div className="inspiration-empty"><p>{zh ? '提示词暂时无法读取' : 'Could not load this prompt'}</p><button onClick={() => setRetry(value => value + 1)}>{zh ? '重新读取' : 'Retry'}</button></div> : prompt ? <pre>{showTranslation ? translated : prompt}</pre> : <div className="inspiration-empty"><BookOpen size={30} /><p>{zh ? '先从画面里找到灵感。' : 'Let the film spark an idea.'}</p><span>{zh ? '这条作品的原始提示词暂未收录。你仍可观看原片，或将封面带入画布作参考。' : 'The original prompt is not available for this film. Watch the original or use its cover as a visual reference.'}</span></div>}</div>
         <div className="inspiration-prompt-actions">{prompt && <button className="inspiration-action-secondary" onClick={copy}>{copied ? <Check size={17} /> : <Copy size={17} />}{copied ? (zh ? '已复制' : 'Copied') : (zh ? '复制原始提示词' : 'Copy original prompt')}</button>}{selectionMode !== 'reference' && prompt && <button className="inspiration-action-primary" onClick={() => useInCanvas('prompt')}><Sparkle size={17} />{zh ? '带入画布创作' : 'Use on canvas'}<ArrowUpRight size={16} /></button>}{selectionMode !== 'prompt' && <button className="inspiration-action-secondary" onClick={() => useInCanvas('reference')}><Images size={17} />{zh ? '以封面作参考' : 'Use cover as reference'}</button>}{'sourceUrl' in film && film.sourceUrl && <a href={film.sourceUrl} target="_blank" rel="noreferrer">{zh ? '查看原作来源' : 'View original source'}<ArrowUpRight size={13} /></a>}</div>
       </aside></div>
@@ -201,7 +212,7 @@ export default function InspirationLibrary({ selectionMode = null, embedded = fa
       {!!matching.length && <div className="inspiration-pagination"><span>{zh ? `共 ${matching.length} 条作品` : `${matching.length} films`}</span><div><button disabled={currentPage === 0} aria-label={zh ? '上一页' : 'Previous page'} onClick={() => { setPage(currentPage - 1); document.querySelector('.inspiration-browse-heading')?.scrollIntoView({ block: 'start' }) }}><ArrowLeft size={17} /></button><span>{currentPage + 1} <small>/ {pages}</small></span><button disabled={currentPage >= pages - 1} aria-label={zh ? '下一页' : 'Next page'} onClick={() => { setPage(currentPage + 1); document.querySelector('.inspiration-browse-heading')?.scrollIntoView({ block: 'start' }) }}><ArrowRight size={17} /></button></div><small>{zh ? '点击作品，查看原片与创作提示' : 'Open a film to discover the prompt'}</small></div>}
     </>}
     {!embedded && <footer className="inspiration-footer"><span>妙图 MiaoImg</span><span>{zh ? '让灵感继续发生。' : 'Keep the inspiration going.'}</span></footer>}</main>
-    {selected && <FilmDetail film={selected} onClose={close} onStep={step} selectionMode={selectionMode} notify={notify} />}
+    {selected && <FilmDetail key={selected.id} film={selected} onClose={close} onStep={step} selectionMode={selectionMode} notify={notify} />}
     {toast && <div className="inspiration-toast" role="status">{toast}</div>}
   </div>
 }
