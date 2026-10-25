@@ -1,3 +1,4 @@
+import { createTextMeter } from './text-metering.ts'
 import { HttpIncomingRequests, incomingRequestSignal } from './http-request-lifetime.ts'
 import { toolWorkspaceFiles } from './tool-workspace-files.ts'
 import { hasCanvasMarker } from './canvas-document.ts'
@@ -1284,6 +1285,7 @@ export function createAgentApi({ management, workspaceFiles, env = () => process
       if (providerId === 'miaoimg') assertTextModelAccess({ management, session, modelId })
       else assertTextIdentity({ management, session })
     }
+    if (management && providerId === 'miaoimg') config.fetchImpl = createTextMeter({ management,session,source:'cloud_agent',fetchImpl }).fetch
     return config
   }
 

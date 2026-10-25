@@ -1,3 +1,4 @@
+import { createTextMeter } from './text-metering.ts'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { textSettings } from './text-models.ts'
@@ -67,13 +68,14 @@ export async function desktopModel(request, response, session, url, { management
   if (!config.enabled || !config.apiKey) throw failure('文本模型尚未配置', 503)
   assertProviderRequestAllowed(textChannelOf(model).safetyChannel, config.baseUrl, env)
   const payload = desktopPayload(body, model, endpoint)
+  const meter = createTextMeter({ management,session,source:'desktop_agent',fetchImpl })
   const controller = new AbortController()
   const close = () => { if (!response.writableEnded) controller.abort() }
   response.on('close', close)
   try {
     // The server owns this origin; reuse the no-redirect provider transport so
     // an upstream Location cannot replay private conversation bytes elsewhere.
-    const upstream = await createCustomProviderFetch({ allowPrivate: true, env, fetchImpl,
+    const upstream = await createCustomProviderFetch({ allowPrivate: true, env, fetchImpl: meter.fetch,
       beforeDispatch: () => assertTextModelAccess({ management, session, modelId: model.id }),
       redirectMessage: '模型服务地址已变化，请联系管理员' })(config.baseUrl + (endpoint === 'openai-responses' ? '/responses' : '/chat/completions'), {
       method: 'POST', headers: { authorization: `Bearer ${config.apiKey}`, 'content-type': 'application/json' },

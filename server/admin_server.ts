@@ -113,8 +113,16 @@ const server=createServer(async(request,response)=>{
    finally {response.removeListener('close',close)}
    return
   }
+  if(path==='/api/admin/text-calls' && request.method==='GET'){json(response,200,store.textBilling.list(Object.fromEntries(url.searchParams)));return}
+  const textPolicyMatch=/^\/api\/admin\/users\/([a-z0-9-]+)\/(text-policy|gift)$/.exec(path)
+  if(textPolicyMatch){const [,userId,action]=textPolicyMatch
+    if(!store.user(userId))throw failure('用户不存在',404)
+    if(action==='text-policy' && request.method==='GET'){json(response,200,store.textBilling.userPolicy(userId));return}
+    if(action==='text-policy' && request.method==='PATCH'){json(response,200,await mutateBody(body=>store.textBilling.saveUserPolicy(userId,body,actor)));return}
+    if(action==='gift' && request.method==='POST'){json(response,200,await mutateBody(body=>store.textBilling.gift(userId,body,actor)));return}
+  }
   if(path==='/api/admin/users'){
-   if(request.method==='GET'){json(response,200,store.users(Object.fromEntries(url.searchParams)));return}
+   if(request.method==='GET'){json(response,200,(()=>{const result=store.users(Object.fromEntries(url.searchParams));return {...result,items:result.items.map(user=>({...user,textPolicy:store.textBilling.userPolicy(user.id)}))}})());return}
    if(request.method==='POST'){json(response,201,await mutateBody(body=>store.createUser(body,actor)));return}
   }
   const match=/^\/api\/admin\/users\/([a-z0-9-]+)(?:\/(points|code|ledger|password|stats))?$/.exec(path)

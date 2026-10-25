@@ -44,6 +44,8 @@ import "./admin.css";
 import { version as APP_VERSION } from "../../../package.json";
 import AdminGenerationDetail from "./AdminGenerationDetail";
 import AdminTextCharges, { TextChargeSummary } from "./AdminTextCharges";
+import AdminTextConsole from "./AdminTextConsole";
+import "./console.css";
 import AdminFeedback from "./AdminFeedback";
 import AdminModelsSection from "./AdminModelsSection";
 import AdminPricingEditor from "./AdminPricingEditor";
@@ -54,6 +56,7 @@ const sections = [
   ["users", "用户管理", Users],
   ["models", "模型与价格", SlidersHorizontal],
   ["upstream", "上游用量", Database],
+  ["text", "文本用量与计费", ChatCircleText],
   ["generations", "生成记录", Images],
   ["payments", "充值管理", Receipt],
   ["feedback", "用户反馈", ChatCircleText],
@@ -177,7 +180,7 @@ export default function AdminPage() {
     },
     {
       label: lang === "en" ? "Configuration" : "配置与运维",
-      keys: ["models", "upstream", "operations", "audit"],
+      keys: ["models", "text", "upstream", "operations", "audit"],
     },
   ];
   function navigate(key) {
@@ -473,7 +476,7 @@ export default function AdminPage() {
       type === "create"
         ? { name: "", email: "", password: "", points: 100, models: [] }
         : type === "points"
-          ? { delta: 100, reason: "" }
+          ? { delta: 100, reason: "", kind: "gift", requestId: crypto.randomUUID() }
           : type === "permissions"
             ? { models: data.models || [], status: data.status }
             : { ...data },
@@ -508,10 +511,9 @@ export default function AdminPage() {
           return;
         }
         if (type === "points")
-          await api(`users/${data.id}/points`, "POST", {
-            delta: Number(form.delta),
-            reason: form.reason,
-          });
+          await api(`users/${data.id}/${form.kind === 'gift' ? 'gift' : 'points'}`, "POST", form.kind === 'gift' ? {
+            points: Number(form.delta), reason: form.reason, requestId: form.requestId,
+          } : { delta: Number(form.delta), reason: form.reason });
         if (type === "permissions")
           await api(`users/${data.id}`, "PATCH", form);
         if (type === "rotate") {
@@ -1081,6 +1083,8 @@ export default function AdminPage() {
                     ? adminText("查看存储、数据同步和服务配置。", lang)
                     : section === "users"
                       ? adminText("管理账号、权限与积分。", lang)
+                      : section === "text"
+                      ? adminText("管理文本调用、收费规则与用户赠送。", lang)
                       : section === "models"
                         ? adminText("管理模型开关、参数价格与成本分摊。", lang)
                         : section === "generations"
@@ -1182,6 +1186,7 @@ export default function AdminPage() {
             {notice}
           </div>
         )}
+        {section === "text" && <AdminTextConsole api={api} lang={lang} />}
         {section === "overview" &&
           (!overview ? (
             <Empty>{adminText("正在读取运营数据…", lang)}</Empty>
@@ -3712,11 +3717,15 @@ export default function AdminPage() {
                     <strong>{`${modal.data.points} ${adminText("积分", lang)}`}</strong>
                   </p>
                   <label>
+                    {lang === 'en' ? 'Operation' : '操作类型'}
+                    <select value={form.kind} onChange={e=>setForm({...form,kind:e.target.value})}><option value="gift">{lang === 'en' ? 'Gift credits' : '赠送积分'}</option><option value="adjust">{lang === 'en' ? 'Adjust balance' : '调整余额'}</option></select>
+                  </label>
+                  <label>
                     {adminText("调整积分", lang)}
                     <input
                       type="number"
                       required
-                      min="-1000000"
+                      min={form.kind === "gift" ? "0.0001" : "-1000000"}
                       max="1000000"
                       step="0.01"
                       value={form.delta}

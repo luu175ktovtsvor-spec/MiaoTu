@@ -186,7 +186,8 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
     await cloud.refresh({ signal })
     signal?.throwIfAborted()
     if (!cloud.account || cloud.authenticationExpired) throw Object.assign(new Error('请先登录后使用文本模型'), { status: 401 })
-    if (!(Number(cloud.session?.user?.points) > 0)) throw Object.assign(new Error('积分不足，请先充值后使用文本模型'), { status: 402 })
+    // Paid/free eligibility is checked by the cloud per request and model.
+    // A local balance precheck would incorrectly reject a free account.
   } })
   const nodes = createNodePlugins({ workspaceFiles: files }), exts = createExtPlugins({ workspaceFiles: files })
   const ffmpeg = createFfmpegExec({ workspaceFiles: files, workspaceKey: () => userSession().user.workspaceKey })

@@ -1,6 +1,6 @@
-export const sectionEnglish={overview:'Overview',operations:'System operations',users:'Users',models:'Models & pricing',upstream:'Provider usage',generations:'Generations',payments:'Payments',feedback:'User feedback',audit:'Activity log'}
+export const sectionEnglish={text:'Text usage & billing',overview:'Overview',operations:'System operations',users:'Users',models:'Models & pricing',upstream:'Provider usage',generations:'Generations',payments:'Payments',feedback:'User feedback',audit:'Activity log'}
 
-export const sectionDescriptionEnglish={overview:'Review accounts, generations and costs.',operations:'Review storage, data sync and service settings.',users:'Manage accounts, permissions and credits.',models:'Manage model availability, parameter prices and cost allocation.',upstream:'Review provider calls, estimated costs and balance records.',generations:'Review results, task status and credit usage.',payments:'Review orders and payment status. Credits arrive after successful payment.',feedback:'Read and reply to bugs and ideas sent from the desktop app.',audit:'Review account, payment and admin activity.'}
+export const sectionDescriptionEnglish={text:'Manage text usage, pricing and user benefits.',overview:'Review accounts, generations and costs.',operations:'Review storage, data sync and service settings.',users:'Manage accounts, permissions and credits.',models:'Manage model availability, parameter prices and cost allocation.',upstream:'Review provider calls, estimated costs and balance records.',generations:'Review results, task status and credit usage.',payments:'Review orders and payment status. Credits arrive after successful payment.',feedback:'Read and reply to bugs and ideas sent from the desktop app.',audit:'Review account, payment and admin activity.'}
 
 const adminEnglish: Record<string, string> = {
   "一次性密码": "One-time password",
@@ -57,6 +57,7 @@ const adminEnglish: Record<string, string> = {
   "上游用量（运维原始字段）": "Provider usage (raw maintenance fields)",
   "上游积分/秒": "provider credits/s",
   "上游积分余额与人民币推算成本单位不同；快照结论不等于账单实收，未知值以“未知”或“—”表示。": "Provider credit balances and estimated CNY costs have different units. Snapshot conclusions are not billed charges; unknown values appear as Unknown or an em dash.",
+  "管理文本调用、收费规则与用户赠送。": "Manage text usage, billing policies and user benefits.",
   "上游请求 ID（运维）": "Provider request ID (maintenance)",
   "上游调用状态": "Provider call status",
   "上游通道": "Upstream providers",

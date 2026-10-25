@@ -31,6 +31,7 @@ function mergeVideoTiers(current: unknown, patch: unknown) {
 export function mergeOperatingSettings(current: Record<string, any>, patch: Record<string, any>) {
   const next = { ...structuredClone(current), ...structuredClone(patch) }
   const owns = (key: string) => Object.prototype.hasOwnProperty.call(patch, key)
+  if (owns('textBilling')) next.textBilling = mergeRecord(current.textBilling, patch.textBilling, '文本计费设置无效')
   if (owns('models')) next.models = mergeRecord(current.models, patch.models, '模型设置无效')
   if (owns('videoPricing')) next.videoPricing = mergeRecord(current.videoPricing, patch.videoPricing, '视频定价设置无效')
   if (owns('textPrices') && patch.textPrices !== null) {

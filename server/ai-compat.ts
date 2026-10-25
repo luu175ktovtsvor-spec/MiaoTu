@@ -1,3 +1,4 @@
+import { createTextMeter } from './text-metering.ts'
 import { isWorkspaceRequest } from './canvas-document.ts'
 // MiaoImg 节点脚手架的 AI 兼容层。
 // 用上游脚手架构建的第三方节点会调用 /api/ai/models、/api/ai/media/models、
@@ -17,10 +18,8 @@ import { createAgentModel } from './agent-runtime.ts'
 import { customTextModel } from './text-model-registry.ts'
 import { createVideo } from './video-api.ts'
 import { assertTextAccess, assertTextIdentity } from './text-access.ts'
-import { textCreditsForUsage, textCreditsReserve } from './text-pricing.ts'
 import { readModelJson } from './model-transport.ts'
 import { TextOperations } from './text-lifetime.ts'
-import { TextUsageReceipt } from './text-usage.ts'
 
 // 单个媒体任务（含排队）的等待上限，与画布节点的等待节奏保持一致。
 const POLL_INTERVAL_MS = 1000
@@ -271,73 +270,14 @@ export function createAiCompat({ management, workspaceFiles, generate, probeRefe
         }
         upstreamModel = model.id
       }
-      const billingRequestId = builtin ? randomUUID() : ''
-      const billingSettings = builtin ? management.settings() : null
-      const usageReceipt = new TextUsageReceipt(config.protocol)
-      let reserved = false, finalized = false, receivedOutput = false
-      let billingStatus = builtin ? 'unreserved' : 'external'
-      let chargedText: number | null = builtin ? null : 0
-      let billingReserve = 0, upstreamStatus = 0, transportError: any
-      let providerRequestId = '', providerResponseId = ''
-      const safeId = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,120}$/.test(value) ? value : ''
-      const review = reason => {
-        billingStatus = 'billing_review_pending'
-        const usage = usageReceipt.value
-        const detail = `${reason}；模型=${upstreamModel}；上游请求=${providerRequestId || '未知'}；上游响应=${providerResponseId || '未知'}；HTTP=${upstreamStatus || '未知'}；用量=${usage ? `${usage.input_tokens}/${usage.output_tokens}` : '未知'}`
-        try {
-          const row = management.reviewTextCharge(billingRequestId, detail)
-          if (row?.status === 'settled') { billingStatus = 'settled'; chargedText = Number(row.charged_points) }
-          else if (row?.status === 'failed') { billingStatus = 'failed'; chargedText = Number(row.charged_points) }
-          else if (row?.status === 'billing_review') billingStatus = 'billing_review'
-          else console.error('[text] 用量核对状态待恢复', billingRequestId, row?.status || 'MISSING_CHARGE')
-        }
-        catch (error) { console.error('[text] 用量核对记录待恢复', billingRequestId, error?.code || 'ACCOUNTING_WRITE_FAILED') }
-      }
-      const finishBilling = () => {
-        if (!reserved || finalized) return
-        finalized = true
-        const usage = usageReceipt.value
-        if (usage) {
-          try {
-            const row = management.settleText(billingRequestId, { points: textCreditsForUsage(upstreamModel, usage, billingSettings.textPrices), inputTokens: usage.input_tokens, outputTokens: usage.output_tokens })
-            if (row?.status === 'billing_review') { billingStatus = row.status; return }
-            if (row?.status !== 'settled') { review('上游已报告实际用量，结算状态需要核对'); return }
-            chargedText = Number(row.charged_points)
-            billingStatus = 'settled'
-          } catch { review('上游已报告实际用量，结算写入未完成') }
-          return
-        }
-        const code = transportError?.cause?.code || transportError?.code
-        const unsubmitted = !receivedOutput && (upstreamStatus === 0 && ['UND_ERR_CONNECT_TIMEOUT', 'ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN'].includes(code)
-          || upstreamStatus >= 400 && upstreamStatus < 500 && ![408, 409].includes(upstreamStatus))
-        if (unsubmitted) {
-          try {
-            const row = management.failText(billingRequestId, '请求未送达或已被上游明确拒绝')
-            if (row?.status === 'failed' || row?.status === 'settled') { billingStatus = row.status; chargedText = Number(row.charged_points) }
-            else review('明确未送达或已拒绝，退款状态需要核对')
-          }
-          catch { review('明确未送达或已拒绝，退款写入未完成') }
-        } else review('已派发请求未取得权威终态用量，保留原预扣待核对')
-      }
-      const { runtime, model } = await operation.wait(createAgentModel({ ...config, providerId: providerId || 'miaoimg', modelId: upstreamModel,
-        ...(management && !builtin ? { beforeDispatch: () => assertTextIdentity({ management, session }) } : {}),
-        ...(builtin ? { fetchImpl: async (input, init) => {
-          // Pi's adapter loads lazily. Recheck at the actual fetch boundary so a
-          // reader/host leaving during setup cannot reserve or dispatch a call.
+      const meter = builtin ? createTextMeter({ management,session,source:'compat_text' }) : null
+      const { runtime,model } = await operation.wait(createAgentModel({ ...config,providerId:providerId || 'miaoimg',modelId:upstreamModel,
+        ...(management && !builtin ? { beforeDispatch:()=>assertTextIdentity({ management,session }) } : {}),
+        ...(builtin ? { fetchImpl:async (input,init) => {
           if (request.aborted || response.destroyed || signal?.aborted) disconnected()
-          operation.dispatch(() => {
-            assertTextAccess({ management, session })
-            management.reserveText({ session, model: upstreamModel, requestId: billingRequestId, points: billingReserve })
-            reserved = true
-            billingStatus = 'reserved'
-          })
+          operation.dispatch(()=>assertTextIdentity({ management,session }))
           openResponse()
-          try {
-            const upstream = await fetch(input, init)
-            upstreamStatus = upstream.status
-            providerRequestId = safeId(upstream.headers.get('x-request-id') || upstream.headers.get('request-id'))
-            return upstream
-          } catch (error) { transportError = error; throw error }
+          return meter.fetch(input,init)
         } } : {}),
       }))
       // Setup can outlive the caller. Do not reserve credits or start inference
@@ -346,40 +286,27 @@ export function createAiCompat({ management, workspaceFiles, generate, probeRefe
       operation.signal.throwIfAborted()
       if (builtin) assertTextAccess({ management, session })
       else if (management) assertTextIdentity({ management, session })
-      const billingInputTokens = builtin ? Math.max(1, Math.ceil(JSON.stringify(sdkContext).length / 4)) : 0
-      const billingModelId = builtin ? upstreamModel : ''
-      billingReserve = billingModelId
-        ? textCreditsReserve(billingModelId, billingInputTokens, Number(model.maxTokens), billingSettings.textPrices)
-        : 0
       if (!builtin) openResponse()
       try {
         const stream = runtime.streamSimple(model, sdkContext, {
           signal: operation.signal, maxTokens: model.maxTokens, maxRetries: 0,
           ...(config.reasoningEffort ? { reasoning: config.reasoningEffort } : {}),
           toolChoice: config.toolChoice,
-          onProviderStreamEvent: event => {
-            if (!builtin) return
-            usageReceipt.observe(event)
-            providerResponseId = safeId(event?.response?.id || event?.message?.id || event?.id) || providerResponseId
-          },
         })
         for await (const event of stream) {
           if (event.type === 'text_delta' || event.type === 'thinking_delta') {
-            if (event.delta) receivedOutput = true
             sendEvent({ type: event.type === 'text_delta' ? 'text' : 'reasoning', delta: event.delta })
           }
         }
         const message = await stream.result()
-        finishBilling()
         if (message.stopReason === 'error' || message.stopReason === 'aborted') throw new Error(message.errorMessage || '文本生成中断')
+        const billing = meter?.summary()
+        const chargedText = billing?.status === 'settled' ? Number(billing.chargedPoints) : builtin ? null : 0
         const sdkUsage = message.usage
-        sendEvent({ type: 'done', ...(builtin ? { billing: { requestId: billingRequestId, status: billingStatus } } : {}), message: { ...message, usage: { ...sdkUsage, cost: { ...sdkUsage.cost, total: chargedText } } } })
+        sendEvent({ type: 'done', ...(builtin ? { billing } : {}), message: { ...message, usage: { ...sdkUsage, cost: { ...sdkUsage.cost, total: chargedText } } } })
       } catch (error) {
-        finishBilling()
         if (!response.headersSent && connected()) throw error
-        sendEvent({ type: 'error', message: error?.message || '文本生成失败', ...(builtin && reserved ? { billing: { requestId: billingRequestId, status: billingStatus } } : {}) })
-      } finally {
-        finishBilling()
+        sendEvent({ type: 'error', message: error?.message || '文本生成失败', ...(builtin ? { billing:meter?.summary() } : {}) })
       }
     } finally {
       if (heartbeat) clearInterval(heartbeat)

@@ -29,6 +29,8 @@ export type PricingDraft = {
     {
       inputCreditsPerMillionTokens: string | number;
       outputCreditsPerMillionTokens: string | number;
+      cacheReadCreditsPerMillionTokens: string | number;
+      cacheWriteCreditsPerMillionTokens: string | number;
       minimumCredits: string | number;
     }
   >;
@@ -108,6 +110,8 @@ export function buildPricingDraft(
               rate.inputCreditsPerMillionTokens ?? 0,
             outputCreditsPerMillionTokens:
               rate.outputCreditsPerMillionTokens ?? 0,
+            cacheReadCreditsPerMillionTokens: rate.cacheReadCreditsPerMillionTokens ?? rate.inputCreditsPerMillionTokens ?? 0,
+            cacheWriteCreditsPerMillionTokens: rate.cacheWriteCreditsPerMillionTokens ?? rate.inputCreditsPerMillionTokens ?? 0,
             minimumCredits: rate.minimumCredits ?? 0,
           },
         ];

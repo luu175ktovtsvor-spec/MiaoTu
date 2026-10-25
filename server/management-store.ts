@@ -1,3 +1,4 @@
+import { TextBilling, normalizeTextBilling } from './text-billing.ts'
 import { finiteCost, costEvidence } from './cost-evidence.ts'
 import { mergeOperatingSettings } from './operating-settings.ts'
 import { setVideoPricing, normalizeVideoPricing, isCostPlusVideo } from './video-pricing.ts'
@@ -269,6 +270,7 @@ export class ManagementStore {
   declare stateScoped: any
   declare _artifactFiles: any
   declare _blobStore: any
+  declare textBilling: TextBilling
 
   constructor(path = process.env.OIP_MANAGEMENT_DB || join(process.env.OIP_DATA_DIR || 'data', 'management.sqlite')) {
     if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true })
@@ -419,6 +421,7 @@ export class ManagementStore {
     execRetry(this.db, 'CREATE INDEX IF NOT EXISTS email_otp_lookup ON email_otps(email_hash,created_at DESC)')
     // 生成结果的字节也落磁盘。这里只保证表结构（老库要改成 bytes 可空 + storage/size），
     // 真正搬字节的迁移由 image API 启动时显式调用 migrateToDisk()，不让每个进程都跑一遍。
+    this.textBilling = new TextBilling(this, sql => execRetry(this.db, sql))
     this.artifactFiles()
     this.recoverStale()
     // 启动时先读一次后台调价，避免开局几笔请求按内置价预扣。
@@ -547,6 +550,7 @@ export class ManagementStore {
       models: normalizeModelSettings(merged.models),
       prices,
       textPrices,
+      textBilling: normalizeTextBilling(merged.textBilling),
       videoPricing: normalizeVideoPricing(merged.videoPricing),
     }
   }
@@ -564,7 +568,7 @@ export class ManagementStore {
     if (!patch || typeof patch !== 'object' || Array.isArray(patch)) throw failure('设置字段无效')
     return this.transaction(() => {
       const current = this.settings()
-      for (const key of Object.keys(patch)) if (!['enabled','videoEnabled','requireLogin','registrationEnabled','defaultModel','defaultTextModel','maxConcurrent','models','prices','videoPricing','textPrices'].includes(key)) throw failure('设置字段无效')
+      for (const key of Object.keys(patch)) if (!['enabled','videoEnabled','requireLogin','registrationEnabled','defaultModel','defaultTextModel','maxConcurrent','models','prices','videoPricing','textPrices','textBilling'].includes(key)) throw failure('设置字段无效')
       // Normalize aliases before merging so a legacy model id updates the
       // existing public id instead of becoming a conflicting second entry.
       const normalizedPatch = { ...patch }
@@ -595,6 +599,8 @@ export class ManagementStore {
       try { next.videoPricing = normalizeVideoPricing(next.videoPricing) } catch (error) { throw failure(error.message) }
       next.prices = normalizeModelSettingsStrict(next.prices, '计费设置无效')
       try { next.textPrices = normalizeTextPrices(next.textPrices, '文本模型计费设置无效') } catch (error) { throw failure(error.message) }
+      next.textBilling = normalizeTextBilling(next.textBilling)
+      if ('textBilling' in patch || 'textPrices' in patch) next.textBilling.version = randomUUID()
       for (const [id, price] of Object.entries(next.prices as Record<string, Record<string, any>>)) {
         const model = modelById(id)
         if (!model || !price || typeof price !== 'object') throw failure('计费设置无效')
@@ -1010,75 +1016,10 @@ export class ManagementStore {
     })
   }
   ledger(id, delta, reason, requestId = null, paymentOrderId = null) { this.run('INSERT INTO ledger(id,user_id,delta,reason,request_id,created_at,payment_order_id) VALUES(?,?,?,?,?,?,?)',randomUUID(),id,delta,reason,requestId,new Date().toISOString(),paymentOrderId) }
-  reserveText({ session, model, requestId, points = 0 }: Record<string, any>) {
-    return this.transaction(() => {
-      if (session?.role !== 'user' || !session.userId) throw failure('请先登录后使用文本模型', 401)
-      const existing = this.get('SELECT * FROM text_charges WHERE request_id=?', String(requestId || ''))
-      if (existing) return existing
-      const user = this.user(session.userId)
-      if (!user || user.status !== 'active') throw failure('账号已停用', 403)
-      if (!(Number(user.points) > 0)) throw failure('积分不足，请先充值后使用文本模型', 402)
-      // Admission and the reserve share one transaction. Async model setup
-      // must not outlive a total/model pause or a change to the account's list.
-      assertTextModelPolicy(this.settings(), String(model || ''), user.models || [])
-      const reserved = Math.max(0, Math.round(Number(points || 0) * 10000) / 10000)
-      if (reserved > 0 && this.run('UPDATE users SET points=ROUND(points-?,4) WHERE id=? AND points>=?', reserved, session.userId, reserved).changes !== 1) {
-        throw failure('积分不足，请先充值后使用文本模型', 402)
-      }
-      const id = randomUUID()
-      const now = new Date().toISOString()
-      if (reserved > 0) this.ledger(session.userId, -reserved, '文本模型预扣', requestId)
-      this.run('INSERT INTO text_charges(id,user_id,model,status,reserved_points,charged_points,request_id,created_at) VALUES(?,?,?,?,?,?,?,?)', id, session.userId, String(model || ''), 'reserved', reserved, 0, String(requestId), now)
-      return this.get('SELECT * FROM text_charges WHERE id=?', id)
-    })
-  }
-  settleText(requestId, { points = 0, inputTokens = 0, outputTokens = 0 }: Record<string, any> = {}) {
-    return this.transaction(() => {
-      const row = this.get('SELECT * FROM text_charges WHERE request_id=?', String(requestId || ''))
-      if (!row || row.status !== 'reserved') return row
-      const { required, reserved, extra, refund } = textSettlementAmounts(points, row.reserved_points)
-      const input = Math.max(0, Math.floor(Number(inputTokens) || 0)), output = Math.max(0, Math.floor(Number(outputTokens) || 0))
-      if (extra > 0) {
-        if (this.run('UPDATE users SET points=ROUND(points-?,4) WHERE id=? AND points>=?', extra, row.user_id, extra).changes !== 1) {
-          const reason = `实际用量补扣未完成，保留原预扣待核对；应结算积分=${required}；原预扣积分=${reserved}；待补差积分=${extra}；输入token=${input}；输出token=${output}`
-          this.run("UPDATE text_charges SET status='billing_review',error=?,input_tokens=?,output_tokens=?,finished_at=? WHERE request_id=? AND status='reserved'",
-            reason, input, output, new Date().toISOString(), String(requestId))
-          return this.get('SELECT * FROM text_charges WHERE request_id=?', String(requestId))
-        }
-        this.ledger(row.user_id, -extra, '文本模型实际用量补扣', requestId)
-      }
-      if (refund > 0) {
-        this.run('UPDATE users SET points=ROUND(points+?,4) WHERE id=?', refund, row.user_id)
-        this.ledger(row.user_id, refund, '文本模型未使用额度退还', requestId)
-      }
-      this.run('UPDATE text_charges SET status=?,charged_points=?,input_tokens=?,output_tokens=?,finished_at=? WHERE request_id=?', 'settled', required, input, output, new Date().toISOString(), String(requestId))
-      return this.get('SELECT * FROM text_charges WHERE request_id=?', String(requestId))
-    })
-  }
-  failText(requestId, error = '') {
-    return this.transaction(() => {
-      const row = this.get('SELECT * FROM text_charges WHERE request_id=?', String(requestId || ''))
-      if (!row || row.status !== 'reserved') return row
-      const reserved = Number(row.reserved_points || 0)
-      if (reserved > 0) {
-        this.run('UPDATE users SET points=ROUND(points+?,4) WHERE id=?', reserved, row.user_id)
-        this.ledger(row.user_id, reserved, '文本模型失败退还', requestId)
-      }
-      this.run('UPDATE text_charges SET status=?,error=?,finished_at=? WHERE request_id=?', 'failed', String(error || '').slice(0, 500), new Date().toISOString(), String(requestId))
-      return this.get('SELECT * FROM text_charges WHERE request_id=?', String(requestId))
-    })
-  }
-  reviewTextCharge(requestId, reason = '') {
-    return this.transaction(() => {
-      const row = this.get('SELECT * FROM text_charges WHERE request_id=?', String(requestId || ''))
-      if (!row || row.status !== 'reserved') return row
-      // Dispatch may already have incurred upstream usage. Retain the original
-      // hold without refunding it or recording it as an actual consumption.
-      this.run("UPDATE text_charges SET status='billing_review',error=?,finished_at=? WHERE request_id=? AND status='reserved'",
-        String(reason || '文本请求已派发，未能取得可核对的最终用量').slice(0, 500), new Date().toISOString(), String(requestId))
-      return this.get('SELECT * FROM text_charges WHERE request_id=?', String(requestId))
-    })
-  }
+  reserveText(options: Record<string, any>) { return this.textBilling.reserve(options) }
+  settleText(requestId, options: Record<string, any> = {}) { return this.textBilling.settle(requestId, options) }
+  failText(requestId, error = '') { return this.textBilling.fail(requestId, error) }
+  reviewTextCharge(requestId, error = '') { return this.textBilling.review(requestId, error) }
   textChargeSummary({ userId = '' }: Record<string, any> = {}) {
     const row = this.get(`SELECT
       COALESCE(SUM(CASE WHEN status='reserved' THEN 1 ELSE 0 END),0) reservedRequests,

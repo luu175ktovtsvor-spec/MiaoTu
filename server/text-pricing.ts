@@ -1,12 +1,14 @@
 import { ownTextModelById, ownTextModelIds } from './text-model-registry.ts'
 
 const MAX_CREDITS = 1_000_000
-const TEXT_PRICE_KEYS = Object.freeze(['inputCreditsPerMillionTokens', 'outputCreditsPerMillionTokens', 'minimumCredits'])
+const TEXT_PRICE_KEYS = Object.freeze(['inputCreditsPerMillionTokens', 'outputCreditsPerMillionTokens', 'cacheReadCreditsPerMillionTokens', 'cacheWriteCreditsPerMillionTokens', 'minimumCredits'])
 
 export const DEFAULT_TEXT_PRICES = Object.freeze(Object.fromEntries(
   ownTextModelIds().map((id) => [id, Object.freeze({
     inputCreditsPerMillionTokens: 0,
     outputCreditsPerMillionTokens: 0,
+    cacheReadCreditsPerMillionTokens: 0,
+    cacheWriteCreditsPerMillionTokens: 0,
     minimumCredits: 0,
   })]),
 ))
@@ -28,6 +30,7 @@ export function normalizeTextPrices(value, message = '文本模型计费设置�
     const defaults = DEFAULT_TEXT_PRICES[id]
     result[id] = { ...defaults }
     for (const key of TEXT_PRICE_KEYS) if (raw[key] !== undefined && raw[key] !== null && raw[key] !== '') result[id][key] = number(raw[key], key)
+    for (const key of ['cacheReadCreditsPerMillionTokens','cacheWriteCreditsPerMillionTokens']) if (raw[key] === undefined) result[id][key] = result[id].inputCreditsPerMillionTokens
   }
   for (const id of ownTextModelIds()) if (!result[id]) result[id] = { ...DEFAULT_TEXT_PRICES[id] }
   return result
@@ -42,9 +45,11 @@ export function publicTextCostPolicy(textPrices) {
       label: model.label,
       inputCreditsPerMillionTokens: price.inputCreditsPerMillionTokens,
       outputCreditsPerMillionTokens: price.outputCreditsPerMillionTokens,
+      cacheReadCreditsPerMillionTokens: price.cacheReadCreditsPerMillionTokens,
+      cacheWriteCreditsPerMillionTokens: price.cacheWriteCreditsPerMillionTokens,
       minimumCredits: price.minimumCredits,
       billingMode: 'usage_based',
-      currentlyCharging: Boolean(price.inputCreditsPerMillionTokens || price.outputCreditsPerMillionTokens || price.minimumCredits),
+      currentlyCharging: Object.values(price).some(Number),
     }]
   }))
 }
@@ -64,7 +69,10 @@ export function textCreditsForUsage(modelId, usage: Record<string, any> = {}, te
   if (!price) return 0
   const tokens = usageTokens(usage)
   if (!tokens.input && !tokens.output) return 0
-  const raw = tokens.input * price.inputCreditsPerMillionTokens / 1_000_000
+  const cached = Math.min(tokens.input, Math.max(0, Number(usage.cache_read_tokens || 0)))
+  const written = Math.min(tokens.input - cached, Math.max(0, Number(usage.cache_write_tokens || 0)))
+  const raw = ((tokens.input - cached - written) * price.inputCreditsPerMillionTokens
+    + cached * price.cacheReadCreditsPerMillionTokens + written * price.cacheWriteCreditsPerMillionTokens) / 1_000_000
     + tokens.output * price.outputCreditsPerMillionTokens / 1_000_000
   const credits = Math.max(raw, Number(price.minimumCredits) || 0)
   return Math.round(credits * 10000) / 10000
