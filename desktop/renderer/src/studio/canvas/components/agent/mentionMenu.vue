@@ -31,7 +31,7 @@
             </div>
           </el-scrollbar>
           <div class="mentionFooter"><span>{{ selectedNode ? translate('已选 {0} 项', { 0: selectedOutputs.length }) : translate('↑ ↓ 选择 · Enter 确认 · Esc 关闭') }}</span><el-button v-if="selectedNode" type="primary" size="small" :loading="selecting" :disabled="!selectedOutputs.length" @click="confirmOutputs">{{ translate('插入引用') }}</el-button><span v-else-if="selecting">{{ translate('正在插入…') }}</span></div>
-          <div v-if="selectionError" class="mentionError" role="alert">{{ selectionError }}</div>
+          <feedbackNotice :message="selectionError" @close="selectionError = ''" />
         </el-card>
       </div>
     </teleport>
@@ -39,6 +39,7 @@
 </template>
 
 <script setup lang="ts">
+import feedbackNotice from '../feedbackNotice.vue';
 import { translate } from "@miaoimg/i18n/vue";
 
 import { computed, nextTick, onBeforeUnmount, ref, useId, watch, type CSSProperties } from "vue";

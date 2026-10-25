@@ -1,3 +1,4 @@
+import FeedbackNotice from '../components/FeedbackNotice'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useSessionViewReceipt } from './useSessionViewReceipt'
 import { ArrowRight, EnvelopeSimple, Eye, EyeSlash, LockKey, SignOut, SpinnerGap, X } from '@phosphor-icons/react'
@@ -153,7 +154,7 @@ export default function DesktopBar({ children }: { children: ReactNode }) {
               {mode !== 'password' && <div className="desktop-account-input"><input id="desktop-account-code" name="miao-account-code" inputMode="numeric" autoComplete="off" aria-label="验证码" pattern="[0-9]{6}" maxLength={6} value={code} onChange={e => { setCode(e.target.value.replace(/\D/g, '').slice(0, 6)); setError('') }} placeholder="请输入验证码" required disabled={busy} /><button type="button" className="desktop-account-send" disabled={!email.trim() || busy || sending || cooldown > 0} onClick={requestCode}>{cooldown > 0 ? `${cooldown}s 后重新获取` : sending ? '发送中…' : codeSent ? '重新获取' : '获取验证码'}</button></div>}
               {mode !== 'code' && <div className="desktop-account-input"><input id="desktop-account-password" name="miao-account-password" type={showPassword ? 'text' : 'password'} autoComplete="off" aria-label={mode === 'reset' ? '新密码' : '密码'} value={password} onChange={e => { setPassword(e.target.value); setError('') }} placeholder={mode === 'reset' ? '设置至少 8 位的新密码' : '请输入密码'} required minLength={8} maxLength={128} disabled={busy} /><button type="button" className="desktop-account-password-toggle" aria-label={showPassword ? '隐藏密码' : '显示密码'} aria-pressed={showPassword} disabled={busy} onClick={() => setShowPassword(!showPassword)}>{showPassword ? <EyeSlash size={19} /> : <Eye size={19} />}</button></div>}
               {mode === 'password' && <button type="button" className="desktop-account-link desktop-account-forgot" disabled={busy} onClick={() => switchMode('reset')}>忘记密码？</button>}
-              {error && <p role="alert" className="desktop-account-error">{error}</p>}
+              {error && <FeedbackNotice message={error} onClose={() => setError('')} />}
               <button className="desktop-account-submit" disabled={busy || sending || !submitReady}>{busy ? <><SpinnerGap size={18} className="desktop-account-spinner" />处理中…</> : mode === 'reset' ? '设置新密码并登录' : registrationEnabled && mode === 'code' ? '登录 / 注册' : '登录'}</button>
               {mode === 'code' && registrationEnabled && <p className="desktop-login-note">未注册的邮箱将自动注册</p>}
             </form>
@@ -167,12 +168,12 @@ export default function DesktopBar({ children }: { children: ReactNode }) {
         <h2 id="desktop-account-title">账号</h2>
         {!account && <p id="desktop-account-description" className="desktop-account-description">正在读取账号状态。</p>}
         {loading ? <div className="desktop-account-loading" role="status"><SpinnerGap size={22} className="desktop-account-spinner" />正在读取账号…</div> : (!state || state.statusUnavailable) ? <>
-          <p role="alert" className="desktop-account-error">{error || '暂时无法读取账号，请重试'}</p>
+          <FeedbackNotice message={error || '暂时无法读取账号，请重试'} action="重试" onAction={() => setRefresh(value => value + 1)} />
           <button className="desktop-account-submit" onClick={() => setRefresh(value => value + 1)}>重试</button>
         </> : <>
           <div className="desktop-account-profile"><div className="desktop-account-avatar">{Array.from(String(account.name || account.email || '妙'))[0]}</div><div><strong>{account.name || '妙图用户'}</strong><p>{account.email}</p></div></div>
           <div className="desktop-account-balance"><span>可用积分</span><strong>{Number(account.points || 0).toLocaleString('zh-CN')}<small>积分</small></strong></div>
-          {error && <p role="alert" className="desktop-account-error">{error}</p>}
+          {error && <FeedbackNotice message={error} onClose={() => setError('')} />}
           <button className="desktop-account-submit" type="button" disabled={busy} onClick={() => { close(); window.dispatchEvent(new Event('miao-open-account-surface')) }}>充值与积分明细<ArrowRight size={18} /></button>
           <button className="desktop-account-signout" disabled={busy} onClick={async () => { if (await action('/api/desktop/logout', {})) { setPassword(''); setCode(''); setError(''); window.dispatchEvent(new Event('miao-desktop-session')) } }}><SignOut size={18} />{busy ? '处理中…' : '退出登录'}</button>
         </>}

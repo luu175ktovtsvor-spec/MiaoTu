@@ -45,13 +45,14 @@
         <el-button :disabled="!directory || submitting" @click="submitAnswer(true)">{{ translate('跳过') }}</el-button>
       </div>
       <p class="questionHint">{{ translate('也可以直接在下方输入框回答或补充，当前任务会继续。') }}</p>
-      <p v-if="submitError" class="submitError" role="alert">{{ submitError }}</p>
+      <feedbackNotice :message="submitError" @close="submitError = ''" />
     </template>
     <p v-else-if="answer" class="answerText">{{ answer }}</p>
   </el-card>
 </template>
 
 <script setup lang="ts">
+import feedbackNotice from '../feedbackNotice.vue';
 import { translate } from "@miaoimg/i18n/vue";
 import { computed, inject, reactive, ref, watch } from "vue";
 import { assertWorkspaceScope, captureWorkspaceScope, workspaceHeaders } from "@/lib/workspaceRemote";

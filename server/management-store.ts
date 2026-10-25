@@ -11,7 +11,7 @@ import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from
 import { estimateGenerationCost, estimateUpstreamCostRmb, publicCostPolicy, setPricingOverrides } from './generation-cost.ts'
 import { ArtifactFiles } from './artifact-files.ts'
 import { BlobStore, mediaLayout } from './blob-store.ts'
-import { modelById, defaultModel, modelCatalog } from './image-models.ts'
+import { modelById, modelForGeneration, defaultModel, modelCatalog } from './image-models.ts'
 import { ownTextModelById, ownTextModelIds } from './text-model-registry.ts'
 import { supportedImageMime } from './result-cache.ts'
 import { MEDIA_INPUT_VERSION } from './media-input.ts'
@@ -1536,13 +1536,14 @@ export class ManagementStore {
       }
     })
   }
-  setUpstreamTask(id, { requestId = '', model = '', status = null }: Record<string, any> = {}) {
+  setUpstreamTask(id, { requestId = '', model = '', status = null, workerId = '' }: Record<string, any> = {}) {
     return this.transaction(() => {
       const row = this.get('SELECT * FROM generations WHERE id=?', id)
       // 上游请求可能已接受后，用户才取消本地记录。即使本地已经是 cancelled，
       // 也必须把 upstream_request_id 落下来，供后续对账和人工找回；不能因 409 丢掉它。
       if (!row || ![GENERATION_STATES.RUNNING, GENERATION_STATES.CANCELLED].includes(row.status)) throw failure('生成记录已结算', 409)
-      this.run('UPDATE generations SET upstream_request_id=?,upstream_model=COALESCE(?,upstream_model),upstream_status=?,lease_id=NULL,lease_at=NULL WHERE id=?', String(requestId || '').slice(0, 200) || null, String(model || '').slice(0, 200) || null, status == null ? row.upstream_status : Number(status), id)
+      const keepLease=workerId && row.lease_id===workerId && row.status===GENERATION_STATES.RUNNING
+      this.run('UPDATE generations SET upstream_request_id=?,upstream_model=COALESCE(?,upstream_model),upstream_status=?,lease_id=?,lease_at=? WHERE id=?', String(requestId || '').slice(0, 200) || null, String(model || '').slice(0, 200) || null, status == null ? row.upstream_status : Number(status), keepLease?workerId:null,keepLease?row.lease_at:null,id)
       return this.get('SELECT * FROM generations WHERE id=?', id)
     })
   }
@@ -1631,6 +1632,17 @@ export class ManagementStore {
       return this.get('SELECT * FROM generations WHERE id=?', id)
     })
   }
+  claimAcceptedImage(id: string, workerId: string) {
+    return this.transaction(()=>{
+      const g=this.get('SELECT * FROM generations WHERE id=?',id)
+      if(!g || g.status!==GENERATION_STATES.RUNNING || g.provider!=='suihe' || !g.upstream_request_id || modelById(g.model)?.video) return null
+      if(g.lease_id && Date.parse(g.lease_at)>Date.now()-GENERATION_LIMITS.leaseMs) return null
+      const parameters=parse(g.parameters)
+      if(parameters.imageResultPending || parameters.imageResultExpiredAt) return null
+      this.run('UPDATE generations SET lease_id=?,lease_at=? WHERE id=?',workerId,new Date().toISOString(),id)
+      return this.loadGeneration(id)
+    })
+  }
   stopImageResultRecovery(id: string, reason: 'expired' | 'missing') {
     if (!['expired', 'missing'].includes(reason)) throw failure('原图回执恢复停止原因无效', 422)
     return this.transaction(() => {
@@ -1669,6 +1681,8 @@ export class ManagementStore {
     const parameters = parse(row.parameters)
     delete parameters.videoPricing
     delete parameters.upstreamImagePricing
+    delete parameters.suiheCost
+    delete parameters.upstreamProvider
     delete parameters.imageResultPending
     delete parameters.imageResultRetry
     delete parameters.imageResultExpiredAt
@@ -1875,7 +1889,7 @@ export class ManagementStore {
         return { id:artifactId, url:`/api/imagine/result/${artifactId}`, mime:a.mime, format:a.mime.split('/')[1] }
       })
       const parameters = parse(g.parameters)
-      const imageCost = estimateUpstreamCostRmb({ model: modelById(g.model), count: savedArtifacts.length, parameters })
+      const imageCost = estimateUpstreamCostRmb({ model: modelForGeneration(g.model,parameters,g.provider), count: savedArtifacts.length, parameters })
       this.run("UPDATE generations SET status='succeeded',error=NULL,points=?,charged_points=?,finished_at=?,usage=?,upstream_cost=?,upstream_model=?,upstream_request_id=?,upstream_status=?,lease_id=NULL,lease_at=NULL,expires_at=NULL WHERE id=?",charged,charged,new Date().toISOString(),metadata.usage ? JSON.stringify(metadata.usage) : g.usage,imageCost ? JSON.stringify(imageCost) : g.upstream_cost || null,metadata.upstreamModel || g.upstream_model,metadata.upstreamRequestId || g.upstream_request_id || null,metadata.upstreamStatus ?? g.upstream_status ?? null,id)
       this.run("UPDATE generations SET parameters=json_set(json_remove(parameters,'$.imageResultPending','$.imageResultRetry','$.imageResultExpiredAt','$.submissionUncertain','$.submissionDiagnosticId'),'$.resultCount',?) WHERE id=?", savedArtifacts.length, id)
       if (parameters.desktopDelivery === 1) this.run("UPDATE generations SET parameters=json_set(parameters,'$.desktopExpiresAt',?) WHERE id=?", expiresAt, id)
@@ -1901,7 +1915,7 @@ export class ManagementStore {
       // 而不是只按秒数估算。创建时已经用参数预扣了安全上限；成功后只把
       // 实际 usage 对应的较低金额退回，避免把上游 token 用量错误地吞掉。
       const parameters = parse(g.parameters)
-      const model = modelById(g.model)
+      const model = modelForGeneration(g.model,parameters,g.provider)
       const usageCost = model?.video && result.usage
         ? estimateGenerationCost({ model, generation: { ...parameters, ...(isCostPlusVideo(g.model) && result.duration != null ? { billableDuration: Number(result.duration) } : {}), usage: result.usage } })
         : null
@@ -1952,7 +1966,7 @@ export class ManagementStore {
     const g = this.get('SELECT * FROM generations WHERE id=?', id)
     if (!g || g.status !== GENERATION_STATES.RUNNING) return
     const parameters = { ...parse(g.parameters) }
-    const accepted = acceptedVideoSubmissionRecovery(metadata, Boolean(modelById(g.model)?.video), g.upstream_request_id)
+    const accepted = acceptedVideoSubmissionRecovery(metadata, Boolean(modelById(g.model)?.video || g.provider==='suihe'), g.upstream_request_id)
     if (accepted) {
       // The original POST already returned this exact ID. Reattach it in the
       // existing review transaction so the normal collector can only poll it.
@@ -2022,7 +2036,7 @@ export class ManagementStore {
       for (const g of this.all("SELECT * FROM generations WHERE status='running'")) {
         // A live worker or accepted upstream task has no model wait budget.
         if (g.lease_id && g.lease_at >= leaseCutoff) continue
-        if (g.upstream_request_id && modelById(g.model)?.video) continue
+        if (g.upstream_request_id && (modelById(g.model)?.video || g.provider==='suihe')) continue
         if (parse(g.parameters).submissionUncertain || parse(g.parameters).imageResultPending) continue
         // A worker crash during POST cannot prove the provider rejected it.
         this.setSubmissionUncertain(g.id, '本地执行连接中断，等待核对原请求')

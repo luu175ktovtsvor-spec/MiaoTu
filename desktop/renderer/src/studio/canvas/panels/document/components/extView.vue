@@ -1,4 +1,5 @@
 <template>
+  <feedbackNotice :message="session.context.error || runtimeError || ''" />
   <section class="extView" :aria-label="session.context.resource.label" @keydown.ctrl.s.capture.prevent="save" @keydown.meta.s.capture.prevent="save">
     <div v-if="session.context.error || runtimeError" class="extError" role="alert">
       <span>{{ session.context.error || runtimeError }}</span>
@@ -15,6 +16,7 @@
 </template>
 
 <script setup lang="ts">
+import feedbackNotice from '../../../components/feedbackNotice.vue';
 import { computed, inject, onBeforeUnmount, onErrorCaptured, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import type { IDockviewPanelProps } from "dockview-vue";

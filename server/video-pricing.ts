@@ -1,6 +1,7 @@
 // Supplier price sources: Metaso /minimax-h3 (2026-10-08), Ark model-pricing.
 // Cost and markup are captured at submission so later admin edits cannot alter a task.
 import { isSeedance25, SEEDANCE25_PRICING } from './seedance25.ts'
+import { suiheCost } from './suihe-pricing.ts'
 export const VIDEO_PRICING_VERSION = 'video-cost-plus-2026-10-22'
 export const DEFAULT_VIDEO_PRICING = Object.freeze({ metasoRmbPerCredit: 0.0108, markupPerSecond: 0.1, paymentFeePercent:null, serverMonthlyRmb:null, serverAnnualUsd:null, usdToRmb:null, monthlyBillableVideoSeconds:null, otherRmbPerSecond:null, serverAllocationMode:'video_seconds', monthlyMediaRequests:null })
 export const METASO_VIDEO_CREDITS = Object.freeze({
@@ -64,6 +65,11 @@ export function costPlusVideoCost({ model, parameters = {}, usage, seconds }: Re
   if (!(output > 0)) throw Error('视频计费时长无效')
   const input = nonnegative(parameters.videoSeconds)
   const resolution = String(parameters.resolution || '').toLowerCase()
+  if (model?.provider === 'suihe') {
+    const cost=suiheCost(model,parameters,{seconds:output,usage})
+    if (!cost) throw Error('该视频档位采购价尚未配置')
+    return {...cost,detail:{...cost.detail,expenses},markupPerSecond:snapshot.markupPerSecond}
+  }
   if (METASO_VIDEO_CREDITS[id]) {
     const supplier = snapshot.supplierPricing
     const tier = (supplier?.metasoTiers || METASO_VIDEO_CREDITS)[id]?.[resolution]

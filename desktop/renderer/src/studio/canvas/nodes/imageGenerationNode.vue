@@ -416,6 +416,18 @@ const composerExpanded = ref(false);
 watchEffect(() => { composerVisible.value = composerExpanded.value || node.selected || !previewUrl.value; });
 
 const displayPreviewUrl = files.useFileUrl(outputFile, () => {}, true);
+// A thumbnail only determines layout. Read the original dimensions on demand
+// for the selected node, reusing the workspace's browser media cache.
+watch([previewUrl, () => node.selected], async ([source, selected], previous, onCleanup) => {
+  if (source !== previous?.[0]) imageDimensions.value = undefined;
+  if (!source || !selected || imageDimensions.value || !outputFile.value) return;
+  const controller = new AbortController();
+  onCleanup(() => controller.abort());
+  try {
+    const size = await files.getWorkspaceFiles().readImageSize?.(outputFile.value.url, controller.signal);
+    if (!controller.signal.aborted && size) imageDimensions.value = size;
+  } catch { /* Preview remains usable when original metadata is unavailable. */ }
+}, { immediate: true });
 
 onMounted(() => {
   void loadModels().catch(error => { if (!disposed) showNodeError(error, translate("模型读取失败")); });
@@ -728,7 +740,7 @@ nodeEvent.on("delete", async () => {
 async function resizeImage(event: Event) {
   const image = event.currentTarget as HTMLImageElement;
   if (!image.naturalWidth || !image.naturalHeight) return;
-  imageDimensions.value = { width: image.naturalWidth, height: image.naturalHeight };
+  if (image.src === previewUrl.value) imageDimensions.value = { width: image.naturalWidth, height: image.naturalHeight };
   imageWidth.value = (360 * image.naturalWidth) / image.naturalHeight;
   await nextTick();
   updateNodeInternals();

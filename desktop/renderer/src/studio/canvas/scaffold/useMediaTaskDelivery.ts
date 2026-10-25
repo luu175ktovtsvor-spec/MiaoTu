@@ -1,7 +1,7 @@
 import { inject, onScopeDispose, type Ref } from 'vue';
 import { useVueFlow, type GraphNode } from '@vue-flow/core';
 import { canvasMediaPath, clearCanvasMediaTask, planCanvasMedia, type CanvasMediaTask } from '../../../../../canvas-delivery.ts';
-import type { NodeOutputs } from './values';
+import type { NodeOutputs, NodeMediaValue } from './values';
 
 export function useMediaTaskDelivery(node: GraphNode, outputs: Readonly<Ref<NodeOutputs>>, kind: 'image' | 'video') {
   const flow = useVueFlow();
@@ -51,11 +51,11 @@ export function useMediaTaskDelivery(node: GraphNode, outputs: Readonly<Ref<Node
       throw error;
     }
   }
-  function apply(requestId: string, results: readonly { path: string; mimeType: string }[]) {
+  function apply(requestId: string, results: readonly { path: string; mimeType: string; downloadSource?: NodeMediaValue['downloadSource'] }[]) {
     assertCurrent();
     // useNode's output ref is authoritative before nodeSkeleton's next tick.
     const nodes = flow.getNodes.value.map(item => item === node ? { ...item, data: { ...item.data, outputs: outputs.value } } : item);
-    const plan = planCanvasMedia(nodes, { nodeId: node.id, requestId, kind, items: results.map(item => ({ path: item.path, mime: item.mimeType })) });
+    const plan = planCanvasMedia(nodes, { nodeId: node.id, requestId, kind, items: results.map(item => ({ path: item.path, mime: item.mimeType, downloadSource: item.downloadSource })) });
     if (!plan) throw new Error('原任务已脱离当前节点，请从生成历史取回结果');
     if (!plan.owned) return;
     if (plan.output) outputs.value[kind] = plan.output;

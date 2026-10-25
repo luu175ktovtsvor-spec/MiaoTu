@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path'
 // /app/secrets in production. Environment variables remain a migration
 // fallback for an older container, but new deployments do not need them.
 const SECRET_FILES = Object.freeze({
+  SUIHE_API_KEY: ['suihe-api-key', 'suihe-api-key.txt'],
   ARK_API_KEY: ['ark-api-key', 'ark-api-key.txt'],
   YUNSHU_API_KEY: ['yunshu-api-key', 'yunshu-api-key.txt'],
   GROK_API_KEY: ['grok-api-key', 'grok-api-key.txt'],

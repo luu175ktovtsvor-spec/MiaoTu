@@ -49,6 +49,10 @@ chown 1000:1000 /opt/miaoimg/secrets/deepseek-api-key && chmod 600 /opt/miaoimg/
 文件名与字段的对应关系在 `server/runtime-secrets.ts` 的 `SECRET_FILES`；新增模型通道只加文件，
 不改发布脚本。模型接口由容器内的统一路由提供，画布只按当前模型契约取参数、报价和任务状态。
 
+穗禾 SD 通道的配置索引保留在[模型参数对照](docs/模型参数对照.md)；正式地址为
+`https://api.suihemedia.cloud`，密钥文件名为 `suihe-api-key`。只复制路径和配置说明，
+不要把穗禾 Key 内容复制到项目、安装包或文档中。
+
 ## 服务器发布
 
 完整源码以本机 main 为维护主线，服务器发布使用明确提交的独立临时构建目录；`/opt/miaoimg` 只保存持久数据，不能作为源码同步目标。发布后核对运行版本、进行网页验收并保留必要回滚，临时构建目录按项目规则清理。Yunshu、Dola、数据库等现有配套服务继续运行。

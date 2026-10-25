@@ -7,6 +7,7 @@
  */
 
 import { runtimeSecret } from './runtime-secrets.ts'
+import { suiheModelOverlay, SUIHE_ADDITIONAL_IMAGES } from './suihe-catalog.ts'
 
 const COMMON_SIZES = [
   { value: 'auto', label: '自动', ratio: 'auto', detail: '让模型判断方向' },
@@ -313,9 +314,10 @@ const VIDEO_CATALOG = [
   },
 ]
 
-const CATALOG: Array<{ id: string; label: string; provider: string } & Record<string, any>> = [...IMAGE_CATALOG, ...VIDEO_CATALOG]
+const CATALOG: Array<{ id: string; label: string; provider: string } & Record<string, any>> = [...IMAGE_CATALOG, ...VIDEO_CATALOG, ...SUIHE_ADDITIONAL_IMAGES.map(model => ({...model,provider:'suihe'}))]
 
 const PROVIDERS = {
+  suihe: { id:'suihe',label:'穗禾',description:'SD 图片与视频自营通道',key:'SUIHE_API_KEY' },
   ark: { id: 'ark', label: '火山方舟', description: '火山引擎方舟官方接口', key: 'ARK_API_KEY' },
   metaso: { id: 'metaso', label: '秘塔', description: '秘塔 MiniMax 兼容视频接口', key: 'METASO_API_KEY' },
   yunshu: { id: 'yunshu', label: 'GPT Image', description: 'OpenAI-compatible 图片接口', key: 'YUNSHU_API_KEY' },
@@ -323,11 +325,23 @@ const PROVIDERS = {
 }
 
 export function modelCatalog(): Array<{ id: string; label: string; provider: string; sizes: any; publicId?: string }> {
-  return CATALOG.map((model) => ({ ...model, sizes: model.sizes.map((size) => ({ ...size })) }))
+  return CATALOG.map(suiheModelOverlay).map((model) => ({ ...model, sizes: model.sizes.map((size) => ({ ...size })) })) as any
 }
 
 export function providerCatalog() {
   return Object.values(PROVIDERS).map(({ id, label, description }: Record<string, any>) => ({ id, label, description }))
+}
+export function adminModelCatalog(env = process.env) {
+  return modelCatalog().map((model:any) => ({
+    ...model,
+    id:model.publicId || model.id,
+    kind:model.video ? 'video' : 'image',
+    provider:model.provider,
+    legacyProvider:model.legacyProvider || model.provider,
+    channelCategory:model.channelCategory || (model.video ? 'legacy-video' : 'legacy-image'),
+    configured:providerConfigured(model.provider,env),
+    internalOnly:Boolean(model.internalOnly),
+  }))
 }
 
 export function modelById(modelId): (typeof CATALOG)[number] & Record<string, any> {
@@ -343,7 +357,21 @@ export function modelById(modelId): (typeof CATALOG)[number] & Record<string, an
     'seedance-2-0-mini': 'seedance-2.0-mini',
   }
   const target = LEGACY_PUBLIC_IDS[wanted] || wanted
-  return CATALOG.find((model) => model.id === target || model.publicId === target) || null
+  const model = CATALOG.find((model) => model.id === target || model.publicId === target)
+  return model ? suiheModelOverlay(model) as any : null
+}
+
+// Historical and accepted jobs retain the provider used at reservation when
+// the database row carries an explicit provider snapshot.
+export function modelForGeneration(id, parameters: Record<string, any> = {}, provider = '') {
+  const current = modelById(id)
+  const original = CATALOG.find(model => model.id === current?.id || model.publicId === current?.publicId) || current
+  const frozen = parameters.upstreamProvider || provider
+  // New requests use the current public catalog (SD models therefore route
+  // to Suihe). Queued or historical records carry an explicit provider
+  // snapshot and must keep using that original channel.
+  if (!frozen) return current
+  return frozen === 'suihe' ? current : original ? {...original,provider:frozen} : null
 }
 
 export function modelProvider(modelId) {
@@ -363,7 +391,7 @@ export function providerConfigured(provider, env = process.env) {
 
 export function publicModelCatalog(env = process.env): Array<{ id: string; label: string } & Record<string, any>> {
   // 公开目录只给模型 ID 与能力：不暴露供应商标识，前端不展示供应商。
-  return CATALOG.filter((model: any) => !model.video).map((model: any) => ({
+  return modelCatalog().filter((model: any) => !model.video && !model.internalOnly).map((model: any) => ({
     id: model.publicId || model.id,
     label: model.label,
     video: Boolean(model.video),
@@ -378,7 +406,7 @@ export function publicModelCatalog(env = process.env): Array<{ id: string; label
     maxReferences: model.maxReferences,
     maxCount: model.maxCount,
     supportsEdit: model.supportsEdit,
-    regionEdit: model.provider === 'yunshu' ? 'mask' : model.id.startsWith('doubao-seedream-5-0-') ? 'annotation' : null,
+    regionEdit: model.provider === 'yunshu' ? 'mask' : model.provider==='ark' && model.id.startsWith('doubao-seedream-5-0-') ? 'annotation' : null,
     supportsTransparent: model.supportsTransparent,
     inputFidelity: model.inputFidelity || [],
     supportsLayerDecomposition: Boolean(model.supportsLayerDecomposition),
@@ -390,7 +418,7 @@ export function publicModelCatalog(env = process.env): Array<{ id: string; label
 }
 
 export function publicVideoCatalog(env = process.env) {
-  return CATALOG.filter((model: any) => model.video).map((model: any) => ({
+  return modelCatalog().filter((model: any) => model.video && !model.internalOnly).map((model: any) => ({
     // 公开目录只暴露 publicId，内部带版本的 id 留在服务端调用上游。
     id: model.publicId || model.id,
     label: model.label,
@@ -401,6 +429,8 @@ export function publicVideoCatalog(env = process.env) {
     ratios: model.ratios || [...new Set(model.sizes.map((size) => size.ratio))],
     durations: model.durations || [],
     maxDurationByResolution: model.maxDurationByResolution || {},
+    defaultDuration: model.defaultDuration,
+    defaultResolution: model.defaultResolution,
     // 生成模式沿用参考画布的结构：字符串表示单一模式，数组表示混合参考与各类型上限。
     modes: model.modes || ['text', 'singleImage'],
     audio: model.audio ?? false,
@@ -438,11 +468,24 @@ const UPSTREAM_COSTS = {
   'grok-imagine-video': 'Grok 视频价目 480p $0.05/秒、720p $0.07/秒 × 渠道倍率 1 × 7.2 元/美元（推算）',
   'grok-imagine-video-1.5': 'Grok 视频价目 480p $0.08/秒、720p $0.14/秒、1080p $0.25/秒 × 渠道倍率 1 × 7.2 元/美元（推算）',
 }
+const SUIHE_UPSTREAM_COSTS = {
+  'seedance-2.5': '穗禾采购：火山官方 token 成本 × 0.81；480p/720p 70/42、1080p 77/46 元/百万（无视频/含视频）',
+  'seedance-2.0': '穗禾采购：火山官方 token 成本 × 0.81；480p/720p 46/28、1080p 51/31、4K 26/16 元/百万（无视频/含视频）',
+  'seedance-2.0-fast': '穗禾采购：火山官方 token 成本 × 0.60；480p/720p 37/22 元/百万（无视频/含视频）',
+  'seedance-2.0-mini': '穗禾采购：火山官方 token 成本 × 0.60；480p/720p 23/14 元/百万（无视频/含视频）',
+  'seedream-4.0': '穗禾采购价：1K/2K 0.40 元/张',
+  'seedream-4.5': '穗禾采购价：2K 0.45 元/张',
+  'seedream-5.0-lite': '穗禾采购价：2K/3K 0.42 元/张',
+  'seedream-5.0-pro': '穗禾采购价：1K 0.60、1.5K 0.85、2K 1.20 元/张',
+  'doubao-seedream-4-0': '穗禾采购价：1K/2K 0.40 元/张',
+  'doubao-seedream-5-0-pro': '穗禾采购价：1K 0.60、1.5K 0.85、2K 1.20 元/张',
+}
 
 export function upstreamCostCatalog() {
   return Object.fromEntries(modelCatalog().map((model) => {
     const id = model.publicId || model.id
-    return [id, { label: UPSTREAM_COSTS[id] || '未登记' }]
+    const label = model.provider === 'suihe' ? SUIHE_UPSTREAM_COSTS[id] : UPSTREAM_COSTS[id]
+    return [id, { label: label || '未登记' }]
   }))
 }
 
@@ -483,7 +526,20 @@ export function normalizeGeneration(modelId, input: Record<string, any> = {}) {
   const model = modelById(modelId)
   if (!model) throw new Error('不支持的图片模型')
   const defaults = defaultsFor(model.id)
-  const size = String(input.size || defaults.size).trim()
+  let size = String(input.size || defaults.size).trim()
+  let legacyRatio = ''
+  if (model.provider==='suihe') {
+    const match=/^(\d+)x(\d+)$/i.exec(size)
+    if (match) {
+      const width=Number(match[1]),height=Number(match[2]),area=width*height
+      const ratio=(model.ratios || []).find(value=>{const [w,h]=value.split(':').map(Number);return Math.abs(width/height-w/h)<0.025})
+      if (!ratio) throw new Error('当前模型不支持此旧画布比例，请重新选择比例')
+      legacyRatio=ratio
+      const tier=area<=1_200_000?'1K':area<=2_650_000?'1.5K':area<=4_700_000?'2K':area<=10_000_000?'3K':'4K'
+      // Preserve a supported tier; 4.0 never advertised 1.5K.
+      size=model.sizes.some(option=>option.value===tier)?tier:tier==='1.5K'&&model.sizes.some(option=>option.value==='2K')?'2K':tier
+    } else size=size.toUpperCase()
+  }
   // Grok 的官方默认质量是省略字段后的 auto。空值不能改写成 medium。
   const quality = String((input.quality || (model.provider === 'grok' ? '' : defaults.quality)) || '').trim().toLowerCase()
   const format = String(input.format || defaults.format).trim().toLowerCase()
@@ -492,8 +548,12 @@ export function normalizeGeneration(modelId, input: Record<string, any> = {}) {
   const rawCount = input.count === undefined || input.count === null || input.count === '' ? 1 : Number(input.count)
   if (!Number.isSafeInteger(rawCount) || rawCount < 1 || rawCount > model.maxCount) throw new Error(`当前模型一次最多生成 ${model.maxCount} 张图片`)
   const count = rawCount
+  const seed = input.seed === undefined || input.seed === null || input.seed === '' ? undefined : Number(input.seed)
+  if (seed !== undefined && (!Number.isInteger(seed) || seed < -1 || seed > 2147483647)) throw new Error('随机种子无效')
+  const responseFormat = String(input.responseFormat || '').trim().toLowerCase()
+  if (responseFormat && !['url', 'b64_json'].includes(responseFormat)) throw new Error('图片响应格式无效')
   if (!validSize(model.id, size)) throw new Error('当前模型不支持这个画布尺寸')
-  const requestedRatio = String(input.ratio || '').trim()
+  const requestedRatio = legacyRatio || String(input.ratio || '').trim()
   if (Array.isArray(model.ratios) && model.ratios.length && requestedRatio && !model.ratios.includes(requestedRatio)) throw new Error('当前模型不支持这个画面比例')
   // GPT Image and Seedream encode aspect ratio in the concrete size and never
   // send a separate ratio upstream, so the recorded ratio follows the size.
@@ -535,5 +595,5 @@ export function normalizeGeneration(modelId, input: Record<string, any> = {}) {
       controls[control.key] = value
     }
   }
-  return { size, ratio: ratio || '', quality, format, background, inputFidelity, count, controls }
+  return { size, ratio: ratio || '', quality, format, background, inputFidelity, count, seed, responseFormat, controls }
 }

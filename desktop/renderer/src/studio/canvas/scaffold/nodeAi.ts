@@ -103,6 +103,8 @@ export type NodeVideoRequest = {
   resolution?: string;
   duration?: number;
   generateAudio?: boolean;
+  creativeMode?: string;
+  cameraFixed?: boolean;
   returnLastFrame?: boolean;
   /** 秘塔 H3：关闭 Context IR 提示词优化，按原始提示词生成。 */
   rawPrompt?: boolean;
@@ -120,7 +122,7 @@ export type NodeVideoRequest = {
   keyframes?: { image: { url: string }; timestamp_s: number }[];
 };
 
-export type NodeVideoResult = { path: string; mimeType: string; mediaType: "video" };
+export type NodeVideoResult = { path: string; mimeType: string; mediaType: "video"; downloadSource?: 'platform-player' | 'platform-download' };
 
 export type NodeAiRequest = {
   providerId: string;
@@ -680,6 +682,8 @@ export function useNodeAi() {
         resolution: request.resolution || undefined,
         ratio: request.ratio || undefined,
         generateAudio: request.generateAudio,
+        ...(request.creativeMode ? { creativeMode: request.creativeMode } : {}),
+        ...(request.cameraFixed !== undefined ? { cameraFixed: request.cameraFixed } : {}),
         ...(request.returnLastFrame ? { returnLastFrame: true } : {}),
         ...(request.webSearch ? { webSearch: true } : {}),
         ...(request.rawPrompt ? { rawPrompt: true } : {}),
@@ -741,7 +745,7 @@ export function useNodeAi() {
         request.onStatus?.(status.submissionUncertain ? "confirming" : state, progressValue(status.progress), (state === "saving" || ["doubao-local", "dola-local"].includes(String(status.route))) ? String(status.error || "") : "");
         publishBalance(status);
         if (state === "succeeded") {
-          const video = status.video as { url?: string; mime?: string; metadata?: { workspacePath?: string } } | undefined;
+          const video = status.video as { url?: string; mime?: string; downloadSource?: 'platform-player' | 'platform-download'; metadata?: { workspacePath?: string } } | undefined;
           if (!video?.url) throw new Error(translate("生成服务没有返回视频"));
           request.onStatus?.("saving");
           const mimeType = video.mime || "video/mp4";
@@ -760,7 +764,7 @@ export function useNodeAi() {
             if (!path) await wait(5000, signal);
           }
           if (!path) throw new Error(translate("生成服务没有返回视频"));
-          return [{ path, mimeType, mediaType: "video" }];
+          return [{ path, mimeType, mediaType: "video", downloadSource: video.downloadSource }];
         }
         if (state === "cancelled") throw cancelledResult(status);
         if (["failed", "expired"].includes(state)) throw Object.assign(new Error(String(status.error || translate("视频生成失败"))), { errorExplanation: status.errorExplanation, requestId, csrf });
@@ -794,6 +798,8 @@ export function useNodeAi() {
       resolution: request.resolution || undefined,
       ratio: request.ratio || undefined,
       generateAudio: request.generateAudio,
+      ...(request.creativeMode ? { creativeMode: request.creativeMode } : {}),
+      ...(request.cameraFixed !== undefined ? { cameraFixed: request.cameraFixed } : {}),
       ...(request.returnLastFrame ? { returnLastFrame: true } : {}),
       ...(request.webSearch ? { webSearch: true } : {}),
       ...(request.rawPrompt ? { rawPrompt: true } : {}),

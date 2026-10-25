@@ -1025,11 +1025,26 @@ export default function AdminPage() {
       value == null ? adminText("未知", lang) : displayNumber(value),
     displayOpsBytes = (value) =>
       value == null ? adminText("未知", lang) : displayBytes(value);
-  const providerDescription = {
+  const providerDescription: Record<string, string> = {
+    suihe: adminText("穗禾 SD 图片与视频采购通道", lang),
     ark: adminText("火山方舟图片与视频通道", lang),
     metaso: adminText("秘塔视频通道", lang),
     yunshu: adminText("云枢图片通道", lang),
     grok: adminText("云枢 Grok 图片与视频通道", lang),
+  };
+  const providerLabels: Record<string, string> = {
+    suihe: adminText("穗禾（当前）", lang),
+    ark: adminText("火山方舟", lang),
+    metaso: adminText("秘塔", lang),
+    yunshu: adminText("云枢", lang),
+    grok: adminText("云枢 Grok", lang),
+  };
+  const modelChannelLabel = (model) => {
+    const current = providerLabels[model.provider] || model.provider || "—";
+    const legacy = model.legacyProvider && model.legacyProvider !== model.provider
+      ? adminText("历史通道：{provider}", lang, { provider: providerLabels[model.legacyProvider] || model.legacyProvider })
+      : "";
+    return { current, legacy };
   };
   return (
     <div
@@ -2324,6 +2339,7 @@ export default function AdminPage() {
                   <tr>
                     <th>{adminText("模型", lang)}</th>
                     <th>{adminText("类型", lang)}</th>
+                    <th>{adminText("当前通道", lang)}</th>
                     <th>{adminText("通道状态", lang)}</th>
                     <th>{adminText("开放状态", lang)}</th>
                     <th>{adminText("积分 / 价格", lang)}</th>
@@ -2341,6 +2357,7 @@ export default function AdminPage() {
                     )
                     .map((m) => {
                       const enabled = overview.settings.models[m.id] !== false,
+                        channel = modelChannelLabel(m),
                         rate =
                           m.kind === "text"
                             ? overview.costPolicy?.textModels?.[m.id]
@@ -2353,6 +2370,10 @@ export default function AdminPage() {
                               <small>{m.id}</small>
                             </td>
                             <td>{adminText("文本", lang)}</td>
+                            <td>
+                              <strong>{channel.current}</strong>
+                              {channel.legacy && <small>{channel.legacy}</small>}
+                            </td>
                             <td>
                               <Badge
                                 value={m.configured ? "已配置" : "未配置"}
@@ -2427,6 +2448,10 @@ export default function AdminPage() {
                               m.kind === "video" ? "视频" : "图片",
                               lang,
                             )}
+                          </td>
+                          <td>
+                            <strong>{channel.current}</strong>
+                            {channel.legacy && <small>{channel.legacy}</small>}
                           </td>
                           <td>
                             <Badge value={m.configured ? "已配置" : "未配置"} />

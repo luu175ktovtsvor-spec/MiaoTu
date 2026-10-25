@@ -29,7 +29,7 @@
         <el-button text size="small" :aria-label="translate('取消')" @click="clipboard = undefined"><icon-x :size="13" /></el-button>
       </span>
     </div>
-    <el-alert v-if="loadError" class="loadError" :title="loadError" type="error" :closable="false" showIcon />
+    <feedbackNotice :message="loadError" @close="loadError = ''" />
     <div v-loading="loading" class="treeContent">
       <el-tree
         v-if="directory && treeActive"
@@ -77,6 +77,7 @@
 </template>
 
 <script setup lang="ts">
+import feedbackNotice from "../../../components/feedbackNotice.vue";
 import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, ref, shallowRef, watch, type Component } from "vue";
 import type { DropdownInstance, LoadFunction, TreeInstance } from "element-plus";
 import { ElMessage, ElMessageBox } from "element-plus";
@@ -600,11 +601,6 @@ defineExpose({ refresh });
       color: var(--el-text-color-secondary);
       font-size: 11px;
     }
-  }
-
-  .loadError {
-    flex-shrink: 0;
-    margin-bottom: 8px;
   }
 
   .treeContent {

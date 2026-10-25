@@ -1,7 +1,7 @@
 <template>
   <div class="personalization">
     <settings-section :title="translate('创作说明')" :description="translate('写下你的风格、要求或习惯，保存后在下一条 Agent 消息中生效。')">
-      <el-alert v-if="document.error" :title="document.error" type="error" :closable="false" showIcon />
+      <feedbackNotice v-if="document.error" :message="document.error"  />
       <el-input
         v-model="document.content"
         type="textarea"
@@ -68,7 +68,7 @@
 
     <el-dialog class="settingsSubdialog" :style="dialogTheme" v-model="memoryVisible" :title="translate('创作记忆')" width="min(760px, calc(100vw - 32px))" alignCenter appendToBody>
       <div class="memoryContent">
-        <el-alert v-if="memoryDocument.error" :title="memoryDocument.error" type="error" :closable="false" showIcon />
+        <feedbackNotice v-if="memoryDocument.error" :message="memoryDocument.error"  />
         <el-input
           v-if="memoryEditing"
           v-model="memoryDocument.content"
@@ -115,6 +115,7 @@
 </template>
 
 <script setup lang="ts">
+import feedbackNotice from '../../components/feedbackNotice.vue';
 import { translate } from "@miaoimg/i18n/vue";
 import { computed, reactive, ref, onBeforeUnmount } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";

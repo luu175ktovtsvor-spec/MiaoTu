@@ -23,8 +23,8 @@ export const DOUBAO_MODELS = [
 // Closed controls may show the short selected caption, so both forms are accepted.
 // Ordinary 2.0 is never an alias for Fast. This account did not list 2.5.
 export const DOLA_MODELS = [
-  { id: 'dola-local-text-fast', kind: 'text', label: 'Fast', modeKey: '0' },
-  { id: 'dola-local-text-pro', kind: 'text', label: 'Pro', modeKey: '4' },
+  { id: 'dola-local-text-fast', kind: 'text', label: 'Fast', modeKey: '0', labels: ['Fast', '快速'] },
+  { id: 'dola-local-text-pro', kind: 'text', label: 'Pro', modeKey: '4', labels: ['Pro', '专家模式'] },
   { id: 'dola-local-image-seedream-5.0-pro', kind: 'image', label: 'Seedream 5.0 Pro', upstreamKey: 'Seedream 5.0 Pro', labels: ['Seedream 5.0 Pro'] },
   { id: 'dola-local-image-seedream-4.5', kind: 'image', label: 'Seedream 4.5', upstreamKey: 'Seedream 4.5', labels: ['Seedream 4.5'] },
   { id: 'dola-local-video-seedance-2.0-fast', kind: 'video', label: 'Dreamina Seedance 2.0 Fast', upstreamKey: 'seedance_v2.0', labels: ['Dreamina Seedance 2.0 Fast', '2.0 Fast'] },

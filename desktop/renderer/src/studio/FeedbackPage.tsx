@@ -1,3 +1,4 @@
+import FeedbackNotice from '../components/FeedbackNotice'
 import { ArrowLeft, ChatCircleText, CheckCircle, ImageSquare, PaperPlaneTilt, Plus, X } from '@phosphor-icons/react'
 import { useCallback, useEffect, useRef, useState, type ClipboardEvent } from 'react'
 
@@ -138,7 +139,7 @@ export default function FeedbackPage({ csrf, signedIn, lang, onLogin, onBack, on
             </button>
           ))}
         </div>
-        {error && <p role="alert" className="studio-banner studio-banner--error">{error}</p>}
+        {error && <FeedbackNotice message={error} onClose={() => setError('')} />}
         {loading && !items.length ? <p className="feedback-muted">{t('正在读取…', 'Loading…')}</p>
           : !visible.length ? <div className="feedback-empty"><ChatCircleText size={32} aria-hidden="true" /><p>{tab === 'open' ? t('还没有处理中的反馈。', 'No open feedback yet.') : t('还没有已关闭的反馈。', 'No closed feedback yet.')}</p></div>
           : <ul className="feedback-list">
@@ -177,7 +178,7 @@ export default function FeedbackPage({ csrf, signedIn, lang, onLogin, onBack, on
             <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden onChange={event => { if (event.target.files) void addFiles(event.target.files); event.target.value = '' }} />
           </div>
           <p className="feedback-muted">{t('会自动附上：', 'Attached automatically: ')}{t('妙图', 'MiaoImg')} {desktopAppVersion() || '—'} · {systemName(window.miaoDesktop?.platform)}</p>
-          {error && <p role="alert" className="studio-banner studio-banner--error">{error}</p>}
+          {error && <FeedbackNotice message={error} onClose={() => setError('')} />}
           <div className="feedback-actions">
             <button type="button" className="feedback-secondary" disabled={busy} onClick={() => setView('list')}>{t('取消', 'Cancel')}</button>
             <button type="button" className="feedback-primary" disabled={busy || !title.trim() || !body.trim()} onClick={submit}><PaperPlaneTilt size={16} aria-hidden="true" />{busy ? t('提交中…', 'Sending…') : t('提交反馈', 'Send feedback')}</button>
@@ -205,7 +206,7 @@ export default function FeedbackPage({ csrf, signedIn, lang, onLogin, onBack, on
             <p>{comment.body}</p>
           </article>
         ))}
-        {error && <p role="alert" className="studio-banner studio-banner--error">{error}</p>}
+        {error && <FeedbackNotice message={error} onClose={() => setError('')} />}
         <div className="feedback-reply">
           <textarea value={reply} rows={3} maxLength={4000} onChange={event => setReply(event.target.value)} placeholder={detail.status === 'closed' ? t('补充说明会重新打开这条反馈', 'Replying reopens this feedback') : t('补充信息或回复团队', 'Add details or reply to the team')} />
           <div className="feedback-actions">

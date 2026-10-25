@@ -460,11 +460,24 @@ body[data-miaoimg-canvas-ui] .settingsDialog :is(.settingsSection,.preview,.el-c
 body[data-miaoimg-canvas-ui] .documentPanel { background: var(--canvas-bg); color: var(--canvas-text); }
 body[data-miaoimg-canvas-ui] .documentPanel :is(.treePane,.editorSurface,.editorToolbar,.editorTab,.editorEmpty) { background: var(--canvas-surface); border-color: var(--canvas-line); }
 body[data-miaoimg-canvas-ui] .nodeMarkdownEditor :is(.editorToolbar,.sourceEditor,.richHost) { border-color: var(--canvas-line); background: var(--canvas-field); }
+body[data-miaoimg-canvas-ui] .textNodeEditorCard .textEditor { flex:1; min-height:0; }
+body[data-miaoimg-canvas-ui] .textNodeEditorCard .textEditorCollapse {
+  position:absolute; top:14px; right:14px; z-index:20;
+  width:28px; min-width:28px; height:28px; padding:6px; color:var(--canvas-muted);
+}
+body[data-miaoimg-canvas-ui] .textNodeEditorCard .nodeMarkdownEditor .editorToolbar {
+  padding:0 36px 12px 0; background:transparent;
+}
+body[data-miaoimg-canvas-ui] .textNodeEditorCard .nodeMarkdownEditor :is(.richHost,.sourceEditor) {
+  background:transparent; border:0; border-radius:0;
+}
+body[data-miaoimg-canvas-ui] .textNodeEditorCard .nodeMarkdownEditor :is(.richHost .ProseMirror,.sourceEditor) {
+  max-width:none; margin:0; padding:4px 0; font-size:14px; line-height:1.6;
+}
 body[data-miaoimg-canvas-ui] :is(.audioClipEditor,.audioActions,.videoActions,.imageEditor,.imageGridSplit,.generationSettings,.mediaHistory) { color: var(--canvas-text); }
 body[data-miaoimg-canvas-ui] :is(.directorWorkspace,.stagePanel,.sceneSettingsPanel,.lightingPanel,.playbackBar,.referenceHeader) { background: var(--canvas-surface); border-color: var(--canvas-line); }
 body[data-miaoimg-canvas-ui] .directorDialog .viewport { background: var(--canvas-bg); border: 1px solid var(--canvas-line); border-radius: 12px; }
-body[data-miaoimg-canvas-ui] :is(.nodeError,.messageError,.canvasSaveNotice) { border: 1px solid rgba(242,155,155,.22); border-radius: 12px; background: #2b2025; color: #ffc4c4; }
-body[data-miaoimg-canvas-ui] .el-message { --el-message-bg-color: var(--canvas-surface); --el-message-border-color: var(--canvas-line); border-radius: 12px; box-shadow: var(--canvas-shadow); }
+body[data-miaoimg-canvas-ui] :is(.nodeError,.messageError) { border: 1px solid rgba(242,155,155,.22); border-radius: 12px; background: #2b2025; color: #ffc4c4; }
 body[data-miaoimg-canvas-ui] ::-webkit-scrollbar { width: 7px; height: 7px; }
 body[data-miaoimg-canvas-ui] ::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 999px; background: rgba(255,255,255,.2); background-clip: padding-box; }
 body[data-miaoimg-canvas-ui] ::-webkit-scrollbar-track { background: transparent; }
@@ -522,8 +535,6 @@ body[data-miaoimg-canvas-ui] .el-progress-bar__outer { background: #4b4b4b; }
 
 body[data-miaoimg-canvas-ui] .floatingAgent .senderEditor [contenteditable="true"]:focus-visible { outline: none; }
 body[data-miaoimg-canvas-ui] .settingsLoading { padding: 24px 0; color: var(--canvas-muted); font-size: 13px; }
-body[data-miaoimg-canvas-ui] .canvasSaveNotice { left: 50%; right: auto; width: max-content; max-width: min(520px,calc(100% - 24px)); transform: translateX(-50%); pointer-events: none; }
-body[data-miaoimg-canvas-ui] .canvasSaveNotice button { pointer-events: auto; border: 1px solid var(--canvas-line); border-radius: 999px; color: var(--canvas-text); background: var(--canvas-surface); }
 
 /* Account history shares the canvas frame without nested statistic/media borders. */
 .studio-shell.studio-app .studio-seg button[aria-selected="true"],

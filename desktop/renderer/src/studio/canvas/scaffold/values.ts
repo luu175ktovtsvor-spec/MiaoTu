@@ -1,4 +1,4 @@
-export type NodeMediaValue = { url: string; mimeType: string };
+export type NodeMediaValue = { url: string; mimeType: string; downloadSource?: 'platform-player' | 'platform-download' };
 
 export type NodeValueMap = {
   STRING: string;

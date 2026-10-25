@@ -33,7 +33,7 @@
         <p v-if="field.description" class="fieldHint">{{ field.description }}</p>
       </el-form-item>
     </el-form>
-    <el-alert v-if="formError" :title="formError" type="error" :closable="false" showIcon />
+    <feedbackNotice v-if="formError" :message="formError"  />
     <template #footer>
       <el-button :disabled="saving" @click="visible = false">{{ translate('取消') }}</el-button>
       <el-button :disabled="saving" @click="restoreDefaults">{{ translate('恢复默认值') }}</el-button>
@@ -43,6 +43,7 @@
 </template>
 
 <script setup lang="ts">
+import feedbackNotice from '../../../components/feedbackNotice.vue';
 import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { ElMessage, type FormInstance, type FormRules } from "element-plus";
 import { translate } from "@miaoimg/i18n/vue";

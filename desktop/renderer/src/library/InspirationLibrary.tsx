@@ -1,3 +1,4 @@
+import FeedbackNotice from '../components/FeedbackNotice'
 import { ArrowLeft, ArrowRight, ArrowUpRight, BookOpen, Check, Copy, FilmStrip, Images, MagnifyingGlass, Play, Sparkle, X } from '@phosphor-icons/react'
 import { lazy, Suspense, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useLang } from '../i18n'
@@ -213,6 +214,6 @@ export default function InspirationLibrary({ selectionMode = null, embedded = fa
     </>}
     {!embedded && <footer className="inspiration-footer"><span>妙图 MiaoImg</span><span>{zh ? '让灵感继续发生。' : 'Keep the inspiration going.'}</span></footer>}</main>
     {selected && <FilmDetail key={selected.id} film={selected} onClose={close} onStep={step} selectionMode={selectionMode} notify={notify} />}
-    {toast && <div className="inspiration-toast" role="status">{toast}</div>}
+    {toast && <FeedbackNotice message={toast} error={false} />}
   </div>
 }

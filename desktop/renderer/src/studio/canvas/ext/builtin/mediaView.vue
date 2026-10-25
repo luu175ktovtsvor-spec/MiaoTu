@@ -1,4 +1,5 @@
 <template>
+  <feedbackNotice :message="error" />
   <section class="mediaDocument">
     <form v-if="isPcm" class="pcmToolbar" @submit.prevent>
       <label>{{ translate("采样率（Hz）") }}<el-input-number v-model="sampleRate" :min="1" :max="384000" :step="1000" size="small" /></label>
@@ -18,6 +19,7 @@
 </template>
 
 <script setup lang="ts">
+import feedbackNotice from '../../components/feedbackNotice.vue';
 import { workspacePlaybackUrl } from "@/lib/workspaceFiles";
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from "vue";
 import { translate } from "@miaoimg/i18n/vue";

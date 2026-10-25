@@ -1,4 +1,5 @@
 // @ts-nocheck
+import FeedbackNotice from '../components/FeedbackNotice'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import { useLang } from '../i18n'
@@ -300,7 +301,7 @@ export default function PaymentPanel({ payment, csrf, onPaid, points }) {
         </div>
       )}
 
-      {error && <div className="studio-banner studio-banner--error pay__error" role="alert"><span>{error}</span><button type="button" className="pay__retry" onClick={() => { setError(''); if (order) void refreshOrder(); }}>{studioText('重试', lang)}</button></div>}
+      {error && <FeedbackNotice message={error} action={studioText('重试', lang)} onAction={() => { setError(''); if (order) void refreshOrder(); }} onClose={() => setError('')} />}
     </section>
   )
 }

@@ -2,12 +2,14 @@ import { canvasNodePosition, type CanvasDocument, type CanvasNode } from '../ser
 import { validCanvas } from '../server/canvas-state.ts'
 import { isWorkspacePath } from '../server/workspace-path.ts'
 
-type CanvasMedia = { path: string; mime: string }
+type CanvasMedia = { path: string; mime: string; downloadSource?: 'platform-player' | 'platform-download' }
 type CanvasMediaNode = { id: string; type?: string; position: { x: number; y: number }; parentNode?: unknown; data?: Record<string, unknown> }
 export type CanvasMediaDelivery = { nodeId: string; requestId: string; kind: 'image' | 'video'; items: readonly CanvasMedia[] }
 export type CanvasMediaTask = { taskRequestId?: string; taskOutputPath?: string; taskExtraNodeIds?: string[] }
 type CanvasFiles = { list(): readonly { path: string }[]; read(path: string): string; write(path: string, text: string): void }
 const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value)
+const mediaValue = (item: CanvasMedia) => ({ url: item.path, mimeType: item.mime,
+  ...(['platform-player', 'platform-download'].includes(item.downloadSource || '') ? { downloadSource: item.downloadSource } : {}) })
 
 export function canvasMediaNodeId(directory: string) {
   // Imported canvases can contain valid Unicode IDs as well as generated UUIDs.
@@ -52,10 +54,10 @@ export function planCanvasMedia(nodes: readonly CanvasMediaNode[], { nodeId, req
     additions.push({ id, type: `remote-${kind}Node`,
       position: { x: origin.x + 380 + index % 2 * 300, y: origin.y + Math.floor(index / 2) * 260 },
       data: { label: kind === 'video' ? '生成视频' : data.layerDecomposition && ordinal > 0 ? `图层 ${ordinal}` : `图片 ${ordinal + 1}`,
-        outputs: { [kind]: { dataType: kind === 'video' ? 'VIDEO' : 'IMAGE', value: { url: item.path, mimeType: item.mime } } } } })
+        outputs: { [kind]: { dataType: kind === 'video' ? 'VIDEO' : 'IMAGE', value: mediaValue(item) } } } })
   })
   return { owned: true, output: replace ? { dataType: kind === 'video' ? 'VIDEO' as const : 'IMAGE' as const,
-    value: { url: items[0]!.path, mimeType: items[0]!.mime } } : undefined, additions }
+    value: mediaValue(items[0]!) } : undefined, additions }
 }
 
 // The task owner runs this transactionally after saving every original.

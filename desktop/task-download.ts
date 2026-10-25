@@ -51,7 +51,9 @@ export function savedTaskFile(row: TaskTarget, item: any, index: number, checkpo
 
 export function localTaskMedia(row: TaskTarget, item: any, file: TaskDownloadFile) {
   const url = `/api/imagine/workspace/files?project=${encodeURIComponent(row.project_id)}&path=${encodeURIComponent(file.path)}`
-  return { ...item, path: file.path, mime: file.mime, thumbnailUrl: url + '&preview=1&previewSize=320', url }
+  const downloadSource = item.watermark?.source === 'platform-player' && item.watermark.noWatermarkConfirmed === false
+    ? 'platform-player' : item.watermark?.source === 'platform-download' && item.watermark.noWatermarkConfirmed === true ? 'platform-download' : undefined
+  return { ...item, ...(downloadSource ? { downloadSource } : {}), path: file.path, mime: file.mime, thumbnailUrl: url + '&preview=1&previewSize=320', url }
 }
 
 // Public recovery links are derived from currently indexed originals, never

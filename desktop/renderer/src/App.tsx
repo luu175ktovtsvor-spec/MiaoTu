@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
 import ReleaseNotesOnVersion from './components/ReleaseNotesModal'
 import { useLang } from './i18n'
+import './components/feedback.css'
 
 const StudioPage = lazy(() => import('./studio/StudioPage'))
 const InspirationLibrary = lazy(() => import('./library/InspirationLibrary'))

@@ -1,4 +1,5 @@
 <template>
+  <feedbackNotice :message="error" />
   <section class="imageDocument">
     <header class="imageToolbar">
       <el-button text size="small" :disabled="!imageUrl" :aria-label="translate('缩小')" @click="changeZoom(1 / 1.25)">−</el-button>
@@ -21,6 +22,7 @@
 </template>
 
 <script setup lang="ts">
+import feedbackNotice from '../../components/feedbackNotice.vue';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { translate } from "@miaoimg/i18n/vue";
 import type { ExtContext } from "../types";

@@ -14,8 +14,8 @@
       </button>
     </nav>
 
-    <el-alert v-if="error" :title="error" type="error" :closable="false" showIcon />
-    <el-alert v-else-if="message" :title="message" type="success" :closable="false" showIcon />
+    <feedbackNotice v-if="error" :message="error"  />
+    <feedbackNotice v-else-if="message" :message="message" :error="false" />
 
     <template v-if="activeTab === 'node'">
       <el-card class="groupCard" shadow="never">
@@ -140,7 +140,7 @@
         </el-form-item>
       </el-form>
       <p v-if="skillLoading" role="status">{{ translate('加载中...') }}</p>
-      <el-alert v-if="skillError" :title="skillError" type="error" :closable="false" showIcon />
+      <feedbackNotice v-if="skillError" :message="skillError"  />
       <template #footer>
         <el-button @click="skillEditorVisible = false">{{ translate('取消') }}</el-button>
         <el-button type="primary" :loading="skillSaving" :disabled="skillLoading || !skillReady" @click="saveSkill">{{ translate('保存') }}</el-button>
@@ -150,9 +150,10 @@
 </template>
 
 <script setup lang="ts">
+import feedbackNotice from '../../../components/feedbackNotice.vue';
 import { locale, translate } from "@miaoimg/i18n/vue";
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, shallowRef, watch, type Component } from "vue";
-import { ElAlert, ElButton, ElCard, ElDialog, ElForm, ElFormItem, ElInput, ElPopconfirm, ElSwitch, ElTag } from "element-plus";
+import { ElButton, ElCard, ElDialog, ElForm, ElFormItem, ElInput, ElPopconfirm, ElSwitch, ElTag } from "element-plus";
 import { IconEdit, IconFileText, IconLink, IconPackage, IconRefresh, IconSettings, IconTrash, IconUpload } from "@tabler/icons-vue";
 import { nodeCatalog, nodeSettings, updateNodeSettings } from "@/stores/settings";
 import { listExtensions, type InstalledExtension } from "@/studio/canvas/ext";

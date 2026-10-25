@@ -5,11 +5,11 @@ const ACCEPTED_LOCAL_FAILURE = 'VIDEO_ACCEPTED_LOCAL_FAILURE'
 // Once a creation response has a task ID, local bookkeeping failures cannot
 // turn it into a rejected creation or authorize another paid POST. Keep the
 // original task ID in the existing review reason even if its DB write failed.
-export function acceptedVideoSubmissionError(cause: unknown, task: AcceptedVideoTask) {
+export function acceptedVideoSubmissionError(cause: unknown, task: AcceptedVideoTask, kind='视频') {
   const upstreamTaskId = task.id
   const upstreamModel = String(task.upstreamModel ?? '')
   const upstreamStatus = Number.isInteger(Number(task.upstreamStatus)) ? Number(task.upstreamStatus) : 0
-  return Object.assign(new Error(`视频上游已受理，本地收尾暂未完成，请核对原任务；taskId=${diagnostic(upstreamTaskId, 200)}；model=${diagnostic(upstreamModel, 200)}；HTTP=${upstreamStatus}`, { cause }), {
+  return Object.assign(new Error(`${kind}上游已受理，本地收尾暂未完成，请核对原任务；taskId=${diagnostic(upstreamTaskId, 200)}；model=${diagnostic(upstreamModel, 200)}；HTTP=${upstreamStatus}`, { cause }), {
     status: 503, code: ACCEPTED_LOCAL_FAILURE, upstreamAccepted: true, submissionUncertain: true,
     upstreamTaskId, upstreamModel, upstreamStatus, upstreamRequestId: diagnostic(task.upstreamRequestId || upstreamTaskId, 200),
   })

@@ -118,7 +118,7 @@
               <strong v-if="!['doubao-local', 'dola-local'].includes(selectedModel?.providerId || '') && videoEstimate?.points != null">{{ translate('{0} 积分', { 0: formatCredits(videoEstimate.points) }) }}</strong>
               <strong v-else-if="!['doubao-local', 'dola-local'].includes(selectedModel?.providerId || '')">—</strong>
             </div>
-            <div v-if="videoEstimateError" class="estimateError" role="alert">{{ videoEstimateError }}</div>
+            <feedbackNotice :message="videoEstimateError" />
             <el-button
               class="sendButton"
               :icon="generating ? IconPlayerStop : IconArrowUp"
@@ -138,6 +138,7 @@
 </template>
 
 <script setup lang="ts">
+import feedbackNotice from '../components/feedbackNotice.vue';
 import { groupNodeModels } from "../scaffold/nodeAi";
 import { nodeLocalModelLabel, nodeModelOptionLabel, nodeModelValueLabel } from '../scaffold/localModelLabel';
 import { computed, inject, nextTick, onMounted, onScopeDispose, ref, watch, watchEffect } from "vue";
@@ -394,6 +395,8 @@ const videoEstimateKey = computed(() => JSON.stringify({
   ratio: data.value.ratio,
   mode: selectedMode.value,
   generateAudio: data.value.generateAudio,
+  creativeMode: data.value.parameters?.creativeMode,
+  cameraFixed: data.value.parameters?.cameraFixed,
   references: refList.value.map(item => (item.value && typeof item.value === "object" ? item.value.url : item.value) || item.dataType),
 }));
 const documentContext = inject<{ targets: Map<string, HTMLElement> } | undefined>("nodeDocument", undefined);
@@ -459,6 +462,8 @@ async function refreshVideoEstimate(sequence: number, signal?: AbortSignal) {
     resolution: data.value.resolution || undefined,
     ratio: data.value.ratio,
     generateAudio: choice.audio === "optional" ? data.value.generateAudio : choice.audio,
+    creativeMode: data.value.parameters?.creativeMode as string | undefined,
+    cameraFixed: data.value.parameters?.cameraFixed as boolean | undefined,
     images: requestImages(choice, mode, images),
     firstFrame: frame ? firstFrame : undefined,
     lastFrame: frame ? lastFrame : undefined,

@@ -1,3 +1,4 @@
+import FeedbackNotice from '../components/FeedbackNotice'
 import { useEffect, useRef, useState } from 'react'
 import { createPinia } from 'pinia'
 import { createApp } from 'vue'
@@ -74,5 +75,5 @@ export default function MiaoCanvasMount({ owner = '', csrf = '', project = DEFAU
       releaseDocumentLanguage()
     }
   }, [owner, csrf, project])
-  return <>{error && <p className="studio-banner studio-banner--error" role="alert">{error} <button onClick={() => { void reloadWorkspace().catch(cause => setError(cause.message)) }}>重新加载</button></p>}<div ref={host} className="studio-miaoimg-mount" /></>
+  return <>{error && <FeedbackNotice message={error} action="重新加载" onAction={() => { void reloadWorkspace().catch(cause => setError(cause.message)) }} onClose={() => setError('')} />}<div ref={host} className="studio-miaoimg-mount" /></>
 }

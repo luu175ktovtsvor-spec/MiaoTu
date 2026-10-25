@@ -24,7 +24,7 @@
       <p class="searchStatus" role="status" aria-live="polite">{{ status ? translate(status) : translate("输入文本后搜索当前工作区及其子目录。") }}</p>
       <p v-if="searched" class="searchCounts">{{ translate("已读取 {0} 个文本文件，{1} 个文件命中 {2} 处。", { 0: scanned, 1: results.length, 2: matchCount }) }}</p>
       <p v-if="searched && (skippedLarge || readFailures)" class="searchCounts">{{ translate("跳过：过大文件 {0}，读取失败 {1}。", { 0: skippedLarge, 1: readFailures }) }}</p>
-      <el-alert v-if="issues.length" type="warning" :closable="false" :title="issues.join('；')" />
+      <feedbackNotice :message="visible ? issues.join('；') : ''" />
       <template v-if="previewing">
         <div class="previewHeader">
           <strong>{{ translate("替换预览：{0} 个文件，{1} 处", { 0: selectedFiles.length, 1: selectedMatchCount }) }}</strong>
@@ -72,8 +72,9 @@
 </template>
 
 <script setup lang="ts">
+import feedbackNotice from "../../../components/feedbackNotice.vue";
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from "vue";
-import { ElAlert, ElButton, ElCheckbox, ElDialog, ElInput, type InputInstance } from "element-plus";
+import { ElButton, ElCheckbox, ElDialog, ElInput, type InputInstance } from "element-plus";
 import { msg, translate, type MessageDescriptor } from "@miaoimg/i18n/vue";
 import { useWorkspaceContentFiles as useWorkspaceFiles } from "@/lib/workspaceFiles";
 import { textExtensions } from "../../../ext";

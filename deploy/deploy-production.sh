@@ -195,6 +195,7 @@ chown 1000:1000 "$secret_dir"
 chmod 700 "$secret_dir"
 secret_mappings=(
   'ARK_API_KEY:ark-api-key'
+  'SUIHE_API_KEY:suihe-api-key'
   'YUNSHU_API_KEY:yunshu-api-key'
   'GROK_API_KEY:grok-api-key'
   'METASO_API_KEY:metaso-api-key'
@@ -252,7 +253,7 @@ docker run --rm --network none --user 1000:1000 --entrypoint node \
   --mount "type=bind,src=$secret_dir,dst=/app/secrets,readonly" "$runtime_image_id" \
   --input-type=module -e '
     import { runtimeSecret } from "/app/server/runtime-secrets.ts";
-    for (const name of ["ARK_API_KEY", "YUNSHU_API_KEY", "GROK_API_KEY", "METASO_API_KEY", "OIP_ADMIN_EMAIL", "OIP_ADMIN_PASSWORD", "ZPAY_PID", "ZPAY_KEY"]) {
+    for (const name of ["ARK_API_KEY", "SUIHE_API_KEY", "YUNSHU_API_KEY", "GROK_API_KEY", "METASO_API_KEY", "OIP_ADMIN_EMAIL", "OIP_ADMIN_PASSWORD", "ZPAY_PID", "ZPAY_KEY"]) {
       if (!runtimeSecret(name)) throw new Error("Missing readable credential: " + name);
     }
     console.log("Mounted credential preflight passed");

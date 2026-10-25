@@ -2,7 +2,7 @@
   <el-dialog v-model="visible" :title="translate('默认打开方式')" width="min(660px, calc(100vw - 32px))" alignCenter appendToBody>
     <div v-loading="loading" class="extensionAssociations">
       <p>{{ translate("按文件类型选择默认扩展。清除后，有多个可用扩展时会再次询问打开方式。") }}</p>
-      <el-alert v-if="error" :title="error" type="error" :closable="false" showIcon />
+      <feedbackNotice v-if="error" :message="error"  />
       <el-table :data="rows" maxHeight="420" :emptyText="translate('暂无已安装的文件扩展或默认关联')">
         <el-table-column :label="translate('文件类型')" width="140">
           <template #default="{ row }">{{ row.suffix === "canvasNode" ? translate("画布节点") : `.${row.suffix}` }}</template>
@@ -30,6 +30,7 @@
 </template>
 
 <script setup lang="ts">
+import feedbackNotice from '../../../components/feedbackNotice.vue';
 import { computed, ref, shallowRef, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { translate } from "@miaoimg/i18n/vue";

@@ -33,8 +33,8 @@ import {
   defaultModel,
   defaultsFor,
   modelById,
+  modelForGeneration,
   modelCatalog,
-  modelProvider,
   normalizeGeneration,
   providerConfigured,
   publicModelCatalog,
@@ -60,6 +60,9 @@ import { compileReferencePrompt, REFERENCE_ROLES } from './creative-contract.ts'
 import { createVideo, estimateVideoCredits, pollVideo, restoreVideoResult, safeOutputDirectory, submitQueuedVideo, videoSettings } from './video-api.ts'
 import { arkVideoSettings } from './ark-video.ts'
 import { metasoVideoSettings, reconcileMetasoBalance } from './metaso-video.ts'
+import { createSuiheTask, receiveSuiheImages, refreshSuiheModels, suiheSettings } from './suihe.ts'
+import { suihePricingSnapshot } from './suihe-pricing.ts'
+import { acceptedVideoSubmissionError } from './video-submission.ts'
 import { paymentConfig, publicPaymentConfig } from './payment-contract.ts'
 import { createPaymentService, paymentOrderPayload, paymentReturnPage } from './payments/payment-service.ts'
 import { googleOAuthConfig } from './google-oauth.ts'
@@ -261,7 +264,7 @@ function validateRequest(payload, env = process.env): Record<string, any> {
   if (prompt.length < 2 && !layerDecomposition) throw Object.assign(new Error('请先输入画面描述'), { status: 422 })
   const modelId = String(payload?.model || management.settings().defaultModel || defaultModel(env)).trim()
   const model = modelById(modelId)
-  if (!model || model.video) throw Object.assign(new Error('不支持的图片模型'), { status: 422 })
+  if (!model || model.video || model.internalOnly) throw Object.assign(new Error('不支持的图片模型'), { status: 422 })
   if (!providerConfigured(model.provider, env)) throw Object.assign(new Error(`${model.label} 的服务端 Key 尚未配置`), { status: 503 })
   if (env.ENABLE_MODEL_CALLS !== 'true') throw Object.assign(new Error('模型调用开关未开启'), { status: 503 })
   if (payload.references !== undefined && !Array.isArray(payload.references)) throw failure('参考素材参数无效', 422)
@@ -289,7 +292,7 @@ function validateRequest(payload, env = process.env): Record<string, any> {
   generation.layerDecomposition = layerDecomposition
   generation.optimizePrompt = optimizePrompt
   // Seedance/Seedream 官方组图限制：Seedream 4.0 的参考图数量 + 生成张数 ≤ 15。
-  if ((model.publicId || model.id) === 'doubao-seedream-4-0' && parsedReferences.length + generation.count > 15) {
+  if (model.provider==='ark' && (model.publicId || model.id) === 'doubao-seedream-4-0' && parsedReferences.length + generation.count > 15) {
     throw Object.assign(new Error('参考图数量 + 生成张数不能超过 15 张'), { status: 422 })
   }
   // 火山官方透明背景限制：仅图生图、单张带透明通道的输入图、输出 png。
@@ -341,6 +344,8 @@ async function submitYunshu(request, env = process.env, signal, fetchImpl = fetc
 function storedParameters(request) {
   return {
     ...request.generation,
+    upstreamProvider:request.model.provider,
+    ...(request.model.provider==='suihe'?{suiheCost:suihePricingSnapshot(request.model,request.generation)}:{}),
     upstreamImagePricing:imagePricingSnapshot(request.model,{...request.generation,referenceCount:request.references.length}),
     // 画布节点目录：图片结果由服务端直接写进去（和视频同一套）。
     outputDirectory: request.outputDirectory || '',
@@ -360,7 +365,7 @@ function storedParameters(request) {
 
 function requestFromJob(job) {
   const parameters = job.parameters
-  const model = modelById(job.upstream_model || job.model)
+  const model = modelForGeneration(job.model,parameters,job.provider)
   if (!model) throw failure('生成记录使用了已下线的模型', 422)
   return {
     userId: job.user_id,
@@ -376,11 +381,15 @@ function requestFromJob(job) {
       ratio: parameters.ratio || '',
       quality: parameters.quality,
       upstreamImagePricing:parameters.upstreamImagePricing,
+      suiheCost:parameters.suiheCost,
+      upstreamProvider:parameters.upstreamProvider,
       referenceCount:parameters.referenceCount,
       format: parameters.format,
       background: parameters.background,
       inputFidelity: parameters.inputFidelity,
       count: parameters.count,
+      seed: parameters.seed,
+      responseFormat: parameters.responseFormat,
       // 队列任务重建请求时必须带上这些扩展参数，否则图层拆分/提示词优化会丢。
       layerDecomposition: Boolean(parameters.layerDecomposition),
       optimizePrompt: parameters.optimizePrompt || '',
@@ -393,6 +402,7 @@ async function executeGeneration(generationId, request, env, signal: AbortSignal
   let result: ImageResultMetadata | null = originalReceipt?.result || null
   let receipt = originalReceipt
   let dispatchStarted = false
+  let acceptedTaskId = ''
   let expiryTimer: ReturnType<typeof setTimeout> | undefined
   try {
     signal.throwIfAborted()
@@ -404,7 +414,8 @@ async function executeGeneration(generationId, request, env, signal: AbortSignal
     if (originalReceipt && !receipt) throw Object.assign(failure('原图回执缺失，请保留原任务等待核对', 503), { upstreamAccepted: true })
     if (!receipt) {
       const parameters = JSON.parse(row.parameters || '{}')
-      if (parameters.imageResultPending || parameters.submissionUncertain || parameters.imageResultExpiredAt) throw Object.assign(failure('原任务等待核对，不会重新生成', 503), { upstreamAccepted: true })
+      acceptedTaskId=request.model.provider==='suihe'?String(row.upstream_request_id||''):''
+      if (!acceptedTaskId && (parameters.imageResultPending || parameters.submissionUncertain || parameters.imageResultExpiredAt)) throw Object.assign(failure('原任务等待核对，不会重新生成', 503), { upstreamAccepted: true })
       signal.throwIfAborted()
       if (!management.heartbeat(generationId, workerId)) throw failure('原任务已停止执行', 409)
       const dispatchFetch: typeof fetch = (input, init) => {
@@ -413,9 +424,19 @@ async function executeGeneration(generationId, request, env, signal: AbortSignal
         dispatchStarted = true
         return fetch(input, init)
       }
-      const received = ['yunshu', 'grok'].includes(modelProvider(request.model.id))
-        ? await submitYunshu(request, env, signal, dispatchFetch)
-        : await submitArk(request, env, signal, dispatchFetch)
+      let received
+      if(request.model.provider==='suihe') {
+        if(!acceptedTaskId) {
+          const task=await createSuiheTask(request,{env,fetchImpl:dispatchFetch,discoveryFetch:fetch,signal})
+          acceptedTaskId=task.id
+          try { management.setUpstreamTask(generationId,{requestId:task.id,model:task.upstreamModel,status:task.upstreamStatus,workerId}) }
+          catch(error) {throw acceptedVideoSubmissionError(error,task,'图片')}
+          try {management.recordUpstreamCall({generationId,provider:'suihe',model:request.model.publicId||request.model.id,kind:'image',tier:request.generation.size,request:task.sentBody,response:task.raw,upstreamRequestId:task.id,status:'submitted'})} catch {}
+        }
+        received=await receiveSuiheImages(request,acceptedTaskId,{env,signal})
+      } else received = ['yunshu', 'grok'].includes(request.model.provider)
+          ? await submitYunshu(request, env, signal, dispatchFetch)
+          : await submitArk(request, env, signal, dispatchFetch)
       result = received
       receipt = await imageReceipts.write(generationId, imageReceiptBinding(row), received, Date.now() + management.artifactTtlMs(), signal)
     }
@@ -481,6 +502,7 @@ async function executeGeneration(generationId, request, env, signal: AbortSignal
     } catch { /* 留档失败不影响出图 */ }
     return { images: finished, result }
   } catch (error) {
+    if(acceptedTaskId && !error.suiheTerminal) Object.assign(error,{upstreamAccepted:true,submissionUncertain:true,upstreamRequestId:acceptedTaskId})
     if (result) {
       error = new ImageResultError(error, result)
       // Receiving the original result already fences off another POST. Even
@@ -637,11 +659,11 @@ async function runQueuedJob(job, originalReceipt?: StoredImageReceipt) {
       const parameters = JSON.parse(job.parameters || '{}')
       // Delivery uses the admitted snapshot, even if its model/account has
       // since been disabled. No references, keys or new reservation are read.
-      const request = { model: modelById(job.model) || { id: job.model, publicId: job.model, provider: job.provider || '' },
+      const request = { model: modelForGeneration(job.model,parameters,job.provider) || { id: job.model, publicId: job.model, provider: job.provider || '' },
         generation: parameters, outputDirectory: parameters.outputDirectory || '', desktopDelivery: parameters.desktopDelivery,
         workspaceProject: parameters.workspaceProject || DEFAULT_PROJECT_ID, references: [] }
       await executeGeneration(job.id, request, process.env, controller.signal, originalReceipt)
-    } else if (modelById(job.model)?.video) {
+    } else if (modelForGeneration(job.model, JSON.parse(job.parameters || '{}'), job.provider)?.video) {
       await submitQueuedVideo(job, { management, signal: controller.signal, materializeReference })
     } else {
       await executeGeneration(job.id, requestFromJob(job), process.env, controller.signal)
@@ -678,6 +700,13 @@ function pumpQueue(): Promise<void> {
   const pending: Promise<void> = Promise.resolve().then(async () => {
     if (stopping) return
     management.recoverStale()
+    // Accepted asynchronous pictures resume their original task even when
+    // model admission is paused. Never send a second creation POST.
+    for(const row of management.all("SELECT id FROM generations WHERE status='running' AND provider='suihe' AND upstream_request_id IS NOT NULL")) {
+      if(stopping||activeJobs.has(row.id)) continue
+      const job=management.claimAcceptedImage(row.id,workerId)
+      if(job) startQueuedJob(job)
+    }
     if (!settings().enabled) return
     while (!stopping) {
       const job = management.claimNext(workerId)
@@ -1401,7 +1430,7 @@ const server = createServer(withRequestProject(async (request, response) => {
     const existing = requestId ? management.existingGeneration({ session, requestId }) : null
     const record = existing ? management.generationForViewer(requestId, session) : null
     const video = existing ? management.videoResult(existing.id) : null
-    const model = record ? modelById(record.model) : null
+    const model = record ? modelForGeneration(record.model,{},existing.provider) : null
     if (!video || !model || !model.video) throw failure('视频内容不存在', 404)
     if (record.parameters?.desktopDeliveredAt || record.parameters?.desktopMediaExpiredAt) throw failure('服务器临时文件已清理，请打开本机保存的结果', 410)
     if (video.metadata?.workspacePath) {
@@ -1416,7 +1445,9 @@ const server = createServer(withRequestProject(async (request, response) => {
     }
 
     let target = String(video.metadata?.upstreamUrl || video.url || '').trim()
-    const providerConfig = model.provider === 'metaso'
+    const providerConfig = model.provider === 'suihe'
+      ? suiheSettings(process.env)
+      : model.provider === 'metaso'
       ? metasoVideoSettings(process.env)
       : model.provider === 'ark'
       ? arkVideoSettings(process.env)
@@ -1660,6 +1691,7 @@ const server = createServer(withRequestProject(async (request, response) => {
   }
   if (request.method === 'GET' && url.pathname === '/api/imagine/config') {
     const env = process.env
+    await refreshSuiheModels({env}).catch(() => [])
     const cfg = settings(env)
     const payments = paymentConfig(env)
     const google = googleOAuthConfig(env)

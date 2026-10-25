@@ -1,6 +1,6 @@
 <template>
   <div class="mediaModels">
-    <el-alert v-if="error" :title="error" type="error" :closable="false" showIcon />
+    <feedbackNotice v-if="error" :message="error"  />
 
     <section v-for="group in groups" :key="group.key" class="mediaGroup">
       <header class="mediaGroupHead">
@@ -27,6 +27,7 @@
 </template>
 
 <script setup lang="ts">
+import feedbackNotice from '../../../components/feedbackNotice.vue';
 import { t, translate } from "@miaoimg/i18n/vue";
 import { computed, onMounted, ref } from "vue";
 import modelIcon from "@/studio/canvas/components/modelIcon.vue";

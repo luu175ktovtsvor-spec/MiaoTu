@@ -1,4 +1,5 @@
 <template>
+  <feedbackNotice :message="captureError" @close="captureError = ''" />
   <section class="panoramaPreview nodrag nopan nowheel" @pointerdown.stop @mousedown.stop @dblclick.stop @wheel.stop @keydown="event => event.key !== 'Escape' && event.stopPropagation()">
     <div class="previewWorkspace">
       <div class="stageColumn">
@@ -102,6 +103,7 @@
 </template>
 
 <script setup lang="ts">
+import feedbackNotice from '../../../components/feedbackNotice.vue';
 import { nodeTools, z } from "@miaoimg/nodes-scaffold/runtime";
 import { translate } from "@miaoimg/i18n/vue";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";

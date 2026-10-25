@@ -47,7 +47,7 @@ export function localMediaPage(action: string, payload: Record<string, any> = {}
   const modelControl = () => {
     const exact = elements('[data-input-engine-actionbar-control-key="video-model"],[data-input-engine-actionbar-control-key="image-model"],[data-input-engine-actionbar-control-key="model"],[data-testid="chat_input_action_model"]')
     if (exact.length === 1) return exact[0]
-    return composer ? unique(buttons(composer).filter(element => /^(?:(?:模型|Model|モデル)\s*)?(?:(?:Dreamina\s+)?Seedance|Seedream)\b|^(?:豆包\s+(?:快速|专家)|Fast|Pro)$/.test(label(element)))) : undefined
+    return composer ? unique(buttons(composer).filter(element => /^(?:(?:模型|Model|モデル)\s*)?(?:(?:Dreamina\s+)?Seedance|Seedream)\b|^(?:豆包\s+(?:快速|专家)|快速|专家模式|Fast|Pro)$/.test(label(element)))) : undefined
   }
   const cleanModel = (value: string) => value.replace(/^(?:模型|Model|モデル)\s*/i, '').replace(/\s+/g, ' ').trim()
   const model = () => cleanModel(label(modelControl() || document.createElement('span')))
@@ -63,11 +63,11 @@ export function localMediaPage(action: string, payload: Record<string, any> = {}
       : /^(比率|比例|Ratio|Aspect ratio|アスペクト比)$/i.test(label(element)) || /^(?:Auto|自动|自動|\d+:\d+)(?:\s|$)/.test(text(element)))))
   }
   const parameters = () => {
+    const imageSummary = text(parameterControl()).match(/^比例\s*(自动|Auto|自動|[0-9]+:[0-9]+)$/i)
+    if (imageSummary) return { ratio: /^(Auto|自动|自動)$/i.test(imageSummary[1]) ? 'auto' : imageSummary[1] }
     if (platform === 'Dola') {
       const summary = text(parameterControl()).match(/^(自动|Auto|[0-9]+:[0-9]+)\s*·\s*([0-9]+)s$/i)
       if (summary) return { ratio: /^(Auto|自动)$/i.test(summary[1]) ? 'auto' : summary[1], duration: Number(summary[2]) }
-      const imageSummary = text(parameterControl()).match(/^比例\s*(自动|Auto|自動|[0-9]+:[0-9]+)$/i)
-      if (imageSummary) return { ratio: /^(Auto|自动|自動)$/i.test(imageSummary[1]) ? 'auto' : imageSummary[1] }
       const duration = text(standaloneParameter('duration')).match(/(\d+)\s*s$/i)
       const ratio = text(standaloneParameter('ratio')).match(/\d+:\d+|Auto|自动|自動/i)?.[0]
       return { duration: duration ? Number(duration[1]) : undefined, ratio: ratio && /^(Auto|自动|自動)$/i.test(ratio) ? 'auto' : ratio }
@@ -90,7 +90,13 @@ export function localMediaPage(action: string, payload: Record<string, any> = {}
     && (!payload.ratio || platform === 'Dola' && (payload.ratio === 'auto' || !parameters()?.ratio) || parameters()?.ratio === payload.ratio)
     && (!payload.resolution || parameters()?.resolution === payload.resolution)
   const kind = () => {
-    const hint = [input?.getAttribute('placeholder'), input?.getAttribute('data-placeholder'), input?.getAttribute('aria-label'), composer ? text(composer) : '', model()].filter(Boolean).join(' ')
+    // The prompt may discuss another model or contain the words image/video.
+    // It must never override the selected mode during the pre-send readback.
+    const selectedModel = model()
+    if (/Seedance/i.test(selectedModel)) return 'video'
+    if (/Seedream/i.test(selectedModel)) return 'image'
+    const placeholders = input ? elements('[placeholder],[data-placeholder]', input).flatMap(element => [element.getAttribute('placeholder'), element.getAttribute('data-placeholder')]) : []
+    const hint = [input?.getAttribute('placeholder'), input?.getAttribute('data-placeholder'), input?.getAttribute('aria-label'), ...placeholders].filter(Boolean).join(' ')
     if (/Seedance|描述你想要的视频|describe.{0,30}video|動画/i.test(hint)) return 'video'
     if (/Seedream|描述你想要的(?:图像|图片)|describe.{0,30}image|画像/i.test(hint)) return 'image'
     // Media modes are identifiable by their explicit placeholders or model
@@ -103,13 +109,23 @@ export function localMediaPage(action: string, payload: Record<string, any> = {}
   // verify its actual ability_type before allowing the request to leave.
   const kindMatches = () => kind() === payload.kind || platform === 'Dola' && ['image', 'video'].includes(payload.kind) && !kind()
   const dialogs = elements('[role="dialog"],[aria-modal="true"]').filter(element => !element.contains(input || document.body))
-  const dialog = dialogs.map(text).join('\n')
+  // Doubao's subscription sheet is an iframe without dialog/aria-modal on its
+  // parent. Detect the visible sheet itself; an advertised model in the menu
+  // does not establish that this account can select it.
+  const subscriptionRequired = platform === '豆包' && elements('iframe').some(element => {
+    try {
+      const url = new URL((element as HTMLIFrameElement).src, location.href)
+      return url.origin === location.origin && /^\/member\/subscription\/?$/.test(url.pathname)
+    } catch { return false }
+  })
+  const subscriptionMessage = '豆包当前选择触发了订阅权益提示，本次尚未发送。请在豆包核对会员或额度，或手动选择其他可用模型'
+  const dialog = subscriptionRequired ? subscriptionMessage : dialogs.map(text).join('\n')
   const promotion = /下载电脑版|download.{0,20}(desktop|app)/i.test(dialog) && !/验证码|扫码|手机号|支付|会员|password|payment/i.test(dialog)
   const login = controls().some(element => /^(登录|立即登录|手机号登录|扫码登录|Log in|Sign in|Login)$/i.test(label(element)))
   const challenge = elements('[data-testid*="captcha"],[class*="captcha"],iframe[title*="captcha"],[class*="verification"]').filter(element => !element.closest(messageSelector)).length > 0 || /人机验证|拖动滑块|完成安全验证|verify you are human|security verification/i.test(dialog)
   const conversation = /^\/chat\/\d{8,}\/?$/.test(location.pathname)
   if (action === 'snapshot') return {
-    url: location.href, hasEditor: !!input, kind: kind(), model: model(), login, challenge,
+    url: location.href, hasEditor: !!input, kind: kind(), model: model(), login, challenge, subscriptionRequired,
     canSend: !!point(send()), regionBlocked: /doubao-region-ban|region-restricted/.test(location.pathname),
     networkError: document.documentURI.startsWith('chrome-error:'), dialog: promotion ? '' : dialog.slice(0, 500), name: '',
     quotaTexts: elements('[data-testid*="quota"],[data-testid*="credit"],[class*="quota"],[class*="benefit"],[class*="remaining"],[class*="credit"]').filter(element => !element.closest(messageSelector) && !element.querySelector(messageSelector)).map(text).filter(value => value.length < 180 && /剩余|还可|可用|remaining|available/i.test(value)),
@@ -117,6 +133,7 @@ export function localMediaPage(action: string, payload: Record<string, any> = {}
   }
   if (action === 'login') return point(unique(controls().filter(element => /^(登录|立即登录|Log in|Sign in)$/i.test(label(element)))))
   if (action === 'dismissPromotion') return promotion ? point(unique(buttons().filter(element => /^(下次再说|下次提醒我|暂不下载|Not now|Maybe later)$/i.test(label(element))))) : null
+  if (subscriptionRequired) throw new Error(subscriptionMessage)
   if (login || challenge || dialog && !promotion) throw new Error(`${platform}页面需要人工处理，请打开${platform}窗口`)
   if (action === 'capability') {
     if (kind() === payload.kind) return { selected: true }
@@ -159,11 +176,12 @@ export function localMediaPage(action: string, payload: Record<string, any> = {}
     return point(slider)
   }
   if (action === 'dolaDurationOpen') return parameters()?.duration === payload.duration ? { selected: true } : point(standaloneParameter('duration'))
-  if (action === 'dolaRatioOpen') return parameters()?.ratio === payload.ratio ? { selected: true } : point(standaloneParameter('ratio'))
-  if (action === 'dolaParameterSelect') {
+  if (action === 'imageRatioOpen') return parameters()?.ratio === payload.ratio ? { selected: true } : point(parameterControl() || standaloneParameter('ratio'))
+  if (action === 'imageRatioSelect') {
     const wanted = String(payload.value || '')
     const names = wanted === 'auto' ? ['自动', '自動', 'Auto', 'auto'] : [wanted]
-    return point(unique(elements('[role="menuitem"],[role="option"]').filter(element => {
+    const options = platform === '豆包' && parameterControl() ? elements('[role="menu"] button') : elements('[role="menuitem"],[role="option"]')
+    return point(unique(options.filter(element => {
       const name = label(element)
       return names.includes(name) || /^\d+:\d+$/.test(wanted) && name.startsWith(wanted + ' ')
     })))
@@ -194,9 +212,14 @@ export function localMediaPage(action: string, payload: Record<string, any> = {}
   }
   if (action === 'uploads') {
     if (!composer) return { count: 0, pending: true }
-    const images = elements('img', composer).filter(element => (element as HTMLImageElement).complete && (element as HTMLImageElement).naturalWidth > 0)
+    const loaded = (element: Element) => (element as HTMLImageElement).complete && (element as HTMLImageElement).naturalWidth > 0
+    // Both sites' image cards contain a file icon and the actual thumbnail;
+    // the action bar also contains model icons. Count ready attachment cards,
+    // not every loaded img, so one reference always contributes exactly one.
+    const count = elements('[data-testid="attachment-image-card"],[class*="thumb-card"]', composer)
+      .filter(card => elements('[data-testid="mdbox_image"] img[class*="image-"],img[class*="thumb-image"]', card).some(loaded)).length
     const pending = elements('[aria-busy="true"],[data-status="uploading"],[class*="uploading"],[role="progressbar"]', composer).length > 0
-    return { count: images.length, pending }
+    return { count, pending }
   }
   if (action === 'result' || action === 'cancel' || action === 'activateVideo' || action === 'confirmationTarget') {
     const declaredMessages = elements('[data-message-id],[data-message-role],[data-role="user"],[data-role="assistant"]')

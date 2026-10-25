@@ -2,7 +2,7 @@
   <teleport v-if="target" :to="target"><el-button :icon="IconHistory" :disabled="disabled" text :title="translate('历史记录')" :aria-label="translate('历史记录')" @click.stop="visible = true" /></teleport>
   <el-dialog v-model="visible" :title="translate('{0}历史记录', { 0: mediaType === 'image' ? translate('图片') : translate('视频') })" width="min(760px, calc(100vw - 32px))" appendToBody destroyOnClose>
     <div v-loading="loading" class="mediaHistory nodrag nopan nowheel" @pointerdown.stop @mousedown.stop @dblclick.stop @keydown="event => event.key !== 'Escape' && event.stopPropagation()">
-      <el-alert v-if="loadError" :title="loadError" type="error" :closable="false" />
+      <feedbackNotice v-if="loadError" :message="loadError" @close="loadError = ''" />
       <el-empty v-else-if="!loading && !items.length" :description="translate('暂无历史记录')" />
       <template v-else-if="items.length">
         <div class="historyContent">
@@ -21,7 +21,7 @@
             </button>
           </div>
           <div class="historyPreview" v-loading="!!selected && !previewReady && !previewError">
-            <el-alert v-if="previewError" :title="previewError" type="error" :closable="false" />
+            <feedbackNotice v-if="previewError" :message="previewError" @close="previewError = ''" />
             <img v-else-if="previewUrl && mediaType === 'image'" :src="previewUrl" :alt="translate('历史图片预览')" @load="previewReady = true" @error="previewError = translate('无法预览该图片')" />
             <video v-else-if="previewUrl" :src="workspacePlaybackUrl(previewUrl)" controls playsinline preload="auto" :aria-label="translate('历史视频预览')" @loadeddata="previewReady = true" @error="previewError = translate('无法预览该视频')" />
           </div>
@@ -37,10 +37,11 @@
 </template>
 
 <script setup lang="ts">
+import feedbackNotice from "../../components/feedbackNotice.vue";
 import { workspacePlaybackUrl } from "@/lib/workspaceFiles";
 import { computed, ref, watch } from "vue";
 import { useNode } from "@vue-flow/core";
-import { ElAlert, ElButton, ElDialog, ElEmpty, ElLoading, ElPagination } from "element-plus";
+import { ElButton, ElDialog, ElEmpty, ElLoading, ElPagination } from "element-plus";
 import { translate } from "@miaoimg/i18n/vue";
 import { IconHistory } from "@tabler/icons-vue";
 import { nodeTools, z } from "../nodeTools";

@@ -1,14 +1,15 @@
 <template>
   <div class="nodeErrorContent">
     <div class="errorDetail" tabindex="0">{{ message }}</div>
-    <div class="explanation" aria-live="polite">
+    <details class="explanation">
+      <summary>{{ translate('详情') }}</summary>
       <div class="errorLabel">{{ translate('原因') }}</div>
       <div class="explanationText" tabindex="0">{{ translate(explanation.reason) }}</div>
       <div class="errorLabel nextStep">{{ translate('可以怎么做') }}</div>
       <div class="explanationText" tabindex="0">{{ translate(explanation.action) }}</div>
       <div v-if="explanation.billing" class="explanationHint">{{ translate(explanation.billing) }}</div>
       <div v-if="explanation.requestId" class="explanationHint">{{ translate('任务编号') }}：{{ explanation.requestId }}</div>
-    </div>
+    </details>
   </div>
 </template>
 
@@ -18,10 +19,11 @@ defineProps<{ message: string; explanation: { reason?: string; action?: string; 
 </script>
 
 <style lang="scss">
-.nodeErrorNotification {
-  width: min(440px, calc(100vw - 32px));
+.nodeErrorMessage {
+  width: max-content;
+  max-width: min(520px, calc(100vw - 32px));
 
-  .el-notification__group {
+  .el-message__content {
     min-width: 0;
     flex: 1;
   }
@@ -36,7 +38,7 @@ defineProps<{ message: string; explanation: { reason?: string; action?: string; 
     }
 
     .errorDetail {
-      max-height: 20vh;
+      max-height: 12vh;
       overflow: auto;
       white-space: pre-wrap;
       overflow-wrap: anywhere;
@@ -45,9 +47,12 @@ defineProps<{ message: string; explanation: { reason?: string; action?: string; 
     .nextStep { margin-top: 10px; }
 
     .explanation {
-      margin-top: 12px;
-      padding-top: 12px;
+      margin-top: 4px;
+      padding-top: 0;
       border-top: 0;
+
+      summary { width: fit-content; color: inherit; opacity: .75; font-size: 11px; cursor: pointer; }
+      &[open] summary { margin-bottom: 8px; }
 
       .explanationText {
         max-height: 30vh;

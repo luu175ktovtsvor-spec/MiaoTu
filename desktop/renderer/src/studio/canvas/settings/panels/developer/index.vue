@@ -28,8 +28,8 @@
         <el-button text size="small" :icon="IconRefresh" :disabled="storageBusy" @click="loadStorage">{{ translate('刷新列表') }}</el-button>
       </template>
 
-      <el-alert v-if="storageError" :title="storageError" type="error" :closable="false" showIcon />
-      <el-alert v-else-if="storageMessage" :title="storageMessage" type="success" :closable="false" showIcon />
+      <feedbackNotice v-if="storageError" :message="storageError"  />
+      <feedbackNotice v-else-if="storageMessage" :message="storageMessage" :error="false" />
 
       <div v-for="entry in storageEntries" :key="entry.key" class="storageItem">
         <div class="storageHeader">
@@ -54,7 +54,7 @@
       </div>
     </settings-section>
 
-    <el-alert v-if="message" :title="message" :type="error ? 'error' : 'success'" :closable="false" showIcon />
+    <feedbackNotice v-if="message" :message="message" :error="error" />
 
     <el-dialog v-model="promptVisible" :title="translate('Agent 系统提示词')" width="min(760px, calc(100vw - 32px))" alignCenter appendToBody>
       <el-input v-model="promptContent" type="textarea" :autosize="{ minRows: 10, maxRows: 20 }" :aria-label="translate('Agent 系统提示词')" />
@@ -66,7 +66,7 @@
 
     <el-dialog v-model="providersVisible" :title="translate('供应商调试')" width="min(760px, calc(100vw - 32px))" alignCenter appendToBody>
       <div class="providerDebug">
-        <el-alert v-if="providersError" :title="providersError" type="error" :closable="false" showIcon />
+        <feedbackNotice v-if="providersError" :message="providersError"  />
         <template v-else>
           <div class="debugToolbar">
             <el-text size="small" type="info">{{ t`自定义供应商 ${customProviders.length} 个 · 视频模型 ${videoCount} 个 · 图片模型 ${imageCount} 个 · 文本模型 ${textCount} 个` }}</el-text>
@@ -81,10 +81,11 @@
 </template>
 
 <script setup lang="ts">
+import feedbackNotice from '../../../components/feedbackNotice.vue';
 import { t, translate } from "@miaoimg/i18n/vue";
 import { forceInstall } from "../../installOptions";
 import { computed, onMounted, ref } from "vue";
-import { ElAlert, ElButton, ElDialog, ElInput, ElPopconfirm, ElText } from "element-plus";
+import { ElButton, ElDialog, ElInput, ElPopconfirm, ElText } from "element-plus";
 import { IconCode, IconCopy, IconDownload, IconEdit, IconRefresh, IconTrash, IconUpload } from "@tabler/icons-vue";
 import settingsRow from "../../components/settingsRow.vue";
 import settingsSection from "../../components/settingsSection.vue";

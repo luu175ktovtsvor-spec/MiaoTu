@@ -44,6 +44,12 @@ export function explainUserError(value, options: Record<string, any> = {}) {
     category = 'submission_uncertain'
     reason = '提交后的响应未能确认，任务可能已被接受，目前仍在查询原任务。'
     action = '稍后查看同一任务的状态，不要重新生成，以免重复扣费。'
+  } else if (/订阅权益提示/.test(text) && /尚未发送/.test(text)) {
+    category = 'subscription_required'; reason = '平台在选择这个模型时弹出了订阅提示，本次生成尚未发送。'; action = '在平台窗口核对该模型所需的会员或额度；确认可用后再提交，或手动选择其他模型。'
+  } else if (/实际请求的.*不一致.*阻止发送/.test(text)) {
+    category = 'route_mismatch'; reason = '平台准备发送的模型或参数与节点选择不一致，妙图已在发送前拦截。'; action = '保留任务编号并联系管理员修复适配；本次尚未发送，不要反复提交。'
+  } else if (/尚未发送|尚未提交/.test(text)) {
+    category = 'not_submitted'; reason = summary; action = '本次生成尚未发送，按提示检查平台页面、账号或参数后再试。'
   } else if (/real person|真人/i.test(text)) {
     category = 'reference_person_rejected'
     reason = '当前模型将输入图片判定为可能包含真人，因此拒绝本次请求；这不等于已确认图片中是真人。'

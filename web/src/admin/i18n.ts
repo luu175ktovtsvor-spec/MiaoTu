@@ -567,4 +567,10 @@ Object.assign(adminEnglish, {
  '后台连接失败，请刷新重试': 'Admin connection failed. Refresh and try again.',
  '管理后台响应无效，请刷新重试': 'Invalid admin response. Refresh and try again.',
  '管理后台返回的登录状态无效，请重新登录': 'Invalid admin session. Please sign in again.',
+ '穗禾 SD 图片与视频采购通道': 'Suihe SD image and video procurement channel',
+ '穗禾（当前）': 'Suihe (current)',
+ '火山方舟': 'Volcengine Ark',
+ '云枢': 'Yunshu',
+ '云枢 Grok': 'Yunshu Grok',
+ '历史通道：{provider}': 'Legacy channel: {provider}',
 })

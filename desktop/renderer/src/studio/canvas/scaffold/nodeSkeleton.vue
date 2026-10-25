@@ -62,7 +62,7 @@
             @click.stop />
           <el-button
             :icon="IconMaximize"
-            :disabled="!downloadUrl"
+            :disabled="fullscreenDisabled ?? !downloadUrl"
             text
             :title="translate('全屏')"
             :aria-label="translate('全屏')"
@@ -112,6 +112,7 @@
       </span>
       <span v-if="modelLabel" class="modelLabel" :title="`${translate('生成模型')}：${modelLabel}`">{{ modelLabel }}</span>
       <span v-if="mediaMeta" class="mediaMeta">{{ mediaMeta }}</span>
+      <span v-if="playerDownload" class="playerDownload" :title="translate('已保存平台播放器文件，未确认去水印。')">{{ translate('水印未确认') }}</span>
       <div class="nodeActions nodrag nopan" @pointerdown.stop @mousedown.stop @dblclick.stop>
         <el-button
           :icon="IconRefresh"
@@ -217,6 +218,7 @@ type SkeletonProps = {
   bottomWidth?: string | number;
   downloadUrl?: string;
   downloadName?: string;
+  fullscreenDisabled?: boolean;
 };
 
 const topVisible = defineModel<boolean>("topVisible", { default: false });
@@ -227,12 +229,17 @@ const props = withDefaults(defineProps<SkeletonProps>(), {
     handles: () => [],
     outputs: () => ({}),
     previewReady: true,
+    fullscreenDisabled: undefined,
     topWidth: "20vw",
     bottomWidth: "20vw",
   }
 );
 // 节点名是画布数据：展示时按当前语言兜底，写入画布（副本命名）仍用中文原文。
 const nodeLabel = computed(() => props.label || translate("未命名节点"));
+const playerDownload = computed(() => {
+  const value = props.outputs.video?.value;
+  return !!value && typeof value === 'object' && value !== null && 'downloadSource' in value && value.downloadSource === 'platform-player';
+});
 const handleGroups = computed(() => [
   { type: "target" as const, position: Position.Left, items: props.handles.filter((item) => item.type === "target") },
   { type: "source" as const, position: Position.Right, items: props.handles.filter((item) => item.type === "source") },
@@ -1027,6 +1034,8 @@ watch(
     }
   }
 }
+
+.playerDownload { flex: none; color: var(--el-color-warning); font-size: 11px; white-space: nowrap; }
 @keyframes nodeLoading {
   to {
     transform: rotate(360deg);

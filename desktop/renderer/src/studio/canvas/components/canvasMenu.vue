@@ -34,7 +34,7 @@
                 </template>
               </div>
             </el-scrollbar>
-            <el-text v-if="renameError" type="danger" role="alert">{{ renameError }}</el-text>
+            <feedbackNotice :message="renameError" @close="renameError = ''" />
           </div>
         </el-popover>
       </div>
@@ -44,6 +44,7 @@
 </template>
 
 <script setup lang="ts">
+import feedbackNotice from './feedbackNotice.vue';
 import { hasCanvasMarker, normalizeCanvasDocument } from '../../../../../../server/canvas-document.ts';
 import axios from "axios";
 import { translate } from "@miaoimg/i18n/vue";

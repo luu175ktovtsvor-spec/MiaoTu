@@ -219,7 +219,8 @@ function dimensions(width: number, height: number) {
 }
 function readPoster(event: Event) {
   const image = event.currentTarget as HTMLImageElement;
-  dimensions(image.naturalWidth, image.naturalHeight);
+  // A poster preserves aspect ratio, but is not the video's resolution.
+  if (image.naturalWidth && image.naturalHeight) videoAspect.value = `${image.naturalWidth} / ${image.naturalHeight}`;
 }
 async function requestMedia() {
   if (!mediaActive.value) return;

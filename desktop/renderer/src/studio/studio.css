@@ -361,8 +361,6 @@
 .studio-canvas-zoom-menu button[aria-checked="true"] { color: var(--color-brass); }
 .studio-canvas-help { position: absolute; bottom: 20px; left: 18px; display: flex; gap: 12px; color: #5f625e; font-size: 10px; pointer-events: none; }
 .studio-canvas-help span + span::before { content: '·'; margin-right: 12px; color: #414341; }
-.studio-canvas-notice { position: absolute; z-index: 5; top: 14px; left: 50%; max-width: min(520px, calc(100% - 40px)); transform: translateX(-50%); border: 1px solid color-mix(in srgb,var(--color-accent) 32%,transparent); border-radius: 999px; background: rgb(36 28 20 / .92); padding: 8px 13px; color: var(--color-brass); font-size: 11px; text-align: center; box-shadow: 0 12px 32px rgb(0 0 0 / .25); }
-.studio-canvas-notice.is-error { border-color: rgb(220 135 116 / .35); background: rgb(43 25 23 / .94); color: #e7a090; }
 .studio-canvas-reference-mode { position: absolute; z-index: 10; inset: 0; display: flex; flex-direction: column; background: #0d0e10; }
 .studio-canvas-reference-mode__bar { display: flex; min-height: 52px; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid rgb(244 244 245 / .1); background: #15171a; padding: 0 17px; color: var(--color-ink); font-size: 12px; }
 .studio-canvas-reference-mode__bar button { border: 1px solid rgb(244 244 245 / .16); border-radius: 999px; background: transparent; padding: 7px 11px; color: var(--color-body); font-size: 11px; cursor: pointer; }
@@ -496,11 +494,6 @@
 .studio-flow-palette button span { font-size: 11px; }
 .studio-flow-status-panel { display: inline-flex; align-items: center; gap: 11px; border: 1px solid rgb(244 244 245 / .11); border-radius: 999px; background: rgb(20 22 25 / .82); padding: 7px 10px; color: #6f6e69; font-size: 10px; box-shadow: 0 10px 28px rgb(0 0 0 / .24); }
 .studio-flow-status-panel .studio-flow-status { color: var(--color-body); }
-.studio-flow-notice { max-width: min(520px, calc(100% - 40px)); border: 1px solid color-mix(in srgb,var(--color-accent) 32%,transparent); border-radius: 999px; background: rgb(36 28 20 / .92); padding: 8px 13px; color: var(--color-brass); font-size: 11px; text-align: center; box-shadow: 0 12px 32px rgb(0 0 0 / .25); }
-.studio-flow-notice.is-error { border-color: rgb(220 135 116 / .35); background: rgb(43 25 23 / .94); color: #e7a090; }
-.studio-flow-notice { display: inline-flex; align-items: center; gap: 8px; }
-.studio-flow-notice button { border: 0; border-radius: 999px; background: rgb(244 244 245 / .1); padding: 4px 8px; color: inherit; font: 10px/1 Inter, "PingFang SC", sans-serif; cursor: pointer; }
-.studio-flow-notice button:hover { background: rgb(244 244 245 / .18); }
 .studio-flow .react-flow__controls { overflow: hidden; border: 1px solid rgb(244 244 245 / .13); border-radius: 10px; background: rgb(20 22 25 / .92); box-shadow: 0 10px 28px rgb(0 0 0 / .3); }
 .studio-flow .react-flow__controls-button { width: 31px; height: 31px; border-bottom: 1px solid rgb(244 244 245 / .08); background: transparent; color: var(--color-body); fill: var(--color-body); }
 .studio-flow .react-flow__controls-button:last-child { border-bottom: 0; }
@@ -1123,11 +1116,7 @@
   background: #17191b;
   box-shadow: 0 10px 24px rgb(0 0 0 / .22);
 }
-.studio-flow-notice {
-  border-radius: 4px;
-  background: var(--color-surface);
-  box-shadow: 0 10px 24px rgb(0 0 0 / .22);
-}
+
 .studio-flow-context-menu {
   border-color: rgb(244 244 245 / .15);
   border-radius: 5px;
@@ -1416,11 +1405,9 @@
 .studio-app .studio-main { flex: 1 1 0; height: auto; min-height: 0; }
 .studio-top { min-width: 0; min-height: 56px; height: auto; flex-wrap: wrap; padding-block: 10px; row-gap: 8px; }
 .studio-top > a, .studio-top > button, .studio-top > .language-control { flex-shrink: 0; white-space: nowrap; }
-.studio-top > [role="status"] { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 12px; }
 .studio-top__gap { min-width: 0; }
 @media (max-width: 760px) {
   .studio-top { column-gap: 10px; padding-inline: 12px; }
-  .studio-top > [role="status"] { order: 10; flex-basis: 100%; }
 }
 
 /* 反馈：列表、新建和详情三个视图共用的版式，跟账号页同宽。 */

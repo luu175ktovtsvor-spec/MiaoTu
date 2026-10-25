@@ -1,3 +1,4 @@
+import FeedbackNotice from '../components/FeedbackNotice'
 import { ArrowSquareOut, FilmStrip, FolderSimple, ImageSquare, MusicNotes, X } from '@phosphor-icons/react'
 import { useEffect, useMemo, useState } from 'react'
 import { studioText } from './studioText'
@@ -198,10 +199,7 @@ export default function PersonalAssetLibrary({ csrf, owner, lang, project, onOpe
 
       {status === 'loading' && <p className="asset-library__state">{studioText('正在读取资产…', lang)}</p>}
       {status === 'error' && (
-        <div className="asset-library__error" role="alert">
-          <span>{error}</span>
-          <button type="button" onClick={() => setReload(value => value + 1)}>{studioText('重试', lang)}</button>
-        </div>
+        <FeedbackNotice message={error} action={studioText('重试', lang)} onAction={() => setReload(value => value + 1)} />
       )}
       {status === 'ready' && projects.length === 0 && (
         <div className="asset-library__empty">

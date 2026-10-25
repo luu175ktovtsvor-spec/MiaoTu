@@ -6,6 +6,7 @@
 const MOCK_FLAG = 'OIP_MOCK_PROVIDERS'
 
 export const PROVIDER_CHANNELS = Object.freeze([
+  { id: 'suihe', baseEnv: 'SUIHE_BASE_URL', keyEnvs: ['SUIHE_API_KEY'] },
   { id: 'ark', baseEnv: 'ARK_BASE_URL', keyEnvs: ['ARK_API_KEY'] },
   { id: 'yunshu', baseEnv: 'YUNSHU_BASE_URL', keyEnvs: ['YUNSHU_API_KEY'] },
   { id: 'grok', baseEnv: 'GROK_BASE_URL', keyEnvs: ['GROK_API_KEY'] },

@@ -23,7 +23,7 @@
         <el-button :disabled="busy || !state?.connected" @click="disconnect">{{ translate('断开连接') }}</el-button>
         <el-button v-if="state?.accountId !== 'default'" :disabled="busy" @click="removeAccount">{{ translate('删除账号') }}</el-button>
       </div>
-      <p v-if="error" class="error" role="alert">{{ error }}</p>
+      <feedbackNotice :message="error" @close="error = ''" />
       <p v-if="state && !state.available" class="hint">{{ translate('请在妙图桌面版里打开这个设置。') }}</p>
     </settings-section>
     <settings-section :title="translate('当前账号模型与参数')" :description="translate('这里显示节点实际使用的模型 ID，以及这个账号当前可选的时长、比例和分辨率。节点里仍可直接修改参数。')">
@@ -90,6 +90,7 @@
   </div>
 </template>
 <script setup lang="ts">
+import feedbackNotice from '../../components/feedbackNotice.vue';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { ElMessageBox } from 'element-plus';
 import { translate } from '@miaoimg/i18n/vue';

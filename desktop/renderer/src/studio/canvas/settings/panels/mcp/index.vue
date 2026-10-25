@@ -28,7 +28,7 @@
       <template #actions>
         <el-button text size="small" :icon="IconRefresh" :loading="statusBusy" :disabled="busy || saving" @click="refreshStatus">{{ translate('刷新') }}</el-button>
       </template>
-      <el-alert v-if="statusError" :title="statusError" type="error" :closable="false" showIcon />
+      <feedbackNotice v-if="statusError" :message="statusError"  />
       <template v-else>
         <div class="connectionState">
           <el-tag :type="status?.enabled ? 'success' : 'info'" effect="plain">{{ status?.enabled ? translate('已开启') : translate('已关闭') }}</el-tag>
@@ -66,6 +66,7 @@
 </template>
 
 <script setup lang="ts">
+import feedbackNotice from '../../../components/feedbackNotice.vue';
 import { t, translate } from "@miaoimg/i18n/vue";
 import { computed, inject, onMounted, onScopeDispose, ref, watch } from "vue";
 import { ElMessage } from "element-plus";

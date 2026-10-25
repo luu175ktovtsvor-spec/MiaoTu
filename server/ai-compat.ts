@@ -20,6 +20,7 @@ import { createVideo } from './video-api.ts'
 import { assertTextAccess, assertTextIdentity } from './text-access.ts'
 import { readModelJson } from './model-transport.ts'
 import { TextOperations } from './text-lifetime.ts'
+import { refreshSuiheModels } from './suihe.ts'
 
 // 单个媒体任务（含排队）的等待上限，与画布节点的等待节奏保持一致。
 const POLL_INTERVAL_MS = 1000
@@ -96,7 +97,8 @@ export function createAiCompat({ management, workspaceFiles, generate, probeRefe
   }
 
   // GET /api/ai/media/models：媒体模型目录，复用 /api/imagine/config 的同一份来源与积分规则。
-  function listMediaModels(session) {
+  async function listMediaModels(session) {
+    await refreshSuiheModels({env: process.env}).catch(() => [])
     const operating = management.settings()
     const allowed = userModels(session)
     const paused = operating.models || {}
@@ -142,6 +144,8 @@ export function createAiCompat({ management, workspaceFiles, generate, probeRefe
         mode: model.modes || ['text', 'singleImage'],
         sizes: model.sizes || [],
         durations: model.durations || [],
+        defaultDuration: model.defaultDuration,
+        defaultResolution: model.defaultResolution,
         ratios: model.ratios || [],
         durationResolutionMap: (() => {
           const resolutions = [...new Set<string>((model.sizes || []).map((item) => String(item.value)))]
@@ -448,7 +452,7 @@ export function createAiCompat({ management, workspaceFiles, generate, probeRefe
         return true
       }
       if (url.pathname === '/api/ai/media/models' && request.method === 'GET') {
-        json(response, 200, { code: 200, message: 'ok', data: listMediaModels(session) })
+        json(response, 200, { code: 200, message: 'ok', data: await listMediaModels(session) })
         return true
       }
       if (url.pathname === '/api/ai/generate' && request.method === 'POST') {

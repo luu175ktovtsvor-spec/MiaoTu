@@ -16,10 +16,11 @@
       </settings-row>
     </settings-section>
     <settings-section :title="translate('使用已有工具')" :description="translate('Agent 优先使用已有软件；任务需要时，可按你的要求准备依赖。妙图不会预先安装这些软件。')" />
-    <p v-if="error" role="alert" class="computerError">{{ error }}</p>
+    <feedbackNotice :message="error" @close="error = ''" />
   </div>
 </template>
 <script setup lang="ts">
+import feedbackNotice from '../../components/feedbackNotice.vue';
 import { onMounted, ref } from 'vue';
 import { translate } from '@miaoimg/i18n/vue';
 import settingsRow from '../components/settingsRow.vue';

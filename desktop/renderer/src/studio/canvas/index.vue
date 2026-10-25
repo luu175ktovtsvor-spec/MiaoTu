@@ -112,10 +112,7 @@
         </button>
       </div>
     </div>
-    <div v-if="canvasSaveError" class="canvasSaveNotice" role="alert">
-      <span>{{ canvasSaveError }}</span>
-      <button type="button" :disabled="copyingConflict" @click="saveConflictCopy">{{ copyingConflict ? '正在刷新…' : '刷新画布' }}</button>
-    </div>
+    <feedbackNotice :message="canvasSaveError" :action="copyingConflict ? '正在刷新…' : '刷新画布'" :disabled="copyingConflict" @action="saveConflictCopy" />
     <teleport to="body">
       <el-button
         v-if="edgeDisconnect && findEdge(edgeDisconnect.id)"
@@ -137,6 +134,7 @@
 </template>
 
 <script setup lang="ts">
+import feedbackNotice from './components/feedbackNotice.vue';
 import { hasCanvasMarker, normalizeCanvasDocument } from '../../../../../server/canvas-document.ts';
 import { isProtectedWorkspacePath } from '../../../../../server/workspace-path';
 import { computed, defineAsyncComponent, defineComponent, h, inject, markRaw, nextTick, onBeforeUnmount, onMounted, onScopeDispose, provide, ref, shallowReactive, shallowRef, watch, type Component } from "vue";
@@ -908,7 +906,7 @@ function showSaveError(err: unknown, toast = false) {
     : status === 401
       ? translate("登录已失效，请重新登录后继续")
       : translate("画布同步暂未完成，本页改动已保留，请刷新后重试");
-  if (toast) ElMessage.error(canvasSaveError.value);
+
 }
 const saveCanvas = debounce((directory: string, fileName: string) => {
   saving = saving.then(async () => {
@@ -1613,6 +1611,4 @@ const defaultEdgeOptions = markRaw({
 .emptyCanvasActions button { display: flex; align-items: center; gap: 12px; min-width: 168px; height: 54px; padding: 0 16px 0 8px; border: 1px solid var(--canvas-node-border, var(--el-border-color)); border-radius: 14px; background: var(--canvas-node-bg, var(--el-bg-color)); color: var(--el-text-color-primary); font: inherit; font-size: 14px; cursor: pointer; transition: border-color .15s ease, transform .15s ease; }
 .emptyCanvasActions button:hover { border-color: var(--canvas-node-border-selected, var(--el-border-color-darker)); transform: translateY(-1px); }
 .emptyCanvasIcon { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 10px; background: color-mix(in srgb, var(--el-text-color-primary) 6%, transparent); }
-.canvasSaveNotice { position: absolute; top: 64px; left: 12px; right: 12px; z-index: 100; display: flex; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid #df9d3c; border-radius: 8px; background: var(--miaoimg-glass-panel); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); color: var(--el-text-color-primary); font-size: 13px; }
-.canvasSaveNotice button { flex-shrink: 0; cursor: pointer; padding: 6px 10px; }
 </style>

@@ -18,7 +18,7 @@
       </el-form-item>
     </el-form>
     <p class="urlHint">{{ translate('填写 http / https 直链，单个文件不超过 20 MB；链接会先下载校验再安装。') }}</p>
-    <el-alert v-if="error" :title="error" type="error" :closable="false" showIcon />
+    <feedbackNotice v-if="error" :message="error"  />
     <template #footer>
       <el-button :disabled="installing" @click="visible = false">{{ translate('取消') }}</el-button>
       <el-button type="primary" :loading="installing" :disabled="!url.trim()" @click="install">{{ translate('下载并安装') }}</el-button>
@@ -27,6 +27,7 @@
 </template>
 
 <script setup lang="ts">
+import feedbackNotice from '../../../components/feedbackNotice.vue';
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { translate } from "@miaoimg/i18n/vue";
 import { forceInstall } from "../../installOptions";

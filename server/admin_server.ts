@@ -1,6 +1,6 @@
 import { createServer } from 'node:http'
 import { ManagementStore, failure, normalizeEmail, secretMatches, validEmail } from './management-store.ts'
-import { modelCatalog, publicModelCatalog, publicVideoCatalog, providerCatalog, providerConfigured, upstreamCostCatalog } from './image-models.ts'
+import { adminModelCatalog, modelCatalog, publicModelCatalog, publicVideoCatalog, providerCatalog, providerConfigured, upstreamCostCatalog } from './image-models.ts'
 import { paymentConfig, publicPaymentConfig } from './payment-contract.ts'
 import { runtimeSecret } from './runtime-secrets.ts'
 import { bodyJson, cookieToken, json, sessionCookie, mutation, sameOrigin, loginRate } from './http-auth.ts'
@@ -10,6 +10,7 @@ import { publicTextCatalog, textChannelReady } from './text-models.ts'
 import { generationDetail, probeGeneration, restoreGeneration, serveGenerationVideo } from './admin-generation.ts'
 import { HttpIncomingRequests } from './http-request-lifetime.ts'
 import { createFeedbackStore } from './feedback-store.ts'
+import { refreshSuiheModels } from './suihe.ts'
 const configuredHost=process.env.OIP_ADMIN_HOST||'127.0.0.1'
 // The production image sets this guard because the admin API is meant to be
 // reached through the same-origin Vite server (or an SSH tunnel). Binding to
@@ -102,9 +103,9 @@ const server=createServer(async(request,response)=>{
   if(path==='/api/admin/logout' && request.method==='POST'){store.logout(token);json(response,200,{ok:true},{'set-cookie':sessionCookie(request,'',true,'miao_admin')});return}
   // 上游留档与推算单价：用户真实跑过的每一单都在这里，包括上游没公开价的档位。
   if(path==='/api/admin/upstream-calls' && request.method==='GET'){json(response,200,upstreamCallsForAdmin(Object.fromEntries(url.searchParams)));return}
-  if(path==='/api/admin/upstream-reconciliation' && request.method==='GET'){json(response,200,{...store.upstreamReconciliation(Object.fromEntries(url.searchParams)),models:upstreamAuditModels()});return}
+  if(path==='/api/admin/upstream-reconciliation' && request.method==='GET'){await refreshSuiheModels({env:process.env}).catch(()=>[]);json(response,200,{...store.upstreamReconciliation(Object.fromEntries(url.searchParams)),models:upstreamAuditModels()});return}
   if(path==='/api/admin/derived-prices' && request.method==='GET'){json(response,200,{items:store.derivedUpstreamPrices(Object.fromEntries(url.searchParams))});return}
-  if(path==='/api/admin/overview' && request.method==='GET'){const payments=paymentConfig(process.env);const settings=store.settings();const textModels=(await publicTextCatalog(process.env)).map(model=>({...model,configured:textChannelReady(process.env,model.id),paused:settings.models[model.id]===false}));json(response,200,{stats:store.overview(),settings,models:publicModelCatalog(),videoModels:publicVideoCatalog(),textModels,upstreamCosts:upstreamCostCatalog(),providers:providerCatalog().map(p=>({...p,configured:providerConfigured(p.id,process.env),latestCall:store.get('SELECT status,created_at,error FROM upstream_calls WHERE provider=? ORDER BY created_at DESC,id DESC LIMIT 1',p.id)||null})),costPolicy:store.costPolicy(),payments:{...publicPaymentConfig(payments),summary:store.paymentSummary()}});return}
+  if(path==='/api/admin/overview' && request.method==='GET'){await refreshSuiheModels({env:process.env}).catch(()=>[]);const payments=paymentConfig(process.env);const settings=store.settings();const adminModels=adminModelCatalog();const textModels=(await publicTextCatalog(process.env)).map(model=>({...model,configured:textChannelReady(process.env,model.id),paused:settings.models[model.id]===false}));json(response,200,{stats:store.overview(),settings,models:adminModels.filter(model=>!model.video),videoModels:adminModels.filter(model=>model.video),textModels,upstreamCosts:upstreamCostCatalog(),providers:providerCatalog().map(p=>({...p,configured:providerConfigured(p.id,process.env),latestCall:store.get('SELECT status,created_at,error FROM upstream_calls WHERE provider=? ORDER BY created_at DESC,id DESC LIMIT 1',p.id)||null})),costPolicy:store.costPolicy(),payments:{...publicPaymentConfig(payments),summary:store.paymentSummary()}});return}
   if(path==='/api/admin/operations' && request.method==='GET'){
    const lifetime=new AbortController()
    const close=()=>lifetime.abort()

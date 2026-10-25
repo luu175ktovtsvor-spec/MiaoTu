@@ -38,7 +38,7 @@
         <span :title="previewAsset.name">{{ previewAsset.name }}</span>
         <el-button text :icon="IconX" :aria-label="translate('关闭音频预览')" @click="previewAsset = undefined" />
       </div>
-      <el-alert v-if="previewError" :title="previewError" type="error" :closable="false" showIcon />
+      <feedbackNotice v-if="previewError" :message="previewError" @close="previewError = ''" />
       <audio v-else :key="previewAsset.url" :src="previewAsset.url" :aria-label="previewAsset.name" controls preload="metadata" @error="previewError = translate('音频无法播放，文件可能已损坏或当前浏览器不支持其编码。')" />
     </div>
   </el-card>
@@ -51,7 +51,7 @@
 
   <el-dialog :modelValue="previewAsset?.kind === 'video'" :title="previewAsset?.name" width="min(800px, calc(100vw - 32px))" alignCenter appendToBody destroyOnClose @update:modelValue="previewAsset = undefined">
     <div v-if="previewAsset?.kind === 'video'" class="assetPreview">
-      <el-alert v-if="previewError" :title="previewError" type="error" :closable="false" showIcon />
+      <feedbackNotice v-if="previewError" :message="previewError" @close="previewError = ''" />
       <video v-else :key="previewAsset.url" class="previewVideo" :src="workspacePlaybackUrl(previewAsset.url)" :aria-label="previewAsset.name" controls playsinline preload="metadata" @error="previewError = translate('视频无法播放，文件可能已损坏或当前浏览器不支持其编码。')" />
     </div>
   </el-dialog>
@@ -94,6 +94,7 @@
 </template>
 
 <script setup lang="ts">
+import feedbackNotice from "./feedbackNotice.vue";
 import { saveCanvasAsset, saveWorkspaceAsset, isInternalAssetPath, createAssetFolder as createFolderPath, type AssetOutput } from "../saveCanvasAsset";
 import { assetFileType } from "../assetFile";
 import { isCanvasFile } from "@/pages/workspace/canvasFile";

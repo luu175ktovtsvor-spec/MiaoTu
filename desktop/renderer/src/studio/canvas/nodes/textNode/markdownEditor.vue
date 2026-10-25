@@ -1,17 +1,17 @@
 <template>
   <section class="nodeMarkdownEditor" :class="{ inline }">
     <div v-if="!inline" class="editorToolbar" role="toolbar" :aria-label="translate('Markdown 编辑工具')">
-      <button type="button" :disabled="locked || sourceMode || !ready" @mousedown.prevent @click="run('heading')">{{ translate('标题') }}</button>
-      <button type="button" :disabled="locked || sourceMode || !ready" @mousedown.prevent @click="run('bold')">{{ translate('加粗') }}</button>
-      <button type="button" :disabled="locked || sourceMode || !ready" @mousedown.prevent @click="run('italic')">{{ translate('斜体') }}</button>
-      <button type="button" :disabled="locked || sourceMode || !ready" @mousedown.prevent @click="run('list')">{{ translate('列表') }}</button>
-      <button type="button" :disabled="locked || sourceMode || !ready" @mousedown.prevent @click="run('undo')">{{ translate('撤销') }}</button>
-      <button type="button" :disabled="locked || sourceMode || !ready" @mousedown.prevent @click="run('redo')">{{ translate('重做') }}</button>
+      <button type="button" :title="translate('标题')" :aria-label="translate('标题')" :disabled="locked || sourceMode || !ready" @mousedown.prevent @click="run('heading')"><icon-typography :size="18" /></button>
+      <button type="button" :title="translate('加粗')" :aria-label="translate('加粗')" :disabled="locked || sourceMode || !ready" @mousedown.prevent @click="run('bold')"><icon-bold :size="18" /></button>
+      <button type="button" :title="translate('斜体')" :aria-label="translate('斜体')" :disabled="locked || sourceMode || !ready" @mousedown.prevent @click="run('italic')"><icon-italic :size="18" /></button>
+      <button type="button" :title="translate('列表')" :aria-label="translate('列表')" :disabled="locked || sourceMode || !ready" @mousedown.prevent @click="run('list')"><icon-list :size="18" /></button>
+      <button type="button" :title="translate('撤销')" :aria-label="translate('撤销')" :disabled="locked || sourceMode || !ready" @mousedown.prevent @click="run('undo')"><icon-arrow-back-up :size="18" /></button>
+      <button type="button" :title="translate('重做')" :aria-label="translate('重做')" :disabled="locked || sourceMode || !ready" @mousedown.prevent @click="run('redo')"><icon-arrow-forward-up :size="18" /></button>
       <span class="toolbarSpacer" />
       <button type="button" @click="copyText">{{ translate('复制正文') }}</button>
       <button type="button" :aria-pressed="sourceMode" @click="sourceMode = !sourceMode">{{ sourceMode ? translate('富文本') : translate('原文') }}</button>
     </div>
-    <p v-if="error" class="editorError" role="alert">{{ error }}</p>
+    <feedbackNotice :message="error" @close="error = ''" />
     <textarea v-if="sourceMode" class="sourceEditor" :value="modelValue" :readonly="readonly" :disabled="disabled" :aria-label="ariaLabel || translate('编辑 Markdown 原文')" spellcheck="false" @input="updateSource" />
     <editor-content v-if="editor && !sourceMode" :editor="editor" class="richHost" />
     <p v-if="!inline" class="editorHint">{{ translate('富文本会规范化 Markdown；保留原始 HTML 写法请使用原文。') }}</p>
@@ -19,9 +19,11 @@
 </template>
 
 <script setup lang="ts">
+import feedbackNotice from '../../components/feedbackNotice.vue';
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from "vue";
 import { Editor, EditorContent } from "@tiptap/vue-3";
 import { translate } from "@miaoimg/i18n/vue";
+import { IconTypography, IconBold, IconItalic, IconList, IconArrowBackUp, IconArrowForwardUp } from "@tabler/icons-vue";
 import type { MarkdownFiles } from "./markdownContent";
 import markdownExtensions, { parseMarkdownContent, serializeMarkdown } from "./markdownExtensions";
 
@@ -144,22 +146,21 @@ async function copyText() {
 <style scoped lang="scss">
 .nodeMarkdownEditor {
   display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; overflow: hidden;
-  .editorToolbar { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 0 8px; flex-shrink: 0;
-    button { border: 1px solid var(--el-border-color); border-radius: 4px; padding: 4px 8px; color: var(--el-text-color-primary); background: var(--el-bg-color); cursor: pointer;
-      &:hover { border-color: var(--el-color-primary); }
+  .editorToolbar { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 0 12px; flex-shrink: 0;
+    button { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; min-height: 32px; border: 0; border-radius: 8px; padding: 4px 8px; color: var(--el-text-color-primary); background: transparent; font: inherit; cursor: pointer;
+      &:hover, &[aria-pressed="true"] { background: var(--el-fill-color-light); }
       &:disabled { opacity: 0.45; cursor: default; }
     }
     .toolbarSpacer { flex: 1; }
   }
-  .editorError { flex-shrink: 0; margin: 0 0 6px; color: var(--el-color-danger); }
-  .sourceEditor { flex: 1; min-height: 0; width: 100%; box-sizing: border-box; resize: none; padding: 12px; border: 1px solid var(--el-border-color); color: var(--el-text-color-primary); background: var(--el-bg-color); font: 14px/1.8 Consolas, monospace; }
-  .richHost { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--el-border-color); overscroll-behavior: contain;
-    :deep(.ProseMirror) { min-height: 180px; padding: 12px 16px; outline: none; white-space: pre-wrap; word-break: break-word; }
+  .sourceEditor { flex: 1; min-height: 0; width: 100%; box-sizing: border-box; resize: none; padding: 20px max(20px, calc((100% - 780px) / 2)); border: 0; border-radius: 12px; color: var(--el-text-color-primary); background: var(--el-fill-color-blank); font: 14px/1.8 Consolas, monospace; }
+  .richHost { flex: 1; min-height: 0; overflow: auto; border-radius: 12px; background: var(--el-fill-color-blank); overscroll-behavior: contain;
+    :deep(.ProseMirror) { box-sizing: border-box; max-width: 820px; min-height: 100%; margin-inline: auto; padding: 20px; outline: none; white-space: pre-wrap; word-break: break-word; font-size: 15px; line-height: 1.8; }
     :deep(.ProseMirror-selectednode) { outline: 2px solid var(--el-color-primary); }
   }
   .editorHint { flex-shrink: 0; margin: 6px 0 0; color: var(--el-text-color-secondary); font-size: 11px; }
   &.inline .richHost { border: 0; background: transparent;
-    :deep(.ProseMirror) { min-height: 94px; padding: 4px 6px; cursor: text; user-select: text; }
+    :deep(.ProseMirror) { max-width: none; min-height: 94px; padding: 4px 6px; font-size: inherit; line-height: inherit; cursor: text; user-select: text; }
   }
 }
 </style>

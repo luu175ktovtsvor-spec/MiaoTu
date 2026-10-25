@@ -10,7 +10,7 @@ import { withNormalizedVideoFile } from './video-normalize.ts'
 import { withStreamedMedia, mediaPermissions } from './media-files.ts'
 import { WORKSPACE_FILE_MAX_BYTES } from './workspace-files.ts'
 import { assertReferenceInput, referenceInputPolicy } from './reference-input-contract.ts'
-import { modelById, publicVideoCatalog } from './image-models.ts'
+import { modelById, modelForGeneration, publicVideoCatalog } from './image-models.ts'
 import { estimateGenerationCost, estimateUpstreamCostRmb, VIDEO_INPUT_PRICING } from './generation-cost.ts'
 import { failure } from './management-store.ts'
 import { assertModelAccess } from './model-access.ts'
@@ -22,6 +22,8 @@ import { createMediaProviderFetch, ProviderRedirectError } from './provider-fetc
 import { createMetasoVideoTask, metasoCreditsBalance, metasoVideoSettings, pollMetasoVideoTask } from './metaso-video.ts'
 import { createMediaProbe, REFERENCE_RETRY_DELAYS_MS, redactReferencePayload, summarizeReferenceValue } from './reference-assets.ts'
 import { acceptedVideoSubmissionError } from './video-submission.ts'
+import { createSuiheTask, pollSuiheTask, suiheSettings } from './suihe.ts'
+import { suihePricingSnapshot } from './suihe-pricing.ts'
 
 const probeVideoFile = createMediaProbe()
 
@@ -30,6 +32,7 @@ export const VIDEO_LIMITS = Object.freeze({ minDuration: 1, maxDuration: 30 })
 export const VIDEO_API_PATHS = Object.freeze({ create: '/api/imagine/video', poll: '/api/imagine/video/:requestId' })
 
 export function videoSettings(env = process.env, model) {
+  if (model?.provider === 'suihe') return suiheSettings(env)
   const grok = model?.provider === 'grok' || String(model?.id || '').startsWith('grok-imagine-video')
   const configuredBase = grok
     ? (isMockProviderMode(env) ? env.GROK_BASE_URL : (env.GROK_BASE_URL || env.YUNSHU_BASE_URL || env.SUB2API_BASE_URL || 'http://127.0.0.1:3000'))
@@ -99,7 +102,8 @@ export function safeOutputDirectory(value) {
 
 export function validateVideoRequest(payload: Record<string, any> = {}, env = process.env): Record<string, any> {
   const prompt = String(payload.prompt || '').trim()
-  const model = modelById(String(payload.model || '').trim())
+  const modelId = String(payload.model || '').trim()
+  const model = modelForGeneration(modelId, payload, payload.__provider || payload.upstreamProvider) || modelById(modelId)
   if (!model?.video) throw failure('不支持的视频模型', 422)
   // xAI 的 Grok 1.5 在首尾帧、关键帧或参考图/预设声音模式下允许省略
   // prompt；文生视频仍必须有描述。其它上游都要求文本内容。
@@ -127,6 +131,8 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
   } else if (model.provider === 'metaso') {
     const metaso = metasoVideoSettings(env)
     if (!metaso.apiKey) throw failure('视频服务暂时不可用，请稍后再试', 503)
+  } else if (model.provider === 'suihe') {
+    if (!suiheSettings(env).apiKey) throw failure('视频服务暂时不可用，请稍后再试', 503)
   } else if (!config.apiKey) {
     throw failure('视频服务暂时不可用，请稍后再试', 503)
   }
@@ -170,6 +176,18 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
   if (!resolution && allowedSizes.length && !inheritsResolution) throw failure('请选择分辨率', 422)
   if (resolution && allowedSizes.length && !allowedSizes.includes(resolution)) {
     throw failure(`当前模型不支持分辨率 ${resolution}，可选：${allowedSizes.join('、')}`, 422)
+  }
+  const creativeModes = Array.isArray(model.creativeModes) ? model.creativeModes : []
+  const requestedCreativeMode = payload.creativeMode === undefined || payload.creativeMode === '' ? undefined : String(payload.creativeMode).trim()
+  const creativeMode = model.provider === 'suihe' && creativeModes.length
+    ? (requestedCreativeMode || model.defaultCreativeMode || creativeModes[0])
+    : requestedCreativeMode
+  if (creativeMode && creativeModes.length && !creativeModes.includes(creativeMode)) throw failure(`当前模型不支持创作档 ${creativeMode}`, 422)
+  if (model.provider === 'suihe' && creativeMode && resolution) {
+    const allowedCreativeResolutions = model.resolutionsByCreativeMode?.[creativeMode]
+    if (Array.isArray(allowedCreativeResolutions) && allowedCreativeResolutions.length && !allowedCreativeResolutions.map(String).map(value => value.toLowerCase()).includes(resolution.toLowerCase())) {
+      throw failure(`${creativeMode} 创作档不支持 ${resolution}`, 422)
+    }
   }
   const resolutionDurationCap = model.maxDurationByResolution?.[resolution]
   if (resolutionDurationCap && duration !== undefined && duration > resolutionDurationCap) {
@@ -307,17 +325,21 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
   if (generateAudio === true && !(model.audio === 'optional' || model.audio === true)) throw failure('当前模型不支持生成声音', 422)
   if (generateAudio === false && model.audio === true) throw failure('当前模型不能关闭声音', 422)
   if (generateAudio !== undefined && model.audio !== 'optional' && model.audio !== true) generateAudio = undefined
-  // 火山方舟官方可选参数：seed、camera_fixed、return_last_frame、tools(web_search)。
-  // Seedance 2.0 / fast 不接受 frames，已在上方拦截。
+  // 火山方舟和穗禾兼容通道都使用这组 Seedance 参数：seed、camera_fixed、
+  // return_last_frame、tools(web_search)。Seedance 2.0 / fast 不接受 frames，
+  // 已在上方按实际模型能力拦截。
+  const volcCompatibleProvider = model.provider === 'ark' || model.provider === 'suihe'
   const seed = payload.seed === undefined || payload.seed === '' ? undefined : Math.floor(Number(payload.seed))
   if (seed !== undefined && (!Number.isInteger(seed) || seed < -1 || seed > 2147483647)) throw failure('随机种子无效', 422)
   const cameraFixed = payload.cameraFixed === undefined ? undefined : Boolean(payload.cameraFixed)
   const returnLastFrame = payload.returnLastFrame === undefined ? undefined : Boolean(payload.returnLastFrame)
   if (seed !== undefined || cameraFixed !== undefined) {
-    if (model.provider !== 'ark') throw failure('当前模型不支持 seed 或 camera_fixed 参数', 422)
-    if (isSeedance20(model) || isSeedance25(model)) throw failure('当前模型不支持 seed 或 camera_fixed 参数', 422)
+    if (!volcCompatibleProvider) throw failure('当前模型不支持 seed 或 camera_fixed 参数', 422)
+    // 火山原生接口的旧限制继续保留；穗禾指南明确将这些字段作为
+    // 兼容参数接收，不能沿用旧 provider 的本地拒绝规则。
+    if (model.provider === 'ark' && (isSeedance20(model) || isSeedance25(model))) throw failure('当前模型不支持 seed 或 camera_fixed 参数', 422)
   }
-  if (returnLastFrame !== undefined && model.provider !== 'ark') throw failure('当前模型不支持 return_last_frame 参数', 422)
+  if (returnLastFrame !== undefined && !volcCompatibleProvider) throw failure('当前模型不支持 return_last_frame 参数', 422)
   const webSearch = payload.webSearch === true || (Array.isArray(payload.tools) && payload.tools.some((tool) => String(tool?.type || '') === 'web_search'))
   if (webSearch) {
     if (model.provider !== 'ark') throw failure('当前模型不支持联网搜索', 422)
@@ -327,7 +349,7 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
   // 其他模型没有这一项，收到也忽略。
   // 排队任务会用存下的 parameters（contextIr:false）重新校验一次，两种写法都认。
   const contextIr = model.id === 'MiniMax-H3' ? !(payload.rawPrompt === true || payload.contextIr === false) : undefined
-  const arkOptions = model.provider === 'ark' ? {
+  const arkOptions = volcCompatibleProvider ? {
     ...(isSeedance25(model) && ['image','edit','extend'].includes(mode) ? { omni_reference_task_type: mode === 'image' ? 'reference' : mode } : {}),
     ...(isSeedance25(model) && mode === 'edit' ? { duration:-1 } : {}),
     ...(rawFrames !== undefined ? { frames: rawFrames } : {}),
@@ -360,9 +382,9 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
   const videoPricing = isCostPlusVideo(model.publicId || model.id) ? videoPricingSnapshot() : undefined
   const cost = estimateVideoCost(model, { duration, billableDuration, resolution: billingResolution, ratio, videoSeconds, audioSeconds: Number(payload.audioSeconds)||0, generateAudio, referenceImages: billableReferenceImages, contextIr, videoPricing })
   return {
-    model, prompt, mode, duration, billableDuration, resolution, ratio, image, images, videos, video, audios, referenceVoices, firstFrame, lastFrame, keyframes, generateAudio, contextIr, cost, arkOptions,
+    model, prompt, mode, duration, billableDuration, resolution, ratio, image, images, videos, video, audios, referenceVoices, firstFrame, lastFrame, keyframes, generateAudio, creativeMode, contextIr, cost, arkOptions,
     // 服务端落盘要用这次请求的节点目录；只保留安全的相对路径。
-    parameters: { ...(videoPricing ? {videoPricing} : {}), referenceHistory: normalizeReferenceHistory(payload.referenceHistory), outputDirectory: safeOutputDirectory(payload.outputDirectory), mode, duration, billableDuration, resolution, ratio: ratio || null, image: image || null, images, videos, video: video || null, audios, referenceVoices, firstFrame: firstFrame || null, lastFrame: lastFrame || null, keyframes, generateAudio, videoSeconds, audioSeconds:Number(payload.audioSeconds)||0, referenceImages: billableReferenceImages, frames: rawFrames ?? null, seed: seed ?? null, cameraFixed: cameraFixed ?? null, returnLastFrame: returnLastFrame ?? null, webSearch, ...(contextIr === false ? { contextIr } : {}) },
+    parameters: { ...(videoPricing ? {videoPricing} : {}), upstreamProvider:model.provider, ...(model.provider==='suihe'?{suiheCost:suihePricingSnapshot(model,{resolution,creativeMode})}:{}), referenceHistory: normalizeReferenceHistory(payload.referenceHistory), outputDirectory: safeOutputDirectory(payload.outputDirectory), mode, duration, billableDuration, resolution, ratio: ratio || null, image: image || null, images, videos, video: video || null, audios, referenceVoices, firstFrame: firstFrame || null, lastFrame: lastFrame || null, keyframes, generateAudio, creativeMode: creativeMode || null, videoSeconds, audioSeconds:Number(payload.audioSeconds)||0, referenceImages: billableReferenceImages, frames: rawFrames ?? null, seed: seed ?? null, cameraFixed: cameraFixed ?? null, returnLastFrame: returnLastFrame ?? null, webSearch, ...(contextIr === false ? { contextIr } : {}) },
   }
 }
 
@@ -397,7 +419,10 @@ function referenceProviderRequest(request, userId, materializeReference, { inlin
   // Ark prefers the existing signed asset URL: multi-megabyte Base64 bodies
   // can stall the task-create upload. Inline only after an explicit reference
   // fetch rejection; keep MetaSo's inline delivery and Grok's URL contract.
-  const inlineImages = request.model.provider === 'metaso' || (request.model.provider === 'ark' && inlineArkImages)
+  // Suihe accepts multipart references, so inline small workspace images and
+  // let createSuiheTask decode the original bytes instead of making the
+  // provider depend on a public callback URL.
+  const inlineImages = request.model.provider === 'metaso' || request.model.provider === 'suihe' || (request.model.provider === 'ark' && inlineArkImages)
   const delivery = new Map()
   const converted = new Map()
   const convert = (value, kind, inline = inlineImages) => {
@@ -657,7 +682,7 @@ export async function submitQueuedVideo(job, { management, env = process.env, fe
   // Stored parameters were validated and media durations probed before reserve.
   // Remove absent optional values rather than turning null into seed=0/frames=0.
   const parameters = Object.fromEntries(Object.entries(job.parameters || {}).filter(([, value]) => value !== null))
-  const request = validateVideoRequest({ ...parameters, model: job.model, prompt: job.prompt }, env)
+  const request = validateVideoRequest({ ...parameters, model: job.model, prompt: job.prompt, __provider: job.provider }, env)
   if (parameters.videoPricing && isCostPlusVideo(job.model)) request.parameters.videoPricing = parameters.videoPricing
   signal?.throwIfAborted()
   if (!management.heartbeat(job.id, job.lease_id)) throw failure('生成已取消或已结算', 409)
@@ -682,7 +707,9 @@ export async function submitQueuedVideo(job, { management, env = process.env, fe
       const upstreamRequest = await referenceProviderRequest(request, job.user_id, materializeReference, { inlineArkImages: attempt > 0 })
       lastUpstreamRequest = upstreamRequest
       signal?.throwIfAborted()
-      task = request.model.provider === 'ark'
+      task = request.model.provider === 'suihe'
+        ? await createSuiheTask(upstreamRequest, { env, fetchImpl: dispatchFetch, signal })
+        : request.model.provider === 'ark'
         ? await createArkVideoTask(upstreamRequest, { env, fetchImpl: dispatchFetch, signal })
         : request.model.provider === 'metaso'
         ? await createMetasoVideoTask(upstreamRequest, { env, fetchImpl: dispatchFetch, signal })
@@ -750,7 +777,8 @@ export async function submitQueuedVideo(job, { management, env = process.env, fe
     }
     return task
   } catch (error) {
-    throw acceptedVideoSubmissionError(error, task)
+    if (task) throw acceptedVideoSubmissionError(error, task)
+    throw error
   }
 }
 
@@ -862,7 +890,7 @@ async function restoreVideoResultOnce({ requestId }: Record<string, any>, sessio
   if (video.metadata?.workspacePath) {
     try { workspaceFiles.locate(session.userId, video.metadata.workspacePath, record.parameters?.workspaceProject || DEFAULT_PROJECT_ID); return { path: video.metadata.workspacePath, already: true } } catch { /* 文件没了就重下 */ }
   }
-  const model = modelById(record.model)
+  const model = modelForGeneration(record.model, record.parameters || {}, existing.provider) || modelById(record.model)
   const path = await persistVideoIntoWorkspace({ management, workspaceFiles, generationId: existing.id, video, model, env, fetchImpl })
   if (!path) throw failure('成片地址不可用，无法取回', 502)
   management.setVideoWorkspacePath(existing.id, path)
@@ -900,12 +928,14 @@ async function pollVideoOnce(payload, session, { management, env = process.env, 
     return { requestId, status: current.status, submissionUncertain: current.submissionUncertain, error: current.error, progress: null, pollAfterMs: current.submissionUncertain ? 5000 : 1000, httpStatus: 202 }
   }
   try {
-    const provider = modelById(existing.model)?.provider || 'grok'
-    const model = modelById(existing.model)
+    const provider = modelForGeneration(existing.model, existing.parameters || {}, existing.provider)?.provider || 'grok'
+    const model = modelForGeneration(existing.model, existing.parameters || {}, existing.provider) || modelById(existing.model)
     const result: Record<string, any> = provider === 'ark'
       ? await pollArkVideoTask(taskIdValue, { env, fetchImpl, signal: AbortSignal.timeout(30_000) })
       : provider === 'metaso'
       ? await pollMetasoVideoTask(taskIdValue, { env, fetchImpl, model, signal: AbortSignal.timeout(30_000) })
+      : provider === 'suihe'
+      ? await pollSuiheTask(taskIdValue, { env, fetchImpl, signal: AbortSignal.timeout(30_000) })
       : await pollSub2ApiVideo(taskIdValue, { env, model, fetchImpl, signal: AbortSignal.timeout(30_000) })
     const latestTerminal = terminalResponse(management.generationForViewer(requestId, session, accessToken))
     if (latestTerminal) return latestTerminal

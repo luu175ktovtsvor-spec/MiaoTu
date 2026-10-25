@@ -3,7 +3,7 @@
     <div class="quickOpen" @keydown.down.prevent="step(1)" @keydown.up.prevent="step(-1)" @keydown.enter.prevent="choose(selected)">
       <el-input ref="input" v-model="query" :placeholder="translate('输入文件路径或节点名称')" :aria-label="translate('快速打开文件')" clearable />
       <p class="status" role="status">{{ status }}</p>
-      <el-alert v-if="error" :title="error" type="warning" :closable="false" />
+      <feedbackNotice :message="visible ? error : ''" @close="error = ''" />
       <div class="resultList" role="listbox" :aria-label="translate('快速打开结果')">
         <button v-for="(item, index) in shown" :key="item.key" class="resultItem" :class="{ selected: selected === index }" role="option" :aria-selected="selected === index" @click="choose(index)">
           <icon-file-text v-if="'filePath' in item.selection" :size="14" aria-hidden="true" />
@@ -17,6 +17,7 @@
 </template>
 
 <script setup lang="ts">
+import feedbackNotice from "../../../components/feedbackNotice.vue";
 import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, ref, shallowRef, watch } from "vue";
 import type { InputInstance } from "element-plus";
 import { IconBox, IconFileText } from "@tabler/icons-vue";

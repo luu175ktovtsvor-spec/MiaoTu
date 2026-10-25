@@ -374,8 +374,14 @@ function handleMentionKey(event: KeyboardEvent) {
 .promptInput {
   display: block;
   cursor: text;
+  font-size: 14px;
+  line-height: 1.6;
   -webkit-user-select: text;
   user-select: text;
+
+  // XSender sizes its editable scroller, but leaves the sibling placeholder
+  // at a separate default 16px. Both must use the same text metrics.
+  &:deep(.chat-area-wrap) { font-size: inherit; line-height: inherit; }
 
   &.expandedInput {
     position: relative;
@@ -416,10 +422,8 @@ function handleMentionKey(event: KeyboardEvent) {
     font-style: normal;
   }
 
-  &.expandedInput:deep(.chat-placeholder-wrap) {
-    top: 16px !important;
-    right: 16px !important;
-    left: 16px !important;
-  }
+  // The placeholder overlays the same first line as the editable content.
+  // Moving only the placeholder in expanded mode displaced it from the caret.
+  &:deep(.chat-placeholder-wrap) { top: 0; left: 0; right: auto; font-size: inherit; line-height: inherit; }
 }
 </style>

@@ -7,8 +7,9 @@
     topWidth="max-content"
     :downloadUrl="downloadUrl"
     :downloadName="`${nodeProps.label || translate('文本')}.md`"
+    :fullscreenDisabled="generating || !textReady || !!documentError"
     :bottomWidth="660"
-    @fullscreen="fullscreen = true; editing = true">
+    @fullscreen="expandEditor">
     <template v-if="inlineEditing" #top>
       <!-- 节点上直接编辑时的浮动工具栏，按 LibTV 的顺序：背景色、段落样式、粗体、斜体、分割线、展开编辑。 -->
       <el-card class="mediaToolbar textFormatBar" shadow="never" :bodyStyle="{ padding: '6px' }" @mousedown.prevent>
@@ -81,11 +82,18 @@
       </el-card>
     </template>
   </nodeSkeleton>
-  <el-dialog v-model="editing" :title="nodeProps.label || translate('编辑文本')" width="min(860px, calc(100vw - 32px))" :fullscreen="fullscreen" alignCenter appendToBody @closed="fullscreen = false">
-    <div class="textEditor" :class="{ fullscreen }">
-      <markdownEditor v-model="outputs.text.value" :files="textReady ? textFiles : undefined" :path="textPath" :active="editing" :disabled="generating || textReloading" :readonly="!!documentError" :ariaLabel="translate('编辑文本内容')" />
-    </div>
-  </el-dialog>
+  <Teleport to="body">
+    <template v-if="editing">
+      <div class="promptComposerBackdrop" aria-hidden="true" @pointerdown.stop @click="editing = false" />
+      <el-card class="promptCard expandedPromptCard textNodeEditorCard" shadow="never" :bodyStyle="{ padding: '14px 16px 12px' }"
+        role="dialog" aria-modal="true" :aria-label="nodeProps.label || translate('编辑文本')" @pointerdown.stop @click.stop @keydown.esc.stop="editing = false">
+        <el-button class="textEditorCollapse" :icon="IconMinimize" text circle :title="translate('收起编辑')" :aria-label="translate('收起编辑')" @click="editing = false" />
+        <div class="textEditor">
+          <markdownEditor ref="expandedEditor" v-model="outputs.text.value" :files="textReady ? textFiles : undefined" :path="textPath" :active="editing" :disabled="generating || textReloading" :readonly="!!documentError" :ariaLabel="translate('编辑文本内容')" />
+        </div>
+      </el-card>
+    </template>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -94,8 +102,8 @@ import { nodeLocalModelLabel, nodeModelOptionLabel } from '../scaffold/localMode
 import { isNodeOutput, type NodeOutput } from "@miaoimg/nodes-scaffold/values";
 import { computed, inject, nextTick, onMounted, onBeforeUnmount, ref, watch } from "vue";
 import { useVueFlow } from '@vue-flow/core';
-import { ElAlert, ElButton, ElCard, ElSelect, ElDialog, ElOption, ElMessage, ElMessageBox, ElPopover, ElDropdown, ElDropdownMenu, ElDropdownItem } from "element-plus";
-import { IconEdit, IconFileText, IconPhotoAi, IconVideo, IconSparkles, IconArrowUp, IconTypography, IconChevronDown, IconCheck, IconBold, IconItalic, IconMinus, IconArrowsDiagonal } from "@tabler/icons-vue";
+import { ElAlert, ElButton, ElCard, ElSelect, ElOption, ElMessage, ElMessageBox, ElPopover, ElDropdown, ElDropdownMenu, ElDropdownItem } from "element-plus";
+import { IconEdit, IconFileText, IconPhotoAi, IconVideo, IconSparkles, IconArrowUp, IconTypography, IconChevronDown, IconCheck, IconBold, IconItalic, IconMinus, IconArrowsDiagonal, IconMinimize } from "@tabler/icons-vue";
 import { nodeSkeleton, nodeTools, useNodeGeneration, useNode, useNodeReferences, z, type NodeAiModel, type NodeHandle } from "@miaoimg/nodes-scaffold/runtime";
 import referenceItem from "@miaoimg/nodes-scaffold/referenceItem";
 import promptInput from "@miaoimg/nodes-scaffold/promptInput";
@@ -130,6 +138,12 @@ const persistTaskBinding = inject<(() => Promise<void>) | undefined>('persistCan
 const getCanvasSignal = inject<(() => AbortSignal) | undefined>('canvasOperationSignal', undefined);
 const editing = ref(false);
 const fullscreen = ref(false);
+const expandedEditor = ref<InstanceType<typeof markdownEditor>>();
+watch(editing, async open => {
+  if (!open) { fullscreen.value = false; return; }
+  await nextTick();
+  expandedEditor.value?.focus();
+});
 // 双击节点或点「编辑」就在节点上直接改，像 LibTV 一样；取消选中或按 Esc 退出。
 const inlineEditing = ref(false);
 const inlineEditor = ref<InstanceType<typeof markdownEditor>>();
@@ -627,12 +641,8 @@ nodeTools.register({
 
 <style lang="scss" scoped>
 .textEditor {
-  height: min(560px, calc(100dvh - 144px));
+  height: 100%;
   min-height: 0;
-
-  &.fullscreen {
-    height: calc(100dvh - 112px);
-  }
 }
 
 .textFormatBar {

@@ -1,5 +1,5 @@
 <template>
-  <el-config-provider :locale="elementLocale">
+  <el-config-provider :locale="elementLocale" :message="{ offset: 64 }">
     <div class="miaoimgApp" :style="uiStyle">
       <workspaceApp />
     </div>

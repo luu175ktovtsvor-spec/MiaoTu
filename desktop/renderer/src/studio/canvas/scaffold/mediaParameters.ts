@@ -21,6 +21,7 @@ export type CatalogControl = {
   upstream?: string
   modes?: string[]
   options?: string[]
+  default?: string
   min?: number
   max?: number
   step?: number

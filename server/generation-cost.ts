@@ -1,5 +1,6 @@
 import { costPlusVideoCost, costPlusVideoEstimate, isCostPlusVideo, adminVideoPricing, videoExpenses } from './video-pricing.ts'
 import { modelCatalog } from './image-models.ts'
+import { suiheCost } from './suihe-pricing.ts'
 
 const POLICY_VERSION = '2026-10-08.2'
 
@@ -10,6 +11,10 @@ const POLICY_VERSION = '2026-10-08.2'
  * token 结算、且会随声音/参考视频/分辨率变化的接口不会被错误地当成纯秒价。
  */
 export const IMAGE_CREDITS = 0.5
+// Customer-facing surcharge for the current Suihe procurement channel. The
+// legacy provider prices remain unchanged; this is applied only while the
+// current model snapshot has provider === 'suihe'.
+export const SUIHE_CUSTOMER_MARKUP = 0.5
 
 // 图片积分口径（用户 2026-10-06 定）：GPT 图片 0.2、Grok 图片 0.1、豆包 = 官方原价 + 0.15。
 // 成本参考：云枢实测 GPT Image 2 ≈ $0.180/张、2.5 ≈ $0.201/张；豆包 Seedream
@@ -65,16 +70,30 @@ function overrideVideo(id, resolution) {
 
 export function imageCreditsPerImage(model, { size, pricing, layer = false }: Record<string, any> = {}) {
   const id = String(model?.publicId || model?.id || '')
+  const isSuihe = model?.provider === 'suihe'
+  const withSuiheMarkup = (value) => Math.round((Number(value) + (isSuihe ? SUIHE_CUSTOMER_MARKUP : 0)) * 100) / 100
   const policyPrice = (size ? pricing?.creditsPerImageBySize?.[size] : undefined)
     ?? pricing?.creditsPerImageBySize?.default
     ?? (!model?.customSize ? pricing?.creditsPerImage : undefined)
   if (policyPrice !== undefined && Number.isFinite(Number(policyPrice)) && Number(policyPrice) > 0) {
+    // An administrator-entered price is already the customer-facing value.
     return Math.round(Number(policyPrice) * 100) / 100
   }
   const override = overrideImage(id, size)
-  if (override !== undefined && Number.isFinite(override)) return Math.round(override * 100) / 100
+  if (override !== undefined && Number.isFinite(override)) return Math.round(Number(override) * 100) / 100
   const fixed = IMAGE_CREDIT_RULES[id]
-  if (fixed !== undefined) return fixed
+  if (fixed !== undefined) return withSuiheMarkup(fixed)
+  if (isSuihe) {
+    const cost=suiheCost(model,{size:size || model.sizes?.[0]?.value})
+    if (cost) return withSuiheMarkup(cost.rmb)
+    // A historical Suihe snapshot can outlive its current procurement table.
+    // Keep its legacy model price as a last-resort quote for already admitted
+    // records, while new unpriced tiers are rejected by the request validator.
+    if (model.legacyProvider && model.legacyProvider !== 'suihe') {
+      return withSuiheMarkup(imageCreditsPerImage({ ...model, provider: model.legacyProvider }, { size, layer }))
+    }
+    throw Error('该图片尺寸采购价尚未配置')
+  }
   const ark = ARK_IMAGE_RMB[id]
   if (ark) return Math.round((arkUnitRmb(ark, size, layer) + ARK_IMAGE_CREDIT_MARKUP) * 100) / 100
   return IMAGE_CREDIT_OVERRIDES[id] ?? IMAGE_CREDITS
@@ -85,10 +104,10 @@ export function imageCreditsBySize(model) {
   const id = String(model?.publicId || model?.id || '')
   const ark = ARK_IMAGE_RMB[id]
   const override = PRICING_OVERRIDES[id]?.image
-  if (!ark && (!override || typeof override !== 'object' || !Object.keys(override).length)) return null
+  if (model?.provider!=='suihe' && !ark && (!override || typeof override !== 'object' || !Object.keys(override).length)) return null
   const bySize = Object.fromEntries((model?.sizes || []).map(item => [item.value, imageCreditsPerImage(model, { size: item.value })]))
   const fallback = overrideImage(id, undefined)
-  return fallback !== undefined && Number.isFinite(fallback) ? { ...bySize, default: Math.round(fallback * 100) / 100 } : bySize
+  return fallback !== undefined && Number.isFinite(fallback) ? { ...bySize, default: imageCreditsPerImage(model, { size: undefined }) } : bySize
 }
 
 // 每秒积分单价 = 上游成本 × 安全上浮后取整到 0.1：
@@ -225,24 +244,32 @@ function usageBasedVideoCredits({ model, provider, usage, hasInputVideo, resolut
 }
 
 export function videoCreditsPerSecond(model, resolution) {
-  const override = overrideVideo(model, resolution)
-  if (override !== undefined && Number.isFinite(override)) return Math.round(override * 1000) / 1000
-  if (isCostPlusVideo(model)) {
-    const policy = adminVideoPricing(); const tier = policy.metasoTiers[model];
-    const selected = resolution || (model === 'MiniMax-H3' ? '768P' : '720p');
-    if (tier) { const item = tier[String(selected).toLowerCase()]; if (!item) return null; const expenses=videoExpenses(policy);return Math.ceil((item.withoutVideo * policy.metasoRmbPerCredit + policy.markupPerSecond+expenses.rmbPerOutputSecond)/(1-expenses.paymentFeePercent/100)*10000)/10000 }
-    return costPlusVideoEstimate({model,parameters:{duration:5,resolution:selected,ratio:'16:9'}}).points/5
+  const id = String(model?.publicId || model?.id || model || '')
+  const isSuihe = model?.provider === 'suihe'
+  const withSuiheMarkup = (value) => Math.round((Number(value) + (isSuihe ? SUIHE_CUSTOMER_MARKUP : 0)) * 1000) / 1000
+  const override = overrideVideo(id, resolution)
+  // An administrator-entered rate is already the customer-facing value.
+  if (override !== undefined && Number.isFinite(override)) return Math.round(Number(override) * 1000) / 1000
+  if (isSuihe) {
+    const cost = suiheCost(model, { duration: 5, billableDuration: 5, resolution, ratio: '16:9' }, { seconds: 5 })
+    return cost ? Math.round((cost.rmb / 5 + SUIHE_CUSTOMER_MARKUP) * 1000) / 1000 : null
   }
-  const rates = VIDEO_CREDIT_RATES[model] || { default: 0.5 }
+  if (isCostPlusVideo(id)) {
+    const policy = adminVideoPricing(); const tier = policy.metasoTiers[id];
+    const selected = resolution || (id === 'MiniMax-H3' ? '768P' : '720p');
+    if (tier) { const item = tier[String(selected).toLowerCase()]; if (!item) return null; const expenses=videoExpenses(policy);return withSuiheMarkup(Math.ceil((item.withoutVideo * policy.metasoRmbPerCredit + policy.markupPerSecond+expenses.rmbPerOutputSecond)/(1-expenses.paymentFeePercent/100)*10000)/10000) }
+    return withSuiheMarkup(costPlusVideoEstimate({model:id,parameters:{duration:5,resolution:selected,ratio:'16:9'}}).points/5)
+  }
+  const rates = VIDEO_CREDIT_RATES[id] || { default: 0.5 }
   const wanted = String(resolution || '').trim()
-  if (rates[wanted] !== undefined) return rates[wanted]
+  if (rates[wanted] !== undefined) return withSuiheMarkup(rates[wanted])
   // 档位键必须大小写无关：画布用 `4K`，发送给秘塔的是官方的 `4k`，
   // 查表落空会退回 default（1.6），而 4K 档成本是 5.98 元/秒，会直接亏。
   const lowered = wanted.toLowerCase()
   for (const [key, value] of Object.entries(rates)) {
-    if (key !== 'default' && key.toLowerCase() === lowered) return value
+    if (key !== 'default' && key.toLowerCase() === lowered) return withSuiheMarkup(value)
   }
-  return rates.default ?? 0.5
+  return withSuiheMarkup(rates.default ?? 0.5)
 }
 
 // 单次视频生成的积分：创建前按模型能力、分辨率、时长和输入媒体做安全预扣；
@@ -260,8 +287,9 @@ export function estimateVideoCredits({ model, provider, duration, billableDurati
     ? Math.max(0, Math.round((Number(videoSeconds) || 0) * 1000) / 1000)
     : 0
   const hasInputVideo = billedVideoSeconds > 0
+  const suiheMarkup = model?.provider === 'suihe' ? SUIHE_CUSTOMER_MARKUP : 0
   const outputPerSecond = hasInputVideo
-    ? (rules.outputCreditsPerSecondWithVideo?.[String(resolution || '').trim()] ?? rules.outputCreditsPerSecondWithVideo?.default ?? perSecond)
+    ? Number(rules.outputCreditsPerSecondWithVideo?.[String(resolution || '').trim()] ?? rules.outputCreditsPerSecondWithVideo?.default ?? perSecond) + suiheMarkup
     : perSecond
   const inputPerSecond = rules.billReferenceVideoSeconds
     ? (rules.inputCreditsPerSecond?.[String(resolution || '').trim()] ?? rules.inputCreditsPerSecond?.default ?? outputPerSecond)
@@ -312,6 +340,50 @@ function roundUpCredits(value) {
 
 export function estimateGenerationCost({ model, generation, referenceCount = 0, price }: Record<string, any> = {}) {
   if (model?.video) {
+    if (model.provider === 'suihe') {
+      const id = String(model.publicId || model.id || '')
+      const manualRate = generation?.submissionState !== undefined
+        ? generation.manualVideoCreditsPerSecond
+        : overrideVideo(id, generation?.resolution)
+      if (manualRate !== undefined && Number.isFinite(Number(manualRate)) && Number(manualRate) >= 0.01) {
+        const manual = costPlusVideoEstimate({
+          model,
+          parameters: { ...generation, manualVideoCreditsPerSecond: Number(manualRate) },
+          usage: generation?.usage,
+        })
+        if (manual) return manual
+      }
+      const requestedSeconds = Number(generation?.billableDuration ?? generation?.duration)
+      if (!(requestedSeconds > 0)) throw Error('穗禾视频计费时长无效')
+      const cost = suiheCost(model, generation, { seconds: requestedSeconds, usage: generation?.usage })
+      if (!cost) throw Error('该穗禾视频档位采购价尚未配置')
+      const outputSeconds = Number(cost.outputSeconds || requestedSeconds)
+      const markup = outputSeconds * SUIHE_CUSTOMER_MARKUP
+      const points = roundUpCredits(cost.rmb + markup)
+      return {
+        points,
+        count: 1,
+        duration: outputSeconds,
+        usageBased: Boolean(cost.usageBased),
+        policyVersion: `${POLICY_VERSION}:${cost.pricingSnapshot?.version || 'suihe'}`,
+        breakdown: {
+          durationSeconds: outputSeconds,
+          resolution: generation?.resolution || 'default',
+          perSecond: Math.round((cost.rmb / Math.max(outputSeconds, 1) + SUIHE_CUSTOMER_MARKUP) * 1000) / 1000,
+          outputPerSecond: Math.round((cost.rmb / Math.max(outputSeconds, 1) + SUIHE_CUSTOMER_MARKUP) * 1000) / 1000,
+          inputVideoSeconds: Number(generation?.videoSeconds) || 0,
+          inputVideoPerSecond: 0,
+          inputImageCredits: 0,
+          billingSource: cost.usageBased ? 'upstream_usage' : 'parameter_reserve',
+          usageTokens: cost.detail?.tokens || 0,
+          reportedTokens: cost.detail?.reportedTokens || 0,
+          usageRmbPerMillion: cost.detail?.rmbPerMillion || 0,
+          providerCostRmb: cost.rmb,
+          customerMarkupRmb: markup,
+          minimum: 0.1,
+        },
+      }
+    }
     const id = model.publicId || model.id
     // Reserved tasks keep their original pricing mode and manual rate. Only
     // a fresh quote reads current admin overrides.
@@ -321,7 +393,9 @@ export function estimateGenerationCost({ model, generation, referenceCount = 0, 
     const parameters = manualVideoCreditsPerSecond === undefined
       ? generation
       : { ...generation, manualVideoCreditsPerSecond }
-    const costPlus = costPlusVideoEstimate({ model, parameters, usage: generation?.usage })
+    // Suihe reuses a legacy model ID but has its own customer surcharge. Do
+    // not let the legacy provider's cost-plus branch bypass that surcharge.
+    const costPlus = model.provider === 'suihe' ? null : costPlusVideoEstimate({ model, parameters, usage: generation?.usage })
     if (costPlus) return costPlus
     const estimate = estimateVideoCredits({
       model: model.publicId || model.id,
@@ -362,7 +436,7 @@ export function estimateGenerationCost({ model, generation, referenceCount = 0, 
   const perImage = imageCreditsPerImage(model, { size: generation?.size, pricing: price, layer: Boolean(generation?.layerDecomposition) })
   // 5.0 Pro 的输入图费按次原价转嫁，不加价；后台手动定价时不另加。
   const modelKey = String(model?.publicId || model?.id || '')
-  const referenceCredits = PRICING_OVERRIDES[modelKey]?.image !== undefined ? 0 : arkReferenceRmb(ARK_IMAGE_RMB[modelKey], referenceCount)
+  const referenceCredits = model.provider==='suihe' || PRICING_OVERRIDES[modelKey]?.image !== undefined ? 0 : arkReferenceRmb(ARK_IMAGE_RMB[modelKey], referenceCount)
   return {
     // 图片积分保留两位小数：豆包是「原价 + 0.15」，四舍五入到 0.1 会变成 +0.2。
     points: Math.max(0.01, Math.round((count * perImage + referenceCredits) * 100) / 100),
@@ -457,6 +531,13 @@ function arkReferenceRmb(price, referenceCount) {
 
 /** 单次视频生成的上游成本（元）。返回 basis 说明这条成本是怎么来的。 */
 export function upstreamVideoCostRmb({ model, parameters = {}, usage, seconds }: Record<string, any> = {}) {
+  // Suihe is a procurement channel over the Volcengine models. Its quoted
+  // cost is the native Volcengine token tariff multiplied by the owner
+  // discount; keep this branch before the legacy provider-specific policies so
+  // completed Suihe tasks are retained in the same reconciliation ledger.
+  if (String(model?.provider || '') === 'suihe') {
+    return suiheCost(model, parameters, { usage, seconds })
+  }
   const costPlus = costPlusVideoCost({ model, parameters, usage, seconds })
   if (costPlus) { const { rawRmb, outputSeconds, markupPerSecond, usageBased, ...cost } = costPlus; return cost }
   const id = String(model?.publicId || model?.id || '')
@@ -538,6 +619,7 @@ export function upstreamImageCostRmb({ model, count = 1, parameters = {} }: Reco
   const provider = String(model?.provider || '')
   const policy = UPSTREAM_COST_POLICY
   const images = Math.max(1, Math.floor(Number(count) || 1))
+  if (provider==='suihe') return suiheCost(model,parameters,{count:images})
   const frozen=parameters.upstreamImagePricing
   if (frozen?.version === 'image-cost-snapshot-2026-10-08' && frozen.model === id && Number.isFinite(frozen.unitRmb)) {
     // 参考图费按次收，不随张数翻倍；旧快照没有 referenceRmb，按 0 算。
@@ -614,13 +696,13 @@ export function publicCostPolicy() {
         if (fallback !== undefined && Number.isFinite(fallback)) bySize.default = Math.round(fallback * 100) / 100
         return [id, { creditsPerImage: imageCreditsPerImage(model), creditsPerImageBySize: bySize }]
       }
-      const perSecond = Object.fromEntries((model.sizes || []).map((size) => [size.value, videoCreditsPerSecond(id, size.value)]))
-      if (isCostPlusVideo(id)) return [id, { durations:model.durations, sizes:(model.sizes||[]).map(x=>x.value), creditsPerSecond:perSecond, defaultCreditsPerSecond:videoCreditsPerSecond(id,''), inputPricing:{billReferenceVideoSeconds:true,...(id==='MiniMax-H3'?{freeReferenceImages:5,extraImageCredits:5.7*adminVideoPricing().metasoRmbPerCredit}:{} )}, billingMode:'upstream_usage', minimumCredits:0.01, rounding:'ceil-0.01', pricingMode:'cost_plus', settlesActualUsage:true }]
+      const perSecond = Object.fromEntries((model.sizes || []).map((size) => [size.value, videoCreditsPerSecond(model, size.value)]))
+      if (isCostPlusVideo(id)) return [id, { durations:model.durations, sizes:(model.sizes||[]).map(x=>x.value), creditsPerSecond:perSecond, defaultCreditsPerSecond:videoCreditsPerSecond(model,''), inputPricing:{billReferenceVideoSeconds:true,...(id==='MiniMax-H3'?{freeReferenceImages:5,extraImageCredits:5.7*adminVideoPricing().metasoRmbPerCredit}:{} )}, billingMode:'upstream_usage', minimumCredits:0.01, rounding:'ceil-0.01', pricingMode:'cost_plus', settlesActualUsage:true }]
       return [id, {
         durations: model.durations || [],
         sizes: (model.sizes || []).map((size) => size.value),
         creditsPerSecond: perSecond,
-        defaultCreditsPerSecond: videoCreditsPerSecond(id, ''),
+        defaultCreditsPerSecond: videoCreditsPerSecond(model, ''),
         inputPricing: VIDEO_INPUT_PRICING[id] || null,
         billingMode: VIDEO_TOKEN_PRICING[id] ? 'upstream_usage' : 'parameter_estimate',
         minimumCredits: 0.1,

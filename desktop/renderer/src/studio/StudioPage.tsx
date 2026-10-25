@@ -1,3 +1,4 @@
+import FeedbackNotice from '../components/FeedbackNotice'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { imageSources } from '../media'
 import { clearLibraryHandoff, readLibraryHandoff, LIBRARY_TEXT_LIMIT } from '../libraryHandoff'
@@ -71,6 +72,11 @@ export default function StudioPage() {
   const [config, setConfig] = useState<StudioConfig | null>(null)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  useEffect(() => {
+    if (!notice) return
+    const timer = window.setTimeout(() => setNotice(''), 4000)
+    return () => window.clearTimeout(timer)
+  }, [notice])
   const [workspaceReady, setWorkspaceReady] = useState(false)
   const [workspaceOwner, setWorkspaceOwner] = useState('')
   const workspaceOwnerRef = useRef('')
@@ -772,12 +778,12 @@ export default function StudioPage() {
           void goHome()
         }}><img src="/miaoimg-logo.png" alt="" width="28" height="28" />妙图</a>
         {!window.miaoDesktop && Boolean(userSession?.user?.email) && <button type="button" className="studio-top__history" aria-current={surface === 'history' ? 'page' : undefined} onClick={() => { void changeSurface('history') }}>{studioText('历史', lang)}</button>}
-        {statusMessage && <span role="status" title={statusMessage}>{statusMessage}</span>}
         <span className="studio-top__gap" />
         {Number.isFinite(balance) && Boolean(userSession?.user?.email) && <button type="button" aria-current={surface === 'account' ? 'page' : undefined} onClick={openAccountPage}>{studioPoint(balance, lang)}</button>}
         <button type="button" aria-current={surface === 'account' ? 'page' : undefined} onClick={openAccountSurface}>{window.miaoDesktop && !userSession?.user?.email ? studioText('登录 / 注册', lang) : studioText('账号', lang)}</button>
         {!(window.miaoDesktop && surface === 'look' && !settingsOpen) && <LanguageControl compact />}
       </header>
+      {statusMessage && <FeedbackNotice message={statusMessage} error={Boolean(error || libraryHandoffError)} onClose={() => { setError(''); setLibraryHandoffError(''); setNotice('') }} />}
       {surface === 'history' ? (
       <main className="studio-record asset-page">
         <h1>{studioText('资产', lang)}</h1>
@@ -819,7 +825,7 @@ export default function StudioPage() {
                   <span>{historyState.total ? studioRecords(historyState.total, lang) : ''}</span>
                 </div>
                 {(historyState.status === 'loading' || historyState.refreshing) && <p>{studioText('正在读取历史记录…', lang)}</p>}
-                {historyState.error && <p className="studio-banner studio-banner--error" role="alert">{historyState.error}</p>}
+                {historyState.error && <FeedbackNotice message={historyState.error} />}
                 {historyState.status === 'ready' && historyState.items.length === 0 && (
                   <PanelEmpty
                     icon={Sparkle}
@@ -878,7 +884,7 @@ export default function StudioPage() {
             <h3>{studioText('积分流水', lang)}</h3>
           </div>
           {ledgerState.status === 'loading' && <p>{studioText('正在读取额度流水…', lang)}</p>}
-          {ledgerState.status === 'error' && <p className="studio-banner studio-banner--error" role="alert">{ledgerState.error}</p>}
+          {ledgerState.status === 'error' && <FeedbackNotice message={ledgerState.error} />}
           {ledgerState.status === 'ready' && ledgerState.items.length === 0 && (
             <PanelEmpty
               icon={Receipt}

@@ -3,7 +3,7 @@
     <settings-section
       :title="translate('文本模型')"
       :description="translate('选择 Agent 和文本节点默认使用的模型：可以用妙图提供的模型，也可以用下面你自己接入的供应商。')">
-      <el-alert v-if="error" :title="error" type="error" :closable="false" showIcon />
+      <feedbackNotice v-if="error" :message="error"  />
       <el-form v-else labelPosition="top">
         <el-form-item :label="translate('模型')">
           <el-select
@@ -36,7 +36,7 @@
       <template #actions>
         <el-button text size="small" :icon="IconPlus" @click="openEditor(null)">{{ translate('添加供应商') }}</el-button>
       </template>
-      <el-alert v-if="providerError" :title="providerError" type="error" :closable="false" showIcon />
+      <feedbackNotice v-if="providerError" :message="providerError"  />
       <p v-else-if="!providers.length" class="localTextHint">{{ translate('还没有接入自己的供应商。') }}</p>
       <ul v-else class="ownProviders">
         <li v-for="provider in providers" :key="provider.id">
@@ -60,6 +60,7 @@
 </template>
 
 <script setup lang="ts">
+import feedbackNotice from '../../../components/feedbackNotice.vue';
 import { translate } from "@miaoimg/i18n/vue";
 import { computed, onMounted, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";

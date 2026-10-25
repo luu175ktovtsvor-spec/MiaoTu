@@ -1,5 +1,5 @@
 import { h } from "vue";
-import { ElNotification } from "element-plus";
+import { ElMessage } from "element-plus";
 import nodeError from "./components/nodeError.vue";
 import { userFacingError, explainUserError } from "../../../../../../server/user-errors.ts";
 
@@ -22,11 +22,12 @@ export function showNodeError(error: unknown, title: string) {
   const initial = toExplanation(supplied);
   const show = (explanation: ReturnType<typeof toExplanation>) => {
     const controller = new AbortController();
-    return ElNotification({
-      title,
-      type: "error",
-      duration: 5000,
-      customClass: "nodeErrorNotification",
+    return ElMessage({
+      type: "info",
+      duration: 0,
+      offset: 64,
+      showClose: true,
+      customClass: "nodeErrorMessage",
       message: h(nodeError, { message: explanation.summary || message || title, explanation, signal: controller.signal }),
       onClose: () => controller.abort(),
     });

@@ -1,4 +1,5 @@
 <template>
+  <feedbackNotice :message="error || runtimeError || (!loading && !component ? translate('远程节点未加载，请确认插件已安装并启用') : '')" />
   <nodeSkeleton v-if="loading" loading :label="node.data.label || node.type" :handles="node.data.handles" :outputs="node.data.outputs" />
   <Suspense v-else-if="component && !error && !runtimeError" @pending="componentMounted = false" @resolve="componentMounted = true">
     <component :is="component" v-bind="$attrs" :node="node" />
@@ -18,6 +19,7 @@
 </template>
 
 <script setup lang="ts">
+import feedbackNotice from './feedbackNotice.vue';
 import { inject, onErrorCaptured, onScopeDispose, ref, watch, Suspense, type Component } from "vue";
 import { useNode, useVueFlow } from "@vue-flow/core";
 import { ElButton, ElCard } from "element-plus";

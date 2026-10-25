@@ -11,7 +11,7 @@
       <p>{{ translate('Agent 按任务选择已启用的技能，也可在对话框输入 / 手动指定。') }}</p>
       <p v-if="isDesktop">{{ translate('开启本机操作后，还会读取你个人目录和当前工作文件夹里 .agents/skills 下的技能。') }}</p>
     </div>
-    <p v-if="error" role="alert" class="skillError">{{ error }}</p>
+    <feedbackNotice :message="error" @close="error = ''" />
     <div v-if="filtered.length" class="skillGrid">
       <article v-for="skill in filtered" :key="skill.id" class="skillCard" :class="{ isOn: skill.enabled }">
         <header>
@@ -27,6 +27,7 @@
   </div>
 </template>
 <script setup lang="ts">
+import feedbackNotice from '../../components/feedbackNotice.vue';
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { locale, translate } from '@miaoimg/i18n/vue';
 import { IconFolderCode, IconSearch, IconSparkles, IconStack2 } from '@tabler/icons-vue';

@@ -53,7 +53,7 @@
         <template v-for="control in controls" :key="control.key">
           <div class="sectionLabel">{{ translate(control.label) }}</div>
           <el-switch v-if="control.type === 'boolean'" :model-value="Boolean(parameters[control.key])" :disabled="disabled" :aria-label="translate(control.label)" @update:model-value="parameters = { ...parameters, [control.key]: $event }" />
-          <el-select v-else-if="control.type === 'select'" :model-value="String(parameters[control.key] || '')" :disabled="disabled" :aria-label="translate(control.label)" @update:model-value="parameters = { ...parameters, [control.key]: $event }">
+          <el-select v-else-if="control.type === 'select'" :model-value="String(parameters[control.key] || control.default || '')" :disabled="disabled" :aria-label="translate(control.label)" @update:model-value="parameters = { ...parameters, [control.key]: $event }">
             <el-option v-for="option in control.options || []" :key="option" :value="option" :label="option" />
           </el-select>
         </template>

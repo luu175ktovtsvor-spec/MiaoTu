@@ -27,7 +27,7 @@ export default function MiaoSettingsMount({ owner = '', csrf = '', project = DEF
           const pack = await loadElementLocale(value)
           if (locale.value === value) elementLocale.value = pack
         }, { immediate: true })
-        return () => h(ElConfigProvider, { locale: elementLocale.value }, () => h(SettingsDialog, {
+        return () => h(ElConfigProvider, { locale: elementLocale.value, message: { offset: 64 } }, () => h(SettingsDialog, {
           modelValue: true,
           embedded,
           'onUpdate:modelValue': (value: boolean) => { if (!value) onClose?.() },

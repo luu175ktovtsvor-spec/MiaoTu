@@ -1,3 +1,4 @@
+import FeedbackNotice from '../components/FeedbackNotice'
 import { useEffect, useRef, useState } from 'react'
 import { useLang } from '../i18n'
 import { landingEntry } from '../siteOrigins'
@@ -277,7 +278,7 @@ export default function StudioLogin({ onSuccess, registrationEnabled = true, goo
           {linuxdoLogin?.enabled && <a className="studio-login__linuxdo" href="./api/imagine/oauth/linuxdo/start">{t('studio.linuxdo.submit')}</a>}
           {oidcLogin?.enabled && <a className="studio-login__oidc" href="./api/imagine/oauth/oidc/start">{lang === 'zh' ? `使用${oidcProviderName}登录` : t('studio.oidc.submit', { provider: oidcProviderName })}</a>}
         </>}
-        {error && <p role="alert">{error}</p>}
+        {error && <FeedbackNotice message={error} onClose={() => setError('')} />}
         <nav className="studio-login__links" aria-label={t('studio.leave')}>
           <a href="/?landing=1">{t('studio.home')}</a>
           <a href="/?library=1">{t('studio.library')}</a>

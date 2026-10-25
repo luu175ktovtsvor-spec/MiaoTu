@@ -280,6 +280,7 @@ export class LocalMediaHost {
     const position = { x: target.x, y: target.y, button: 'left', clickCount: 1 }
     // sendInputEvent requires a focused BrowserWindow. CDP input targets this
     // sandboxed page directly, so background generation never steals focus.
+    await this.input(entry, context, signal, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x: target.x, y: target.y })
     await this.input(entry, context, signal, 'Input.dispatchMouseEvent', { type: 'mousePressed', ...position })
     await this.input(entry, context, signal, 'Input.dispatchMouseEvent', { type: 'mouseReleased', ...position })
     this.assert(entry, context, signal)
@@ -288,6 +289,9 @@ export class LocalMediaHost {
     this.assert(entry, context, signal)
     const debuggerApi = entry.window!.webContents.debugger
     if (!debuggerApi.isAttached()) debuggerApi.attach('1.3')
+    // Chromium may paint an unfocused platform window while dropping its
+    // input. Emulate focus for this page without activating a native window.
+    await debuggerApi.sendCommand('Emulation.setFocusEmulationEnabled', { enabled: true })
     await debuggerApi.sendCommand(method, parameters)
     this.assert(entry, context, signal)
   }
@@ -299,6 +303,7 @@ export class LocalMediaHost {
   private async ready(entry: Entry, context: LocalMediaContext, action: string, accept: (value: any) => boolean, signal: AbortSignal, stage = '页面准备', payload: Record<string, any> = {}) {
     for (let attempt = 0; attempt < (action === 'uploads' ? 720 : 120); attempt++) {
       const value = await this.run(entry, context, signal, action, payload)
+      if (action === 'snapshot' && value.subscriptionRequired) throw new Error(value.dialog)
       if (accept(value)) return value
       await delay(250, undefined, { signal })
     }
@@ -445,7 +450,9 @@ export class LocalMediaHost {
           ...(selection && 'upstreamKey' in selection && typeof selection.upstreamKey === 'string' ? { modeKey: selection.upstreamKey } : {}),
         }
         if (kind === 'image' || kind === 'video') observation.expectedRoute = {
-          ...(kind === 'video' ? { abilityType: 17 } : this.site.id === 'doubao' ? { abilityType: 3 } : {}),
+          // The image shortcut/outer creation envelope is 3. The nested
+          // request capability is 1 for images and 17 for videos.
+          abilityType: kind === 'video' ? 17 : 1,
           ...(selection && 'upstreamKey' in selection ? { modelKey: selection.upstreamKey } : {}),
           ...(kind === 'image' && body.ratio ? { ratio: body.ratio } : {}),
           ...(kind === 'video' ? { duration: body.duration, ratio: body.ratio, resolution: body.resolution, ...(this.site.id === 'doubao' ? { implicitResolution: '720p' } : {}) } : {}),
@@ -475,8 +482,17 @@ export class LocalMediaHost {
             }
             checkpoint({ phase: 'preparing', kind, watermarkPreference })
           }
-          const capability = await this.ready(entry, context, 'capability', value => !!value, signal, '生成入口加载', { kind })
-          if (!capability?.selected) await this.click(entry, context, signal, capability)
+          // The home composer can paint before its shortcut handlers finish
+          // hydrating. Re-read the mode before retrying this pre-send action.
+          for (let attempt = 0; attempt < 3; attempt++) {
+            const capability = await this.ready(entry, context, 'capability', value => !!value, signal, '生成入口加载', { kind })
+            if (capability.selected) break
+            await this.click(entry, context, signal, capability)
+            await delay(750, undefined, { signal })
+            const page = await this.run(entry, context, signal, 'snapshot')
+            if (page.subscriptionRequired) throw Object.assign(new Error(page.dialog), { status: 422 })
+            if (page.kind === kind) break
+          }
           await this.ready(entry, context, 'snapshot', value => (value.kind === kind || this.site.id === 'dola' && kind !== 'text' && !value.kind) && value.hasEditor && !value.dialog, signal, '生成模式切换')
           if (selection) {
             const control = await this.ready(entry, context, 'modelOpen', value => !!value, signal, '模型控件加载', modelChoice)
@@ -494,10 +510,10 @@ export class LocalMediaHost {
               if (!control.selected) await this.click(entry, context, signal, control)
               await this.click(entry, context, signal, await this.ready(entry, context, 'parameterOption', value => !!value, signal, '比例选项加载', { value: body.ratio === 'auto' ? '自动' : body.ratio }))
             } else {
-              const target = await this.ready(entry, context, 'dolaRatioOpen', value => !!value, signal, '比例控件加载', { ratio: body.ratio })
+              const target = await this.ready(entry, context, 'imageRatioOpen', value => !!value, signal, '比例控件加载', { ratio: body.ratio })
               if (!target.selected) {
                 await this.click(entry, context, signal, target)
-                await this.click(entry, context, signal, await this.ready(entry, context, 'dolaParameterSelect', value => !!value, signal, '比例选项加载', { value: body.ratio }))
+                await this.click(entry, context, signal, await this.ready(entry, context, 'imageRatioSelect', value => !!value, signal, '比例选项加载', { value: body.ratio }))
               }
             }
             await this.ready(entry, context, 'parameters', value => value?.ratio === body.ratio, signal, '比例回读')
