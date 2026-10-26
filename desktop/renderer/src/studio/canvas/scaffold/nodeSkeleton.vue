@@ -427,22 +427,17 @@ function syncDesktopEditor() {
   const element = bottomSlotElement.value;
   if (!element || mobileSheet.value || documentTarget.value || !canvasUiActive.value) {
     for (const property of ["--editor-max-width", "--editor-max-height"]) element?.style.removeProperty(property);
-    // 平移时每个节点都会走到这里；只有占着工具栏的节点才需要去查 DOM。
-    if (holdingToolbar) toolbarYield(document.querySelector<HTMLElement>(".vue-flow__panel.bottom.center:has(.canvasControls)"), false);
     return;
   }
   const zoom = viewport.value.zoom || 1;
   // Size the editor contents, but never change its node-relative position.
   element.style.setProperty("--editor-max-width", `${Math.max(1, window.innerWidth - 24) / zoom}px`);
-  // Keep the composer above the floating canvas toolbar. A node can be close
-  // enough to the bottom edge that its natural card otherwise becomes an
-  // unreachable layer underneath the toolbar.
+  // Reserve room for the fixed toolbar without changing the editor position.
   const toolbar = document.querySelector<HTMLElement>(".vue-flow__panel.bottom.center:has(.canvasControls)");
   const toolbarTop = toolbar?.getBoundingClientRect().top;
   const safeBottom = Math.min(window.innerHeight - 12, Number.isFinite(toolbarTop) ? toolbarTop! - 12 : window.innerHeight - 12);
-  // A composer squeezed to a few pixels hides the prompt entirely. Keep a
-  // usable minimum and let the toolbar step aside while it would cover it;
-  // the editor itself stays anchored to the node.
+  // Keep a usable minimum; the editor stays anchored to the node and the
+  // fixed toolbar remains available to pan or zoom an off-screen card.
   const top = element.getBoundingClientRect().top;
   const naturalHeight = element.scrollHeight * zoom;
   // The floor scales with zoom so the footer plus a few prompt lines survive
@@ -451,22 +446,6 @@ function syncDesktopEditor() {
   const minimumHeight = Math.min(naturalHeight, Math.max(220, 170 * zoom));
   const availableHeight = Math.max(minimumHeight, safeBottom - top);
   element.style.setProperty("--editor-max-height", `${availableHeight / zoom}px`);
-  // Only the selected node's editor, starting above the toolbar and actually
-  // crossing it, may hide the toolbar. Off-screen or idle editors never do.
-  const toolbarRect = toolbar?.getBoundingClientRect();
-  const editorRect = element.getBoundingClientRect();
-  const covering = Boolean(node.selected && toolbarRect)
-    && top < safeBottom
-    && top + Math.min(naturalHeight, availableHeight) > safeBottom
-    && editorRect.left < toolbarRect!.right && editorRect.right > toolbarRect!.left;
-  toolbarYield(toolbar, covering);
-}
-let holdingToolbar = false;
-function toolbarYield(toolbar: HTMLElement | null, yieldIt: boolean) {
-  holdingToolbar = yieldIt && !!toolbar;
-  if (!toolbar) return;
-  if (yieldIt) toolbar.dataset.yieldTo = nodeId;
-  else if (toolbar.dataset.yieldTo === nodeId) delete toolbar.dataset.yieldTo;
 }
 function syncFloatingEditors() {
   syncMobileToolbar();
@@ -518,7 +497,6 @@ onScopeDispose(() => {
   workspaceObserver?.disconnect();
   if (editorSyncFrame !== undefined) cancelAnimationFrame(editorSyncFrame);
   window.removeEventListener("resize", syncFloatingEditors);
-  toolbarYield(document.querySelector<HTMLElement>(".vue-flow__panel.bottom.center:has(.canvasControls)"), false);
 });
 const mobileQuery = typeof window === "undefined" ? undefined : window.matchMedia("(max-width: 700px)");
 function syncMobileSheet() { mobileSheet.value = mobileQuery?.matches === true; }
