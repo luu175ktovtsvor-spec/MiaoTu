@@ -474,7 +474,7 @@ let editorSyncFrame: number | undefined;
 function scheduleFloatingEditorSync() {
   if (editorSyncFrame !== undefined) return;
   // 没有展开输入框的节点平移时无事可做。
-  if (!bottomSlotElement.value && !mobileSheet.value && !holdingToolbar) return;
+  if (!bottomSlotElement.value && !mobileSheet.value) return;
   editorSyncFrame = window.requestAnimationFrame(() => {
     editorSyncFrame = undefined;
     void nextTick(syncFloatingEditors);
