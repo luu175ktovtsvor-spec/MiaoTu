@@ -1,6 +1,7 @@
 import { costPlusVideoCost, costPlusVideoEstimate, isCostPlusVideo, adminVideoPricing, videoExpenses } from './video-pricing.ts'
 import { modelCatalog } from './image-models.ts'
-import { suiheCost } from './suihe-pricing.ts'
+import { suiheCost, SUIHE_CUSTOMER_MARKUP } from './suihe-pricing.ts'
+export { SUIHE_CUSTOMER_MARKUP } from './suihe-pricing.ts'
 
 const POLICY_VERSION = '2026-10-08.2'
 
@@ -14,7 +15,6 @@ export const IMAGE_CREDITS = 0.5
 // Customer-facing surcharge for the current Suihe procurement channel. The
 // legacy provider prices remain unchanged; this is applied only while the
 // current model snapshot has provider === 'suihe'.
-export const SUIHE_CUSTOMER_MARKUP = 0.5
 
 // 图片积分口径（用户 2026-10-06 定）：GPT 图片 0.2、Grok 图片 0.1、豆包 = 官方原价 + 0.15。
 // 成本参考：云枢实测 GPT Image 2 ≈ $0.180/张、2.5 ≈ $0.201/张；豆包 Seedream
@@ -71,16 +71,17 @@ function overrideVideo(id, resolution) {
 export function imageCreditsPerImage(model, { size, pricing, layer = false }: Record<string, any> = {}) {
   const id = String(model?.publicId || model?.id || '')
   const isSuihe = model?.provider === 'suihe'
-  const withSuiheMarkup = (value) => Math.round((Number(value) + (isSuihe ? SUIHE_CUSTOMER_MARKUP : 0)) * 100) / 100
+  const precision = isSuihe ? 10000 : 100
+  const withSuiheMarkup = (value) => Math.round((Number(value) + (isSuihe ? SUIHE_CUSTOMER_MARKUP : 0)) * precision) / precision
   const policyPrice = (size ? pricing?.creditsPerImageBySize?.[size] : undefined)
     ?? pricing?.creditsPerImageBySize?.default
     ?? (!model?.customSize ? pricing?.creditsPerImage : undefined)
   if (policyPrice !== undefined && Number.isFinite(Number(policyPrice)) && Number(policyPrice) > 0) {
     // An administrator-entered price is already the customer-facing value.
-    return Math.round(Number(policyPrice) * 100) / 100
+    return Math.round(Number(policyPrice) * precision) / precision
   }
   const override = overrideImage(id, size)
-  if (override !== undefined && Number.isFinite(override)) return Math.round(Number(override) * 100) / 100
+  if (override !== undefined && Number.isFinite(override)) return Math.round(Number(override) * precision) / precision
   const fixed = IMAGE_CREDIT_RULES[id]
   if (fixed !== undefined) return withSuiheMarkup(fixed)
   if (isSuihe) {
@@ -358,8 +359,12 @@ export function estimateGenerationCost({ model, generation, referenceCount = 0, 
       const cost = suiheCost(model, generation, { seconds: requestedSeconds, usage: generation?.usage })
       if (!cost) throw Error('该穗禾视频档位采购价尚未配置')
       const outputSeconds = Number(cost.outputSeconds || requestedSeconds)
-      const markup = outputSeconds * SUIHE_CUSTOMER_MARKUP
-      const points = roundUpCredits(cost.rmb + markup)
+      // Accepted tasks keep the surcharge frozen at submission. Older tasks
+      // without this field used RMB 0.5 and must not be repriced retroactively.
+      const markupPerUnit = generation?.suiheCost?.customerMarkupRmbPerUnit
+        ?? (generation?.submissionState !== undefined ? 0.5 : SUIHE_CUSTOMER_MARKUP)
+      const markup = Math.round(outputSeconds * markupPerUnit * 10000) / 10000
+      const points = Math.max(0.0001, Math.round((cost.rmb + markup) * 10000) / 10000)
       return {
         points,
         count: 1,
@@ -369,8 +374,8 @@ export function estimateGenerationCost({ model, generation, referenceCount = 0, 
         breakdown: {
           durationSeconds: outputSeconds,
           resolution: generation?.resolution || 'default',
-          perSecond: Math.round((cost.rmb / Math.max(outputSeconds, 1) + SUIHE_CUSTOMER_MARKUP) * 1000) / 1000,
-          outputPerSecond: Math.round((cost.rmb / Math.max(outputSeconds, 1) + SUIHE_CUSTOMER_MARKUP) * 1000) / 1000,
+          perSecond: Math.round((cost.rmb / Math.max(outputSeconds, 1) + markupPerUnit) * 10000) / 10000,
+          outputPerSecond: Math.round((cost.rmb / Math.max(outputSeconds, 1) + markupPerUnit) * 10000) / 10000,
           inputVideoSeconds: Number(generation?.videoSeconds) || 0,
           inputVideoPerSecond: 0,
           inputImageCredits: 0,
@@ -380,7 +385,7 @@ export function estimateGenerationCost({ model, generation, referenceCount = 0, 
           usageRmbPerMillion: cost.detail?.rmbPerMillion || 0,
           providerCostRmb: cost.rmb,
           customerMarkupRmb: markup,
-          minimum: 0.1,
+          minimum: 0.0001,
         },
       }
     }
@@ -439,7 +444,7 @@ export function estimateGenerationCost({ model, generation, referenceCount = 0, 
   const referenceCredits = model.provider==='suihe' || PRICING_OVERRIDES[modelKey]?.image !== undefined ? 0 : arkReferenceRmb(ARK_IMAGE_RMB[modelKey], referenceCount)
   return {
     // 图片积分保留两位小数：豆包是「原价 + 0.15」，四舍五入到 0.1 会变成 +0.2。
-    points: Math.max(0.01, Math.round((count * perImage + referenceCredits) * 100) / 100),
+    points: Math.max(0.01, Math.round((count * perImage + referenceCredits) * (model.provider === 'suihe' ? 10000 : 100)) / (model.provider === 'suihe' ? 10000 : 100)),
     count,
     breakdown: {
       perImage,

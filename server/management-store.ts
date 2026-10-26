@@ -119,11 +119,11 @@ export function failure(message, status = 422) { return Object.assign(new Error(
 const integer = (value, min = 0, max = 1000000) => { const n = Number(value); if (!Number.isSafeInteger(n) || n < min || n > max) throw failure('积分必须是有效整数'); return n }
 // 积分保留两位小数（豆包图片是「官方原价 + 0.15」，一位小数会把加价变成 0.2）；
 // 视频先按参数预扣，成功后按上游 usage 对账。
-const credits = (value, min = 0, max = 1000000) => {
+const credits = (value, min = 0, max = 1000000, precision = 100) => {
   const n = Number(value)
   if (!Number.isFinite(n) || n < min || n > max) throw failure('积分必须是有效数字')
   // 保留两位小数：豆包图片是「官方原价 + 0.15」，一位小数会把加价变成 0.2。
-  return Math.round(n * 100) / 100
+  return Math.round(n * precision) / precision
 }
 const parse = value => JSON.parse(value)
 
@@ -1460,7 +1460,7 @@ export class ManagementStore {
       const allowed = this.user(userId)?.models
       if (Array.isArray(allowed) && allowed.length && !allowed.includes(publicId)) throw failure('这个模型未对你的账号开放', 403)
       if (![GENERATION_STATES.QUEUED, GENERATION_STATES.RUNNING].includes(status)) throw failure('生成状态无效',422)
-      points = credits(points)
+      points = credits(points, 0, 1000000, model.provider === 'suihe' ? 10000 : 100)
       // This is a new reservation; never reset the marker on a duplicate above.
       // Preparation can yield before the worker starts the actual transport.
       parameters = { ...parameters, submissionState: 'not_started' }
@@ -1878,8 +1878,9 @@ export class ManagementStore {
       const reserved = Number(g.reserved_points || g.points || 0)
       // 积分保留一位小数：按实际张数结算，少生成才退差，不做整数进位。
       // 图片单价保留两位小数（豆包是原价 + 0.15），少生成时按张数比例退还，不向 0.1 取整。
-      const charged = savedArtifacts.length >= count ? reserved : Math.max(0.01, Math.round(reserved * savedArtifacts.length / count * 100) / 100)
-      const refund = Math.round((reserved - charged) * 100) / 100
+      const precision = g.provider === 'suihe' ? 10000 : 100
+      const charged = savedArtifacts.length >= count ? reserved : Math.max(0.01, Math.round(reserved * savedArtifacts.length / count * precision) / precision)
+      const refund = Math.round((reserved - charged) * precision) / precision
       if (g.user_id && refund > 0) {
         this.run('UPDATE users SET points=ROUND(points+?,4) WHERE id=?',refund,g.user_id)
         this.ledger(g.user_id,refund,'未生成张数退还',id)
@@ -1932,7 +1933,7 @@ export class ManagementStore {
       // 不在任务已经成功后再让用户余额出现负数；下一次预扣仍会按安全参数上限执行。
       const canSettleManualDuration = usageCost && parameters.manualVideoCreditsPerSecond != null && Number(result.duration) > 0
       const charged = usageCost?.usageBased || canSettleManualDuration ? Math.min(reserved, Number(usageCost.points)) : reserved
-      const refund = Math.round((reserved - charged) * 100) / 100
+      const refund = Math.round((reserved - charged) * (model?.provider === 'suihe' ? 10000 : 100)) / (model?.provider === 'suihe' ? 10000 : 100)
       if (g.user_id && refund > 0) {
         this.run('UPDATE users SET points=ROUND(points+?,4) WHERE id=?', refund, g.user_id)
         this.ledger(g.user_id, refund, '视频实际用量对账退还', id)

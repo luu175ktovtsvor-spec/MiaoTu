@@ -426,7 +426,7 @@ onScopeDispose(() => {
 
 function formatCredits(value: unknown) {
   const number = Number(value);
-  return Number.isFinite(number) && number > 0 ? number.toFixed(2).replace(/\.?0+$/, "") : "—";
+  return Number.isFinite(number) && number > 0 ? number.toFixed(4).replace(/\.?0+$/, "") : "—";
 }
 
 function scheduleVideoEstimate() {

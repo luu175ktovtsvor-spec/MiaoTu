@@ -3,6 +3,8 @@
 import { suiheModelId } from './suihe-catalog.ts'
 import { SEEDANCE25_PRICING } from './seedance25.ts'
 export const SUIHE_COST_VERSION = 'suihe-native-cost-2026-10-25'
+// Owner confirmed 0.5 fen = RMB 0.005 per output second / image.
+export const SUIHE_CUSTOMER_MARKUP = 0.005
 export const SUIHE_IMAGE_RMB = {
   'seedream-4.0': {'1k':0.40,'2k':0.40},
   'seedream-4.5': {'2k':0.45},
@@ -29,7 +31,7 @@ const discounts = {'seedance-2.5':0.81,'seedance-2.0':0.81,'seedance-2.0-fast':0
 export function suihePricingSnapshot(model, parameters: Record<string,any> = {}) {
   const id = suiheModelId(model)
   const tier = String(parameters.resolution || parameters.size || '').toLowerCase()
-  return {version:SUIHE_COST_VERSION,model:id,tier,creativeMode:String(parameters.creativeMode || 'super_economy'),
+  return {version:SUIHE_COST_VERSION,model:id,tier,creativeMode:String(parameters.creativeMode || 'super_economy'),customerMarkupRmbPerUnit:SUIHE_CUSTOMER_MARKUP,
     ...(model.video ? {discount:discounts[id],rates:rates[id]?.[tier],pixels:(id==='seedance-2.5'?SEEDANCE25_PRICING.pixels:pixels)[tier],fps:24,minimumInputFraction:2/3}
       : {unitRmb:SUIHE_IMAGE_RMB[id]?.[tier]}),source:'owner_procurement_2026-10-25_and_volcengine_lark_formula'}
 }

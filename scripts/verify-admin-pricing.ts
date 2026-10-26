@@ -8,6 +8,8 @@ import {
 } from "../server/image-models.ts";
 import { DEFAULT_TEXT_PRICES } from "../server/text-pricing.ts";
 import { ownTextModelIds } from "../server/text-model-registry.ts";
+import { estimateGenerationCost } from "../server/generation-cost.ts";
+import { suihePricingSnapshot } from "../server/suihe-pricing.ts";
 import {
   buildMediaPriceSections,
   buildPricingDraft,
@@ -121,3 +123,28 @@ console.log(
   `Admin pricing verification passed: ${sections.length} image/video rows, ` +
     `${ownTextModelIds().length} text rows, ${video.label} manual override ${tier}=1.23`,
 );
+
+// A half-fen surcharge must survive quotation, reservation and refunds. Run
+// against an isolated in-memory ledger without submitting an upstream task.
+const billing = new ManagementStore(":memory:");
+const { user } = billing.createUser({ name: "pricing-check", email: "pricing-check@example.invalid", password: "isolated-pricing-check", points: 10 }, "verification");
+const session = { role: "user", userId: user.id };
+const image = modelById("doubao-seedream-4-0");
+const imageQuote = estimateGenerationCost({ model: image, generation: { size: "2K", count: 1 } });
+assert.equal(imageQuote.points, 0.405);
+const imageReservation = billing.reserve({ session, model: image, points: imageQuote.points, prompt: "pricing only", parameters: { size: "2K", count: 1 }, status: "queued" });
+assert.equal(billing.user(user.id).points, 9.595);
+billing.cancel(imageReservation.requestId, session);
+assert.equal(billing.user(user.id).points, 10);
+
+const suiheVideo = modelById("seedance-2.0");
+const parameters = { duration: 4, resolution: "480p", ratio: "16:9", suiheCost: suihePricingSnapshot(suiheVideo, { resolution: "480p" }) };
+const quote = estimateGenerationCost({ model: suiheVideo, generation: parameters });
+assert.equal(quote.breakdown.customerMarkupRmb, 0.02);
+const reservation = billing.reserve({ session, model: suiheVideo, points: quote.points, prompt: "pricing only", parameters, status: "running" });
+billing.completeVideo(reservation.id, { id: "isolated-result", url: "https://example.invalid/never-fetched.mp4", duration: 4, usage: { completion_tokens: 10000 } });
+assert.equal(billing.get("SELECT charged_points FROM generations WHERE id=?", reservation.id).charged_points, 0.3926);
+assert.equal(billing.user(user.id).points, 9.6074);
+assert.equal(Math.round(billing.get("SELECT SUM(delta) AS balance FROM ledger WHERE user_id=?", user.id).balance * 10000) / 10000, 9.6074);
+assert.equal(estimateGenerationCost({ model: suiheVideo, generation: { ...parameters, submissionState: "started", suiheCost: { ...parameters.suiheCost, customerMarkupRmbPerUnit: 0.5 } } }).breakdown.customerMarkupRmb, 2);
+console.log("Suihe half-fen price, exact debit/refund and frozen historical surcharge verified; no upstream call.");
