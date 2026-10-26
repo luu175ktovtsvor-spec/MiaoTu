@@ -656,15 +656,16 @@ async function runQueuedJob(job, originalReceipt?: StoredImageReceipt) {
   const heartbeat = setInterval(() => { if (!management.heartbeat(job.id, workerId)) controller.abort() }, 5000)
   activeControllers.set(job.request_id, controller)
   try {
+    // Queue claims contain decoded parameters; receipt recovery returns a DB row.
+    const parameters = typeof job.parameters === 'string' ? JSON.parse(job.parameters || '{}') : job.parameters || {}
     if (originalReceipt) {
-      const parameters = JSON.parse(job.parameters || '{}')
       // Delivery uses the admitted snapshot, even if its model/account has
       // since been disabled. No references, keys or new reservation are read.
       const request = { model: modelForGeneration(job.model,parameters,job.provider) || { id: job.model, publicId: job.model, provider: job.provider || '' },
         generation: parameters, outputDirectory: parameters.outputDirectory || '', desktopDelivery: parameters.desktopDelivery,
         workspaceProject: parameters.workspaceProject || DEFAULT_PROJECT_ID, references: [] }
       await executeGeneration(job.id, request, process.env, controller.signal, originalReceipt)
-    } else if (modelForGeneration(job.model, JSON.parse(job.parameters || '{}'), job.provider)?.video) {
+    } else if (modelForGeneration(job.model, parameters, job.provider)?.video) {
       await submitQueuedVideo(job, { management, signal: controller.signal, materializeReference })
     } else {
       await executeGeneration(job.id, requestFromJob(job), process.env, controller.signal)
