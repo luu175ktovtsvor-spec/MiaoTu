@@ -28,7 +28,14 @@ export class CloudGateway {
 
   constructor({ directory, getSafeStorage, credentialProtection, origin = 'https://miaoimg.cn', requestFetch = fetch, onSessionChange = () => {}, onSessionRetiring = () => {}, changeSession = async commit => commit() }: Record<string, any>) {
     const url = new URL(origin)
-    if (url.protocol !== 'https:' || url.username || url.password) throw new Error('服务地址不安全，已阻止连接')
+    // The packaged app remains HTTPS-only. A loopback HTTP origin is available
+    // only for an explicitly opted-in local development tunnel, so the
+    // developer can exercise a candidate backend without changing public DNS
+    // or putting an insecure origin in a release build.
+    const localDevHttp = process.env.MIAO_ALLOW_INSECURE_CLOUD_ORIGIN === '1'
+      && url.protocol === 'http:'
+      && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname.toLowerCase())
+    if ((url.protocol !== 'https:' && !localDevHttp) || url.username || url.password) throw new Error('服务地址不安全，已阻止连接')
     this.origin = url.origin
     this.fetch = requestFetch; this.onSessionChange = onSessionChange
     this.changeSession = changeSession
