@@ -10,7 +10,9 @@ const MB = 1024 * 1024
 const COMMON_IMAGE_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
 const ARK_IMAGE_MIMES = [...COMMON_IMAGE_MIMES, 'image/bmp', 'image/tiff', 'image/heic', 'image/heif']
 
-export function referenceInputPolicy(model, kind) {
+export function referenceInputPolicy(model, kind, mode = '') {
+  const override = model?.parameterRules?.referenceInputsByMode?.[mode]?.[kind]
+  if (override) return { ...referenceInputPolicy(model, kind), ...override }
   if (!model?.video && kind === 'image') {
     if (model?.provider === 'suihe') return { maxBytes: 30 * MB, mimes: COMMON_IMAGE_MIMES }
     if (model?.provider === 'ark') return {
@@ -70,8 +72,8 @@ function invalid(message) {
   throw Object.assign(new Error(message), { status: 422 })
 }
 
-export function assertReferenceInput(model, kind, metadata) {
-  const limit = referenceInputPolicy(model, kind)
+export function assertReferenceInput(model, kind, metadata, mode = '') {
+  const limit = referenceInputPolicy(model, kind, mode)
   const title = kind === 'image' ? '参考图片' : kind === 'video' ? '参考视频' : '参考音频'
   if (!metadata || !Number.isFinite(metadata.sizeBytes) || metadata.sizeBytes <= 0) invalid(title + '内容为空或无法读取')
   if (limit.maxBytes && (limit.exclusiveMaxBytes ? metadata.sizeBytes >= limit.maxBytes : metadata.sizeBytes > limit.maxBytes)) {
@@ -80,7 +82,9 @@ export function assertReferenceInput(model, kind, metadata) {
   const mime = String(metadata.mime || '').split(';')[0].trim().toLowerCase().replace('image/jpg', 'image/jpeg')
   if (limit.mimes && !limit.mimes.includes(mime)) invalid('当前模型不支持这个' + title + '格式，请转换后重新上传')
   if ((limit.minDuration && metadata.duration < limit.minDuration) || (limit.maxDuration && metadata.duration > limit.maxDuration)) {
-    invalid(title + '时长需为 ' + limit.minDuration + '–' + limit.maxDuration + ' 秒；原素材未被截短')
+    const range = limit.minDuration && limit.maxDuration ? `需为 ${limit.minDuration}–${limit.maxDuration}`
+      : limit.maxDuration ? `不能超过 ${limit.maxDuration}` : `不能少于 ${limit.minDuration}`
+    invalid(title + '时长' + range + ' 秒；原素材未被截短')
   }
   const width = Number(metadata.width)
   const height = Number(metadata.height)

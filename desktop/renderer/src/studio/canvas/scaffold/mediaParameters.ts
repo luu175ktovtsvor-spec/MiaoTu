@@ -8,6 +8,7 @@ export type ParameterRules = {
   ratiosByMode?: Record<string, string[]>
   durationByMode?: Record<string, { min?: number; max?: number }>
   inheritByMode?: Record<string, Array<'duration' | 'ratio' | 'resolution'>>
+  referenceInputsByMode?: Record<string, Record<string, { minDuration?: number; maxDuration?: number }>>
   referencesByMode?: Record<string, { image?: [number, number]; video?: [number, number]; audio?: [number, number] }>
   audioByMode?: Record<string, 'hidden' | false>
   hintsByMode?: Record<string, string>

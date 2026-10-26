@@ -615,7 +615,7 @@ export async function prepareVideoRequest(payload, session, { env = process.env,
   // must not exhaust the shared metadata queue just by being valid multimodal input.
   for (const url of needsImageValidation ? imageUrls : []) {
     const metadata = await probeReferenceMedia(url, session?.userId, 'image')
-    assertReferenceInput(request.model, 'image', metadata)
+    assertReferenceInput(request.model, 'image', metadata, request.mode)
     imageMetadata.push(metadata)
   }
   request.parameters.imageMetadata = imageMetadata
@@ -624,13 +624,13 @@ export async function prepareVideoRequest(payload, session, { env = process.env,
     const audioMetadata = []
     for (const url of request.videos) {
       const metadata = await probeReferenceMedia(url, session?.userId, 'video')
-      assertReferenceInput(request.model, 'video', metadata)
+      assertReferenceInput(request.model, 'video', metadata, request.mode)
       if (isSeedance25(request.model) && request.mode === 'edit' && metadata.duration < 4) throw failure('Seedance 2.5 编辑视频需要 4–30 秒的参考视频', 422)
       videoMetadata.push(metadata)
     }
     for (const url of request.audios) {
       const metadata = await probeReferenceMedia(url, session?.userId, 'audio')
-      assertReferenceInput(request.model, 'audio', metadata)
+      assertReferenceInput(request.model, 'audio', metadata, request.mode)
       audioMetadata.push(metadata)
     }
     if (request.model.provider === 'grok' && videoMetadata.some(item => !String(item.format || '').split(',').includes('mp4'))) throw failure('Grok 视频编辑或延长需要 MP4 格式输入', 422)

@@ -239,6 +239,7 @@ const VIDEO_CATALOG = [
     audio: 'optional', referenceLimits: { image:30, video:10, audio:10, frames:2 },
     maxReferences:30, maxCount:1, supportsEdit:true, supportsTransparent:false,
     parameterRules: {
+      referenceInputsByMode: { edit: { video: { minDuration: 4, maxDuration: 30 } } },
       ratiosByMode: { singleImage: ['adaptive'], endFrameOptional: ['adaptive'], edit: ['adaptive'], extend: ['adaptive'] },
       inheritByMode: { singleImage: ['ratio'], endFrameOptional: ['ratio'], edit: ['duration', 'ratio'], extend: ['ratio'] },
       hintsByMode: {
@@ -314,6 +315,10 @@ const VIDEO_CATALOG = [
       referencesByMode: {
         edit: { video: [1, 1], image: [0, 0], audio: [0, 0] },
         extend: { video: [1, 1], image: [0, 0], audio: [0, 0] },
+      },
+      referenceInputsByMode: {
+        edit: { video: { maxDuration: 8.7 } },
+        extend: { video: { minDuration: 2, maxDuration: 15 } },
       },
       audioByMode: { edit: 'hidden' },
       hintsByMode: {

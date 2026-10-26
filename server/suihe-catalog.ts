@@ -51,7 +51,7 @@ export function suiheModelOverlay(model): Record<string, any> {
       creativeModes, defaultCreativeMode, defaultResolution: resolutions[0] || '', defaultDuration, resolutionsByCreativeMode,
       controls:[{key:'creativeMode',label:'创作档',type:'select',options:creativeModes,default:defaultCreativeMode},{key:'cameraFixed',label:'固定镜头',type:'boolean'},{key:'returnLastFrame',label:'返回尾帧',type:'boolean'}],
       maxDurationByResolution:{}, maxDurationByMode:{},
-      parameterRules: { requireVisualInMixed:true, resolutionsByControl:{creativeMode:resolutionsByCreativeMode}, ratiosByMode:{text:cap.ratios || ratios,image:cap.ratios || ratios,singleImage:['adaptive'],endFrameOptional:['adaptive'], ...(is25 ? {edit:['adaptive'],extend:['adaptive']} : {})}, inheritByMode:{singleImage:['ratio'],endFrameOptional:['ratio'],...(is25 ? {edit:['duration','ratio'],extend:['ratio']} : {})}, ...(is25 ? {hintsByMode:{edit:'编辑保持原视频时长与比例，参考视频需为 4–30 秒'}} : {}) },
+      parameterRules: { requireVisualInMixed:true, resolutionsByControl:{creativeMode:resolutionsByCreativeMode}, ratiosByMode:{text:cap.ratios || ratios,image:cap.ratios || ratios,singleImage:['adaptive'],endFrameOptional:['adaptive'], ...(is25 ? {edit:['adaptive'],extend:['adaptive']} : {})}, inheritByMode:{singleImage:['ratio'],endFrameOptional:['ratio'],...(is25 ? {edit:['duration','ratio'],extend:['ratio']} : {})}, ...(is25 ? {referenceInputsByMode:{edit:{video:{minDuration:4,maxDuration:30}}},hintsByMode:{edit:'编辑保持原视频时长与比例，参考视频需为 4–30 秒'}} : {}) },
     }
   }
   const tiers = cap.resolutions || ({'seedream-5.0-pro':['1k','1.5k','2k'],'seedream-5.0-lite':['2k','3k'],'seedream-4.5':['2k','4k'],'seedream-4.0':['1k','2k','4k']})[id]
