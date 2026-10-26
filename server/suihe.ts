@@ -16,8 +16,13 @@ async function json(response: Response, submitting=false) {
   catch { throw fail('穗禾响应格式异常',{upstreamStatus:response.status,...(submitting?{submissionUncertain:true}:{})}) }
 }
 function responseError(response: Response, data, submitting=false) {
-  return fail(String(data?.error?.message || data?.fail_reason || data?.message || `穗禾请求失败（${response.status}）`).slice(0,500), {
+  const detail = typeof data?.detail === 'string' ? data.detail
+    : Array.isArray(data?.detail) ? data.detail.map(item => item?.msg || item?.message || '').filter(Boolean).join('；')
+    : data?.detail?.message
+  const message = String(data?.error?.message || (typeof data?.error === 'string' ? data.error : '') || data?.fail_reason || data?.message || detail || `穗禾请求失败（${response.status}）`).slice(0,500)
+  return fail(message, {
     upstreamStatus:response.status,upstreamRequestId:response.headers.get('x-request-id') || '',
+    upstreamMessage:message,upstreamCode:String(data?.error?.code || data?.code || '').slice(0,100),
     status:response.status>=500?502:response.status,transient:response.status>=500||response.status===429,
     ...(submitting&&response.status>=500?{submissionUncertain:true}:{})})
 }
@@ -100,6 +105,13 @@ export async function createSuiheTask(request, {env=process.env,fetchImpl=fetch,
     else if(request.mode==='extend') body.function_mode='omni_reference'
     else if(request.firstFrame||request.lastFrame||request.mode==='singleImage') body.function_mode=request.lastFrame?(request.firstFrame?'first_last_frames':'end_frame'):'first_frame'
     else if(request.mode==='image') body.function_mode='omni_reference'
+    // The live catalog names frame conditioning first_last_frames, including
+    // a first-only or last-only request. Keep both uploaded frame roles intact.
+    const functionModes = capability.function_modes
+    if (Array.isArray(functionModes) && functionModes.length && body.function_mode) {
+      if (['first_frame','end_frame'].includes(body.function_mode) && !functionModes.includes(body.function_mode) && functionModes.includes('first_last_frames')) body.function_mode='first_last_frames'
+      if (!functionModes.includes(body.function_mode)) throw fail('当前模型不支持这个视频参考模式',{status:422,submissionNotStarted:true})
+    }
     const first=request.firstFrame || (request.mode==='singleImage'?(request.image||request.images?.[0]):'')
     if(first) files.push({field:'first_frame',value:first,kind:'image'})
     if(request.lastFrame) files.push({field:'last_frame',value:request.lastFrame,kind:'image'})

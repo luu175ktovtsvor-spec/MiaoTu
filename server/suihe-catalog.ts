@@ -26,10 +26,14 @@ export function suiheModelOverlay(model): Record<string, any> {
       : listedResolutions
     const creativeModes = cap.creative_modes || ['native', 'super_economy']
     const defaultCreativeMode = cap.default_creative_mode || (creativeModes.includes('super_economy') ? 'super_economy' : creativeModes[0] || 'native')
-    const resolutionsByCreativeMode = cap.resolutions_by_creative_mode || {
+    const advertisedCreativeResolutions = cap.resolutions_by_creative_mode || {
       native: listedResolutions.filter(value => is25 || id === 'seedance-2.0' || value === '480p' || value === '720p'),
       super_economy: listedResolutions.filter(value => value === '720p' || (is25 && value === '1080p') || (id === 'seedance-2.0' && value === '1080p')),
     }
+    // The catalog also lists per-resolution restrictions; apply both lists.
+    const resolutionsByCreativeMode = Object.fromEntries(Object.entries(advertisedCreativeResolutions).map(([mode, values]) => [mode,
+      (values as string[]).filter(value => !Array.isArray(cap.creative_mode_rules?.[value]) || cap.creative_mode_rules[value].includes(mode)),
+    ]))
     const minDuration = cap.duration?.min || 4
     const maxDuration = cap.duration?.max || (is25 ? 30 : 15)
     const durations = Array.from({length:maxDuration - minDuration + 1}, (_, n) => n + minDuration)
@@ -46,9 +50,12 @@ export function suiheModelOverlay(model): Record<string, any> {
   const tiers = cap.resolutions || ({'seedream-5.0-pro':['1k','1.5k','2k'],'seedream-5.0-lite':['2k','3k'],'seedream-4.5':['2k','4k'],'seedream-4.0':['1k','2k','4k']})[id]
   // 4K exists upstream but has no owner-approved procurement price yet.
   const pricedTiers=tiers.filter(value=>!(['seedream-4.0','seedream-4.5'].includes(id) && value==='4k'))
-  return { ...common, note:pricedTiers.join('/'), unpricedSizes:tiers.filter(value=>!pricedTiers.includes(value)), sizes:pricedTiers.map(value => ({value:value.toUpperCase(),label:value.toUpperCase(),ratio:''})), ratios:cap.ratios || imageRatios, customSize:false, quality:[], formats:cap.output_formats || ['jpeg','png'], maxCount:1, maxReferences:cap.max_reference_images || (id==='seedream-5.0-pro'?10:16), supportsEdit:true, regionEdit:null, supportsTransparent:false, supportsLayerDecomposition:false, optimizePromptModes:[], layerSizes:[], controls:cap.web_search === true ? [{key:'webSearch',label:'联网搜索',type:'boolean'}] : [] }
+  // Only Lite advertises selectable encoding. The other image models returned
+  // JPEG even when PNG was requested, so do not advertise an unsupported choice.
+  const formats = cap.output_formats || (id === 'seedream-5.0-lite' ? ['jpeg','png'] : ['jpeg'])
+  return { ...common, note:pricedTiers.join('/'), unpricedSizes:tiers.filter(value=>!pricedTiers.includes(value)), sizes:pricedTiers.map(value => ({value:value.toUpperCase(),label:value.toUpperCase(),ratio:''})), ratios:cap.ratios || imageRatios, customSize:false, quality:[], formats, maxCount:1, maxReferences:cap.max_reference_images || (id==='seedream-5.0-pro'?10:16), supportsEdit:true, regionEdit:null, supportsTransparent:false, supportsLayerDecomposition:false, optimizePromptModes:[], layerSizes:[], controls:cap.web_search === true ? [{key:'webSearch',label:'联网搜索',type:'boolean'}] : [] }
 }
 export const SUIHE_ADDITIONAL_IMAGES = [
   { id:'seedream-5.0-lite',label:'Seedream 5.0 Lite',video:false,sizes:[],quality:[],formats:['jpeg','png'] },
-  { id:'seedream-4.5',label:'Seedream 4.5',video:false,sizes:[],quality:[],formats:['jpeg','png'] },
+  { id:'seedream-4.5',label:'Seedream 4.5',video:false,sizes:[],quality:[],formats:['jpeg'] },
 ]
