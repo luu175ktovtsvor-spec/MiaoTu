@@ -3524,5 +3524,17 @@
   "添加资源": "Add resources",
   "写下你想讲的故事、场景或角色设定，例如：一个来自未来的机器人，在城市屋顶看星星。输入 @ 引用素材": "Write the story, scene or character you have in mind, e.g. a robot from the future watching the stars on a city rooftop. Type @ to reference assets",
   "直接用文字生成图片，或上传图片后用文字修改它，例如：把背景换成雪夜。输入 @ 引用素材": "Describe an image to generate, or upload one and describe the change, e.g. turn the background into a snowy night. Type @ to reference assets",
-  "豆包、Dola 的文本模型用于文本节点的回复；Agent 和 3D 导演台请在「文本模型」里选择妙图模型或你接入的模型。": "Doubao and Dola text models reply in text nodes. For the agent and the 3D director, choose a MiaoImg model or one you added in Text models."
+  "豆包、Dola 的文本模型用于文本节点的回复；Agent 和 3D 导演台请在「文本模型」里选择妙图模型或你接入的模型。": "Doubao and Dola text models reply in text nodes. For the agent and the 3D director, choose a MiaoImg model or one you added in Text models.",
+  "全能参考": "Omni reference",
+  "图生视频": "Image to video",
+  "首尾帧": "First and last frames",
+  "首尾帧（尾帧可选）": "First and last frames (last optional)",
+  "首尾帧（首帧可选）": "First and last frames (first optional)",
+  "使用{0}作为参考，输入 @ 引用素材": "Use {0} as references. Type @ to reference media.",
+  "描述你想要生成的画面内容": "Describe what you want to generate",
+  "描述你想要生成的画面内容，@引用素材": "Describe what you want to generate. Type @ to reference media.",
+  "上传一张图片，作为视频的首帧": "Upload an image to use as the first frame",
+  "上传首帧和尾帧图片，控制视频的开始与结束": "Upload first and last frames to guide the start and end of the video",
+  "上传首帧图片，可添加尾帧控制结束画面": "Upload a first frame. Optionally add a last frame to guide the ending",
+  "可直接文字生图，或上传图片输入文字指令对图片进行编辑，如：将背景改为雪夜": "Generate images from text, or upload an image and describe an edit, e.g. change the background to a snowy night"
 }

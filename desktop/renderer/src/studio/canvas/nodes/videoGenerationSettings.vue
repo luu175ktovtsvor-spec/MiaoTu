@@ -3,15 +3,17 @@
     <template #reference>
       <el-button class="settingsButton" text size="small" :disabled="disabled" :aria-label="translate('视频生成设置')">
         <span class="ratioShape" :style="ratioStyle(ratio)" aria-hidden="true" />
+        <span v-if="currentModeLabel">{{ currentModeLabel }}</span>
         <span>{{ inheritsSourceDuration ? translate('编辑 · 跟随输入') : inheritsSourceFormat ? translate('延长 {0}秒 · 跟随输入', { 0: duration }) : [ratioLabel(ratio), resolution || (localPlatform ? translate('清晰度跟随平台') : ''), durationLabel(duration)].filter(Boolean).join(' · ') }}</span>
         <icon-chevron-up :size="14" aria-hidden="true" />
       </el-button>
     </template>
     <div class="generationSettings nodrag nopan nowheel" @pointerdown.stop @mousedown.stop @dblclick.stop @keydown.stop @wheel.stop>
-      <div v-if="modes.length" class="sectionLabel">{{ translate('生成模式') }}</div>
+      <div v-if="modes.length" class="sectionLabel">{{ translate('视频生成模式') }}</div>
       <el-select v-if="modes.length" v-model="mode" :teleported="false" :disabled="disabled" :aria-label="translate('视频生成模式')">
         <el-option v-for="item in modes" :key="item.value" :value="item.value" :label="item.label" />
       </el-select>
+      <p v-if="modeDescription" class="inputHint">{{ modeDescription }}</p>
       <p v-if="localPlatform && !durations.length && !inheritsSourceDuration" class="inputHint">{{ translate('正在读取当前账号的时长和比例') }}</p>
       <div v-if="!inheritsSourceDuration" class="outputOptions">
         <div v-if="durations.length" class="outputField">
@@ -32,7 +34,7 @@
         </div>
       </div>
       <p v-if="inputHint" class="inputHint">{{ inputHint }}</p>
-      <div v-if="!inheritsSourceRatio && ratios.length" class="sectionLabel">{{ translate('通用比例') }}</div>
+      <div v-if="!inheritsSourceRatio && ratios.length" class="sectionLabel">{{ translate('比例') }}</div>
       <div v-if="!inheritsSourceRatio && ratios.length" class="ratioOptions" role="group" :aria-label="translate('视频比例')">
         <el-button v-for="item in ratios" :key="item" class="ratioButton" :disabled="disabled || inheritsSourceFormat" :aria-label="translate('比例 {0}', { 0: item })" :aria-pressed="ratio === item" @click="ratio = item">
           <span class="ratioContent">
@@ -71,6 +73,7 @@ import type { NodeMediaModel } from "@miaoimg/nodes-scaffold/runtime";
 import { translate } from "@miaoimg/i18n/vue";
 import localMediaInfo from './localMediaInfo.vue';
 import { durationsForMode, inheritedFields, resolutionsForControls, visibleControls } from "../scaffold/mediaParameters";
+import { videoModeDescription, videoModeLabel } from './videoModeText';
 
 const props = defineProps<{ model?: NodeMediaModel; disabled?: boolean; ratios: string[]; videoReferences?: number; imageReferences?: number }>();
 const duration = defineModel<number | undefined>("duration", { required: true });
@@ -80,11 +83,6 @@ const mode = defineModel<string>("mode", { required: true });
 const generateAudio = defineModel<boolean>("generateAudio", { required: true });
 const parameters = defineModel<Record<string, unknown>>("parameters", { default: () => ({}) });
 const showAdvanced = ref(false);
-// value 是词表 key（中文原文），取值时再按当前语言翻译。
-const modeLabels: Record<string, string> = {
-  text: "文生视频", singleImage: "单图参考", startEndRequired: "首尾帧必填", endFrameOptional: "尾帧可选", startFrameOptional: "首帧可选",
-  edit: "编辑视频", extend: "延长视频",
-};
 const localPlatform = computed(() => ['doubao-local', 'dola-local'].includes(props.model?.providerId || ''));
 function ratioLabel(value: string) {
   if (value === 'adaptive') return translate('自适应');
@@ -95,7 +93,7 @@ function durationLabel(value: number | undefined) {
   return value ? translate('{0}秒', { 0: value }) : '';
 }
 const selectedModeName = computed(() => {
-  // 节点使用 JSON.stringify 保存模式，混合参考模式则保存为数组。
+  // 节点使用 JSON.stringify 保存模式，多素材参考模式保存为数组。
   try { const value = JSON.parse(mode.value); return typeof value === "string" ? value : "image"; }
   catch { return mode.value; }
 });
@@ -107,8 +105,11 @@ const audioOptional = computed(() => props.model?.audio === "optional" && props.
 const controls = computed(() => visibleControls(props.model, selectedModeName.value));
 const modes = computed(() => (props.model?.mode ?? []).map(item => ({
   value: JSON.stringify(item),
-  label: translate(Array.isArray(item) ? "混合参考" : modeLabels[item] ?? item),
+  label: videoModeLabel(item, props.model),
 })));
+const currentMode = computed(() => props.model?.mode?.find(item => JSON.stringify(item) === mode.value));
+const currentModeLabel = computed(() => videoModeLabel(currentMode.value, props.model));
+const modeDescription = computed(() => videoModeDescription(currentMode.value, props.model));
 const durations = computed(() => durationsForMode(props.model, selectedModeName.value)
   // 清晰度跟随平台（没有分辨率可选）时不按分辨率筛时长。
   .filter(value => value < 0 || !resolution.value || resolutionsFor(value).includes(resolution.value)));

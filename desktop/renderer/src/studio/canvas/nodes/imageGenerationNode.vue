@@ -91,7 +91,7 @@
             v-model:text="data.prompt"
             v-model:expanded="composerExpanded"
             :references="referenceMentions"
-            placeholder="直接用文字生成图片，或上传图片后用文字修改它，例如：把背景换成雪夜。输入 @ 引用素材"
+            placeholder="可直接文字生图，或上传图片输入文字指令对图片进行编辑，如：将背景改为雪夜"
             expandable
             expand-mode="external" />
         </div>

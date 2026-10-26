@@ -65,9 +65,7 @@
             v-model="refList"
             @preview="setReferencePreview"
             @remove="removeReference" />
-          <div v-if="frameMode" class="referenceHint">
-            {{ selectedMode === "startFrameOptional" ? translate("仅一张图片时作为尾帧；两张图片按顺序作为首帧、尾帧") : translate("图片引用按顺序作为首帧、尾帧") }}
-          </div>
+          <div v-if="referenceDescription" class="referenceHint">{{ referenceDescription }}</div>
           <promptInput
             v-model="data.promptModel"
             v-model:text="data.prompt"
@@ -148,6 +146,7 @@ import { nodeSkeleton, nodeTools, showNodeError, isSignInRequired, useGeneration
 import promptInput from "@miaoimg/nodes-scaffold/promptInput";
 import videoPlayer from "@miaoimg/nodes-scaffold/videoPlayer";
 import referenceItem from "@miaoimg/nodes-scaffold/referenceItem";
+import { videoModeDescription, videoModeLabel, videoReferenceTypes } from './videoModeText';
 import mediaHistory from "@miaoimg/nodes-scaffold/mediaHistory";
 import generationProgress from "@miaoimg/nodes-scaffold/generationProgress";
 import videoActions from "./videoNode/videoActions.vue";
@@ -240,6 +239,7 @@ const progress = useGenerationProgress({
 });
 const selectedMode = computed(() => selectedModel.value?.mode?.find((item) => JSON.stringify(item) === data.value.mode) as NodeVideoRequest["mode"]);
 const frameMode = computed(() => ["startEndRequired", "endFrameOptional", "startFrameOptional"].includes(String(selectedMode.value)));
+const referenceDescription = computed(() => selectedMode.value !== 'text' ? videoModeDescription(selectedMode.value, selectedModel.value) : '');
 const mediaCounts = computed(() => ({
   image: refList.value.filter((item) => item.dataType === "IMAGE").length,
   video: refList.value.filter((item) => item.dataType === "VIDEO").length,
@@ -815,11 +815,12 @@ const emptyHints = computed(() => {
   const reference = modes.find(Array.isArray);
   const prefer = (mode: unknown, accept: string[]) => () => { preferredMode.value = JSON.stringify(mode); requestReference(accept); };
   const hints: { key: string; label: string; icon: unknown; run: () => void }[] = [];
-  if (has("text")) hints.push({ key: "text", label: translate("文字生成视频"), icon: IconWriting, run: focusPrompt });
+  if (has("text")) hints.push({ key: "text", label: videoModeLabel('text'), icon: IconWriting, run: focusPrompt });
   const first = has("singleImage") ? "singleImage" : has("endFrameOptional") ? "endFrameOptional" : null;
-  if (first) hints.push({ key: "first", label: translate("首帧生成视频"), icon: IconPhoto, run: prefer(first, ["IMAGE"]) });
-  if (has("endFrameOptional")) hints.push({ key: "frames", label: translate("首尾帧生成视频"), icon: IconLayersLinked, run: prefer("endFrameOptional", ["IMAGE"]) });
-  if (reference) hints.push({ key: "reference", label: translate("多素材参考生成"), icon: IconStack2, run: prefer(reference, ["IMAGE", "VIDEO", "AUDIO"]) });
+  if (first) hints.push({ key: "first", label: videoModeLabel('singleImage'), icon: IconPhoto, run: prefer(first, ["IMAGE"]) });
+  const frames = has('startEndRequired') ? 'startEndRequired' : has('endFrameOptional') ? 'endFrameOptional' : has('startFrameOptional') ? 'startFrameOptional' : null;
+  if (frames) hints.push({ key: "frames", label: videoModeLabel('startEndRequired'), icon: IconLayersLinked, run: prefer(frames, ["IMAGE"]) });
+  if (reference) hints.push({ key: "reference", label: videoModeLabel(reference, selectedModel.value), icon: IconStack2, run: prefer(reference, videoReferenceTypes(reference, selectedModel.value).map(type => type.toUpperCase())) });
   return hints;
 });
 </script>
