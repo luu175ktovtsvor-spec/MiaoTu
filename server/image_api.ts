@@ -1709,14 +1709,21 @@ const server = createServer(withRequestProject(async (request, response) => {
     const sessionUser = session?.role === 'user' && session.userId ? management.user(session.userId) : null
     const userModels = Array.isArray(sessionUser?.models) ? sessionUser.models : []
     const allowedForUser = (id) => !userModels.length || userModels.includes(id)
-    const models = publicModelCatalog(env).filter((model) => operating.models[model.id] !== false && allowedForUser(model.id)).map((model) => ({
+    const models = publicModelCatalog(env).filter((model) => operating.models[model.id] !== false && allowedForUser(model.id)).map((model) => {
+      // publicModelCatalog deliberately removes the provider marker before it
+      // reaches the client. Pricing still needs the internal provider
+      // snapshot, otherwise Suihe SD models fall back to their old Ark price
+      // in the quote shown by the canvas.
+      const pricingModel = modelById(model.id) || model
+      return ({
       ...model,
       current: model.id === publicDefaultModel,
       paused: false,
       configured: model.configured,
-      creditsPerImage: imageCreditsPerImage(model),
-      creditsPerImageBySize: imageCreditsBySize(model),
-    }))
+      creditsPerImage: imageCreditsPerImage(pricingModel),
+      creditsPerImageBySize: imageCreditsBySize(pricingModel),
+    })
+    })
     // 视频模型带上每个分辨率/秒数的积分规则，画布直接显示“当前参数预计消耗”。
     const videoModels = publicVideoCatalog(env).filter((model) => operating.models[model.id] !== false && allowedForUser(model.id)).map((model) => ({
       ...model,

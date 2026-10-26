@@ -9,7 +9,7 @@ import { randomUUID } from 'node:crypto'
 import { failure } from './management-store.ts'
 import { publicTextCatalog, textChannelReady, textModelById } from './text-models.ts'
 import { listPublicProviderModels, providerById } from './text-providers.ts'
-import { publicModelCatalog, publicVideoCatalog } from './image-models.ts'
+import { modelById, publicModelCatalog, publicVideoCatalog } from './image-models.ts'
 import { imageCreditsBySize, imageCreditsPerImage } from './generation-cost.ts'
 import { createReferenceToken } from './reference-assets.ts'
 import { newRequestId } from './generation-contract.ts'
@@ -105,7 +105,9 @@ export function createAiCompat({ management, workspaceFiles, generate, probeRefe
     const costPolicy = management.costPolicy()
     const images = publicModelCatalog(process.env)
       .filter((model) => available(model.id, paused, allowed))
-      .map((model) => ({
+      .map((model) => {
+        const pricingModel = modelById(model.id) || model
+        return ({
         providerId: 'miaoimg',
         providerLabel: '妙图',
         modelId: model.id,
@@ -120,19 +122,20 @@ export function createAiCompat({ management, workspaceFiles, generate, probeRefe
         maxReferences: model.maxReferences,
         customSize: Boolean(model.customSize),
         sizeRule: model.sizeRule || null,
-        creditsPerImage: imageCreditsPerImage(model),
+        creditsPerImage: imageCreditsPerImage(pricingModel),
         // 以下是内置节点界面要用的字段（积分预估、区域编辑入口、图层分解等）：
         // 上游契约没声明它们，但上游那份 nodeAi 是原样透传，多出来的字段不会被丢掉。
         // 尺寸表带上 value/ratio 对照，节点侧按比例挑尺寸要用（pickSize）。
         sizes: model.sizes || [],
-        creditsPerImageBySize: imageCreditsBySize(model),
+        creditsPerImageBySize: imageCreditsBySize(pricingModel),
         supportsTransparent: Boolean(model.supportsTransparent),
         supportsLayerDecomposition: Boolean(model.supportsLayerDecomposition),
         regionEdit: model.regionEdit ?? null,
         optimizePromptModes: model.optimizePromptModes || [],
         layerSizes: model.layerSizes || [],
         controls: model.controls || [],
-      }))
+        })
+      })
     const videos = publicVideoCatalog(process.env)
       .filter((model) => available(model.id, paused, allowed))
       .map((model) => ({
