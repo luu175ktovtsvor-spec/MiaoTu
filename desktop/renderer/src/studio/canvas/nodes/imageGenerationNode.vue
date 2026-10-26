@@ -110,7 +110,7 @@
             placement="top-start"
             @visible-change="(visible) => visible && loadModels().catch((error) => showNodeError(error, translate('模型读取失败')))">
             <template #prefix><icon-sparkles :size="17" /></template>
-            <el-option v-if="data.model && !models.some(item => JSON.stringify([item.providerId, item.modelId]) === data.model)" class="savedModelOption" :label="nodeModelValueLabel(data.model)" :value="data.model" />
+            <el-option v-if="data.model && !models.some(item => JSON.stringify([item.providerId, item.modelId]) === data.model)" class="savedModelOption" disabled :label="nodeModelValueLabel(data.model)" :value="data.model" />
             <el-option-group v-for="group in groupNodeModels(models)" :key="group.id" :label="group.label">
               <el-option v-for="item in group.models" :key="JSON.stringify([item.providerId, item.modelId])"
                 :label="nodeModelOptionLabel(item)" :value="JSON.stringify([item.providerId, item.modelId])" />
@@ -144,6 +144,7 @@
             :reference-count="editor?.mode === 'inpaint' ? 1 : refList.filter(item => item.dataType === 'IMAGE' && item.value).length"
             :disabled="generating || deleting || !selectedModel" />
           <div class="sendActions">
+            <feedbackNotice :message="imageEstimateError" />
             <div class="estimateLine" aria-live="polite" :data-estimate-source="imageEstimate?.source || 'unavailable'">
               <icon-coins :size="14" aria-hidden="true" />
               <strong v-if="['doubao-local', 'dola-local'].includes(selectedModel?.providerId || '')">{{ translate(selectedModel?.providerId === 'dola-local' ? '使用 Dola 额度' : '使用豆包额度') }}</strong>
@@ -155,7 +156,7 @@
               class="sendButton"
               :icon="generating ? IconPlayerStop : IconArrowUp"
               :loading="checkingTask"
-              :disabled="checkingTask || deleting || uploading || uploadingDrag || (!generating && !pendingTask && !canGenerate)"
+              :disabled="checkingTask || deleting || uploading || uploadingDrag || (!generating && !pendingTask && (!canGenerate || Boolean(imageEstimateError)))"
               :title="checkingTask ? translate('正在确认原任务') : generating ? translate('取消生成（{0}）', { 0: cancellationHint }) : pendingTask ? translate('继续取回') : editor?.mode === 'inpaint' ? translate('重绘') : translate('生成图片')"
               :aria-label="checkingTask ? translate('正在确认原任务') : generating ? translate('取消生成') : pendingTask ? translate('继续取回') : editor?.mode === 'inpaint' ? translate('重绘') : translate('生成图片')"
               @click="generating ? generationController?.abort() : startGeneration().catch((error) => showNodeError(error, translate('图片生成失败')))" />
@@ -178,6 +179,7 @@
 </template>
 
 <script setup lang="ts">
+import feedbackNotice from "../components/feedbackNotice.vue";
 import { fitsCustomSize, groupNodeModels } from "../scaffold/nodeAi";
 import { controlPayload } from "../scaffold/mediaParameters";
 import { nodeLocalModelLabel, nodeModelOptionLabel, nodeModelValueLabel } from '../scaffold/localModelLabel';
@@ -310,6 +312,7 @@ const sizeOptions = computed(() => selectedModel.value?.imageSizes || []);
 const ratioOptions = computed(() => selectedModel.value?.imageRatios || []);
 type ImageEstimate = { points?: number | null; perImage?: number | null; source?: string };
 const imageEstimate = ref<ImageEstimate | null>(null);
+const imageEstimateError = ref("");
 let imageEstimateTimer: number | undefined;
 let imageEstimateController: AbortController | undefined;
 let imageEstimateSequence = 0;
@@ -335,7 +338,7 @@ watch(
     // 图片模型的官方可选参数：格式 / 质量 / 输入保真度 / 张数 / 透明背景 / 提示词优化 / 图层拆分。
     const localMedia = ['doubao-local', 'dola-local'].includes(choice.providerId);
     const formats = choice.formats || [];
-    if (!localMedia && formats.length && !formats.includes(data.value.format || "")) data.value.format = formats[0]!;
+    if (!localMedia && !formats.includes(data.value.format || "")) data.value.format = formats[0] || "";
     if (!localMedia && !choice.supportsTransparent) data.value.background = "opaque";
     if (data.value.quality && !choice.quality?.includes(data.value.quality)) data.value.quality = "";
     if (data.value.inputFidelity && !choice.inputFidelity?.includes(data.value.inputFidelity)) data.value.inputFidelity = "";
@@ -384,6 +387,7 @@ const generationPrompt = computed(() => {
 const canGenerate = computed(() => {
   const model = selectedModel.value;
   if (!model) return false;
+  if (refList.value.some(item => item.value === undefined)) return false;
   if (editor.value?.mode === "inpaint") return Boolean(model.regionEdit) && Boolean(data.value.inpaintPrompt.trim());
   const references = refList.value.filter(item => item.dataType === "IMAGE").length;
   if (references > (model.maxReferences ?? 0)) return false;
@@ -392,6 +396,7 @@ const canGenerate = computed(() => {
 });
 const outputFile = computed(() => outputs.value.image?.dataType === "IMAGE" ? outputs.value.image.value : undefined);
 const imageEstimateKey = computed(() => JSON.stringify({
+  provider: selectedModel.value?.providerId || "",
   model: selectedModel.value?.modelId || "",
   prompt: generationPrompt.value,
   size: data.value.size,
@@ -461,7 +466,8 @@ function scheduleImageEstimate() {
   imageEstimateController?.abort();
   imageEstimateController = undefined;
   imageEstimate.value = null;
-  if (!autoEstimateVisible.value) return;
+  imageEstimateError.value = "";
+  if (!autoEstimateVisible.value || (!generationPrompt.value && !data.value.layerDecomposition)) return;
   imageEstimateTimer = window.setTimeout(() => {
     if (autoEstimateVisible.value) void refreshImageEstimate(sequence);
   }, 220);
@@ -501,9 +507,15 @@ async function refreshImageEstimate(sequence: number, signal?: AbortSignal) {
     parameters: controlPayload(choice, "text", data.value.parameters),
       ...(edit ? { edit } : {}),
     }, controller.signal);
-    if (sequence === imageEstimateSequence && !controller.signal.aborted) imageEstimate.value = result;
-  } catch {
-    if (sequence === imageEstimateSequence && !controller.signal.aborted) imageEstimate.value = null;
+    if (sequence === imageEstimateSequence && !controller.signal.aborted) {
+      imageEstimate.value = result;
+      imageEstimateError.value = "";
+    }
+  } catch (error) {
+    if (sequence === imageEstimateSequence && !controller.signal.aborted) {
+      imageEstimate.value = null;
+      imageEstimateError.value = error instanceof Error ? error.message : translate("当前素材或参数不符合模型要求");
+    }
   } finally {
     signal?.removeEventListener("abort", abort);
     if (imageEstimateController === controller) imageEstimateController = undefined;

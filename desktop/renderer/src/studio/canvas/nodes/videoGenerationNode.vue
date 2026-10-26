@@ -90,7 +90,7 @@
             placement="top-start"
             @visible-change="(visible) => visible && loadModels().catch((error) => showNodeError(error, translate('模型读取失败')))">
             <template #prefix><icon-sparkles :size="17" /></template>
-            <el-option v-if="data.model && !models.some(item => JSON.stringify([item.providerId, item.modelId]) === data.model)" class="savedModelOption" :label="nodeModelValueLabel(data.model)" :value="data.model" />
+            <el-option v-if="data.model && !models.some(item => JSON.stringify([item.providerId, item.modelId]) === data.model)" class="savedModelOption" disabled :label="nodeModelValueLabel(data.model)" :value="data.model" />
             <el-option-group v-for="group in groupNodeModels(models)" :key="group.id" :label="group.label">
               <el-option v-for="item in group.models" :key="JSON.stringify([item.providerId, item.modelId])"
                 :label="nodeModelOptionLabel(item)" :value="JSON.stringify([item.providerId, item.modelId])" />
@@ -116,12 +116,12 @@
               <strong v-if="!['doubao-local', 'dola-local'].includes(selectedModel?.providerId || '') && videoEstimate?.points != null">{{ translate('{0} 积分', { 0: formatCredits(videoEstimate.points) }) }}</strong>
               <strong v-else-if="!['doubao-local', 'dola-local'].includes(selectedModel?.providerId || '')">—</strong>
             </div>
-            <feedbackNotice :message="videoEstimateError" />
+            <feedbackNotice :message="referenceMismatchMessage || videoEstimateError" />
             <el-button
               class="sendButton"
               :icon="generating ? IconPlayerStop : IconArrowUp"
               :loading="checkingTask"
-              :disabled="checkingTask || deleting || uploading || uploadingDrag || (!generating && !pendingTask && !canStartGeneration)"
+              :disabled="checkingTask || deleting || uploading || uploadingDrag || (!generating && !pendingTask && (!canStartGeneration || Boolean(videoEstimateError)))"
               :title="checkingTask ? translate('正在确认原任务') : generating ? translate('取消生成（{0}）', { 0: cancellationHint }) : pendingTask ? translate('继续取回') : translate('生成视频')"
               :aria-label="checkingTask ? translate('正在确认原任务') : generating ? translate('取消生成') : pendingTask ? translate('继续取回') : translate('生成视频')"
               @click="generating ? generationController?.abort() : startGeneration().catch((error) => showNodeError(error, translate('视频生成失败')))" />
@@ -259,6 +259,8 @@ const canStartGeneration = computed(() => Boolean(selectedModel.value && (genera
     || !selectedModel.value.durationResolutionMap?.some(item => item.resolution.length)
     || getResolutions(selectedModel.value, data.value.duration).includes(data.value.resolution))));
 const matchingModes = computed(() => getMatchingModes(selectedModel.value));
+const referenceMismatchMessage = computed(() => selectedModel.value && !matchingModes.value.length
+  ? translate("当前模型没有适合这些参考素材的生成模式，请更换模型或调整引用") : "");
 type VideoEstimate = { points?: number | null; billingSource?: string; breakdown?: { outputPerSecond?: number; perSecond?: number; billingSource?: string } };
 const videoEstimate = ref<VideoEstimate | null>(null);
 const videoEstimateError = ref("");
@@ -395,6 +397,7 @@ const generationPrompt = computed(() =>
 );
 const outputFile = computed(() => outputs.value.video?.dataType === "VIDEO" ? outputs.value.video.value : undefined);
 const videoEstimateKey = computed(() => JSON.stringify({
+  provider: selectedModel.value?.providerId || "",
   model: selectedModel.value?.modelId || "",
   prompt: generationPrompt.value,
   duration: data.value.duration,

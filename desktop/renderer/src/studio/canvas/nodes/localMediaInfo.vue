@@ -27,7 +27,7 @@ const props = defineProps<{
     maxReferences?: number;
     parameterRules?: ParameterRules;
     referenceLimits?: { image?: number; video?: number; audio?: number; frames?: number };
-    referenceInputs?: Record<string, { mimes?: string[]; formats?: string[]; maxBytes?: number; exclusiveMaxBytes?: boolean; minDuration?: number; maxDuration?: number; minEdge?: number; maxEdge?: number }>;
+    referenceInputs?: Record<string, { mimes?: string[]; formats?: string[]; maxBytes?: number; exclusiveMaxBytes?: boolean; minDuration?: number; maxDuration?: number; minEdge?: number; maxEdge?: number; minPixels?: number; maxPixels?: number; minFps?: number; maxFps?: number }>;
   };
   compact?: boolean;
   mode?: unknown;
@@ -53,7 +53,9 @@ const inputHints = computed(() => Object.entries(props.model?.referenceInputs ||
     policy.maxDuration ? policy.minDuration
       ? translate('{0}–{1} 秒', { 0: policy.minDuration, 1: policy.maxDuration })
       : `≤ ${translate('{0} 秒', { 0: policy.maxDuration })}` : '',
-    policy.minEdge ? `${policy.minEdge}–${policy.maxEdge || '∞'} px` : ''];
+    policy.minEdge ? policy.maxEdge ? `${policy.minEdge}–${policy.maxEdge} px` : `≥ ${policy.minEdge} px` : '',
+    policy.minFps ? `${policy.minFps}–${policy.maxFps} FPS` : '',
+    policy.minPixels && policy.maxPixels ? `${policy.minPixels}–${policy.maxPixels} px²` : ''];
   return [parts.filter(Boolean).join(' · ')];
 }));
 const referenceHint = computed(() => capabilities.value?.references.maxImages

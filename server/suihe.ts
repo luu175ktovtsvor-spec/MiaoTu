@@ -20,10 +20,10 @@ function responseError(response: Response, data, submitting=false) {
   const detail = typeof data?.detail === 'string' ? data.detail
     : Array.isArray(data?.detail) ? data.detail.map(item => item?.msg || item?.message || '').filter(Boolean).join('；')
     : data?.detail?.message
-  const message = String(data?.error?.message || (typeof data?.error === 'string' ? data.error : '') || data?.fail_reason || data?.message || detail || `穗禾请求失败（${response.status}）`).slice(0,500)
+  const message = String(data?.error?.message || (typeof data?.error === 'string' ? data.error : '') || data?.error_detail?.message || data?.fail_reason || data?.message || detail || `穗禾请求失败（${response.status}）`).slice(0,500)
   return fail(message, {
     upstreamStatus:response.status,upstreamRequestId:response.headers.get('x-request-id') || '',
-    upstreamMessage:message,upstreamCode:String(data?.error?.code || data?.code || '').slice(0,100),
+    upstreamMessage:message,upstreamCode:String(data?.error?.code || data?.error_detail?.code || data?.code || '').slice(0,100),
     status:response.status>=500?502:response.status,transient:response.status>=500||response.status===429,
     ...(submitting&&response.status>=500?{submissionUncertain:true}:{})})
 }
@@ -71,12 +71,12 @@ async function referenceBlob(source:string,kind:string,{fetchImpl,signal,bytes:p
     const chunks=[];let size=0
     for await(const chunk of response.body as any) {
       size+=chunk.length
-      if(kind === 'image' ? size >= max : size > max) throw fail('参考素材超过穗禾上传上限',{status:422,submissionNotStarted:true})
+      if(size >= max) throw fail('参考素材超过穗禾上传上限',{status:422,submissionNotStarted:true})
       chunks.push(chunk)
     }
     bytes=Buffer.concat(chunks)
   }
-  if(!bytes.length || (kind === 'image' ? bytes.length >= max : bytes.length > max)) throw fail('参考素材为空或超过上传上限',{status:422,submissionNotStarted:true})
+  if(!bytes.length || bytes.length >= max) throw fail('参考素材为空或超过上传上限',{status:422,submissionNotStarted:true})
   return new Blob([new Uint8Array(bytes)],{type:mime})
 }
 
@@ -99,32 +99,32 @@ export async function createSuiheTask(request, {env=process.env,fetchImpl=fetch,
     const options=request.arkOptions && typeof request.arkOptions==='object' ? request.arkOptions : {}
     const capability=model.capabilities || {}
     const creativeMode=String(request.creativeMode || parameters.creativeMode || capability.default_creative_mode || 'super_economy')
-    Object.assign(body,{ratio:request.ratio || '16:9',duration:request.mode==='edit'?Math.round(request.billableDuration):request.duration,resolution:String(request.resolution).toLowerCase(),creative_mode:creativeMode,generate_audio:request.generateAudio!==false})
+    // v1.1 documents resolution; live pre-estimate still reads video_resolution.
+    // Send identical aliases in JSON and multipart so neither route defaults to 720p.
+    Object.assign(body,{video_resolution:String(request.resolution).toLowerCase(),ratio:request.ratio || '16:9',duration:request.mode==='edit'?Math.round(request.billableDuration):request.duration,resolution:String(request.resolution).toLowerCase(),creative_mode:creativeMode,generate_audio:request.generateAudio!==false})
     for(const [key,value] of Object.entries({
       frames:options.frames ?? parameters.frames,
       seed:options.seed ?? parameters.seed,
-      camera_fixed:options.camera_fixed ?? parameters.cameraFixed,
+      camera_fixed:suiheModelId(request.model)==='seedance-2.0-mini' ? (options.camera_fixed ?? parameters.cameraFixed) : undefined,
       return_last_frame:options.return_last_frame ?? parameters.returnLastFrame,
       tools:options.tools,
-      omni_reference_task_type:options.omni_reference_task_type,
-      service_tier:parameters.serviceTier,
+      omni_reference_task_type:request.mode==='image'||request.mode==='extend' ? options.omni_reference_task_type : undefined,
+      service_tier:suiheModelId(request.model)==='seedance-2.0-mini' ? parameters.serviceTier : undefined,
       execution_expires_after:parameters.executionExpiresAfter,
-      output_format:parameters.outputFormat,
-      draft:parameters.draft,
+      output_format:suiheModelId(request.model)==='seedance-2.5' ? parameters.outputFormat : undefined,
+      draft:suiheModelId(request.model)==='seedance-2.5' ? parameters.draft : undefined,
     })) if(value!==undefined&&value!==null&&value!=='') body[key]=value
     if(request.mode==='edit') body.function_mode='video_edit'
     else if(request.mode==='extend') body.function_mode='omni_reference'
-    else if(firstFrame||lastFrame) body.function_mode=lastFrame?(firstFrame?'first_last_frames':'end_frame'):'first_frame'
     else if(request.mode==='image') body.function_mode='omni_reference'
-    // The catalog groups frame conditioning under first_last_frames; the
-    // integration guide still requires first_frame/end_frame for one frame.
+    else body.function_mode='first_last_frames'
+    // v1.1 uses one mode for text, first frame and first+last frames.
     const functionModes = capability.function_modes
     if (Array.isArray(functionModes) && body.function_mode) {
-      const frameAlias=['first_frame','end_frame'].includes(body.function_mode) && functionModes.includes('first_last_frames')
-      if (!functionModes.includes(body.function_mode) && !frameAlias) throw fail('当前模型不支持这个视频参考模式',{status:422,submissionNotStarted:true})
+      if (!functionModes.includes(body.function_mode)) throw fail('当前模型不支持这个视频参考模式',{status:422,submissionNotStarted:true})
     }
     if(firstFrame) files.push({field:'first_frame',value:firstFrame,kind:'image'})
-    if(lastFrame) files.push({field:'last_frame',value:lastFrame,kind:'image'})
+    if(lastFrame) files.push({field:'end_frame',value:lastFrame,kind:'image'})
     if(body.function_mode==='omni_reference') [...new Set<string>([request.image,...request.images||[]].filter(Boolean))].forEach((value,index)=>files.push({field:`image_file_${index+1}`,value,kind:'image'}))
     for(const [index,value] of (request.videos||[]).entries()) files.push({field:`video_file_${index+1}`,value,kind:'video'})
     for(const [index,value] of (request.audios||[]).entries()) files.push({field:`audio_file_${index+1}`,value,kind:'audio'})
@@ -148,7 +148,6 @@ export async function createSuiheTask(request, {env=process.env,fetchImpl=fetch,
   if(files.length) {
     const form=new FormData()
     const fields={...body}
-    if(video){fields.video_resolution=fields.resolution;delete fields.resolution}
     sentFields=fields
     for(const [key,value] of Object.entries(fields)) form.append(key,String(value))
     for(const file of files) {

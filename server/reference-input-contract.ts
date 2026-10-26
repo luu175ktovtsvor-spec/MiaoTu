@@ -24,9 +24,9 @@ export function referenceInputPolicy(model, kind, mode = '') {
     return { maxBytes: 30 * MB, mimes: COMMON_IMAGE_MIMES }
   }
   if (model?.provider === 'suihe' && model.video) {
-    if (kind === 'image') return { maxBytes: 30 * MB, exclusiveMaxBytes: true, mimes: COMMON_IMAGE_MIMES, minEdge: 300, maxEdge: 6000, minRatio: 0.4, maxRatio: 2.5 }
-    if (kind === 'video') return { maxBytes: 200 * MB, minDuration: 2, maxDuration: isSeedance25(model) ? 30 : 15, formats: ['mp4', 'mov'] }
-    if (kind === 'audio') return { maxBytes: 15 * MB, minDuration: 2, maxDuration: isSeedance25(model) ? 30 : 15, formats: ['wav', 'mp3'] }
+    if (kind === 'image') return { maxBytes: 30 * MB, exclusiveMaxBytes: true, mimes: ARK_IMAGE_MIMES, minEdge: 300, maxEdge: 6000, minRatio: 0.4, maxRatio: 2.5 }
+    if (kind === 'video') return { maxBytes: 200 * MB, exclusiveMaxBytes: true, minDuration: 2, maxDuration: isSeedance25(model) ? 30 : 15, minEdge: 300, maxEdge: 6000, minPixels: 407_696, maxPixels: 8_295_044, minRatio: 0.4, maxRatio: 2.5, minFps: 24, maxFps: 60, formats: ['mp4', 'mov'] }
+    if (kind === 'audio') return { maxBytes: 15 * MB, exclusiveMaxBytes: true, minDuration: 2, maxDuration: isSeedance25(model) ? 30 : 15, formats: ['wav', 'mp3'] }
   }
   if (model?.provider === 'grok' && model.video) {
     if (kind === 'image') return { maxBytes: 30 * MB, mimes: COMMON_IMAGE_MIMES }

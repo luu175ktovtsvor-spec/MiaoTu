@@ -122,7 +122,8 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
       || hasNonEmptyReference(payload.keyframes)
       || hasNonEmptyReference(payload.referenceVoices)
       || hasNonEmptyReference(payload.voiceIds))
-  if (prompt.length < 2 && !grokFramePromptOptional) throw failure('请先输入视频描述', 422)
+  if (model.provider === 'suihe' && [...prompt].length > 4000) throw failure('视频描述不能超过 4000 个字符', 422)
+  if (prompt.length < (model.provider === 'suihe' ? 1 : 2) && !grokFramePromptOptional) throw failure('请先输入视频描述', 422)
   const config = videoSettings(env, model)
   if (!config.enabled) throw failure('模型调用暂不可用，请稍后再试', 503)
   if (model.provider === 'ark') {
@@ -271,7 +272,7 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
   // 首尾帧不能再带额外参考图，参考模式里也不能再出现首尾帧字段。官方给的替代做法是
   // 在参考模式的描述里点名哪张参考图当首帧，所以这里直接拦住而不是悄悄丢掉素材。
   if (model.provider === 'ark' || model.provider === 'suihe') {
-    if (isSeedance25(model) && lastFrame && !firstFrame) throw failure('Seedance 2.5 首尾帧模式需要首帧，请补充首帧图片', 422)
+    if ((model.provider === 'suihe' || isSeedance25(model)) && lastFrame && !firstFrame) throw failure('首尾帧模式需要首帧，请补充首帧图片', 422)
     if (isFrameMode(mode) && images.length) throw failure('首尾帧模式不能同时带参考图；要用参考图请换成混合参考模式，并在描述里指定首帧', 422)
     if (mode === 'image' && frameEntries.length) throw failure('混合参考模式不能再指定首尾帧，请在描述里说明哪张参考图当首帧', 422)
   }
@@ -349,6 +350,7 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
     // 兼容参数接收，不能沿用旧 provider 的本地拒绝规则。
     if (model.provider === 'ark' && (isSeedance20(model) || isSeedance25(model))) throw failure('当前模型不支持 seed 或 camera_fixed 参数', 422)
   }
+  if (model.provider === 'suihe' && cameraFixed === true && model.publicId !== 'seedance-2.0-mini' && model.id !== 'seedance-2.0-mini') throw failure('当前模型不支持固定镜头', 422)
   if (returnLastFrame !== undefined && !volcCompatibleProvider) throw failure('当前模型不支持 return_last_frame 参数', 422)
   const webSearch = payload.webSearch === true || (Array.isArray(payload.tools) && payload.tools.some((tool) => String(tool?.type || '') === 'web_search'))
   if (webSearch) {
