@@ -64,13 +64,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { ElButton, ElPopover, ElSelect, ElOption, ElSwitch } from "element-plus";
 import { IconChevronUp } from "@tabler/icons-vue";
 import type { NodeMediaModel } from "@miaoimg/nodes-scaffold/runtime";
 import { translate } from "@miaoimg/i18n/vue";
 import localMediaInfo from './localMediaInfo.vue';
-import { durationsForMode, inheritedFields, visibleControls } from "../scaffold/mediaParameters";
+import { durationsForMode, inheritedFields, resolutionsForControls, visibleControls } from "../scaffold/mediaParameters";
 
 const props = defineProps<{ model?: NodeMediaModel; disabled?: boolean; ratios: string[]; videoReferences?: number; imageReferences?: number }>();
 const duration = defineModel<number | undefined>("duration", { required: true });
@@ -113,6 +113,9 @@ const durations = computed(() => durationsForMode(props.model, selectedModeName.
   // 清晰度跟随平台（没有分辨率可选）时不按分辨率筛时长。
   .filter(value => value < 0 || !resolution.value || resolutionsFor(value).includes(resolution.value)));
 const resolutions = computed(() => resolutionsFor(duration.value));
+watch(resolutions, allowed => {
+  if (resolution.value && !allowed.includes(resolution.value)) resolution.value = undefined;
+});
 
 // 输入素材另计：参考视频按输入时长、图片素材超出免费张数按张计费（结算时合并预扣）。
 const inputHint = computed(() => {
@@ -128,7 +131,8 @@ const inputHint = computed(() => {
 });
 
 function resolutionsFor(value: number | undefined) {
-  return [...new Set((props.model?.durationResolutionMap ?? []).filter(item => value !== undefined && item.duration.includes(value)).flatMap(item => item.resolution))];
+  const listed = [...new Set((props.model?.durationResolutionMap ?? []).filter(item => value !== undefined && item.duration.includes(value)).flatMap(item => item.resolution))];
+  return resolutionsForControls(props.model, parameters.value, listed);
 }
 
 function ratioStyle(value: string) {

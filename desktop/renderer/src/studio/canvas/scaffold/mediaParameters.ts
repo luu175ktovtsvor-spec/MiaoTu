@@ -3,6 +3,7 @@
 // duration or resolution the catalog omitted.
 
 export type ParameterRules = {
+  resolutionsByControl?: Record<string, Record<string, string[]>>
   ratiosByMode?: Record<string, string[]>
   durationByMode?: Record<string, { min?: number; max?: number }>
   inheritByMode?: Record<string, Array<'duration' | 'ratio' | 'resolution'>>
@@ -12,6 +13,14 @@ export type ParameterRules = {
   requireVisualInMixed?: boolean
   framePlusReferences?: boolean
   promptOptionalWithImage?: boolean
+}
+
+export function resolutionsForControls(model: RuledModel | undefined, parameters: Record<string, unknown>, listed: string[]) {
+  return listed.filter(resolution => Object.entries(model?.parameterRules?.resolutionsByControl || {}).every(([key, rules]) => {
+    const value=String(parameters[key] ?? model?.controls?.find(control => control.key===key)?.default ?? '')
+    const allowed=rules[value]
+    return !Array.isArray(allowed) || allowed.includes(resolution)
+  }))
 }
 
 export type CatalogControl = {
