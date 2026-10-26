@@ -149,7 +149,7 @@ export async function createSuiheTask(request, {env=process.env,fetchImpl=fetch,
   try {response=await createMediaProviderFetch({env,fetchImpl})(config.baseUrl+path,{method:'POST',headers,body:payload,signal})}
   catch(error){throw Object.assign(error,{submissionUncertain:!error.submissionNotStarted})}
   const data=await json(response,true)
-  if(!response.ok||data.error) throw responseError(response,data,true)
+  if(!response.ok||data.error) throw Object.assign(responseError(response,data,true), {sentRequest:{path,body:{...body,files:files.map(({field,kind})=>({field,kind}))}}})
   const id=String(data.task_id||'').trim()
   if(!id||id.length>200||/\s/.test(id)) throw fail('穗禾未返回可查询的 task_id，请核对原请求',{submissionUncertain:true,upstreamStatus:response.status})
   return {id,status:'queued',upstreamModel:model.request_model,upstreamRequestId:id,upstreamStatus:response.status,raw:data,sentPath:path,sentBody:{...body,files:files.map(({field,kind})=>({field,kind}))}}
@@ -162,7 +162,10 @@ export async function pollSuiheTask(id,{env=process.env,fetchImpl=fetch,signal}:
   if(!response.ok) throw responseError(response,data)
   const urls=(Array.isArray(data.result_urls)?data.result_urls:[]).map(url=>new URL(String(url),config.baseUrl).href)
   const status=String(data.status||'')
-  return {id,status:status==='success'?'succeeded':['failed','cancelled'].includes(status)?'failed':'running',urls,url:urls[0]||'',duration:data.duration??null,width:data.width??null,height:data.height??null,mime:'video/mp4',progress:data.progress_pct??null,error:data.fail_reason||'',upstreamModel:data.model||'',upstreamRequestId:id,upstreamStatus:response.status,usage:{...(data.usage||{}),suihe_actual_cost:data.actual_cost??null,suihe_estimated_cost:data.estimated_cost??null,suihe_cost_unit:'unconfirmed'},metadata:{raw:data,status}}
+  // Current task responses expose an explicit CNY settlement. Keep that
+  // separate from the supplier's raw credit amounts; never guess their unit.
+  const billing=data.billing && typeof data.billing==='object' ? data.billing : null
+  return {id,status:status==='success'?'succeeded':['failed','cancelled'].includes(status)?'failed':'running',urls,url:urls[0]||'',duration:data.duration??null,width:data.width??null,height:data.height??null,mime:'video/mp4',progress:data.progress_pct??null,error:data.fail_reason||'',upstreamModel:data.model||'',upstreamRequestId:id,upstreamStatus:response.status,usage:{...(data.usage||{}),suihe_billing:billing,suihe_actual_cost:data.actual_cost??null,suihe_estimated_cost:data.estimated_cost??null,suihe_cost_unit:'unconfirmed'},metadata:{raw:data,status}}
 }
 export async function receiveSuiheImages(request,id,{env=process.env,fetchImpl=fetch,signal}:Record<string,any>={}) {
   const config=suiheSettings(env)

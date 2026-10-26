@@ -744,7 +744,7 @@ export async function submitQueuedVideo(job, { management, env = process.env, fe
         tier: request.resolution || '',
         seconds: Number(request.billableDuration ?? request.duration) || null,
         hasInputVideo: Boolean(Number(request.parameters?.videoSeconds) > 0 || request.parameters?.video || (request.parameters?.videos || []).length),
-        request: { references: referenceDiagnostics(lastUpstreamRequest), retries: attempts },
+        request: { ...(lastError?.sentRequest || {}), references: referenceDiagnostics(lastUpstreamRequest), retries: attempts },
         response: lastError?.upstreamStatus ? { status: lastError.upstreamStatus, error: { code: lastError.upstreamCode || '', message: lastError.upstreamMessage || lastError.message } } : null,
         upstreamRequestId: details.id,
         status: lastError?.upstreamStatus >= 400 && lastError?.upstreamStatus < 500 ? 'rejected' : 'failed',

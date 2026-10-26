@@ -68,7 +68,7 @@ export function costPlusVideoCost({ model, parameters = {}, usage, seconds }: Re
   if (model?.provider === 'suihe') {
     const cost=suiheCost(model,parameters,{seconds:output,usage})
     if (!cost) throw Error('该视频档位采购价尚未配置')
-    return {...cost,detail:{...cost.detail,expenses},markupPerSecond:snapshot.markupPerSecond}
+    return {...cost,detail:{...cost.detail,expenses},markupPerSecond:cost.detail.pricingSnapshot.customerMarkupRmbPerUnit}
   }
   if (METASO_VIDEO_CREDITS[id]) {
     const supplier = snapshot.supplierPricing

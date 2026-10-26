@@ -2,7 +2,7 @@
 // Separate per-second examples are not a universal tariff.
 import { suiheModelId } from './suihe-catalog.ts'
 import { SEEDANCE25_PRICING } from './seedance25.ts'
-export const SUIHE_COST_VERSION = 'suihe-native-cost-2026-10-25'
+export const SUIHE_COST_VERSION = 'suihe-settlement-cost-2026-10-26'
 // Owner confirmed 0.5 fen = RMB 0.005 per output second / image.
 export const SUIHE_CUSTOMER_MARKUP = 0.005
 export const SUIHE_IMAGE_RMB = {
@@ -38,7 +38,7 @@ export function suihePricingSnapshot(model, parameters: Record<string,any> = {})
 export function suiheCost(model, parameters: Record<string, any> = {}, {seconds, count = 1, usage}: Record<string, any> = {}) {
   const id=suiheModelId(model)
   const frozen=parameters.suiheCost
-  const snapshot=frozen?.version===SUIHE_COST_VERSION && frozen.model===id ? frozen : suihePricingSnapshot(model,parameters)
+  const snapshot=[SUIHE_COST_VERSION,'suihe-native-cost-2026-10-25'].includes(frozen?.version) && frozen.model===id ? frozen : suihePricingSnapshot(model,parameters)
   if (!model.video) {
     if (!(snapshot.unitRmb>0)) return null
     return {rmb:Math.round(snapshot.unitRmb*count*10000)/10000,basis:'suihe_image_procurement_price',detail:{supplier:'suihe',images:count,unitRmb:snapshot.unitRmb,pricingSnapshot:snapshot,source:'procurement_price'}}
@@ -46,6 +46,14 @@ export function suiheCost(model, parameters: Record<string, any> = {}, {seconds,
   if (!snapshot.rates || !snapshot.pixels || !(snapshot.discount>0)) return null
   const output=Number(seconds ?? usage?.output_seconds ?? parameters.billableDuration ?? parameters.duration)
   if (!(output>0)) return null
+  const billing=usage?.suihe_billing
+  const amount=billing?.charged_cny
+  const settled=amount!==undefined && amount!==null && amount!=='' ? Number(amount) : NaN
+  if (billing?.status==='confirmed' && Number.isFinite(settled) && settled>=0) {
+    return {rmb:Math.round(settled*10000)/10000,rawRmb:settled,outputSeconds:output,usageBased:true,
+      basis:'suihe_confirmed_cny_settlement',detail:{supplier:'suihe',outputSeconds:output,inputSeconds:Math.max(0,Number(parameters.videoSeconds)||0),pricingSnapshot:snapshot,source:'upstream_confirmed_billing',currency:'CNY',billing,
+        tokens:Number(billing.actual_completion_tokens)||0,rawActualCost:usage.suihe_actual_cost??null,rawEstimatedCost:usage.suihe_estimated_cost??null,rawCostUnit:'unconfirmed'}}
+  }
   const input=Math.max(0,Number(parameters.videoSeconds)||0)
   const rate=input>0?snapshot.rates.withVideoRmbPerMillion:snapshot.rates.noVideoRmbPerMillion
   const area=snapshot.pixels[parameters.ratio] || Math.max(...Object.values(snapshot.pixels).map(Number))
@@ -53,7 +61,10 @@ export function suiheCost(model, parameters: Record<string, any> = {}, {seconds,
   // Both published series use output + max(input,ceil(2*output/3)). Returned
   // billable tokens already include the minimum; never apply it twice.
   const floor=input>0?Math.ceil(output*snapshot.minimumInputFraction):0
-  const tokens=reported || Math.ceil((output+Math.max(input,floor))*area*snapshot.fps/1024)
+  // Include the extra boundary frame observed in real Seedance output. This
+  // is a reservation only; confirmed CNY billing above settles the final cost.
+  const boundaryFrames=snapshot.version===SUIHE_COST_VERSION?1:0
+  const tokens=reported || Math.ceil(((output+Math.max(input,floor))*snapshot.fps+boundaryFrames)*area/1024)
   const officialRmb=tokens/1e6*rate
   const rawRmb=officialRmb*snapshot.discount
   return {rmb:Math.round(rawRmb*10000)/10000,rawRmb,outputSeconds:output,usageBased:reported>0,
