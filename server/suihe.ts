@@ -105,12 +105,12 @@ export async function createSuiheTask(request, {env=process.env,fetchImpl=fetch,
     else if(request.mode==='extend') body.function_mode='omni_reference'
     else if(request.firstFrame||request.lastFrame||request.mode==='singleImage') body.function_mode=request.lastFrame?(request.firstFrame?'first_last_frames':'end_frame'):'first_frame'
     else if(request.mode==='image') body.function_mode='omni_reference'
-    // The live catalog names frame conditioning first_last_frames, including
-    // a first-only or last-only request. Keep both uploaded frame roles intact.
+    // The catalog groups frame conditioning under first_last_frames; the
+    // integration guide still requires first_frame/end_frame for one frame.
     const functionModes = capability.function_modes
     if (Array.isArray(functionModes) && functionModes.length && body.function_mode) {
-      if (['first_frame','end_frame'].includes(body.function_mode) && !functionModes.includes(body.function_mode) && functionModes.includes('first_last_frames')) body.function_mode='first_last_frames'
-      if (!functionModes.includes(body.function_mode)) throw fail('当前模型不支持这个视频参考模式',{status:422,submissionNotStarted:true})
+      const frameAlias=['first_frame','end_frame'].includes(body.function_mode) && functionModes.includes('first_last_frames')
+      if (!functionModes.includes(body.function_mode) && !frameAlias) throw fail('当前模型不支持这个视频参考模式',{status:422,submissionNotStarted:true})
     }
     const first=request.firstFrame || (request.mode==='singleImage'?(request.image||request.images?.[0]):'')
     if(first) files.push({field:'first_frame',value:first,kind:'image'})

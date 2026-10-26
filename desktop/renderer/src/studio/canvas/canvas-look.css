@@ -256,6 +256,8 @@ body[data-miaoimg-canvas-ui] .floatingSlot .promptCard:not(.expandedPromptCard) 
   filter: none !important;
 }
 body[data-miaoimg-canvas-ui] .canvasControlsCard { border-radius: 12px !important; box-shadow: none !important; }
+/* Selected generation composers must not cover the fixed canvas controls. */
+body[data-miaoimg-canvas-ui] .vue-flow__panel { z-index: 1500; }
 body[data-miaoimg-canvas-ui] .canvasControls { background: transparent; border: 0; box-shadow: none; }
 body[data-miaoimg-canvas-ui] .canvasControls .toolButton { border-radius: 8px; }
 body[data-miaoimg-canvas-ui] .canvasMenu { border-radius: 12px !important; box-shadow: none !important; }
