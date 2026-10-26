@@ -251,31 +251,8 @@ const VIDEO_CATALOG = [
     controls: ARK_VIDEO_CONTROLS,
   },
   {
-    id: 'MiniMax-H3', publicId: 'MiniMax-H3', label: 'MiniMax H3', provider: 'metaso', video: true,
-    note: '4–30 秒 · 480p/768P/1080p/2K · 原生有声', sizes: METASO_H3_SIZES, quality: [], formats: ['mp4'],
-    ratios: METASO_H3_RATIOS, durations: [...Array.from({ length: 27 }, (_, index) => index + 4)],
-    // 参考画布的 H3 模式：文生视频、首帧可选，以及多图/视频/音频混合参考（上限 9/3/3）。
-    modes: ['text', 'startFrameOptional', 'endFrameOptional', ['imageReference:9', 'videoReference:3', 'audioReference:3']],
-    // 秘塔 H3 协议没有声音开关：每次生成都带立体声，声音由提示词/参考音频控制，前端不提供假开关。
-    audio: true, referenceLimits: { image: 9, video: 3, audio: 3, frames: 2 },
-    maxDurationByResolution: { '480p': 30, '768P': 30, '1080p': 30, '2K': 15 },
-    maxReferences: 9, maxCount: 1, supportsEdit: false, supportsTransparent: false,
-    parameterRules: metasoRules(METASO_H3_RATIOS, { framePlusReferences: true }, METASO_H3_RATIOS),
-    // 秘塔 H3 的 Context IR 默认开启（按次计费）；打开这一项就关闭它，按原始提示词生成。
-    controls: [{ key: 'rawPrompt', label: '原样使用提示词', type: 'boolean' }],
-  },
-  {
     id: 'seedance-2.0', publicId: 'seedance-2.0', label: 'Seedance 2.0', provider: 'metaso', video: true,
     note: '4–15 秒 · 480p/720p/1080p/4K · 支持声音', sizes: METASO_SEEDANCE_SIZES, quality: [], formats: ['mp4'],
-    ratios: [...METASO_SEEDANCE_RATIOS, 'adaptive'], durations: DURATIONS_4_15,
-    modes: ['text', 'startFrameOptional', 'endFrameOptional', ['imageReference:9', 'videoReference:3', 'audioReference:3']],
-    audio: true, referenceLimits: { image: 9, video: 3, audio: 3, frames: 2 },
-    maxReferences: 9, maxCount: 1, supportsEdit: false, supportsTransparent: false,
-    parameterRules: metasoRules([...METASO_SEEDANCE_RATIOS, 'adaptive'], { requireVisualInMixed: true }),
-  },
-  {
-    id: 'seedance-2.0-mini', publicId: 'seedance-2.0-mini', label: 'Seedance 2.0 Mini', provider: 'metaso', video: true,
-    note: '4–15 秒 · 480p/720p · 支持声音', sizes: METASO_SEEDANCE_MINI_SIZES, quality: [], formats: ['mp4'],
     ratios: [...METASO_SEEDANCE_RATIOS, 'adaptive'], durations: DURATIONS_4_15,
     modes: ['text', 'startFrameOptional', 'endFrameOptional', ['imageReference:9', 'videoReference:3', 'audioReference:3']],
     audio: true, referenceLimits: { image: 9, video: 3, audio: 3, frames: 2 },
@@ -293,6 +270,29 @@ const VIDEO_CATALOG = [
     maxReferences: 9, maxCount: 1, supportsEdit: true, supportsTransparent: false,
     parameterRules: { requireVisualInMixed: true },
     controls: ARK_VIDEO_CONTROLS,
+  },
+  {
+    id: 'seedance-2.0-mini', publicId: 'seedance-2.0-mini', label: 'Seedance 2.0 Mini', provider: 'metaso', video: true,
+    note: '4–15 秒 · 480p/720p · 支持声音', sizes: METASO_SEEDANCE_MINI_SIZES, quality: [], formats: ['mp4'],
+    ratios: [...METASO_SEEDANCE_RATIOS, 'adaptive'], durations: DURATIONS_4_15,
+    modes: ['text', 'startFrameOptional', 'endFrameOptional', ['imageReference:9', 'videoReference:3', 'audioReference:3']],
+    audio: true, referenceLimits: { image: 9, video: 3, audio: 3, frames: 2 },
+    maxReferences: 9, maxCount: 1, supportsEdit: false, supportsTransparent: false,
+    parameterRules: metasoRules([...METASO_SEEDANCE_RATIOS, 'adaptive'], { requireVisualInMixed: true }),
+  },
+  {
+    id: 'MiniMax-H3', publicId: 'MiniMax-H3', label: 'MiniMax H3', provider: 'metaso', video: true,
+    note: '480p/768P/1080p：4–30 秒 · 2K：4–15 秒 · 原生有声', sizes: METASO_H3_SIZES, quality: [], formats: ['mp4'],
+    ratios: METASO_H3_RATIOS, durations: [...Array.from({ length: 27 }, (_, index) => index + 4)],
+    // 参考画布的 H3 模式：文生视频、首帧可选，以及多图/视频/音频混合参考（上限 9/3/3）。
+    modes: ['text', 'startFrameOptional', 'endFrameOptional', ['imageReference:9', 'videoReference:3', 'audioReference:3']],
+    // 秘塔 H3 协议没有声音开关：每次生成都带立体声，声音由提示词/参考音频控制，前端不提供假开关。
+    audio: true, referenceLimits: { image: 9, video: 3, audio: 3, frames: 2 },
+    maxDurationByResolution: { '480p': 30, '768P': 30, '1080p': 30, '2K': 15 },
+    maxReferences: 9, maxCount: 1, supportsEdit: false, supportsTransparent: false,
+    parameterRules: metasoRules(METASO_H3_RATIOS, { framePlusReferences: true }, METASO_H3_RATIOS),
+    // 秘塔 H3 的 Context IR 默认开启（按次计费）；打开这一项就关闭它，按原始提示词生成。
+    controls: [{ key: 'rawPrompt', label: '原样使用提示词', type: 'boolean' }],
   },
   {
     id: 'grok-imagine-video', label: 'Grok Imagine Video', provider: 'grok', video: true,
