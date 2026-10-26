@@ -20,9 +20,7 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
       { zh: '统一文本、图片、视频、音频和导演台的节点名称、操作说明与提示文案，保留已有自定义名称。', en: 'Text, image, video, audio and director nodes have consistent names and clearer instructions while preserving custom names.' },
       { zh: '参考素材说明补充格式、数量、大小及时长限制。', en: 'Reference guidance now includes format, count, size and duration limits.' },
     ],
-    knownIssues: [
-      { zh: 'Seedance 2.0、Fast 和 Mini 暂不提供首尾帧模式，可使用文生视频和全能参考模式。', en: 'First and last frame modes are temporarily unavailable for Seedance 2.0, Fast and Mini. Text and multimodal reference modes remain available.' },
-    ],
+    knownIssues: [],
   },
   '3.1.8': {
     title: { zh: '视频精选补齐提示词与译文', en: 'Complete prompts and translations for selected films' },
