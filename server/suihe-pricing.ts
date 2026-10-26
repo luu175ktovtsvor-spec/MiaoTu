@@ -67,7 +67,10 @@ export function suiheCost(model, parameters: Record<string, any> = {}, {seconds,
   const tokens=reported || Math.ceil(((output+Math.max(input,floor))*snapshot.fps+boundaryFrames)*area/1024)
   const officialRmb=tokens/1e6*rate
   const rawRmb=officialRmb*snapshot.discount
-  return {rmb:Math.round(rawRmb*10000)/10000,rawRmb,outputSeconds:output,usageBased:reported>0,
+  // Supplier confirmed CNY amounts are rounded to a milli-yuan. Reserve up
+  // to that unit so a rounding boundary cannot consume the fixed surcharge.
+  const rmb=reported?Math.round(rawRmb*10000)/10000:Math.ceil(rawRmb*1000-1e-8)/1000
+  return {rmb,rawRmb,outputSeconds:output,usageBased:reported>0,
     basis:reported?'suihe_volcengine_reported_tokens_discount':'suihe_volcengine_token_forecast_discount',
     detail:{supplier:'suihe',tokens,reportedTokens:reported,rmbPerMillion:rate,discount:snapshot.discount,officialRmb,outputSeconds:output,inputSeconds:input,inputAudioSeconds:Number(parameters.audioSeconds)||0,minimumInputSeconds:reported?0:floor,forecastPixels:area,forecastRatio:snapshot.pixels[parameters.ratio]?parameters.ratio:'maximum_supported',pricingSnapshot:snapshot,source:reported?'upstream_usage':'parameter_estimate',rawActualCost:usage?.suihe_actual_cost??null,rawEstimatedCost:usage?.suihe_estimated_cost??null,rawCostUnit:'unconfirmed'}}
 }
