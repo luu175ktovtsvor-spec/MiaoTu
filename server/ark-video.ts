@@ -28,7 +28,7 @@ export function arkVideoReady(env = process.env) {
   return Boolean(config.enabled && config.apiKey)
 }
 
-function contentParts(request) {
+export function arkVideoContent(request) {
   const parts: Array<Record<string, any>> = [{ type: 'text', text: request.prompt }]
   // Preserve the role supplied by the canvas. A lone last_frame is valid for
   // the optional-tail-frame mode and must not be re-labelled first_frame.
@@ -38,12 +38,12 @@ function contentParts(request) {
   if (request.lastFrame) {
     parts.push({ type: 'image_url', image_url: { url: request.lastFrame }, role: 'last_frame' })
   }
-  if (!request.firstFrame && !request.lastFrame && request.mode === 'singleImage' && (request.image || request.images[0])) {
+  if (!request.firstFrame && !request.lastFrame && request.mode === 'singleImage' && (request.image || request.images?.[0])) {
     // 单图生视频按官方示例用首帧角色。
-    parts.push({ type: 'image_url', image_url: { url: request.image || request.images[0] }, role: 'first_frame' })
+    parts.push({ type: 'image_url', image_url: { url: request.image || request.images?.[0] }, role: 'first_frame' })
   }
   // 全模态参考：图片 / 视频 / 音频可以组合传入（数量按模型目录校验），首尾帧与参考图互不重复。
-  const frameUrls = new Set([request.firstFrame, request.lastFrame].filter(Boolean).concat(request.mode === 'singleImage' ? [request.image, request.images[0]].filter(Boolean) : []))
+  const frameUrls = new Set([request.firstFrame, request.lastFrame].filter(Boolean).concat(request.mode === 'singleImage' ? [request.image, request.images?.[0]].filter(Boolean) : []))
   for (const url of new Set([request.image, ...(request.images || [])].filter(Boolean))) {
     if (frameUrls.has(url)) continue
     parts.push({ type: 'image_url', image_url: { url }, role: 'reference_image' })
@@ -81,7 +81,7 @@ export async function createArkVideoTask(request, { env = process.env, fetchImpl
   assertProviderRequestAllowed('ark', config.baseUrl, env)
   const body: Record<string, any> = {
     model: request.model.id,
-    content: contentParts(request),
+    content: arkVideoContent(request),
     watermark: false,
   }
   const options = request.arkOptions && typeof request.arkOptions === 'object' ? request.arkOptions : {}

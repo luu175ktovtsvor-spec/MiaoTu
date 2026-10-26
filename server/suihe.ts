@@ -4,6 +4,7 @@ import { assertProviderRequestAllowed } from './provider-safety.ts'
 import { createMediaProviderFetch } from './provider-fetch.ts'
 import { fetchVideoContent } from './video-content-fetch.ts'
 import { setSuiheModels, suiheModelId } from './suihe-catalog.ts'
+import { arkVideoContent } from './ark-video.ts'
 
 const fail = (message, extra = {}) => Object.assign(new Error(message), {status:502,...extra})
 export function suiheSettings(env = process.env) {
@@ -85,6 +86,10 @@ export async function createSuiheTask(request, {env=process.env,fetchImpl=fetch,
   const body:Record<string,any>={model:model.request_model,prompt:request.prompt}
   const files:Array<{field:string;value:string;kind:string;bytes?:BlobPart;mime?:string}>=[]
   if(video) {
+    // Use the official content roles, then adapt only the supplier transport.
+    const content = arkVideoContent(request)
+    const firstFrame = content.find(part => part.role === 'first_frame')?.image_url?.url
+    const lastFrame = content.find(part => part.role === 'last_frame')?.image_url?.url
     const options=request.arkOptions && typeof request.arkOptions==='object' ? request.arkOptions : {}
     const capability=model.capabilities || {}
     const creativeMode=String(request.creativeMode || parameters.creativeMode || capability.default_creative_mode || 'super_economy')
@@ -103,7 +108,7 @@ export async function createSuiheTask(request, {env=process.env,fetchImpl=fetch,
     })) if(value!==undefined&&value!==null&&value!=='') body[key]=value
     if(request.mode==='edit') body.function_mode='video_edit'
     else if(request.mode==='extend') body.function_mode='omni_reference'
-    else if(request.firstFrame||request.lastFrame||request.mode==='singleImage') body.function_mode=request.lastFrame?(request.firstFrame?'first_last_frames':'end_frame'):'first_frame'
+    else if(firstFrame||lastFrame) body.function_mode=lastFrame?(firstFrame?'first_last_frames':'end_frame'):'first_frame'
     else if(request.mode==='image') body.function_mode='omni_reference'
     // The catalog groups frame conditioning under first_last_frames; the
     // integration guide still requires first_frame/end_frame for one frame.
@@ -112,9 +117,8 @@ export async function createSuiheTask(request, {env=process.env,fetchImpl=fetch,
       const frameAlias=['first_frame','end_frame'].includes(body.function_mode) && functionModes.includes('first_last_frames')
       if (!functionModes.includes(body.function_mode) && !frameAlias) throw fail('当前模型不支持这个视频参考模式',{status:422,submissionNotStarted:true})
     }
-    const first=request.firstFrame || (request.mode==='singleImage'?(request.image||request.images?.[0]):'')
-    if(first) files.push({field:'first_frame',value:first,kind:'image'})
-    if(request.lastFrame) files.push({field:'last_frame',value:request.lastFrame,kind:'image'})
+    if(firstFrame) files.push({field:'first_frame',value:firstFrame,kind:'image'})
+    if(lastFrame) files.push({field:'last_frame',value:lastFrame,kind:'image'})
     if(body.function_mode==='omni_reference') [...new Set<string>([request.image,...request.images||[]].filter(Boolean))].forEach((value,index)=>files.push({field:`image_file_${index+1}`,value,kind:'image'}))
     for(const [index,value] of (request.videos||[]).entries()) files.push({field:`video_file_${index+1}`,value,kind:'video'})
     for(const [index,value] of (request.audios||[]).entries()) files.push({field:`audio_file_${index+1}`,value,kind:'audio'})
@@ -133,14 +137,18 @@ export async function createSuiheTask(request, {env=process.env,fetchImpl=fetch,
     for(const item of request.references||[]) files.push({field:'images',value:item.value,kind:'image',bytes:item.bytes,mime:item.mime})
   }
   let payload:BodyInit,headers:Record<string,string>={authorization:`Bearer ${config.apiKey}`}
+  let sentFields = body
+  const sentFiles:Array<Record<string,any>>=[]
   if(files.length) {
     const form=new FormData()
     const fields={...body}
     if(video){fields.video_resolution=fields.resolution;delete fields.resolution}
+    sentFields=fields
     for(const [key,value] of Object.entries(fields)) form.append(key,String(value))
     for(const file of files) {
       const blob=await referenceBlob(file.value,file.kind,{fetchImpl:discoveryFetch,signal,bytes:file.bytes,mime:file.mime})
       form.append(file.field,blob,`${file.field}.${({'image/jpeg':'jpg','image/png':'png','image/webp':'webp','video/mp4':'mp4','video/quicktime':'mov','audio/mpeg':'mp3','audio/wav':'wav'})[blob.type]||'bin'}`)
+      sentFiles.push({field:file.field,kind:file.kind,mime:blob.type,bytes:blob.size})
     }
     payload=form
   } else {headers['content-type']='application/json';payload=JSON.stringify(body)}
@@ -149,10 +157,10 @@ export async function createSuiheTask(request, {env=process.env,fetchImpl=fetch,
   try {response=await createMediaProviderFetch({env,fetchImpl})(config.baseUrl+path,{method:'POST',headers,body:payload,signal})}
   catch(error){throw Object.assign(error,{submissionUncertain:!error.submissionNotStarted})}
   const data=await json(response,true)
-  if(!response.ok||data.error) throw Object.assign(responseError(response,data,true), {sentRequest:{path,body:{...body,files:files.map(({field,kind})=>({field,kind}))}}})
+  if(!response.ok||data.error) throw Object.assign(responseError(response,data,true), {sentRequest:{path,body:{...sentFields,files:sentFiles}}})
   const id=String(data.task_id||'').trim()
   if(!id||id.length>200||/\s/.test(id)) throw fail('穗禾未返回可查询的 task_id，请核对原请求',{submissionUncertain:true,upstreamStatus:response.status})
-  return {id,status:'queued',upstreamModel:model.request_model,upstreamRequestId:id,upstreamStatus:response.status,raw:data,sentPath:path,sentBody:{...body,files:files.map(({field,kind})=>({field,kind}))}}
+  return {id,status:'queued',upstreamModel:model.request_model,upstreamRequestId:id,upstreamStatus:response.status,raw:data,sentPath:path,sentBody:{...sentFields,files:sentFiles}}
 }
 
 export async function pollSuiheTask(id,{env=process.env,fetchImpl=fetch,signal}:Record<string,any>={}) {

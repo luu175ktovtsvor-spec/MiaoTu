@@ -261,7 +261,7 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
   // 方舟官方把「图生视频-首帧」「图生视频-首尾帧」「全模态参考生视频」定义为三种互斥场景，明确不可混用：
   // 首尾帧不能再带额外参考图，参考模式里也不能再出现首尾帧字段。官方给的替代做法是
   // 在参考模式的描述里点名哪张参考图当首帧，所以这里直接拦住而不是悄悄丢掉素材。
-  if (model.provider === 'ark') {
+  if (model.provider === 'ark' || model.provider === 'suihe') {
     if (isSeedance25(model) && lastFrame && !firstFrame) throw failure('Seedance 2.5 首尾帧模式需要首帧，请补充首帧图片', 422)
     if (isFrameMode(mode) && images.length) throw failure('首尾帧模式不能同时带参考图；要用参考图请换成混合参考模式，并在描述里指定首帧', 422)
     if (mode === 'image' && frameEntries.length) throw failure('混合参考模式不能再指定首尾帧，请在描述里说明哪张参考图当首帧', 422)
