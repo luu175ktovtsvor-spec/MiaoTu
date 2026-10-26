@@ -2259,6 +2259,31 @@ export default function AdminPage() {
                   adminText("模型状态已保存", lang),
                 )
               }
+              onToggleChannel={(model, provider, enabled) =>
+                act(
+                  () => {
+                    const channels = Array.isArray(model.channels) ? model.channels : [];
+                    const nextChannels = Object.fromEntries(
+                      channels.map((channel) => [channel.provider, false]),
+                    );
+                    if (!enabled) {
+                      const fallback = channels.find(
+                        (channel) =>
+                          channel.provider !== provider && channel.configured === true,
+                      );
+                      if (fallback) nextChannels[fallback.provider] = true;
+                    } else {
+                      nextChannels[provider] = true;
+                    }
+                    const hasRoute = Object.values(nextChannels).some(Boolean);
+                    return api("settings", "PATCH", {
+                      modelChannels: { [model.id]: nextChannels },
+                      ...(hasRoute ? { models: { [model.id]: true } } : { models: { [model.id]: false } }),
+                    });
+                  },
+                  adminText("模型渠道已保存", lang),
+                )
+              }
               onOpenPrices={openPricing}
             />
           ))}

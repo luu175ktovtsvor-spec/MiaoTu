@@ -11,7 +11,7 @@ import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from
 import { estimateGenerationCost, estimateUpstreamCostRmb, publicCostPolicy, setPricingOverrides } from './generation-cost.ts'
 import { ArtifactFiles } from './artifact-files.ts'
 import { BlobStore, mediaLayout } from './blob-store.ts'
-import { modelById, modelForGeneration, defaultModel, modelCatalog } from './image-models.ts'
+import { activeModelForSettings, modelById, modelForGeneration, defaultModel, modelCatalog, normalizeModelChannelSettings } from './image-models.ts'
 import { ownTextModelById, ownTextModelIds } from './text-model-registry.ts'
 import { supportedImageMime } from './result-cache.ts'
 import { MEDIA_INPUT_VERSION } from './media-input.ts'
@@ -529,7 +529,7 @@ export class ManagementStore {
   }
   audit(actor, action, target, details: Record<string, any> = {}) { this.run('INSERT INTO audit VALUES(?,?,?,?,?,?)', randomUUID(), actor, action, target, JSON.stringify(details), new Date().toISOString()) }
   settings() {
-    const defaults = { enabled: true, videoEnabled: true, requireLogin: true, registrationEnabled: true, defaultModel: modelById(defaultModel())?.publicId || defaultModel(), defaultTextModel: ownTextModelById('gpt-6.1-sol')?.id || 'gpt-6.1-sol', models: {}, prices: {}, textPrices: {} }
+    const defaults = { enabled: true, videoEnabled: true, requireLogin: true, registrationEnabled: true, defaultModel: modelById(defaultModel())?.publicId || defaultModel(), defaultTextModel: ownTextModelById('gpt-6.1-sol')?.id || 'gpt-6.1-sol', models: {}, modelChannels: {}, prices: {}, textPrices: {} }
     const row = this.get("SELECT value FROM settings WHERE key='operating'")
     const stored = row ? parse(row.value) : {}
     const merged = { ...defaults, ...stored }
@@ -548,6 +548,7 @@ export class ManagementStore {
       defaultModel: publicModelId(merged.defaultModel) || defaults.defaultModel,
       defaultTextModel: ownTextModelById(merged.defaultTextModel)?.id || defaults.defaultTextModel,
       models: normalizeModelSettings(merged.models),
+      modelChannels: normalizeModelChannelSettings(merged.modelChannels),
       prices,
       textPrices,
       textBilling: normalizeTextBilling(merged.textBilling),
@@ -568,11 +569,12 @@ export class ManagementStore {
     if (!patch || typeof patch !== 'object' || Array.isArray(patch)) throw failure('设置字段无效')
     return this.transaction(() => {
       const current = this.settings()
-      for (const key of Object.keys(patch)) if (!['enabled','videoEnabled','requireLogin','registrationEnabled','defaultModel','defaultTextModel','maxConcurrent','models','prices','videoPricing','textPrices','textBilling'].includes(key)) throw failure('设置字段无效')
+      for (const key of Object.keys(patch)) if (!['enabled','videoEnabled','requireLogin','registrationEnabled','defaultModel','defaultTextModel','maxConcurrent','models','modelChannels','prices','videoPricing','textPrices','textBilling'].includes(key)) throw failure('设置字段无效')
       // Normalize aliases before merging so a legacy model id updates the
       // existing public id instead of becoming a conflicting second entry.
       const normalizedPatch = { ...patch }
       if (Object.prototype.hasOwnProperty.call(patch, 'models')) normalizedPatch.models = normalizeModelSettingsStrict(patch.models, '模型设置无效')
+      if (Object.prototype.hasOwnProperty.call(patch, 'modelChannels')) normalizedPatch.modelChannels = normalizeModelChannelSettings(patch.modelChannels)
       if (Object.prototype.hasOwnProperty.call(patch, 'prices')) normalizedPatch.prices = normalizeModelSettingsStrict(patch.prices, '计费设置无效')
       let next
       try { next = mergeOperatingSettings(current, normalizedPatch) } catch (error) { throw failure(error.message) }
@@ -584,6 +586,7 @@ export class ManagementStore {
       // retired account limit or changing any other operating preference.
       next.maxConcurrent = null
       next.models = normalizeModelSettingsStrict(next.models, '模型设置无效')
+      next.modelChannels = normalizeModelChannelSettings(next.modelChannels)
       for (const enabled of Object.values(next.models)) if (typeof enabled !== 'boolean') throw failure('模型设置无效')
       // Defaults are preferences, never an exemption from an administrator's switch.
       // When an entire type is paused, retain its preference for later reopening.
@@ -1447,6 +1450,11 @@ export class ManagementStore {
       if (!cfg.enabled) throw failure('管理员已暂停生成',503)
       if (!publicId) throw failure('不支持的图片模型',422)
       if (cfg.models[publicId] === false) throw failure('这个模型已暂停',403)
+      const activeRoute = activeModelForSettings(publicId, cfg)
+      if (!activeRoute) throw failure('这个模型暂未配置可用渠道', 503)
+      if (model?.provider && activeRoute.channelProvider && model.provider !== activeRoute.channelProvider) {
+        throw failure('模型渠道刚刚发生变化，请重新提交', 409)
+      }
       // 管理员给用户勾选的可用模型（空数组 = 全部开放）。这里在预扣/调上游之前拦截。
       const allowed = this.user(userId)?.models
       if (Array.isArray(allowed) && allowed.length && !allowed.includes(publicId)) throw failure('这个模型未对你的账号开放', 403)

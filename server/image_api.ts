@@ -32,6 +32,7 @@ import { join } from 'node:path'
 import {
   defaultModel,
   defaultsFor,
+  activeModelForSettings,
   modelById,
   modelForGeneration,
   modelCatalog,
@@ -218,7 +219,7 @@ const WORKSPACE_REFERENCE_SOURCES = Symbol('workspace-reference-sources')
 function resolveImageReferenceFiles(payload, session, env = process.env) {
   if (payload.referenceFiles === undefined) return payload
   if (session?.role !== 'user') throw failure('请使用自己的工作区参考素材', 403)
-  const model = modelById(String(payload.model || management.settings().defaultModel || defaultModel(env)).trim())
+  const model = activeModelForSettings(String(payload.model || management.settings().defaultModel || defaultModel(env)).trim(), management.settings(), env)
   if (!model || model.video) throw failure('不支持的图片模型', 422)
   if (!Array.isArray(payload.referenceFiles) || (payload.references !== undefined && (!Array.isArray(payload.references) || payload.references.length))) throw failure('参考素材参数无效', 422)
   if (payload.referenceFiles.length > model.maxReferences) throw failure('当前模型最多支持 ' + model.maxReferences + ' 张参考图', 422)
@@ -263,7 +264,7 @@ function validateRequest(payload, env = process.env): Record<string, any> {
   // 图层拆分允许不写提示词（官方：不传 prompt 时自动拆分主要元素）。
   if (prompt.length < 2 && !layerDecomposition) throw Object.assign(new Error('请先输入画面描述'), { status: 422 })
   const modelId = String(payload?.model || management.settings().defaultModel || defaultModel(env)).trim()
-  const model = modelById(modelId)
+  const model = activeModelForSettings(modelId, management.settings(), env)
   if (!model || model.video || model.internalOnly) throw Object.assign(new Error('不支持的图片模型'), { status: 422 })
   if (!providerConfigured(model.provider, env)) throw Object.assign(new Error(`${model.label} 的服务端 Key 尚未配置`), { status: 503 })
   if (env.ENABLE_MODEL_CALLS !== 'true') throw Object.assign(new Error('模型调用开关未开启'), { status: 503 })
@@ -1516,8 +1517,11 @@ const server = createServer(withRequestProject(async (request, response) => {
     sameOrigin(request)
     try {
       // 管理端是独立进程：询价前先读生效设置，后台刚改的视频价和下单扣费一致。
-      management.settings()
-      const estimate = await estimateVideoCredits(await bodyJson(request), session, { env: process.env, probeReferenceMedia })
+      const operating = management.settings()
+      let payload = await bodyJson(request)
+      const routed = activeModelForSettings(payload.model, operating, process.env)
+      if (routed) payload = { ...payload, __provider: routed.channelProvider || routed.provider, upstreamProvider: routed.channelProvider || routed.provider }
+      const estimate = await estimateVideoCredits(payload, session, { env: process.env, probeReferenceMedia })
       json(response, 200, { ok: true, ...estimate, billingSource: estimate.breakdown?.billingSource || 'parameter_reserve', source: 'estimateGenerationCost + prepareVideoRequest' })
     } catch (error) {
       json(response, Number(error.status) || 502, { ok: false, error: error.message || '积分估算失败' })
@@ -1566,6 +1570,8 @@ const server = createServer(withRequestProject(async (request, response) => {
     try {
       const body = await bodyJson(request)
       delete body.desktopDelivery; delete body.desktopReferences
+      const routed = activeModelForSettings(body.model, management.settings(), process.env)
+      if (routed) body.__provider = routed.channelProvider || routed.provider
       const desktop = url.pathname === '/api/imagine/desktop/video'
       const result = await withWorkspaceProject(desktop ? DEFAULT_PROJECT_ID : currentProject(), () => createVideo(body, session, { management, env: process.env, probeReferenceMedia,
         ...(desktop ? { preparePayload: payload => desktopMedia.prepare(payload, session) } : {}) }))
@@ -1709,7 +1715,7 @@ const server = createServer(withRequestProject(async (request, response) => {
     const sessionUser = session?.role === 'user' && session.userId ? management.user(session.userId) : null
     const userModels = Array.isArray(sessionUser?.models) ? sessionUser.models : []
     const allowedForUser = (id) => !userModels.length || userModels.includes(id)
-    const models = publicModelCatalog(env).filter((model) => operating.models[model.id] !== false && allowedForUser(model.id)).map((model) => {
+    const models = publicModelCatalog(env, operating).filter((model) => operating.models[model.id] !== false && allowedForUser(model.id)).map((model) => {
       // publicModelCatalog deliberately removes the provider marker before it
       // reaches the client. Pricing still needs the internal provider
       // snapshot, otherwise Suihe SD models fall back to their old Ark price
@@ -1725,7 +1731,7 @@ const server = createServer(withRequestProject(async (request, response) => {
     })
     })
     // 视频模型带上每个分辨率/秒数的积分规则，画布直接显示“当前参数预计消耗”。
-    const videoModels = publicVideoCatalog(env).filter((model) => operating.models[model.id] !== false && allowedForUser(model.id)).map((model) => ({
+    const videoModels = publicVideoCatalog(env, operating).filter((model) => operating.models[model.id] !== false && allowedForUser(model.id)).map((model) => ({
       ...model,
       paused: false,
       configured: model.configured,

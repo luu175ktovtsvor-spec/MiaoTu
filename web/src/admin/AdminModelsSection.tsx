@@ -18,6 +18,11 @@ type Props = {
   onSearch: (value: string) => void;
   onKindFilter: (value: string) => void;
   onToggle: (model: AdminModelRow, enabled: boolean) => void;
+  onToggleChannel: (
+    model: AdminModelRow,
+    provider: string,
+    enabled: boolean,
+  ) => void;
   onOpenPrices: (modelId?: string) => void;
 };
 
@@ -32,6 +37,7 @@ export default function AdminModelsSection({
   onSearch,
   onKindFilter,
   onToggle,
+  onToggleChannel,
   onOpenPrices,
 }: Props) {
   const t = (value: string) => adminText(value, lang);
@@ -145,6 +151,7 @@ export default function AdminModelsSection({
               const low = values.length ? Math.min(...values) : null;
               const high = values.length ? Math.max(...values) : null;
               const section = sections.get(model.id);
+              const channels = Array.isArray(model.channels) ? model.channels : [];
               const manual =
                 !["text"].includes(model.kind) &&
                 Boolean(
@@ -195,6 +202,48 @@ export default function AdminModelsSection({
                         : t(pricingModeLabel(model, costPolicy))}
                     </span>
                   </div>
+
+                  <div className="model-route-meta">
+                    <div>
+                      <span>{t("当前上游")}</span>
+                      <strong>{model.providerLabel || model.provider || t("未选择")}</strong>
+                    </div>
+                    <div>
+                      <span>{t("上游模型 ID")}</span>
+                      <code>{model.upstreamModelId || model.id}</code>
+                    </div>
+                  </div>
+
+                  {channels.length > 0 && (
+                    <div className="model-channel-list" aria-label={t("渠道开关")}>
+                      {channels.map((channel) => {
+                        const channelEnabled = channel.enabled === true;
+                        const channelConfigured = channel.configured === true;
+                        return (
+                          <div className="model-channel-row" key={channel.provider}>
+                            <div className="model-channel-copy">
+                              <strong>{channel.providerLabel || channel.provider}</strong>
+                              <code>{channel.upstreamModelId || model.id}</code>
+                              <span className={channelConfigured ? "is-ready" : ""}>
+                                {channelConfigured ? t("已配置") : t("未配置")}
+                              </span>
+                              {channel.active && <em>{t("当前")}</em>}
+                            </div>
+                            <button
+                              className={`admin-switch compact ${channelEnabled ? "on" : ""}`}
+                              role="switch"
+                              aria-checked={channelEnabled}
+                              aria-label={`${channel.providerLabel || channel.provider} ${t("渠道开关")}`}
+                              disabled={busy || (!channelConfigured && !channelEnabled)}
+                              onClick={() => onToggleChannel(model, channel.provider, channelEnabled)}
+                            >
+                              <span />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
 
                   <div className="model-price-preview">
                     {model.kind === "text" ? (

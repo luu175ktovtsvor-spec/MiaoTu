@@ -33,6 +33,12 @@ export function mergeOperatingSettings(current: Record<string, any>, patch: Reco
   const owns = (key: string) => Object.prototype.hasOwnProperty.call(patch, key)
   if (owns('textBilling')) next.textBilling = mergeRecord(current.textBilling, patch.textBilling, '文本计费设置无效')
   if (owns('models')) next.models = mergeRecord(current.models, patch.models, '模型设置无效')
+  if (owns('modelChannels')) {
+    next.modelChannels = mergeRecord(current.modelChannels, patch.modelChannels, '模型通道设置无效')
+    for (const [id, channels] of Object.entries(record(patch.modelChannels, '模型通道设置无效'))) {
+      next.modelChannels[id] = mergeRecord(current.modelChannels?.[id], channels, '模型通道设置无效')
+    }
+  }
   if (owns('videoPricing')) next.videoPricing = mergeRecord(current.videoPricing, patch.videoPricing, '视频定价设置无效')
   if (owns('textPrices') && patch.textPrices !== null) {
     next.textPrices = mergeRecord(current.textPrices, patch.textPrices, '文本模型计费设置无效')

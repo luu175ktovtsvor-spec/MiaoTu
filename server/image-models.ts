@@ -7,7 +7,7 @@
  */
 
 import { runtimeSecret } from './runtime-secrets.ts'
-import { suiheModelOverlay, SUIHE_ADDITIONAL_IMAGES } from './suihe-catalog.ts'
+import { suiheModelId, suiheModelOverlay, SUIHE_ADDITIONAL_IMAGES, SUIHE_MODEL_IDS } from './suihe-catalog.ts'
 
 const COMMON_SIZES = [
   { value: 'auto', label: '自动', ratio: 'auto', detail: '让模型判断方向' },
@@ -331,17 +331,34 @@ export function modelCatalog(): Array<{ id: string; label: string; provider: str
 export function providerCatalog() {
   return Object.values(PROVIDERS).map(({ id, label, description }: Record<string, any>) => ({ id, label, description }))
 }
-export function adminModelCatalog(env = process.env) {
-  return modelCatalog().map((model:any) => ({
-    ...model,
-    id:model.publicId || model.id,
-    kind:model.video ? 'video' : 'image',
-    provider:model.provider,
-    legacyProvider:model.legacyProvider || model.provider,
-    channelCategory:model.channelCategory || (model.video ? 'legacy-video' : 'legacy-image'),
-    configured:providerConfigured(model.provider,env),
-    internalOnly:Boolean(model.internalOnly),
-  }))
+export function adminModelCatalog(env = process.env, settings: Record<string, any> = {}) {
+  const seen = new Set()
+  return CATALOG.map((base: any) => {
+    const id = base.publicId || base.id
+    if (seen.has(id)) return null
+    seen.add(id)
+    const active = activeModelForSettings(id, settings, env)
+    const displayModel = active || suiheModelOverlay(base)
+    const channels = modelChannelOptions(id, env).map(channel => ({
+      ...channel,
+      enabled: modelChannelEnabled(settings, id, channel.provider),
+      active: Boolean(active && active.channelProvider === channel.provider),
+    }))
+    return {
+      ...displayModel,
+      id,
+      publicId: id,
+      kind:displayModel.video ? 'video' : 'image',
+      provider:active ? (active.channelProvider || active.provider) : '',
+      providerLabel:active ? (active.channelProviderLabel || CHANNEL_LABELS[active.provider] || active.provider) : '未启用',
+      upstreamModelId:active ? (active.upstreamModelId || active.id) : '',
+      legacyProvider:base.provider,
+      channelCategory:displayModel.channelCategory || (displayModel.video ? 'legacy-video' : 'legacy-image'),
+      channels,
+      configured:Boolean(active && providerConfigured(active.channelProvider || active.provider,env)),
+      internalOnly:Boolean(base.internalOnly),
+    }
+  }).filter(Boolean)
 }
 
 export function modelById(modelId): (typeof CATALOG)[number] & Record<string, any> {
@@ -359,6 +376,109 @@ export function modelById(modelId): (typeof CATALOG)[number] & Record<string, an
   const target = LEGACY_PUBLIC_IDS[wanted] || wanted
   const model = CATALOG.find((model) => model.id === target || model.publicId === target)
   return model ? suiheModelOverlay(model) as any : null
+}
+
+const CHANNEL_LABELS = Object.freeze({
+  suihe: '穗禾',
+  ark: '火山方舟',
+  metaso: '秘塔',
+  yunshu: '云枢',
+  grok: '云枢 Grok',
+})
+
+function baseModelByPublicId(value) {
+  const wanted = String(value?.publicId || value?.id || value || '').trim()
+  const aliases = {
+    'seedance-2-5': 'seedance-2.5',
+    'doubao-seedance-2-5': 'seedance-2.5',
+    'seedance-2-0-fast': 'seedance-2.0-fast',
+    'doubao-seedance-2-0-fast': 'seedance-2.0-fast',
+    'doubao-seedance-2-0-mini': 'seedance-2.0-mini',
+    'seedance-2-0-mini': 'seedance-2.0-mini',
+  }
+  const target = aliases[wanted] || wanted
+  return CATALOG.find(model => model.id === target || model.publicId === target) || null
+}
+
+function channelVariants(value, env = process.env) {
+  const base = baseModelByPublicId(value)
+  if (!base) return []
+  const publicId = base.publicId || base.id
+  const variants = []
+  const push = (provider, model) => {
+    if (variants.some(item => item.provider === provider)) return
+    variants.push({
+      key: `${provider}:${publicId}`,
+      provider,
+      providerLabel: CHANNEL_LABELS[provider] || provider,
+      upstreamModelId: String(model.upstreamModelId || model.id || publicId),
+      model,
+      configured: providerConfigured(provider, env),
+    })
+  }
+  const suiheId = suiheModelId(base)
+  if (SUIHE_MODEL_IDS.includes(suiheId)) push('suihe', suiheModelOverlay(base))
+  push(base.provider, { ...base })
+  return variants
+}
+
+export function modelChannelOptions(value, env = process.env) {
+  return channelVariants(value, env).map(({ model, ...channel }) => ({
+    ...channel,
+    publicId: model.publicId || model.id,
+    label: model.label,
+    kind: model.video ? 'video' : 'image',
+  }))
+}
+
+export function normalizeModelChannelSettings(value: Record<string, any> = {}) {
+  const result = {}
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return result
+  for (const [rawId, rawChannels] of Object.entries(value)) {
+    const base = baseModelByPublicId(rawId)
+    if (!base || !rawChannels || typeof rawChannels !== 'object' || Array.isArray(rawChannels)) continue
+    const known = new Set(channelVariants(base).map(channel => channel.provider))
+    const channels = {}
+    for (const [provider, enabled] of Object.entries(rawChannels)) {
+      if (known.has(provider) && typeof enabled === 'boolean') channels[provider] = enabled
+    }
+    if (Object.keys(channels).length) result[base.publicId || base.id] = channels
+  }
+  return result
+}
+
+export function modelChannelEnabled(settings: Record<string, any> = {}, value, provider) {
+  const base = baseModelByPublicId(value)
+  if (!base) return false
+  const publicId = base.publicId || base.id
+  const channels = settings?.modelChannels?.[publicId]
+  // Once a model has an explicit channel map, omitted channels are disabled.
+  // This keeps a partial admin patch such as `{ ark: true }` from silently
+  // leaving the default Suihe route enabled as well.
+  if (channels && typeof channels === 'object') return channels[provider] === true
+  // New SD requests prefer the Suihe channel. Existing non-SD models keep
+  // their original provider as the default channel.
+  return provider === (SUIHE_MODEL_IDS.includes(suiheModelId(base)) ? 'suihe' : base.provider)
+}
+
+export function activeModelForSettings(value, settings: Record<string, any> = {}, env = process.env) {
+  const options = channelVariants(value, env)
+  if (!options.length) return null
+  const enabled = options.filter(channel => modelChannelEnabled(settings, channel.model.publicId || channel.model.id, channel.provider))
+  const selected = enabled.find(channel => channel.configured) || enabled[0]
+  return selected?.model ? { ...selected.model, channelKey: selected.key, channelProvider: selected.provider, channelProviderLabel: selected.providerLabel, upstreamModelId: selected.upstreamModelId } : null
+}
+
+export function defaultModelChannelSettings(env = process.env) {
+  const result = {}
+  for (const base of CATALOG) {
+    if (base.internalOnly) continue
+    const options = channelVariants(base, env)
+    if (!options.length) continue
+    const publicId = base.publicId || base.id
+    result[publicId] = Object.fromEntries(options.map((channel, index) => [channel.provider, index === 0]))
+  }
+  return result
 }
 
 // Historical and accepted jobs retain the provider used at reservation when
@@ -389,9 +509,14 @@ export function providerConfigured(provider, env = process.env) {
   return Boolean(key && runtimeSecret(key, env))
 }
 
-export function publicModelCatalog(env = process.env): Array<{ id: string; label: string } & Record<string, any>> {
+export function publicModelCatalog(env = process.env, settings: Record<string, any> = {}): Array<{ id: string; label: string } & Record<string, any>> {
   // 公开目录只给模型 ID 与能力：不暴露供应商标识，前端不展示供应商。
-  return modelCatalog().filter((model: any) => !model.video && !model.internalOnly).map((model: any) => ({
+  const seen = new Set()
+  return CATALOG.map((base: any) => activeModelForSettings(base.publicId || base.id, settings, env))
+    .filter((model: any) => model && !model.video && !model.internalOnly && !seen.has(model.publicId || model.id))
+    .map((model: any) => {
+      seen.add(model.publicId || model.id)
+      return ({
     id: model.publicId || model.id,
     label: model.label,
     video: Boolean(model.video),
@@ -414,11 +539,17 @@ export function publicModelCatalog(env = process.env): Array<{ id: string; label
     deprecated: Boolean(model.deprecated),
     sunsetAt: model.sunsetAt || '',
     replacement: model.replacement || '',
-  }))
+      })
+    })
 }
 
-export function publicVideoCatalog(env = process.env) {
-  return modelCatalog().filter((model: any) => model.video && !model.internalOnly).map((model: any) => ({
+export function publicVideoCatalog(env = process.env, settings: Record<string, any> = {}) {
+  const seen = new Set()
+  return CATALOG.map((base: any) => activeModelForSettings(base.publicId || base.id, settings, env))
+    .filter((model: any) => model && model.video && !model.internalOnly && !seen.has(model.publicId || model.id))
+    .map((model: any) => {
+      seen.add(model.publicId || model.id)
+      return ({
     // 公开目录只暴露 publicId，内部带版本的 id 留在服务端调用上游。
     id: model.publicId || model.id,
     label: model.label,
@@ -442,7 +573,8 @@ export function publicVideoCatalog(env = process.env) {
     maxDurationByMode: model.maxDurationByMode || {},
     parameterRules: model.parameterRules || {},
     controls: model.controls || [],
-  }))
+      })
+    })
 }
 
 /**

@@ -95,7 +95,7 @@
 /* 画布那条全局 :focus-visible（body[data-miaoimg-canvas-ui] :is(button,input,…)）比这里的
    .desktop-account-input input:focus-visible 更高一级，会把 2px 白框画在字段内部、和外框叠成双层焦点。
    这里用更长的选择器压住它：焦点信号只留字段外框这一层（accent 细框 + 3px 柔环）。 */
-.desktop-account-panel .desktop-account-field .desktop-account-input input:focus-visible{outline:none}
+.desktop-account-panel .desktop-account-input input:focus-visible{outline:none}
 .desktop-account-input input:-webkit-autofill{-webkit-text-fill-color:var(--da-ink);caret-color:var(--da-ink);-webkit-box-shadow:0 0 0 100px var(--da-field) inset;transition:background-color 9999s ease-out}
 .desktop-account-password-toggle{flex:none;width:30px;height:30px;display:grid;place-items:center;border:0;border-radius:8px;background:transparent;color:var(--da-faint)}.desktop-account-password-toggle:hover:not(:disabled){background:rgba(255,255,255,.06);color:var(--da-ink)}.desktop-account-password-toggle:disabled{opacity:.45}
 .desktop-account-send{flex:none;min-height:30px;padding:0 12px;border:1px solid var(--da-line-strong);border-radius:8px;background:transparent;color:var(--da-body);font-size:12px;font-weight:600;white-space:nowrap}.desktop-account-send:hover:not(:disabled){border-color:var(--da-accent);color:var(--da-ink);background:rgba(255,255,255,.06)}.desktop-account-send:disabled{opacity:.45}

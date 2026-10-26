@@ -5,6 +5,17 @@ export type AdminModelRow = {
   label: string;
   kind: AdminModelKind;
   configured?: boolean;
+  provider?: string;
+  providerLabel?: string;
+  upstreamModelId?: string;
+  channels?: Array<{
+    provider: string;
+    providerLabel?: string;
+    upstreamModelId?: string;
+    configured?: boolean;
+    enabled?: boolean;
+    active?: boolean;
+  }>;
   paused?: boolean;
   video?: boolean;
   sizes?: Array<{ value: string; label?: string }>;
