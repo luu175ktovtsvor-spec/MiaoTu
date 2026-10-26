@@ -115,7 +115,7 @@ const IMAGE_CATALOG = [
     layerSizes: ['1K', '1.5K', '2K', 'auto'],
   },
   {
-    id: 'doubao-seedream-5-0-flash-260915', publicId: 'doubao-seedream-5-0-flash', label: 'Seedream 5.0 Flash', provider: 'ark',
+    id: 'doubao-seedream-5-0-flash-260915', publicId: 'doubao-seedream-5-0-flash', label: 'Seedream 5.0 Flash', provider: 'ark', internalOnly: true,
     note: '速度优先 · 支持 1K/1.5K/2K', sizes: SEEDREAM_SIZES, customSize: true, sizeRule: SEEDREAM5_SIZE_RULE, quality: [], formats: ['png', 'jpeg'],
     maxReferences: 10, maxCount: 1, supportsEdit: true, supportsTransparent: true,
     supportsLayerDecomposition: true, optimizePromptModes: ['standard'],
@@ -631,8 +631,8 @@ export function matchesSizeRule(rule, width, height) {
   return pixels >= rule.minPixels && pixels <= rule.maxPixels && ratio >= rule.minRatio && ratio <= rule.maxRatio
 }
 
-export function validSize(modelId, size) {
-  const model = modelById(modelId)
+export function validSize(modelId, size, resolvedModel = null) {
+  const model = resolvedModel || modelById(modelId)
   const value = String(size || '').trim()
   if (!model) return false
   if (model.sizes.some((option) => option.value === value)) return true
@@ -642,8 +642,8 @@ export function validSize(modelId, size) {
   return matchesSizeRule(model.sizeRule, Number(match[1]), Number(match[2]))
 }
 
-export function defaultsFor(modelId) {
-  const model: any = modelById(modelId) || CATALOG[0]
+export function defaultsFor(modelId, resolvedModel = null) {
+  const model: any = resolvedModel || modelById(modelId) || CATALOG[0]
   return {
     size: model.sizes.find((item) => item.value === 'auto')?.value || model.sizes[0].value,
     quality: model.quality.includes('medium') ? 'medium' : model.quality[0] || '',
@@ -654,10 +654,10 @@ export function defaultsFor(modelId) {
   }
 }
 
-export function normalizeGeneration(modelId, input: Record<string, any> = {}) {
-  const model = modelById(modelId)
+export function normalizeGeneration(modelId, input: Record<string, any> = {}, resolvedModel = null) {
+  const model = resolvedModel || modelById(modelId)
   if (!model) throw new Error('不支持的图片模型')
-  const defaults = defaultsFor(model.id)
+  const defaults = defaultsFor(model.id, model)
   let size = String(input.size || defaults.size).trim()
   let legacyRatio = ''
   if (model.provider==='suihe') {
@@ -684,7 +684,7 @@ export function normalizeGeneration(modelId, input: Record<string, any> = {}) {
   if (seed !== undefined && (!Number.isInteger(seed) || seed < -1 || seed > 2147483647)) throw new Error('随机种子无效')
   const responseFormat = String(input.responseFormat || '').trim().toLowerCase()
   if (responseFormat && !['url', 'b64_json'].includes(responseFormat)) throw new Error('图片响应格式无效')
-  if (!validSize(model.id, size)) throw new Error('当前模型不支持这个画布尺寸')
+  if (!validSize(model.id, size, model)) throw new Error('当前模型不支持这个画布尺寸')
   const requestedRatio = legacyRatio || String(input.ratio || '').trim()
   if (Array.isArray(model.ratios) && model.ratios.length && requestedRatio && !model.ratios.includes(requestedRatio)) throw new Error('当前模型不支持这个画面比例')
   // GPT Image and Seedream encode aspect ratio in the concrete size and never

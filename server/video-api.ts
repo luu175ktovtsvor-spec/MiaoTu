@@ -10,7 +10,7 @@ import { withNormalizedVideoFile } from './video-normalize.ts'
 import { withStreamedMedia, mediaPermissions } from './media-files.ts'
 import { WORKSPACE_FILE_MAX_BYTES } from './workspace-files.ts'
 import { assertReferenceInput, referenceInputPolicy } from './reference-input-contract.ts'
-import { modelById, modelForGeneration, publicVideoCatalog } from './image-models.ts'
+import { activeModelForSettings, modelById, modelForGeneration, publicVideoCatalog } from './image-models.ts'
 import { estimateGenerationCost, estimateUpstreamCostRmb, VIDEO_INPUT_PRICING } from './generation-cost.ts'
 import { failure } from './management-store.ts'
 import { assertModelAccess } from './model-access.ts'
@@ -640,8 +640,17 @@ export async function prepareVideoRequest(payload, session, { env = process.env,
 }
 
 /** 只算积分、不占额不下单：给画布显示「这次请求会扣多少」。 */
-export async function estimateVideoCredits(payload, session, { env = process.env, probeReferenceMedia }: Record<string, any> = {}) {
+function routeNewVideo(payload, management, env) {
+  const settings = management.settings()
+  const model = activeModelForSettings(payload.model, settings, env)
+  if (!model?.video || model.internalOnly || settings.models?.[model.publicId || model.id] === false) throw failure('当前视频模型未开放', 403)
+  // The server owns routing. Never trust channel markers from the caller.
+  return { ...payload, __provider: model.provider, upstreamProvider: model.provider }
+}
+
+export async function estimateVideoCredits(payload, session, { management, env = process.env, probeReferenceMedia }: Record<string, any> = {}) {
   if (!session) throw failure('请先登录再查看积分', 401)
+  if (management) payload = routeNewVideo(payload, management, env)
   const request = await prepareVideoRequest(payload, session, { env, probeReferenceMedia })
   return {
     model: request.model.publicId || request.model.id,
@@ -667,6 +676,7 @@ export async function createVideo(payload, session, { management, env = process.
   assertModelAccess({ management, session, service: '视频模型' })
   if (preparePayload) payload = preparePayload(payload)
   if (!management.settings().videoEnabled) throw failure('管理员尚未开启视频生成', 503)
+  payload = routeNewVideo(payload, management, env)
   const request = await prepareVideoRequest(payload, session, { env, probeReferenceMedia })
   request.parameters.workspaceProject = currentProject() || DEFAULT_PROJECT_ID
   request.parameters.referenceVideoCount = request.parameters.videos.length

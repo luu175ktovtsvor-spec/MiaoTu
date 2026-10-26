@@ -273,7 +273,7 @@ function validateRequest(payload, env = process.env): Record<string, any> {
   if (references.length > model.maxReferences) throw Object.assign(new Error(`当前模型最多支持 ${model.maxReferences} 张参考图`), { status: 422 })
   const parsedReferences = references.map(value => parseImageData(value, model))
   let generation
-  try { generation = normalizeGeneration(model.id, payload) } catch (error) { throw Object.assign(error, { status: 422 }) }
+  try { generation = normalizeGeneration(model.id, payload, model) } catch (error) { throw Object.assign(error, { status: 422 }) }
   const edit = validateEdit(payload.edit, model, parsedReferences, value => parseImageData(value, model))
   if (edit) generation.count = 1
   // 火山官方图层拆分：仅 5.0 Pro/Flash，单张输入图，size 只支持 1K/1.5K/2K/auto。
@@ -1517,11 +1517,8 @@ const server = createServer(withRequestProject(async (request, response) => {
     sameOrigin(request)
     try {
       // 管理端是独立进程：询价前先读生效设置，后台刚改的视频价和下单扣费一致。
-      const operating = management.settings()
-      let payload = await bodyJson(request)
-      const routed = activeModelForSettings(payload.model, operating, process.env)
-      if (routed) payload = { ...payload, __provider: routed.channelProvider || routed.provider, upstreamProvider: routed.channelProvider || routed.provider }
-      const estimate = await estimateVideoCredits(payload, session, { env: process.env, probeReferenceMedia })
+      const payload = await bodyJson(request)
+      const estimate = await estimateVideoCredits(payload, session, { management, env: process.env, probeReferenceMedia })
       json(response, 200, { ok: true, ...estimate, billingSource: estimate.breakdown?.billingSource || 'parameter_reserve', source: 'estimateGenerationCost + prepareVideoRequest' })
     } catch (error) {
       json(response, Number(error.status) || 502, { ok: false, error: error.message || '积分估算失败' })
@@ -1570,8 +1567,6 @@ const server = createServer(withRequestProject(async (request, response) => {
     try {
       const body = await bodyJson(request)
       delete body.desktopDelivery; delete body.desktopReferences
-      const routed = activeModelForSettings(body.model, management.settings(), process.env)
-      if (routed) body.__provider = routed.channelProvider || routed.provider
       const desktop = url.pathname === '/api/imagine/desktop/video'
       const result = await withWorkspaceProject(desktop ? DEFAULT_PROJECT_ID : currentProject(), () => createVideo(body, session, { management, env: process.env, probeReferenceMedia,
         ...(desktop ? { preparePayload: payload => desktopMedia.prepare(payload, session) } : {}) }))
@@ -1720,7 +1715,7 @@ const server = createServer(withRequestProject(async (request, response) => {
       // reaches the client. Pricing still needs the internal provider
       // snapshot, otherwise Suihe SD models fall back to their old Ark price
       // in the quote shown by the canvas.
-      const pricingModel = modelById(model.id) || model
+      const pricingModel = activeModelForSettings(model.id, operating, env) || model
       return ({
       ...model,
       current: model.id === publicDefaultModel,
@@ -1766,7 +1761,7 @@ const server = createServer(withRequestProject(async (request, response) => {
       // 供应商和内部通道只留在服务端；公开目录只返回可选模型 ID/名称。
       textModels: textCatalog.map(({ provider: _provider, providerLabel: _providerLabel, ...model }: Record<string, any>) => ({ ...model, configured: textChannelReady(env, model.id) })),
       textEnabled: textCatalog.some((model) => textChannelReady(env, model.id)) && operating.enabled,
-      modelDefaults: Object.fromEntries(modelCatalog().map((model) => [model.publicId || model.id, defaultsFor(model.id)])),
+      modelDefaults: Object.fromEntries([...models, ...videoModels].map((model) => [model.id, defaultsFor(model.id, activeModelForSettings(model.id, operating, env))])),
       payment: publicPaymentConfig(payments),
     })
     return

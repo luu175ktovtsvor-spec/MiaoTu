@@ -2266,15 +2266,7 @@ export default function AdminPage() {
                     const nextChannels = Object.fromEntries(
                       channels.map((channel) => [channel.provider, false]),
                     );
-                    if (!enabled) {
-                      const fallback = channels.find(
-                        (channel) =>
-                          channel.provider !== provider && channel.configured === true,
-                      );
-                      if (fallback) nextChannels[fallback.provider] = true;
-                    } else {
-                      nextChannels[provider] = true;
-                    }
+                    nextChannels[provider] = !enabled;
                     const hasRoute = Object.values(nextChannels).some(Boolean);
                     return api("settings", "PATCH", {
                       modelChannels: { [model.id]: nextChannels },

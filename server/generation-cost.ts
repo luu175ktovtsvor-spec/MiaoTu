@@ -674,7 +674,7 @@ export function estimateUpstreamCostRmb(input: Record<string, any> = {}) {
     : upstreamImageCostRmb(input)
 }
 
-export function publicCostPolicy() {
+export function publicCostPolicy(catalog = modelCatalog()) {
   return {
     version: POLICY_VERSION,
     videoPricing: adminVideoPricing(),
@@ -687,7 +687,7 @@ export function publicCostPolicy() {
       'H3 参考视频按输入时长计费，图片素材前 5 张免费、超出按张计费',
       '用户积分按任务状态结算；上游失败、取消或返回不明是否扣费须凭原请求查账，未知不当零成本',
     ],
-    models: Object.fromEntries(modelCatalog().map((model: any) => {
+    models: Object.fromEntries(catalog.map((model: any) => {
       const id = model.publicId || model.id
       // 一律走「有效价」入口，后台调价后这里立刻反映真实售价。
       if (!model.video) {

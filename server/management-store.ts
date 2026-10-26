@@ -635,7 +635,8 @@ export class ManagementStore {
   costPolicy() {
     // 管理端与图片服务是独立进程；询价时读生效设置，不能等队列轮询刷新价格。
     const settings = this.settings()
-    return { ...publicCostPolicy(), textModels: publicTextCostPolicy(settings.textPrices) }
+    const catalog = modelCatalog().map(model => activeModelForSettings(model.publicId || model.id, settings)).filter(Boolean)
+    return { ...publicCostPolicy(catalog), textModels: publicTextCostPolicy(settings.textPrices) }
   }
   normalizeStoredModelPermissions() {
     for (const row of this.all('SELECT id,models FROM users')) {
