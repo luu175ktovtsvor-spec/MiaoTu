@@ -18,9 +18,10 @@ export function suiheModelOverlay(model): Record<string, any> {
   const common = { ...model, provider: 'suihe', legacyProvider:model.provider, upstreamModelId: remote?.request_model || id, channelCategory: model.video ? 'sd-video' : 'sd-image', deprecated:false, sunsetAt:'', replacement:'' }
   if (model.video) {
     const is25 = id === 'seedance-2.5'
-    // 2.0 frame requests remain unavailable: the corrected first_frame upload
-    // was rejected as video editing; the dual-frame order is still uncertain.
-    const framesAvailable = id !== 'seedance-2.0'
+    // 2.0, Fast and Mini reject first_frame uploads as video editing;
+    // their dual-frame submissions return 500 without a task ID. Keep these
+    // modes closed until the supplier resolves the recorded requests.
+    const framesAvailable = is25
     const listedResolutions = cap.resolutions || (id === 'seedance-2.0' ? ['480p','720p','1080p','4k'] : is25 ? ['480p','720p','1080p'] : ['480p','720p'])
     const configuredDefault = String(cap.default_resolution || '').trim().toLowerCase()
     const defaultResolution = configuredDefault || (listedResolutions.includes('720p') ? '720p' : listedResolutions[0])
