@@ -114,7 +114,7 @@ const durations = computed(() => durationsForMode(props.model, selectedModeName.
   .filter(value => value < 0 || !resolution.value || resolutionsFor(value).includes(resolution.value)));
 const resolutions = computed(() => resolutionsFor(duration.value));
 watch(resolutions, allowed => {
-  if (resolution.value && !allowed.includes(resolution.value)) resolution.value = undefined;
+  if (props.model?.parameterRules?.resolutionsByControl && allowed.length && resolution.value && !allowed.includes(resolution.value)) resolution.value = undefined;
 });
 
 // 输入素材另计：参考视频按输入时长、图片素材超出免费张数按张计费（结算时合并预扣）。
