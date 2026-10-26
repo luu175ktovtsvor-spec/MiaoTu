@@ -21,7 +21,10 @@ export function suiheModelOverlay(model): Record<string, any> {
     // 2.0, Fast and Mini reject first_frame uploads as video editing;
     // their dual-frame submissions return 500 without a task ID. Keep these
     // modes closed until the supplier resolves the recorded requests.
-    const framesAvailable = is25
+    const functionModes = Array.isArray(cap.function_modes) ? cap.function_modes : []
+    const framesAvailable = is25 && functionModes.includes('first_last_frames')
+    const mixedAvailable = functionModes.includes('omni_reference')
+    const editAvailable = is25 && functionModes.includes('video_edit')
     const listedResolutions = cap.resolutions || (id === 'seedance-2.0' ? ['480p','720p','1080p','4k'] : is25 ? ['480p','720p','1080p'] : ['480p','720p'])
     const configuredDefault = String(cap.default_resolution || '').trim().toLowerCase()
     const defaultResolution = configuredDefault || (listedResolutions.includes('720p') ? '720p' : listedResolutions[0])
@@ -43,12 +46,12 @@ export function suiheModelOverlay(model): Record<string, any> {
     const durations = Array.from({length:maxDuration - minDuration + 1}, (_, n) => n + minDuration)
     const defaultDuration = Number(cap.default_duration) || (durations.includes(10) ? 10 : durations[0])
     return { ...common, note: `${is25 ? '4–30' : '4–15'} 秒 · ${resolutions.join('/')}`, sizes: resolutions.map(value => ({value,label:value,ratio:'16:9'})), ratios: [...(cap.ratios || ratios), 'adaptive'], durations,
-      modes: ['text',...(framesAvailable ? ['singleImage','startFrameOptional','endFrameOptional'] : []), ...(is25 ? ['edit','extend'] : []), [`imageReference:${cap.reference_limits?.image || (is25 ? 30 : 9)}`, `videoReference:${cap.reference_limits?.video || (is25 ? 10 : 3)}`, `audioReference:${cap.reference_limits?.audio || (is25 ? 10 : 3)}`]],
-      referenceLimits: { image:cap.reference_limits?.image || (is25 ? 30 : 9), video:cap.reference_limits?.video || (is25 ? 10 : 3), audio:cap.reference_limits?.audio || (is25 ? 10 : 3), frames:framesAvailable?2:0 }, audio:'optional', supportsEdit:is25,
+      modes: ['text',...(framesAvailable ? ['singleImage','endFrameOptional'] : []), ...(editAvailable ? ['edit'] : []), ...(is25 && mixedAvailable ? ['extend'] : []), ...(mixedAvailable ? [[`imageReference:${cap.reference_limits?.image ?? (is25 ? 30 : 9)}`, `videoReference:${cap.reference_limits?.video ?? (is25 ? 10 : 3)}`, `audioReference:${cap.reference_limits?.audio ?? (is25 ? 10 : 3)}`]] : [])],
+      referenceLimits: { image:cap.reference_limits?.image ?? (is25 ? 30 : 9), video:cap.reference_limits?.video ?? (is25 ? 10 : 3), audio:cap.reference_limits?.audio ?? (is25 ? 10 : 3), frames:framesAvailable?2:0 }, audio:'optional', supportsEdit:is25,
       creativeModes, defaultCreativeMode, defaultResolution: resolutions[0] || '', defaultDuration, resolutionsByCreativeMode,
       controls:[{key:'creativeMode',label:'创作档',type:'select',options:creativeModes,default:defaultCreativeMode},{key:'cameraFixed',label:'固定镜头',type:'boolean'},{key:'returnLastFrame',label:'返回尾帧',type:'boolean'}],
       maxDurationByResolution:{}, maxDurationByMode:{},
-      parameterRules: { requireVisualInMixed:true, resolutionsByControl:{creativeMode:resolutionsByCreativeMode}, ratiosByMode:{text:cap.ratios || ratios,image:cap.ratios || ratios,singleImage:['adaptive'],startFrameOptional:['adaptive'],endFrameOptional:['adaptive'], ...(is25 ? {edit:['adaptive']} : {})}, inheritByMode:{singleImage:['ratio'],startFrameOptional:['ratio'],endFrameOptional:['ratio'],...(is25 ? {edit:['duration','ratio']} : {})}, ...(is25 ? {hintsByMode:{edit:'编辑保持原视频时长与比例，参考视频需为 4–30 秒'}} : {}) },
+      parameterRules: { requireVisualInMixed:true, resolutionsByControl:{creativeMode:resolutionsByCreativeMode}, ratiosByMode:{text:cap.ratios || ratios,image:cap.ratios || ratios,singleImage:['adaptive'],endFrameOptional:['adaptive'], ...(is25 ? {edit:['adaptive'],extend:['adaptive']} : {})}, inheritByMode:{singleImage:['ratio'],endFrameOptional:['ratio'],...(is25 ? {edit:['duration','ratio'],extend:['ratio']} : {})}, ...(is25 ? {hintsByMode:{edit:'编辑保持原视频时长与比例，参考视频需为 4–30 秒'}} : {}) },
     }
   }
   const tiers = cap.resolutions || ({'seedream-5.0-pro':['1k','1.5k','2k'],'seedream-5.0-lite':['2k','3k'],'seedream-4.5':['2k','4k'],'seedream-4.0':['1k','2k','4k']})[id]
@@ -57,9 +60,5 @@ export function suiheModelOverlay(model): Record<string, any> {
   // Only Lite advertises selectable encoding. The other image models returned
   // JPEG even when PNG was requested, so do not advertise an unsupported choice.
   const formats = cap.output_formats || (id === 'seedream-5.0-lite' ? ['jpeg','png'] : ['jpeg'])
-  return { ...common, note:pricedTiers.join('/'), unpricedSizes:tiers.filter(value=>!pricedTiers.includes(value)), sizes:pricedTiers.map(value => ({value:value.toUpperCase(),label:value.toUpperCase(),ratio:''})), ratios:cap.ratios || imageRatios, customSize:false, quality:[], formats, maxCount:1, maxReferences:cap.max_reference_images || (id==='seedream-5.0-pro'?10:16), supportsEdit:true, regionEdit:null, supportsTransparent:false, supportsLayerDecomposition:false, optimizePromptModes:[], layerSizes:[], controls:cap.web_search === true ? [{key:'webSearch',label:'联网搜索',type:'boolean'}] : [] }
+  return { ...common, note:pricedTiers.join('/'), unpricedSizes:tiers.filter(value=>!pricedTiers.includes(value)), sizes:pricedTiers.map(value => ({value:value.toUpperCase(),label:value.toUpperCase(),ratio:''})), ratios:cap.ratios || imageRatios, customSize:false, quality:[], formats, maxCount:1, maxCombinedImages:undefined, maxReferences:cap.max_reference_images || (id==='seedream-5.0-pro'?10:16), supportsEdit:true, regionEdit:null, supportsTransparent:false, supportsLayerDecomposition:false, optimizePromptModes:[], layerSizes:[], controls:cap.web_search === true ? [{key:'webSearch',label:'联网搜索',type:'boolean'}] : [] }
 }
-export const SUIHE_ADDITIONAL_IMAGES = [
-  { id:'seedream-5.0-lite',label:'Seedream 5.0 Lite',video:false,sizes:[],quality:[],formats:['jpeg','png'] },
-  { id:'seedream-4.5',label:'Seedream 4.5',video:false,sizes:[],quality:[],formats:['jpeg'] },
-]

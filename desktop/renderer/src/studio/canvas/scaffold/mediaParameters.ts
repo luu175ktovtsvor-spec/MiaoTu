@@ -3,6 +3,7 @@
 // duration or resolution the catalog omitted.
 
 export type ParameterRules = {
+  resolutionsByMode?: Record<string, string[]>
   resolutionsByControl?: Record<string, Record<string, string[]>>
   ratiosByMode?: Record<string, string[]>
   durationByMode?: Record<string, { min?: number; max?: number }>
@@ -15,8 +16,9 @@ export type ParameterRules = {
   promptOptionalWithImage?: boolean
 }
 
-export function resolutionsForControls(model: RuledModel | undefined, parameters: Record<string, unknown>, listed: string[]) {
-  return listed.filter(resolution => Object.entries(model?.parameterRules?.resolutionsByControl || {}).every(([key, rules]) => {
+export function resolutionsForControls(model: RuledModel | undefined, parameters: Record<string, unknown>, listed: string[], mode?: unknown) {
+  const modeResolutions = model?.parameterRules?.resolutionsByMode?.[modeName(mode)]
+  return listed.filter(resolution => (!Array.isArray(modeResolutions) || modeResolutions.includes(resolution)) && Object.entries(model?.parameterRules?.resolutionsByControl || {}).every(([key, rules]) => {
     const value=String(parameters[key] ?? model?.controls?.find(control => control.key===key)?.default ?? '')
     const allowed=rules[value]
     return !Array.isArray(allowed) || allowed.includes(resolution)
@@ -92,7 +94,16 @@ export function controlPayload(model: RuledModel | undefined, mode: unknown, val
   for (const control of visibleControls(model, mode)) {
     const value = values?.[control.key]
     if (value === undefined || value === '' || value === false) continue
+    if (control.type === 'boolean' && value !== true) continue
+    if (control.type === 'select' && !control.options?.includes(String(value))) continue
+    if (control.type === 'number' && (typeof value !== 'number' || !Number.isFinite(value)
+      || control.min != null && value < control.min || control.max != null && value > control.max)) continue
     payload[control.key] = value
   }
   return payload
+}
+
+export function resolutionsForMode(model: RuledModel | undefined, mode: unknown, duration: number | undefined, parameters: Record<string, unknown> = {}) {
+  const listed = [...new Set((model?.durationResolutionMap || []).filter(item => duration !== undefined && item.duration.includes(duration)).flatMap(item => item.resolution))]
+  return resolutionsForControls(model, parameters, listed, mode)
 }

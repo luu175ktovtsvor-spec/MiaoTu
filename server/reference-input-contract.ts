@@ -14,7 +14,7 @@ export function referenceInputPolicy(model, kind) {
   if (!model?.video && kind === 'image') {
     if (model?.provider === 'suihe') return { maxBytes: 30 * MB, mimes: COMMON_IMAGE_MIMES }
     if (model?.provider === 'ark') return {
-      maxBytes: 30 * MB, mimes: ARK_IMAGE_MIMES,
+      maxBytes: 30 * MB, exclusiveMaxBytes: true, mimes: ARK_IMAGE_MIMES,
       minEdge: 15, maxPixels: 36_000_000, minRatio: 1 / 16, maxRatio: 16,
     }
     // Existing Yunshu/Grok channel guard; not a claim about official model limits.
@@ -25,6 +25,10 @@ export function referenceInputPolicy(model, kind) {
     if (kind === 'image') return { maxBytes: 30 * MB, exclusiveMaxBytes: true, mimes: COMMON_IMAGE_MIMES, minEdge: 300, maxEdge: 6000, minRatio: 0.4, maxRatio: 2.5 }
     if (kind === 'video') return { maxBytes: 200 * MB, minDuration: 2, maxDuration: isSeedance25(model) ? 30 : 15, formats: ['mp4', 'mov'] }
     if (kind === 'audio') return { maxBytes: 15 * MB, minDuration: 2, maxDuration: isSeedance25(model) ? 30 : 15, formats: ['wav', 'mp3'] }
+  }
+  if (model?.provider === 'grok' && model.video) {
+    if (kind === 'image') return { maxBytes: 30 * MB, mimes: COMMON_IMAGE_MIMES }
+    if (kind === 'video') return { maxBytes: 200 * MB, maxDuration: 15, formats: ['mp4'], codecs: ['h264', 'hevc', 'av1'] }
   }
   if (model?.provider === 'ark' && model.video) {
     if (kind === 'image') return {

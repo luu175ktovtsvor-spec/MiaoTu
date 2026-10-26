@@ -40,24 +40,24 @@
             </el-popover>
           </span>
         </el-tooltip>
-        <el-tooltip :showArrow="false" :content="showMap ? translate('隐藏地图') : translate('显示地图')" placement="top" :hideAfter="0" :enterable="false" :triggerKeys="[]">
+        <el-tooltip :showArrow="false" :content="translate('切换小地图')" placement="top" :hideAfter="0" :enterable="false" :triggerKeys="[]">
           <el-button
             class="toolButton"
             text
             :type="showMap ? 'primary' : 'default'"
             :aria-pressed="showMap"
-            :aria-label="translate('显示或隐藏地图')"
+            :aria-label="translate('切换小地图')"
             @click="showMap = !showMap">
             <icon-map :size="17" />
           </el-button>
         </el-tooltip>
-        <el-tooltip :showArrow="false" :content="showEdges ? translate('隐藏连线') : translate('显示连线')" placement="top" :hideAfter="0" :enterable="false" :triggerKeys="[]">
+        <el-tooltip :showArrow="false" :content="showEdges ? translate('隐藏节点连线') : translate('显示节点连线')" placement="top" :hideAfter="0" :enterable="false" :triggerKeys="[]">
           <el-button
             class="toolButton"
             text
             :type="showEdges ? 'primary' : 'default'"
             :aria-pressed="showEdges"
-            :aria-label="translate('显示或隐藏连线')"
+            :aria-label="showEdges ? translate('隐藏节点连线') : translate('显示节点连线')"
             @click="showEdges = !showEdges">
             <icon-arrow-guide :size="17" />
           </el-button>
@@ -74,7 +74,7 @@
           </el-button>
         </el-tooltip>
         <el-tooltip :showArrow="false"
-          :content="translate('缩放菜单（滚轮调整缩放）')"
+          :content="translate('缩放选项')"
           placement="top"
           :hideAfter="0"
           :enterable="false"
@@ -86,7 +86,7 @@
                 <el-button
                   class="toolButton"
                   text
-                  :aria-label="translate('缩放菜单')"
+                  :aria-label="translate('缩放选项')"
                   @wheel.stop.prevent="$event.deltaY && applyZoom(Math.min(800, Math.max(20, zoomPercent - Math.sign($event.deltaY))))">
                   {{ zoomPercent }}%
                 </el-button>
@@ -134,8 +134,8 @@
             <icon-plus :size="18" />
           </el-button>
         </el-tooltip>
-        <el-tooltip :showArrow="false" :content="translate('选择')" placement="top" :hideAfter="0" :enterable="false" :triggerKeys="[]">
-          <el-button class="toolButton" text :type="handMode ? 'default' : 'primary'" :aria-pressed="!handMode" :aria-label="translate('选择')" @click="emit('tool', 'move')">
+        <el-tooltip :showArrow="false" :content="translate('移动')" placement="top" :hideAfter="0" :enterable="false" :triggerKeys="[]">
+          <el-button class="toolButton" text :type="handMode ? 'default' : 'primary'" :aria-pressed="!handMode" :aria-label="translate('移动')" @click="emit('tool', 'move')">
             <icon-pointer :size="17" />
           </el-button>
         </el-tooltip>
@@ -155,8 +155,8 @@
             <icon-arrow-forward-up :size="17" />
           </el-button>
         </el-tooltip>
-        <el-tooltip :showArrow="false" :content="translate('适应视图')" placement="top" :hideAfter="0" :enterable="false" :triggerKeys="[]">
-          <el-button class="toolButton" text :aria-label="translate('适应视图')" @click="fitView({ padding: 0.25, maxZoom: 1 })">
+        <el-tooltip :showArrow="false" :content="translate('适合屏幕')" placement="top" :hideAfter="0" :enterable="false" :triggerKeys="[]">
+          <el-button class="toolButton" text :aria-label="translate('适合屏幕')" @click="fitView({ padding: 0.25, maxZoom: 1 })">
             <icon-focus-centered :size="17" />
           </el-button>
         </el-tooltip>

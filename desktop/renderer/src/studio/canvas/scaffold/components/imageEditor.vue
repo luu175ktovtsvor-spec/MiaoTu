@@ -34,7 +34,7 @@
   </div>
   <teleport v-if="mode && toolbarTarget" :to="toolbarTarget">
     <div class="paintToolbar" @keydown.esc.stop.prevent="!busy && cancel()">
-      <el-button class="exitButton" :icon="IconX" :disabled="busy" text :title="mode === 'mark' ? translate('取消标记') : translate('取消局部重绘')" :aria-label="mode === 'mark' ? translate('取消标记') : translate('取消局部重绘')" @click="cancel">{{ mode === 'mark' ? translate('标记') : translate('局部重绘') }}</el-button>
+      <el-button class="exitButton" :icon="IconX" :disabled="busy" text :title="mode === 'mark' ? translate('取消标记') : translate('取消局部重绘')" :aria-label="mode === 'mark' ? translate('取消标记') : translate('取消局部重绘')" @click="cancel">{{ mode === 'mark' ? translate('标注') : translate('重绘') }}</el-button>
       <el-button v-if="showBrush" :icon="IconBrush" :type="tool === 'brush' ? 'primary' : 'default'" :disabled="busy" text :title="translate('画笔')" :aria-label="translate('画笔')" :aria-pressed="tool === 'brush'" @click="tool = 'brush'" />
       <template v-if="mode === 'mark'">
         <el-button :icon="IconSquare" :type="tool === 'rectangle' ? 'primary' : 'default'" :disabled="busy" text :title="translate('矩形')" :aria-label="translate('矩形')" :aria-pressed="tool === 'rectangle'" @click="tool = 'rectangle'" />

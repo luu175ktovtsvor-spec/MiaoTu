@@ -177,6 +177,8 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
   if (resolution && allowedSizes.length && !allowedSizes.includes(resolution)) {
     throw failure(`当前模型不支持分辨率 ${resolution}，可选：${allowedSizes.join('、')}`, 422)
   }
+  const modeResolutions = model.parameterRules?.resolutionsByMode?.[mode]
+  if (resolution && Array.isArray(modeResolutions) && !modeResolutions.includes(resolution)) throw failure('当前模式不支持这个分辨率', 422)
   const creativeModes = Array.isArray(model.creativeModes) ? model.creativeModes : []
   const requestedCreativeMode = payload.creativeMode === undefined || payload.creativeMode === '' ? undefined : String(payload.creativeMode).trim()
   const creativeMode = model.provider === 'suihe' && creativeModes.length
@@ -185,7 +187,7 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
   if (creativeMode && creativeModes.length && !creativeModes.includes(creativeMode)) throw failure(`当前模型不支持创作档 ${creativeMode}`, 422)
   if (model.provider === 'suihe' && creativeMode && resolution) {
     const allowedCreativeResolutions = model.resolutionsByCreativeMode?.[creativeMode]
-    if (Array.isArray(allowedCreativeResolutions) && allowedCreativeResolutions.length && !allowedCreativeResolutions.map(String).map(value => value.toLowerCase()).includes(resolution.toLowerCase())) {
+    if (Array.isArray(allowedCreativeResolutions) && !allowedCreativeResolutions.map(String).map(value => value.toLowerCase()).includes(resolution.toLowerCase())) {
       throw failure(`${creativeMode} 创作档不支持 ${resolution}`, 422)
     }
   }
@@ -246,6 +248,13 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
   const videoLimit = (mode === 'edit' || mode === 'extend') ? Math.max(1, limits.video ?? 0) : (limits.video ?? 0)
   const video = videos[0] || ''
   const referenceImageCount = frameEntries.length + images.length
+  const modeReferences = model.parameterRules?.referencesByMode?.[mode]
+  if (modeReferences) {
+    for (const [kind, count] of Object.entries({ image: referenceImageCount, video: videos.length, audio: audios.length })) {
+      const [min, max] = modeReferences[kind] || [0, 0]
+      if (count < min || count > max) throw failure(`当前模式的${{image:'图片',video:'视频',audio:'音频'}[kind]}参考数量需为 ${min}–${max}`, 422)
+    }
+  }
   if (referenceImageCount && (limits.image ?? 0) <= 0) throw failure('当前模型不支持图片参考', 422)
   if (referenceImageCount > (limits.image ?? 0)) throw failure(`当前模型最多支持 ${limits.image} 张图片参考（含首尾帧）`, 422)
   if (videos.length && videoLimit <= 0) throw failure('当前模型不支持视频参考', 422)
@@ -279,6 +288,7 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
   }
   // 多模态参考模式允许图片、视频、音频组合；Seedance 2.0 系列不支持单独音频。
   if (mode === 'image' && !(referenceImageCount || videos.length || audios.length || referenceVoices.length || keyframes.length)) throw failure('混合参考模式至少需要一个参考素材', 422)
+  if (mode === 'image' && model.parameterRules?.requireVisualInMixed && !referenceImageCount && !videos.length) throw failure('当前模型不能只输入音频参考，请添加图片或视频', 422)
   if (mode === 'image' && isSeedance20(model) && !referenceImageCount && !videos.length) throw failure('Seedance 2.0 系列不能只输入音频参考', 422)
   if ((mode === 'edit' || mode === 'extend') && !video) throw failure('视频编辑或扩展需要输入视频地址', 422)
   if ((mode === 'edit' || mode === 'extend') && keyframes.length) throw failure('视频编辑或延长不能混用 keyframes', 422)

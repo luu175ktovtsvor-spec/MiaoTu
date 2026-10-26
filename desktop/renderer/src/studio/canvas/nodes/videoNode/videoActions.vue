@@ -95,7 +95,7 @@ const loadFfmpeg = useNodeFfmpeg();
 const nodeEvent = useNodeEvent();
 const getCanvas = inject<(() => { id: string } | undefined) | undefined>("canvas", undefined);
 const batchHistory = inject<(action: () => Promise<void>) => Promise<void>>("batchCanvasHistory", action => action());
-const actionKeys = { extractAudio: "提取音轨", separate: "分离音视频", trim: "截取片段" } as const;
+const actionKeys = { extractAudio: "提取音轨", separate: "分离音视频", trim: "片段截取" } as const;
 // 动作名既是弹窗标题也是提示文案，展示时翻译；写进画布的节点名仍用中文原文。
 const actionLabels = computed(() => Object.fromEntries(Object.entries(actionKeys).map(([key, label]) => [key, translate(label)])) as Record<keyof typeof actionKeys, string>);
 const action = ref<keyof typeof actionKeys>("trim");

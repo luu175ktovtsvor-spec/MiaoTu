@@ -7,7 +7,8 @@
  */
 
 import { runtimeSecret } from './runtime-secrets.ts'
-import { suiheModelId, suiheModelOverlay, SUIHE_ADDITIONAL_IMAGES, SUIHE_MODEL_IDS } from './suihe-catalog.ts'
+import { referenceInputPolicy } from './reference-input-contract.ts'
+import { suiheCapability, suiheModelId, suiheModelOverlay, SUIHE_MODEL_IDS } from './suihe-catalog.ts'
 
 const COMMON_SIZES = [
   { value: 'auto', label: '自动', ratio: 'auto', detail: '让模型判断方向' },
@@ -78,6 +79,15 @@ const SEEDREAM4_SIZES = [
   { value: '3040x5504', label: '4K 手机全屏', ratio: '9:16', detail: '高清壁纸 · 竖屏' },
 ]
 
+// Official Lite/4.5 require at least 2K (3,686,400 pixels).
+const SEEDREAM_LITE_SIZE_RULE = Object.freeze({ ...SEEDREAM4_SIZE_RULE, minPixels: 3_686_400 })
+const SEEDREAM_LITE_SIZES = [
+  { value: '2K', label: '2K', ratio: 'auto' },
+  { value: '3K', label: '3K', ratio: 'auto' },
+  { value: '4K', label: '4K', ratio: 'auto' },
+  ...SEEDREAM4_SIZES,
+]
+
 const IMAGE_CATALOG = [
   {
     id: 'gpt-image-2', label: 'GPT Image 2', provider: 'yunshu',
@@ -122,11 +132,23 @@ const IMAGE_CATALOG = [
     layerSizes: ['1K', '1.5K', '2K', 'auto'],
   },
   {
+    id: 'doubao-seedream-5-0-260128', publicId: 'seedream-5.0-lite', label: 'Seedream 5.0 Lite', provider: 'ark',
+    note: '支持多图和组图', sizes: SEEDREAM_LITE_SIZES, customSize: true, sizeRule: SEEDREAM_LITE_SIZE_RULE,
+    quality: [], formats: ['jpeg', 'png'], maxReferences: 14, maxCount: 15, maxCombinedImages: 15,
+    supportsEdit: true, supportsTransparent: false,
+  },
+  {
+    id: 'doubao-seedream-4-5-251128', publicId: 'seedream-4.5', label: 'Seedream 4.5', provider: 'ark',
+    note: '支持多图和组图', sizes: SEEDREAM_LITE_SIZES.filter(size => size.value !== '3K'), customSize: true, sizeRule: SEEDREAM_LITE_SIZE_RULE,
+    quality: [], formats: ['jpeg'], maxReferences: 14, maxCount: 15, maxCombinedImages: 15,
+    supportsEdit: true, supportsTransparent: false,
+  },
+  {
     id: 'doubao-seedream-4-0-20260415', publicId: 'doubao-seedream-4-0', label: 'Seedream 4.0', provider: 'ark',
     note: '支持多图和自定义尺寸', sizes: SEEDREAM4_SIZES, customSize: true, sizeRule: SEEDREAM4_SIZE_RULE, quality: [], formats: ['jpeg'],
     // 官方图片 API：多图生图 2–14 张参考；组图模式（sequential_image_generation=auto）
     // 最多 15 张，且「参考图数量 + 生成张数 ≤ 15」。
-    maxReferences: 14, maxCount: 15, supportsEdit: true, supportsTransparent: false,
+    maxReferences: 14, maxCount: 15, maxCombinedImages: 15, supportsEdit: true, supportsTransparent: false,
   },
 ]
 
@@ -310,14 +332,17 @@ const VIDEO_CATALOG = [
     modes: ['text', 'singleImage', 'startFrameOptional', 'endFrameOptional', ['imageReference:14']],
     audio: 'optional', referenceLimits: { image: 14, video: 0, audio: 0, frames: 2 }, keyframes: 4,
     maxReferences: 14, maxCount: 1, supportsEdit: false, supportsTransparent: false,
-    parameterRules: { promptOptionalWithImage: true },
+    parameterRules: {
+      promptOptionalWithImage: true,
+      resolutionsByMode: { image: ['480p', '720p'], startFrameOptional: ['480p', '720p'], endFrameOptional: ['480p', '720p'] },
+    },
   },
 ]
 
-const CATALOG: Array<{ id: string; label: string; provider: string } & Record<string, any>> = [...IMAGE_CATALOG, ...VIDEO_CATALOG, ...SUIHE_ADDITIONAL_IMAGES.map(model => ({...model,provider:'suihe'}))]
+const CATALOG: Array<{ id: string; label: string; provider: string } & Record<string, any>> = [...IMAGE_CATALOG, ...VIDEO_CATALOG]
 
 const PROVIDERS = {
-  suihe: { id:'suihe',label:'穗禾',description:'SD 图片与视频自营通道',key:'SUIHE_API_KEY' },
+  suihe: { id:'suihe',label:'穗禾',description:'Seedance 视频通道；兼容既有 Seedream 图片配置',key:'SUIHE_API_KEY' },
   ark: { id: 'ark', label: '火山方舟', description: '火山引擎方舟官方接口', key: 'ARK_API_KEY' },
   metaso: { id: 'metaso', label: '秘塔', description: '秘塔 MiniMax 兼容视频接口', key: 'METASO_API_KEY' },
   yunshu: { id: 'yunshu', label: 'GPT Image', description: 'OpenAI-compatible 图片接口', key: 'YUNSHU_API_KEY' },
@@ -417,9 +442,17 @@ function channelVariants(value, env = process.env) {
     })
   }
   const suiheId = suiheModelId(base)
+  // Images use the official definition when one exists; videos prefer Suihe.
+  if (!base.video && base.provider === 'ark') push('ark', { ...base })
   if (SUIHE_MODEL_IDS.includes(suiheId)) push('suihe', suiheModelOverlay(base))
   push(base.provider, { ...base })
   return variants
+}
+
+// Price settings survive channel switches; validate against all known channel
+// tiers so a dormant route cannot make unrelated settings impossible to save.
+export function modelPriceSizes(value) {
+  return [...new Set(channelVariants(value).flatMap(channel => (channel.model.sizes || []).map(size => size.value)))] as string[]
 }
 
 export function modelChannelOptions(value, env = process.env) {
@@ -447,6 +480,14 @@ export function normalizeModelChannelSettings(value: Record<string, any> = {}) {
   return result
 }
 
+function defaultCustomerProvider(base) {
+  if (!SUIHE_MODEL_IDS.includes(suiheModelId(base))) return base.provider
+  if (base.video) return 'suihe'
+  // Do not invent official endpoints for Suihe-only image definitions. Keep
+  // them available for historical jobs and explicit administrator settings.
+  return base.provider === 'ark' ? 'ark' : ''
+}
+
 export function modelChannelEnabled(settings: Record<string, any> = {}, value, provider) {
   const base = baseModelByPublicId(value)
   if (!base) return false
@@ -456,9 +497,7 @@ export function modelChannelEnabled(settings: Record<string, any> = {}, value, p
   // This keeps a partial admin patch such as `{ ark: true }` from silently
   // leaving the default Suihe route enabled as well.
   if (channels && typeof channels === 'object') return channels[provider] === true
-  // New SD requests prefer the Suihe channel. Existing non-SD models keep
-  // their original provider as the default channel.
-  return provider === (SUIHE_MODEL_IDS.includes(suiheModelId(base)) ? 'suihe' : base.provider)
+  return provider === defaultCustomerProvider(base)
 }
 
 export function activeModelForSettings(value, settings: Record<string, any> = {}, env = process.env) {
@@ -476,20 +515,20 @@ export function defaultModelChannelSettings(env = process.env) {
     const options = channelVariants(base, env)
     if (!options.length) continue
     const publicId = base.publicId || base.id
-    result[publicId] = Object.fromEntries(options.map((channel, index) => [channel.provider, index === 0]))
+    result[publicId] = Object.fromEntries(options.map(channel => [channel.provider, channel.provider === defaultCustomerProvider(base)]))
   }
   return result
 }
 
 // Historical and accepted jobs retain the provider used at reservation when
 // the database row carries an explicit provider snapshot.
-export function modelForGeneration(id, parameters: Record<string, any> = {}, provider = '') {
+export function modelForGeneration(id, parameters: Record<string, any> = {}, provider = ''): Record<string, any> | null {
   const current = modelById(id)
   const original = CATALOG.find(model => model.id === current?.id || model.publicId === current?.publicId) || current
   const frozen = parameters.upstreamProvider || provider
-  // New requests use the current public catalog (SD models therefore route
-  // to Suihe). Queued or historical records carry an explicit provider
-  // snapshot and must keep using that original channel.
+  // New requests resolve through activeModelForSettings and freeze the provider.
+  // Legacy records without a snapshot keep their catalog resolution; accepted
+  // and historical records with a snapshot must keep their original channel.
   if (!frozen) return current
   return frozen === 'suihe' ? current : original ? {...original,provider:frozen} : null
 }
@@ -521,7 +560,7 @@ export function publicModelCatalog(env = process.env, settings: Record<string, a
     label: model.label,
     video: Boolean(model.video),
     note: model.note,
-    configured: providerConfigured(model.provider, env),
+    configured: providerConfigured(model.provider, env) && (model.provider !== 'suihe' || Boolean(suiheCapability(model)?.request_model)),
     sizes: model.sizes,
     ratios: model.ratios || [],
     customSize: Boolean(model.customSize),
@@ -530,12 +569,16 @@ export function publicModelCatalog(env = process.env, settings: Record<string, a
     formats: model.formats,
     maxReferences: model.maxReferences,
     maxCount: model.maxCount,
+    maxCombinedImages: model.maxCombinedImages,
     supportsEdit: model.supportsEdit,
     regionEdit: model.provider === 'yunshu' ? 'mask' : model.provider==='ark' && model.id.startsWith('doubao-seedream-5-0-') ? 'annotation' : null,
     supportsTransparent: model.supportsTransparent,
     inputFidelity: model.inputFidelity || [],
     supportsLayerDecomposition: Boolean(model.supportsLayerDecomposition),
     optimizePromptModes: Array.isArray(model.optimizePromptModes) ? model.optimizePromptModes : [],
+    layerSizes: model.layerSizes || [],
+    controls: model.controls || [],
+    referenceInputs: { image: referenceInputPolicy(model, 'image') },
     deprecated: Boolean(model.deprecated),
     sunsetAt: model.sunsetAt || '',
     replacement: model.replacement || '',
@@ -555,7 +598,7 @@ export function publicVideoCatalog(env = process.env, settings: Record<string, a
     label: model.label,
     video: true,
     note: model.note,
-    configured: providerConfigured(model.provider, env),
+    configured: providerConfigured(model.provider, env) && (model.provider !== 'suihe' || Boolean(suiheCapability(model)?.request_model)),
     sizes: model.sizes,
     ratios: model.ratios || [...new Set(model.sizes.map((size) => size.ratio))],
     durations: model.durations || [],
@@ -563,9 +606,10 @@ export function publicVideoCatalog(env = process.env, settings: Record<string, a
     defaultDuration: model.defaultDuration,
     defaultResolution: model.defaultResolution,
     // 生成模式沿用参考画布的结构：字符串表示单一模式，数组表示混合参考与各类型上限。
-    modes: model.modes || ['text', 'singleImage'],
+    modes: model.modes || [],
     audio: model.audio ?? false,
     referenceLimits: model.referenceLimits || { image: model.maxReferences || 1, video: 0, audio: 0, frames: 0 },
+    referenceInputs: Object.fromEntries(['image', 'video', 'audio'].map(kind => [kind, referenceInputPolicy(model, kind)])),
     keyframes: model.keyframes || 0,
     formats: model.formats,
     maxReferences: model.maxReferences,
@@ -592,6 +636,8 @@ const UPSTREAM_COSTS = {
   'doubao-seedream-5-0-pro': '官方刊例：≤261 万像素 0.30 元/张 · >261 万像素 0.60 元/张 · 输入图第 2 张起 0.02 元/张',
   'doubao-seedream-5-0-flash': '官方刊例 0.12 元/张',
   'doubao-seedream-4-0': '官方刊例 0.20 元/张',
+  'seedream-4.5': '官方刊例 0.25 元/张',
+  'seedream-5.0-lite': '官方刊例 0.22 元/张',
   'seedance-2.5': '按实际 completion_tokens 对账：480p/720p 无视频70、有视频42元/百万；1080p无视频77、有视频46元/百万；不向用户展示内部成本',
   'seedance-2.0-fast': '火山方舟按 completion_tokens/total_tokens 对账：无输入视频 37 元/百万 token、含输入视频 22 元/百万 token；页面不展示此成本',
   'MiniMax-H3': '秘塔最贵档 0.0108 元/积分：768P 约 0.11 元/秒 · 2K 约 0.18 元/秒 · 参考视频按输入时长 · 图片超 5 张约 0.06 元/张',

@@ -1,6 +1,6 @@
 <template>
   <teleport :to="target ?? 'body'" :disabled="!target">
-    <section v-show="!!target" class="lightingPanel nodrag nopan nowheel" :aria-label="translate('图片打光')" @pointerdown.stop @mousedown.stop @dblclick.stop @wheel.stop @keydown.stop>
+    <section v-show="!!target" class="lightingPanel nodrag nopan nowheel" :aria-label="translate('打光')" @pointerdown.stop @mousedown.stop @dblclick.stop @wheel.stop @keydown.stop>
       <header class="panelHeader">
         <div><icon-sun :size="18" /><strong>{{ translate('打光') }}</strong><span>{{ translate('调整光线，保留画面') }}</span></div>
         <el-button :icon="IconX" text :aria-label="translate('关闭打光')" @click="emit('close')" />

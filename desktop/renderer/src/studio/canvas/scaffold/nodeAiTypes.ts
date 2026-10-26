@@ -39,6 +39,7 @@ export interface NodeMediaModelExtensions {
   regionEdit?: "mask" | "annotation" | null;
   optimizePromptModes?: string[];
   maxCount?: number;
+  maxCombinedImages?: number;
   ratios?: string[];
   durations?: number[];
   defaultDuration?: number;
@@ -55,6 +56,7 @@ export interface NodeMediaModelExtensions {
   // 输入素材计费规则（秘塔 H3：参考视频按输入时长计费、图片超出免费张数按张计费）。
   inputPricing?: { billReferenceVideoSeconds?: boolean; inputCreditsPerSecond?: Record<string, number>; outputCreditsPerSecondWithVideo?: Record<string, number>; freeReferenceImages?: number; extraImageCredits?: number } | null;
   referenceLimits?: { image?: number; video?: number; audio?: number; frames?: number };
+  referenceInputs?: Record<string, { mimes?: string[]; formats?: string[]; maxBytes?: number; minDuration?: number; maxDuration?: number; minEdge?: number; maxEdge?: number }>;
   maxDurationByMode?: Record<string, number>;
   parameterRules?: ParameterRules;
   controls?: CatalogControl[];

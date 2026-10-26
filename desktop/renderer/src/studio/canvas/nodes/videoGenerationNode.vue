@@ -16,7 +16,7 @@
     <template #topActions>
       <el-button v-if="previewUrl" :icon="IconMusic" text :disabled="generating || deleting || uploading || uploadingDrag || actions?.processing" :title="translate('提取音轨')" :aria-label="translate('提取音轨')" @click.stop="actions?.open('extractAudio')" />
       <el-button v-if="previewUrl" :icon="IconLayersSubtract" text :disabled="generating || deleting || uploading || uploadingDrag || actions?.processing" :title="translate('分离音视频')" :aria-label="translate('分离音视频')" @click.stop="actions?.open('separate')" />
-      <el-button v-if="previewUrl" :icon="IconScissors" text :disabled="generating || deleting || uploading || uploadingDrag || actions?.processing" :title="translate('截取片段')" :aria-label="translate('截取片段')" @click.stop="actions?.open('trim')" />
+      <el-button v-if="previewUrl" :icon="IconScissors" text :disabled="generating || deleting || uploading || uploadingDrag || actions?.processing" :title="translate('片段截取')" :aria-label="translate('片段截取')" @click.stop="actions?.open('trim')" />
       <span ref="historyTarget" />
       <el-button :icon="IconTransfer" :loading="uploading || uploadingDrag" :disabled="generating || deleting" text :title="translate('替换视频')" :aria-label="translate('替换视频')" @click.stop="fileInput?.click()" />
       <input ref="fileInput" type="file" accept="video/*" hidden :aria-label="translate('选择替换视频')" :disabled="generating || deleting || uploading || uploadingDrag" @change="replaceOutput" />
@@ -75,7 +75,7 @@
             expand-mode="external" />
           <div v-if="promptOptional && !generationPrompt" class="referenceHint">{{ translate('当前模型可只使用图片参考，不填写提示词') }}</div>
         </div>
-        <local-media-info :model="selectedModel" compact />
+        <local-media-info :model="selectedModel" :mode="data.mode" compact />
         <div class="promptFooter">
           <el-select
             v-model="data.model"
@@ -154,7 +154,7 @@ import uploadProgress from "../components/uploadProgress.vue";
 import { beginUpload } from "../uploadStatus";
 import { assetFileType, ASSET_MAX_BYTES } from "../assetFile";
 import generationSettings from "./videoGenerationSettings.vue";
-import { controlPayload, durationsForMode, modeName, ratiosForMode } from "../scaffold/mediaParameters";
+import { controlPayload, durationsForMode, inheritedFields, modeName, ratiosForMode, resolutionsForMode } from "../scaffold/mediaParameters";
 import localMediaInfo from './localMediaInfo.vue';
 import { translate } from "@miaoimg/i18n/vue";
 import { localReferenceRejection } from '../../../../../local-media/catalog.ts';
@@ -252,7 +252,12 @@ const promptOptional = computed(() =>
   Boolean(selectedModel.value?.parameterRules?.promptOptionalWithImage) &&
   refList.value.some((item) => item.dataType === "IMAGE" && Boolean(item.value))
 );
-const canStartGeneration = computed(() => Boolean(selectedModel.value && (generationPrompt.value || promptOptional.value)));
+const canStartGeneration = computed(() => Boolean(selectedModel.value && (generationPrompt.value || promptOptional.value)
+  && matchingModes.value.some(mode => JSON.stringify(mode) === data.value.mode)
+  && !refList.value.some(item => item.value === undefined)
+  && (inheritedFields(selectedModel.value, selectedMode.value).includes('resolution')
+    || !selectedModel.value.durationResolutionMap?.some(item => item.resolution.length)
+    || getResolutions(selectedModel.value, data.value.duration).includes(data.value.resolution))));
 const matchingModes = computed(() => getMatchingModes(selectedModel.value));
 type VideoEstimate = { points?: number | null; billingSource?: string; breakdown?: { outputPerSecond?: number; perSecond?: number; billingSource?: string } };
 const videoEstimate = ref<VideoEstimate | null>(null);
@@ -342,7 +347,7 @@ nodeEvent.on("canConnect", (connection, context) => {
 
 function getResolutions(choice: NodeMediaModel, duration?: number) {
   // ACT: 分辨率按服务端目录给出的顺序（如 768P、2K / 480p、720p），不做跨单位数值排序。
-  return [...new Set((choice.durationResolutionMap ?? []).filter((item) => item.duration.includes(duration!)).flatMap((item) => item.resolution))];
+  return resolutionsForMode(choice, selectedMode.value, duration, data.value.parameters || {});
 }
 // ACT: 引用改变时只替换不适用的模式；普通媒体优先作为参考，避免自动变成首尾帧。
 // A "试试" hint asks for a mode before its references exist; apply it once the
@@ -362,8 +367,10 @@ watch([selectedModel, matchingModes, () => data.value.mode], ([choice, matches])
   data.value.mode = mode === undefined ? "" : JSON.stringify(mode);
 }, { flush: "sync" });
 // ACT: 参数在节点内归一化，未选中、未挂载底部设置时也可由 Agent 直接生成。
-watch([selectedModel, () => data.value.duration, selectedMode], ([choice]) => {
+watch([selectedModel, () => data.value.duration, selectedMode, () => JSON.stringify(data.value.parameters || {})], ([choice]) => {
   if (!choice) return;
+  const parameters = controlPayload(choice, selectedMode.value, data.value.parameters);
+  if (JSON.stringify(parameters) !== JSON.stringify(data.value.parameters || {})) data.value.parameters = parameters;
   const durations = getDurations(choice);
   const pageDefault = choice.defaultDuration;
   const menuReady = durations.length > 0 || !["doubao-local", "dola-local"].includes(choice.providerId);
@@ -372,12 +379,12 @@ watch([selectedModel, () => data.value.duration, selectedMode], ([choice]) => {
   if (menuReady) {
     if (resolutions.length) {
       if (!resolutions.includes(data.value.resolution)) data.value.resolution = resolutions[0];
-    } else if (["doubao-local", "dola-local"].includes(choice.providerId)) data.value.resolution = "";
+    } else data.value.resolution = "";
   }
   if (!data.value.parameters) data.value.parameters = {};
   if (menuReady && ratioOptions.value.length && !ratioOptions.value.includes(data.value.ratio)) data.value.ratio = ratioOptions.value[0];
   if (choice.audio !== "optional") data.value.generateAudio = choice.audio === true;
-}, { flush: "sync" });
+}, { immediate: true });
 const generationPrompt = computed(() =>
   [
     data.value.prompt.trim(),
@@ -618,6 +625,7 @@ async function startGeneration(signal?: AbortSignal) {
   if (refList.value.some(item => item.value === undefined)) throw new Error(translate("引用节点暂无内容，请先补充引用内容"));
   const images = refList.value.flatMap((item) => item.dataType === "IMAGE" && item.value ? [{ path: item.value.url, mimeType: item.value.mimeType }] : []);
   if (choice.mode?.length && !matchingModes.value.length) throw new Error(translate("当前模型没有适合这些参考素材的生成模式，请更换模型或调整引用"));
+  if (!canStartGeneration.value) throw new Error(translate("当前模型没有适合这些参考素材的生成模式，请更换模型或调整引用"));
   const workspace = files.getWorkspaceFiles();
   const controller = new AbortController();
   recordGenerationStatus("queued");
@@ -802,6 +810,14 @@ nodeTools.register({
 
 // "+ 参考" picks local media; the canvas imports it and wires it into this node.
 function requestReference(accept?: string[]) {
+  if (!accept && selectedModel.value) {
+    const choice = selectedModel.value;
+    accept = ['IMAGE', 'VIDEO', 'AUDIO'].filter(type => (choice.mode || []).some(mode => {
+      if (Array.isArray(mode)) return referenceCap(choice, mode, type.toLowerCase()) > 0;
+      if (type === 'IMAGE') return ['singleImage', 'startEndRequired', 'startFrameOptional', 'endFrameOptional'].includes(mode);
+      return type === 'VIDEO' && ['edit', 'extend'].includes(mode);
+    }));
+  }
   window.dispatchEvent(new CustomEvent("miao-canvas-add-reference", { detail: { nodeId: id, accept } }));
 }
 function focusPrompt() {
@@ -817,9 +833,9 @@ const emptyHints = computed(() => {
   const hints: { key: string; label: string; icon: unknown; run: () => void }[] = [];
   if (has("text")) hints.push({ key: "text", label: videoModeLabel('text'), icon: IconWriting, run: focusPrompt });
   const first = has("singleImage") ? "singleImage" : has("endFrameOptional") ? "endFrameOptional" : null;
-  if (first) hints.push({ key: "first", label: videoModeLabel('singleImage'), icon: IconPhoto, run: prefer(first, ["IMAGE"]) });
+  if (first) hints.push({ key: "first", label: translate('首帧生成视频'), icon: IconPhoto, run: prefer(first, ["IMAGE"]) });
   const frames = has('startEndRequired') ? 'startEndRequired' : has('endFrameOptional') ? 'endFrameOptional' : has('startFrameOptional') ? 'startFrameOptional' : null;
-  if (frames) hints.push({ key: "frames", label: videoModeLabel('startEndRequired'), icon: IconLayersLinked, run: prefer(frames, ["IMAGE"]) });
+  if (frames) hints.push({ key: "frames", label: translate('首尾帧生成视频'), icon: IconLayersLinked, run: prefer(frames, ["IMAGE"]) });
   if (reference) hints.push({ key: "reference", label: videoModeLabel(reference, selectedModel.value), icon: IconStack2, run: prefer(reference, videoReferenceTypes(reference, selectedModel.value).map(type => type.toUpperCase())) });
   return hints;
 });

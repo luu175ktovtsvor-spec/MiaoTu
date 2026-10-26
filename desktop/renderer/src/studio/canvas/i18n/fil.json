@@ -2063,5 +2063,9 @@
   "已达到 20 MiB 文本的搜索上限，已停止。以下为部分结果，可缩小查找文本后重试。": "Naabot ang limitasyon ng paghahanap na 20 MiB teksto; itinigil ang paghahanap. Narito ang ilang resulta; paliitin ang tekstong hinahanap at subukan muli.",
   "已达到 500 处匹配的展示上限，已停止。以下为部分结果，可缩小查找文本后重试。": "Naabot ang limitasyon ng pagpapakita na 500 tugma; itinigil ang paghahanap. Narito ang ilang resulta; paliitin ang tekstong hinahanap at subukan muli.",
   "正在搜索磁盘文件…": "Hinahanap ang mga file sa disk…",
-  "节点类型未启用或尚未加载，请先用 getCanvas({include:[\"nodeTypes\"]}) 查询可用类型": "Ang uri ng node ay hindi pinagana o hindi pa na-load. Mangyaring i-query muna ang getCanvas({include:[\"nodeTypes\"]})."
+  "节点类型未启用或尚未加载，请先用 getCanvas({include:[\"nodeTypes\"]}) 查询可用类型": "Ang uri ng node ay hindi pinagana o hindi pa na-load. Mangyaring i-query muna ang getCanvas({include:[\"nodeTypes\"]}).",
+  "切换小地图": "Ipakita o itago ang mapa",
+  "隐藏节点连线": "Itago ang mga koneksyon",
+  "显示节点连线": "Ipakita ang mga koneksyon",
+  "缩放选项": "zoom menu"
 }

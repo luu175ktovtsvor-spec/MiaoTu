@@ -13,7 +13,7 @@ const BUILTIN_NODES = [
   { name: 'audioNode', displayName: '音频' },
   { name: 'imageGenerationNode', displayName: '图片生成' },
   { name: 'videoGenerationNode', displayName: '视频生成' },
-  { name: 'director3dNode', displayName: '3D 导演台' },
+  { name: 'director3dNode', displayName: '导演台' },
 ]
 
 const META_PATH = 'nodes/plugins.json'

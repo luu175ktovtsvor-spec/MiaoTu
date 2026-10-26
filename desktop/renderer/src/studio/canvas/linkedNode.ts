@@ -2,7 +2,19 @@ import { inject, nextTick } from "vue";
 import { useVueFlow, type GraphNode } from "@vue-flow/core";
 import { isTypeCompatible, validateConnection, type NodeHandle } from "@miaoimg/nodes-scaffold/runtime";
 
-// 节点标题像 LibTV 一样带序号（「图片生成 3」）：取画布上已有标题末尾数字的最大值加一，删掉节点也不会重号。
+// 节点标题带序号（「图片节点 3」）：取画布上已有标题末尾数字的最大值加一，删掉节点也不会重号。
+// Menu names distinguish generation from imported media. New node titles use
+// the common media name; stored/custom titles and stable node types stay intact.
+export function defaultNodeLabel(type: string, fallback: string) {
+  const titles: Record<string, string> = {
+    "remote-textNode": "文本节点", "remote-imageNode": "图片节点",
+    "remote-imageGenerationNode": "图片节点", "remote-videoNode": "视频节点",
+    "remote-videoGenerationNode": "视频节点", "remote-audioNode": "音频节点",
+    "remote-director3dNode": "导演台",
+  };
+  return titles[type] ?? fallback;
+}
+
 export function numberedNodeLabel(nodes: GraphNode[], base: string) {
   const used = nodes.map(node => Number(/\s(\d+)$/.exec(String(node.data?.label ?? ""))?.[1] ?? 0));
   return `${base} ${Math.max(0, ...used) + 1}`;
@@ -26,7 +38,7 @@ export function useLinkedNode() {
     const run = async () => {
       const id = crypto.randomUUID();
       const width = source.dimensions.width || 600;
-      flow.addNodes({ id, type, position: { x: source.position.x + width + 120, y: source.position.y }, parentNode: source.parentNode, data: { label: numberedNodeLabel(flow.getNodes.value, label) } });
+      flow.addNodes({ id, type, position: { x: source.position.x + width + 120, y: source.position.y }, parentNode: source.parentNode, data: { label: numberedNodeLabel(flow.getNodes.value, defaultNodeLabel(type, label)) } });
       // 远端节点挂载后才注册端口，和节点菜单一样等一拍再连线。
       await nextTick();
       created = flow.findNode(id);

@@ -310,7 +310,7 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
       const pendingKey = 'refresh:' + key
       const existing = catalogRefreshes.get(pendingKey)
       if (existing) return existing
-      const pending = cloud.json(path, { signal: AbortSignal.timeout(5000) }).then(value => {
+      const pending = cloud.json(path, { signal: AbortSignal.timeout(path === '/api/ai/media/models' ? 25_000 : 5000) }).then(value => {
         if (cloud.account !== account || cloud.authRevision !== authRevision) throw Object.assign(new Error('账号已切换，请重新读取'), { status: 409 })
         if (path === '/api/ai/models') value = { ...value, data: (Array.isArray(value.data) ? value.data : []).filter(model => model.providerId === 'miaoimg') }
         catalogMemory.set(key, { value, updatedAt: Date.now() })
@@ -319,6 +319,15 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
       }).finally(() => { if (catalogRefreshes.get(pendingKey) === pending) catalogRefreshes.delete(pendingKey) })
       catalogRefreshes.set(pendingKey, pending)
       return pending
+    }
+    // Media options must reflect current channel switches and capabilities.
+    // Never serve a persisted menu while its permissions refresh in the background.
+    if (path === '/api/ai/media/models') {
+      try { return await refresh() }
+      catch (error) {
+        if (cloud.account !== account || cloud.authRevision !== authRevision || [401, 403, 409].includes(error.status)) throw error
+        return { code: 200, data: [] }
+      }
     }
     let saved: { value: any; updatedAt: number } | undefined = catalogMemory.get(key)
     if (!saved) {

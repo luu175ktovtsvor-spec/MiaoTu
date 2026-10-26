@@ -15,15 +15,15 @@
     :style="{ width: previewUrl && imageWidth ? `${imageWidth + 2}px` : undefined }">
     <template v-if="editor?.mode" #top><div ref="paintToolbar" /></template>
     <template #topActions>
-      <el-button :icon="IconPanoramaHorizontal" :disabled="imageBusy || !previewUrl" text :title="translate('全景图')" :aria-label="translate('全景图')" @click.stop="panorama?.open($event)" />
-      <el-button v-if="selectedModel?.regionEdit" :icon="IconBrush" :disabled="generating || deleting || uploading || !previewUrl || gridSplit?.splitting" text :title="translate('局部重绘')" :aria-label="translate('局部重绘')" @click.stop="editor?.start('inpaint')" />
-      <el-button :icon="IconSun" :disabled="imageBusy || !previewUrl" text :title="translate('图片打光')" :aria-label="translate('图片打光')" @click.stop="openLighting" />
+      <el-button :icon="IconPanoramaHorizontal" :disabled="imageBusy || !previewUrl" text :title="translate('720度全景图')" :aria-label="translate('720度全景图')" @click.stop="panorama?.open($event)" />
+      <el-button v-if="selectedModel?.regionEdit" :icon="IconBrush" :disabled="generating || deleting || uploading || !previewUrl || gridSplit?.splitting" text :title="translate('重绘')" :aria-label="translate('重绘')" @click.stop="editor?.start('inpaint')" />
+      <el-button :icon="IconSun" :disabled="imageBusy || !previewUrl" text :title="translate('打光')" :aria-label="translate('打光')" @click.stop="openLighting" />
       <el-button :icon="IconCameraRotate" :disabled="imageBusy || !previewUrl" text :title="translate('多角度')" :aria-label="translate('多角度')" @click.stop="openMultiAngle" />
       <el-button :icon="IconLayoutGrid" :disabled="generating || deleting || uploading || !previewUrl" :loading="gridSplit?.splitting" text :title="translate('宫格切分')" :aria-label="translate('宫格切分')" @click.stop="gridSplit?.open($event)" />
       <span ref="historyTarget" />
       <el-button :icon="IconTransfer" :loading="uploading || uploadingDrag" :disabled="generating || deleting" text :title="translate('替换图片')" :aria-label="translate('替换图片')" @click.stop="fileInput?.click()" />
       <input ref="fileInput" type="file" accept="image/*" hidden :aria-label="translate('选择替换图片')" :disabled="generating || deleting || uploading || uploadingDrag" @change="replaceOutput" />
-      <el-button :icon="IconPencil" :disabled="generating || deleting || uploading || !previewUrl || gridSplit?.splitting" text :title="translate('标记')" :aria-label="translate('标记')" @click.stop="editor?.start('mark')" />
+      <el-button :icon="IconPencil" :disabled="generating || deleting || uploading || !previewUrl || gridSplit?.splitting" text :title="translate('标注')" :aria-label="translate('标注')" @click.stop="editor?.start('mark')" />
     </template>
     <div v-loading="uploading" class="imageContent nopan" :aria-busy="generating || uploading">
       <imageEditor
@@ -42,10 +42,10 @@
         <div v-if="!refList.length" class="emptyHints nodrag nopan" role="group" :aria-label="translate('尝试')">
           <span class="emptyHintsTitle">{{ translate('尝试：') }}</span>
           <button type="button" class="emptyHint" :disabled="generating || deleting" @pointerdown.stop @click.stop="focusPrompt">
-            <icon-writing :size="16" aria-hidden="true" />{{ translate('文字生成图片') }}
+            <icon-writing :size="16" aria-hidden="true" />{{ translate('文生图') }}
           </button>
           <button v-if="(selectedModel?.maxReferences ?? 1) > 0" type="button" class="emptyHint" :disabled="generating || deleting" @pointerdown.stop @click.stop="requestReference()">
-            <icon-photo-plus :size="16" aria-hidden="true" />{{ translate('参考图生成图片') }}
+            <icon-photo-plus :size="16" aria-hidden="true" />{{ translate('图生图') }}
           </button>
         </div>
       </div>
@@ -156,8 +156,8 @@
               :icon="generating ? IconPlayerStop : IconArrowUp"
               :loading="checkingTask"
               :disabled="checkingTask || deleting || uploading || uploadingDrag || (!generating && !pendingTask && !canGenerate)"
-              :title="checkingTask ? translate('正在确认原任务') : generating ? translate('取消生成（{0}）', { 0: cancellationHint }) : pendingTask ? translate('继续取回') : editor?.mode === 'inpaint' ? translate('局部重绘') : translate('生成图片')"
-              :aria-label="checkingTask ? translate('正在确认原任务') : generating ? translate('取消生成') : pendingTask ? translate('继续取回') : editor?.mode === 'inpaint' ? translate('局部重绘') : translate('生成图片')"
+              :title="checkingTask ? translate('正在确认原任务') : generating ? translate('取消生成（{0}）', { 0: cancellationHint }) : pendingTask ? translate('继续取回') : editor?.mode === 'inpaint' ? translate('重绘') : translate('生成图片')"
+              :aria-label="checkingTask ? translate('正在确认原任务') : generating ? translate('取消生成') : pendingTask ? translate('继续取回') : editor?.mode === 'inpaint' ? translate('重绘') : translate('生成图片')"
               @click="generating ? generationController?.abort() : startGeneration().catch((error) => showNodeError(error, translate('图片生成失败')))" />
           </div>
         </div>
@@ -337,8 +337,9 @@ watch(
     const formats = choice.formats || [];
     if (!localMedia && formats.length && !formats.includes(data.value.format || "")) data.value.format = formats[0]!;
     if (!localMedia && !choice.supportsTransparent) data.value.background = "opaque";
-    if (choice.quality?.length && data.value.quality && !choice.quality.includes(data.value.quality)) data.value.quality = "";
-    if (choice.inputFidelity?.length && data.value.inputFidelity && !choice.inputFidelity.includes(data.value.inputFidelity)) data.value.inputFidelity = "";
+    if (data.value.quality && !choice.quality?.includes(data.value.quality)) data.value.quality = "";
+    if (data.value.inputFidelity && !choice.inputFidelity?.includes(data.value.inputFidelity)) data.value.inputFidelity = "";
+    data.value.parameters = controlPayload(choice, "text", data.value.parameters);
     data.value.count = Math.max(1, Math.min(Number(data.value.count) || 1, choice.maxCount || 1));
     if (!choice.supportsLayerDecomposition) data.value.layerDecomposition = false;
     if (choice.optimizePromptModes?.length && data.value.optimizePrompt && !choice.optimizePromptModes.includes(data.value.optimizePrompt)) data.value.optimizePrompt = "";
@@ -363,7 +364,10 @@ watch(() => editor.value?.mode, normalizeInpaintSettings);
 // 重绘模式下要隐藏图层拆分和透明背景开关，避免摆出提交不了的选项。
 const settingsModel = computed(() => {
   const model = selectedModel.value;
-  if (!model || editor.value?.mode !== "inpaint") return model;
+  if (!model) return model;
+  if (editor.value?.mode !== "inpaint") return model.maxCombinedImages
+    ? { ...model, maxCount: Math.max(1, Math.min(model.maxCount || 1, model.maxCombinedImages - refList.value.filter(item => item.dataType === "IMAGE").length)) }
+    : model;
   return { ...model, maxCount: 1, supportsLayerDecomposition: false, supportsTransparent: false };
 });
 // 重绘模式只提交原图一张参考，引用素材不参与；提示词里也不再追加文本引用，避免出现无效的参考标记。
@@ -381,6 +385,9 @@ const canGenerate = computed(() => {
   const model = selectedModel.value;
   if (!model) return false;
   if (editor.value?.mode === "inpaint") return Boolean(model.regionEdit) && Boolean(data.value.inpaintPrompt.trim());
+  const references = refList.value.filter(item => item.dataType === "IMAGE").length;
+  if (references > (model.maxReferences ?? 0)) return false;
+  if (model.maxCombinedImages && references + (Number(data.value.count) || 1) > model.maxCombinedImages) return false;
   return Boolean(generationPrompt.value) || Boolean(data.value.layerDecomposition);
 });
 const outputFile = computed(() => outputs.value.image?.dataType === "IMAGE" ? outputs.value.image.value : undefined);

@@ -9,10 +9,14 @@
       <p>{{ translate(capabilities.kind === 'video' ? '按平台给的原片保存（MP4 或 WebM），不转码、不改分辨率。' : '按平台给的原图保存（PNG、JPEG 或 WebP）。') }}</p>
     </template>
   </div>
+  <div v-else-if="inputHints.length" class="localMediaInfo" :class="{ compact }" :aria-label="translate('参考素材')">
+    <p v-for="hint in inputHints" :key="hint">{{ hint }}</p>
+  </div>
 </template>
 <script setup lang="ts">
 import { computed } from 'vue';
 import { translate } from '@miaoimg/i18n/vue';
+import { modeName } from '../scaffold/mediaParameters';
 import { localMediaCapabilities } from '../../../../../local-media/catalog.ts';
 
 const props = defineProps<{
@@ -20,10 +24,31 @@ const props = defineProps<{
     providerId?: string; modelId?: string; durations?: number[]; resolutions?: string[]; ratios?: string[];
     imageRatios?: string[]; parameterSource?: 'preset' | 'account';
     parameterPreset?: { imageSizeTiers?: string[] };
+    maxReferences?: number;
+    parameterRules?: { referencesByMode?: Record<string, { image?: [number, number]; video?: [number, number]; audio?: [number, number] }> };
+    referenceLimits?: { image?: number; video?: number; audio?: number };
+    referenceInputs?: Record<string, { mimes?: string[]; formats?: string[]; maxBytes?: number; exclusiveMaxBytes?: boolean; minDuration?: number; maxDuration?: number; minEdge?: number; maxEdge?: number }>;
   };
   compact?: boolean;
+  mode?: unknown;
 }>();
 const capabilities = computed(() => props.model?.modelId && props.model.providerId ? localMediaCapabilities(props.model.modelId, props.model.providerId) : undefined);
+const inputHints = computed(() => Object.entries(props.model?.referenceInputs || {}).flatMap(([kind, policy]) => {
+  const mode = modeName(props.mode);
+  const rule = props.model?.parameterRules?.referencesByMode?.[mode];
+  const count = rule ? rule[kind as 'image' | 'video' | 'audio']?.[1] || 0
+    : kind === 'video' && ['edit', 'extend'].includes(mode) ? 1
+    : props.mode !== undefined && mode === 'text' ? 0
+    : props.model?.referenceLimits?.[kind as 'image' | 'video' | 'audio'] ?? (kind === 'image' ? props.model?.maxReferences : 0);
+  if (!count) return [];
+  const formats = (policy.mimes || policy.formats || []).map(value => value.replace(/^(image|video|audio)\//, '').toUpperCase()).join(' / ');
+  const parts = [translate(({image:'图片',video:'视频',audio:'音频'})[kind] || kind), formats,
+    translate('最多 {0} 个参考素材', { 0: count }),
+    policy.maxBytes ? `${policy.exclusiveMaxBytes ? '<' : '≤'} ${policy.maxBytes / 1024 / 1024} MB` : '',
+    policy.maxDuration ? translate('{0}–{1} 秒', { 0: policy.minDuration || 0, 1: policy.maxDuration }) : '',
+    policy.minEdge ? `${policy.minEdge}–${policy.maxEdge || '∞'} px` : ''];
+  return [parts.filter(Boolean).join(' · ')];
+}));
 const referenceHint = computed(() => capabilities.value?.references.maxImages
   ? translate('可以放参考图：PNG、JPEG 或 WebP，最多 {0} 张，每张不超过 20MB。', { 0: capabilities.value.references.maxImages })
   : translate('用文字提示词生成。'));

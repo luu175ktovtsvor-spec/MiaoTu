@@ -1,6 +1,6 @@
 import { costPlusVideoCost, costPlusVideoEstimate, isCostPlusVideo, adminVideoPricing, videoExpenses } from './video-pricing.ts'
 import { modelCatalog } from './image-models.ts'
-import { suiheCost, SUIHE_CUSTOMER_MARKUP } from './suihe-pricing.ts'
+import { suiheCost, SUIHE_CUSTOMER_MARKUP, SUIHE_IMAGE_MARKUP } from './suihe-pricing.ts'
 export { SUIHE_CUSTOMER_MARKUP } from './suihe-pricing.ts'
 
 const POLICY_VERSION = '2026-10-08.2'
@@ -72,7 +72,7 @@ export function imageCreditsPerImage(model, { size, pricing, layer = false }: Re
   const id = String(model?.publicId || model?.id || '')
   const isSuihe = model?.provider === 'suihe'
   const precision = isSuihe ? 10000 : 100
-  const withSuiheMarkup = (value) => Math.round((Number(value) + (isSuihe ? SUIHE_CUSTOMER_MARKUP : 0)) * precision) / precision
+  const withSuiheMarkup = (value) => Math.round((Number(value) + (isSuihe ? SUIHE_IMAGE_MARKUP : 0)) * precision) / precision
   const policyPrice = (size ? pricing?.creditsPerImageBySize?.[size] : undefined)
     ?? pricing?.creditsPerImageBySize?.default
     ?? (!model?.customSize ? pricing?.creditsPerImage : undefined)
@@ -276,7 +276,7 @@ export function videoCreditsPerSecond(model, resolution) {
 // 单次视频生成的积分：创建前按模型能力、分辨率、时长和输入媒体做安全预扣；
 // 成功后若上游返回可对账 usage（目前为方舟 Seedance token），按实际 usage 结算，
 // 否则使用对应供应商的能力参数估算。最终统一向上取到 0.1，最低 1 积分。
-export function estimateVideoCredits({ model, provider, duration, billableDuration, resolution, ratio = '', videoSeconds = 0, referenceImages = 0, usage }: Record<string, any> = {}) {
+export function estimateVideoCredits({ model, provider, duration, billableDuration, resolution, ratio = '', videoSeconds = 0, referenceImages = 0, usage }: Record<string, any> = {}): Record<string, any> {
   // duration 用于 UI/上游整数选项；billableDuration 用于 frames/24 这类
   // 仍代表视频秒数但不一定是整数的官方参数。最终积分仍向上取 0.1。
   const rawSeconds = Number(billableDuration ?? duration ?? 5)
@@ -339,7 +339,7 @@ function roundUpCredits(value) {
   return Math.max(0.1, Math.ceil(Number(value) * 10 - 1e-9) / 10)
 }
 
-export function estimateGenerationCost({ model, generation, referenceCount = 0, price }: Record<string, any> = {}) {
+export function estimateGenerationCost({ model, generation, referenceCount = 0, price }: Record<string, any> = {}): Record<string, any> {
   if (model?.video) {
     if (model.provider === 'suihe') {
       const id = String(model.publicId || model.id || '')
@@ -370,7 +370,7 @@ export function estimateGenerationCost({ model, generation, referenceCount = 0, 
         count: 1,
         duration: outputSeconds,
         usageBased: Boolean(cost.usageBased),
-        policyVersion: `${POLICY_VERSION}:${cost.pricingSnapshot?.version || 'suihe'}`,
+        policyVersion: `${POLICY_VERSION}:${cost.detail?.pricingSnapshot?.version || 'suihe'}`,
         breakdown: {
           durationSeconds: outputSeconds,
           resolution: generation?.resolution || 'default',
@@ -501,6 +501,8 @@ const ARK_IMAGE_RMB = Object.freeze({
   'doubao-seedream-5-0-pro': { small: 0.30, large: 0.60, layerSmall: 0.15, layerLarge: 0.30, freeReferences: 1, extraReferenceRmb: 0.02 },
   'doubao-seedream-5-0-flash': { small: 0.12, large: 0.12 },
   'doubao-seedream-4-0': { small: 0.20, large: 0.20 },
+  'seedream-4.5': { small: 0.25, large: 0.25 },
+  'seedream-5.0-lite': { small: 0.22, large: 0.22 },
 })
 // 云枢实测（usage_logs）：gpt-image-2 104 次均值、2.5 两档 22/3 次均值。
 const YUNSHU_IMAGE_USD = Object.freeze({

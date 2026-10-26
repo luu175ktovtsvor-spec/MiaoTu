@@ -128,7 +128,7 @@ export const nodeCatalog = [
   { type: "remote-audioNode", label: "音频", group: "media" },
   { type: "remote-imageGenerationNode", label: "图片生成", group: "generate" },
   { type: "remote-videoGenerationNode", label: "视频生成", group: "generate" },
-  { type: "remote-director3dNode", label: "3D 导演台", group: "generate" },
+  { type: "remote-director3dNode", label: "导演台", group: "generate" },
 ] as const;
 
 export const nodeSettings = computed(() => {

@@ -3719,8 +3719,8 @@ export default function AdminPage() {
                   {textPriceEditor()}
                   <p className="admin-footnote">
                     {lang === "en"
-                      ? "Custom media rates are saved to two decimal places. For videos quoted by parameters, edit cost parameters above."
-                      : "自定义媒体单价保存为两位小数；按参数报价的视频请修改上方成本参数。"}
+                      ? "Custom rates are saved to two decimal places and replace the default customer price for that model and tier. Only edited fields are saved; accepted tasks keep their original price."
+                      : "自定义单价保留两位小数，优先于该模型、档位的默认售价，不重复加价。只保存改动的字段，已受理任务保留原价。"}
                   </p>
                   {priceSections.map((section) => (
                     <fieldset key={section.id} className="admin-price-group">

@@ -54,7 +54,7 @@
     </settings-section>
     <providerEditor :visible="editorVisible" :provider="editingProvider" :existingIds="providers.map(item => item.id)" @close="editorVisible = false" @saved="onSaved" />
     <settings-section v-if="isDesktop" :title="translate('豆包与 Dola 文本模型')" :description="translate('在设置 → 豆包与 Dola 中连接账户后，可在文本节点选择对应来源。')">
-      <p class="localTextHint">{{ translate('使用豆包或 Dola 账号自带的权益生成文本回复；Agent 和 3D 导演台请选择上面的妙图模型或你接入的模型。') }}</p>
+      <p class="localTextHint">{{ translate('使用豆包或 Dola 账号自带的权益生成文本回复；Agent 和导演台请选择上面的妙图模型或你接入的模型。') }}</p>
     </settings-section>
   </div>
 </template>

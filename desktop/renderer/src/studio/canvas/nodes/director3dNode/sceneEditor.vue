@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     class="directorDialog"
-    :title="translate('3D 导演台')"
+    :title="translate('导演台')"
     :modelValue="visible"
     width="min(1440px, calc(100vw - 40px))"
     alignCenter
@@ -13,7 +13,7 @@
     <template #header>
       <div class="directorHeader">
         <icon-cube3d-sphere :size="20" />
-        <span>{{ translate('3D 导演台') }}</span>
+        <span>{{ translate('导演台') }}</span>
         <small v-if="result">{{ result.name }}</small>
       </div>
     </template>

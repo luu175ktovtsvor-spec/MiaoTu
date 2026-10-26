@@ -11,7 +11,7 @@
     <template #topActions>
       <el-button v-if="outputFile" :icon="IconMusic" text :disabled="!outputFile || uploading || uploadingDrag || exporting || actions?.processing" :title="translate('提取音轨')" :aria-label="translate('提取音轨')" @click.stop="actions?.open('extractAudio')">{{ translate('提取音轨') }}</el-button>
       <el-button v-if="outputFile" :icon="IconLayersSubtract" text :disabled="!outputFile || uploading || uploadingDrag || exporting || actions?.processing" :title="translate('分离音视频')" :aria-label="translate('分离音视频')" @click.stop="actions?.open('separate')">{{ translate('分离音视频') }}</el-button>
-      <el-button v-if="outputFile" :icon="IconScissors" text :disabled="!outputFile || uploading || uploadingDrag || exporting || actions?.processing" :title="translate('截取片段')" :aria-label="translate('截取片段')" @click.stop="actions?.open('trim')">{{ translate('截取片段') }}</el-button>
+      <el-button v-if="outputFile" :icon="IconScissors" text :disabled="!outputFile || uploading || uploadingDrag || exporting || actions?.processing" :title="translate('片段截取')" :aria-label="translate('片段截取')" @click.stop="actions?.open('trim')">{{ translate('片段截取') }}</el-button>
       <el-button
         :icon="IconTransfer"
         :loading="uploading || uploadingDrag"

@@ -139,7 +139,7 @@ const { canLink, createLinked } = useLinkedNode();
 const emptyHints = computed<EmptyHint[]>(() => [
   { key: "upload", label: "上传本地音频", icon: IconUpload },
   { key: "paste", label: "粘贴剪贴板里的音频", icon: IconClipboard },
-  ...(canLink(node, "remote-videoGenerationNode") ? [{ key: "video", label: "音频生成视频", icon: IconVideo }] : []),
+  ...(canLink(node, "remote-videoGenerationNode") ? [{ key: "video", label: "音频生视频", icon: IconVideo }] : []),
 ]);
 async function pickHint(key: string) {
   if (key === "upload") return fileInput.value?.click();

@@ -293,8 +293,8 @@ function validateRequest(payload, env = process.env): Record<string, any> {
   generation.layerDecomposition = layerDecomposition
   generation.optimizePrompt = optimizePrompt
   // Seedance/Seedream 官方组图限制：Seedream 4.0 的参考图数量 + 生成张数 ≤ 15。
-  if (model.provider==='ark' && (model.publicId || model.id) === 'doubao-seedream-4-0' && parsedReferences.length + generation.count > 15) {
-    throw Object.assign(new Error('参考图数量 + 生成张数不能超过 15 张'), { status: 422 })
+  if (model.provider==='ark' && model.maxCombinedImages && parsedReferences.length + generation.count > model.maxCombinedImages) {
+    throw Object.assign(new Error(`参考图数量 + 生成张数不能超过 ${model.maxCombinedImages} 张`), { status: 422 })
   }
   // 火山官方透明背景限制：仅图生图、单张带透明通道的输入图、输出 png。
   if (generation.background === 'transparent') {

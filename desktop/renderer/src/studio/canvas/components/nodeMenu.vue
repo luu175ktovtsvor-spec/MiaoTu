@@ -92,7 +92,7 @@ import { getSelectionConnections } from "../selectionConnections";
 import { getSelectionRoots } from "../selectionNodes";
 import { deleteCanvasNodes } from "../canvasNodeDeletion";
 import { arrangeSelection } from "../arrangeSelection";
-import { numberedNodeLabel } from "../linkedNode";
+import { defaultNodeLabel, numberedNodeLabel } from "../linkedNode";
 import { translate } from "@miaoimg/i18n/vue";
 import { generalSettings } from "@/stores/settings";
 import { getShortcutBindings, shortcutLabel, type CanvasShortcutAction } from "@/lib/canvasShortcuts";
@@ -344,7 +344,7 @@ async function runCommand(command: unknown) {
   if (handle && flow.findNode(handle.node.id) !== handle.node) return;
   if (group.some(source => flow.findNode(source.id) !== source)) return;
   const id = crypto.randomUUID();
-  addNodes({ id, type: node.type, position: { ...nodePosition }, data: { label: numberedNodeLabel(flow.getNodes.value, node.label) } });
+  addNodes({ id, type: node.type, position: { ...nodePosition }, data: { label: numberedNodeLabel(flow.getNodes.value, defaultNodeLabel(node.type, node.label)) } });
   if (!handle && !group.length) {
     flow.removeSelectedElements();
     flow.nodesSelectionActive.value = false;

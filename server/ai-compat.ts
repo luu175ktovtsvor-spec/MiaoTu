@@ -9,7 +9,7 @@ import { randomUUID } from 'node:crypto'
 import { failure } from './management-store.ts'
 import { publicTextCatalog, textChannelReady, textModelById } from './text-models.ts'
 import { listPublicProviderModels, providerById } from './text-providers.ts'
-import { modelById, publicModelCatalog, publicVideoCatalog } from './image-models.ts'
+import { activeModelForSettings, publicModelCatalog, publicVideoCatalog } from './image-models.ts'
 import { imageCreditsBySize, imageCreditsPerImage } from './generation-cost.ts'
 import { createReferenceToken } from './reference-assets.ts'
 import { newRequestId } from './generation-contract.ts'
@@ -103,10 +103,10 @@ export function createAiCompat({ management, workspaceFiles, generate, probeRefe
     const allowed = userModels(session)
     const paused = operating.models || {}
     const costPolicy = management.costPolicy()
-    const images = publicModelCatalog(process.env)
-      .filter((model) => available(model.id, paused, allowed))
+    const images = publicModelCatalog(process.env, operating)
+      .filter((model) => model.configured && available(model.id, paused, allowed))
       .map((model) => {
-        const pricingModel = modelById(model.id) || model
+        const pricingModel = activeModelForSettings(model.id, operating, process.env) || model
         return ({
         providerId: 'miaoimg',
         providerLabel: '妙图',
@@ -120,6 +120,7 @@ export function createAiCompat({ management, workspaceFiles, generate, probeRefe
         inputFidelity: model.inputFidelity || [],
         maxCount: model.maxCount ?? 1,
         maxReferences: model.maxReferences,
+        maxCombinedImages: model.maxCombinedImages,
         customSize: Boolean(model.customSize),
         sizeRule: model.sizeRule || null,
         creditsPerImage: imageCreditsPerImage(pricingModel),
@@ -134,17 +135,18 @@ export function createAiCompat({ management, workspaceFiles, generate, probeRefe
         optimizePromptModes: model.optimizePromptModes || [],
         layerSizes: model.layerSizes || [],
         controls: model.controls || [],
+        referenceInputs: model.referenceInputs || {},
         })
       })
-    const videos = publicVideoCatalog(process.env)
-      .filter((model) => available(model.id, paused, allowed))
+    const videos = publicVideoCatalog(process.env, operating)
+      .filter((model) => model.configured && available(model.id, paused, allowed))
       .map((model) => ({
         providerId: 'miaoimg',
         providerLabel: '妙图',
         modelId: model.id,
         label: model.label,
         type: 'video',
-        mode: model.modes || ['text', 'singleImage'],
+        mode: model.modes || [],
         sizes: model.sizes || [],
         durations: model.durations || [],
         defaultDuration: model.defaultDuration,
@@ -161,6 +163,7 @@ export function createAiCompat({ management, workspaceFiles, generate, probeRefe
         audio: model.audio ?? false,
         keyframes: model.keyframes || 0,
         referenceLimits: model.referenceLimits || { image: model.maxReferences || 1, video: 0, audio: 0, frames: 0 },
+        referenceInputs: model.referenceInputs || {},
         maxDurationByMode: model.maxDurationByMode || {},
         parameterRules: model.parameterRules || {},
         controls: model.controls || [],
@@ -353,7 +356,7 @@ export function createAiCompat({ management, workspaceFiles, generate, probeRefe
   }
 
   async function generateImage(session, payload) {
-    const catalog = publicModelCatalog(process.env)
+    const catalog = publicModelCatalog(process.env, management.settings())
     const model = publicModelIdOf(catalog, payload.modelId)
     if (!model) throw failure('不支持的图片模型', 422)
     const outputDirectory = safeDirectory(payload.outputDirectory, safeDirectory(payload.directory ? `${payload.directory}/assets` : '', 'assets'))
@@ -367,7 +370,15 @@ export function createAiCompat({ management, workspaceFiles, generate, probeRefe
       model: model.id,
       prompt: String(payload.prompt || ''),
       size: pickSize(model, String(payload.size || '').trim(), String(payload.ratio || '').trim()) || undefined,
-      count: 1,
+      ratio: payload.ratio,
+      format: payload.format,
+      quality: payload.quality,
+      background: payload.background,
+      inputFidelity: payload.inputFidelity,
+      count: payload.count ?? 1,
+      layerDecomposition: payload.layerDecomposition,
+      optimizePrompt: payload.optimizePrompt,
+      parameters: payload.parameters || payload.controls,
       referenceFiles,
       referenceRoles: [],
       requestId,
@@ -403,7 +414,7 @@ export function createAiCompat({ management, workspaceFiles, generate, probeRefe
   }
 
   async function generateVideo(request, session, payload) {
-    const catalog = publicVideoCatalog(process.env)
+    const catalog = publicVideoCatalog(process.env, management.settings())
     const model = publicModelIdOf(catalog, payload.modelId)
     if (!model) throw failure('不支持的视频模型', 422)
     const requestId = newRequestId()
@@ -431,7 +442,15 @@ export function createAiCompat({ management, workspaceFiles, generate, probeRefe
       ratio: String(payload.ratio || '').trim() || undefined,
       resolution: String(payload.resolution || payload.size || '').trim() || undefined,
       duration: Number(payload.duration) || undefined,
-      generateAudio: payload.generateAudio === true,
+      generateAudio: payload.generateAudio,
+      creativeMode: payload.creativeMode ?? payload.parameters?.creativeMode,
+      cameraFixed: payload.cameraFixed ?? payload.parameters?.cameraFixed,
+      returnLastFrame: payload.returnLastFrame ?? payload.parameters?.returnLastFrame,
+      webSearch: payload.webSearch ?? payload.parameters?.webSearch,
+      frames: payload.frames,
+      seed: payload.seed,
+      contextIr: payload.contextIr,
+      referenceVoices: payload.referenceVoices,
       firstFrame: firstFrame || undefined,
       lastFrame: lastFrame || undefined,
       image: firstFrame || (mode === 'singleImage' ? images[0] : undefined) || undefined,

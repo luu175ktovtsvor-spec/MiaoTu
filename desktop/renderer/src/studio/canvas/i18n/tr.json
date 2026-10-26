@@ -2063,5 +2063,9 @@
   "已达到 20 MiB 文本的搜索上限，已停止。以下为部分结果，可缩小查找文本后重试。": "20 MiB metin arama sınırına ulaşıldığı için durduruldu. Aşağıda kısmi sonuçlar yer alıyor; aranan metni daraltıp yeniden deneyin.",
   "已达到 500 处匹配的展示上限，已停止。以下为部分结果，可缩小查找文本后重试。": "500 eşleşmelik gösterim sınırına ulaşıldığı için durduruldu. Aşağıda kısmi sonuçlar yer alıyor; aranan metni daraltıp yeniden deneyin.",
   "正在搜索磁盘文件…": "Diskteki dosyalar aranıyor…",
-  "节点类型未启用或尚未加载，请先用 getCanvas({include:[\"nodeTypes\"]}) 查询可用类型": "Düğüm türü etkinleştirilmedi veya yüklenmedi. Lütfen önce getCanvas({include:[\"nodeTypes\"]})'yu sorgulayın."
+  "节点类型未启用或尚未加载，请先用 getCanvas({include:[\"nodeTypes\"]}) 查询可用类型": "Düğüm türü etkinleştirilmedi veya yüklenmedi. Lütfen önce getCanvas({include:[\"nodeTypes\"]})'yu sorgulayın.",
+  "切换小地图": "Haritayı göster veya gizle",
+  "隐藏节点连线": "Bağlantıları gizle",
+  "显示节点连线": "Bağlantıları göster",
+  "缩放选项": "yakınlaştırma menüsü"
 }

@@ -53,7 +53,7 @@ defineOptions({
   icon: IconCube3dSphere,
   handles: [{ id: "in", type: "target", dataType: ["STRING", "IMAGE", "VIDEO"], label: "文本、图片、视频输入" }] satisfies NodeHandle[],
 });
-const { node, nodeProps, previewReady, ai, files, nodeEvent } = useNode({ label: "3D导演台" });
+const { node, nodeProps, previewReady, ai, files, nodeEvent } = useNode({ label: "导演台" });
 const vLoading = ElLoading.directive;
 const { addNodes, findNode, getNodes, nodeTypes, removeNodes } = useVueFlow();
 const exportingVideo = ref(false);

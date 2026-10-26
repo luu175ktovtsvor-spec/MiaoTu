@@ -12,15 +12,15 @@
     <template v-if="editor?.mode" #top><div ref="paintToolbar" /></template>
     <template #topActions>
       <el-button v-if="generating || pendingInpaint" :icon="generating ? IconPlayerStop : IconPlayerPlay" text :title="generating ? translate('停止生成') : translate('继续取回')" :aria-label="generating ? translate('停止生成') : translate('继续取回')" @click="generating ? inpaintTask.stop() : resumeInpaint()">{{ generating ? translate('停止生成') : translate('继续取回') }}</el-button>
-      <el-button v-if="previewUrl" :icon="IconSun" text :disabled="!previewUrl || imageBusy" :title="translate('图片打光')" :aria-label="translate('图片打光')" @click.stop="variationMode = variationMode === 'lighting' ? undefined : 'lighting'; editor?.cancel()" />
+      <el-button v-if="previewUrl" :icon="IconSun" text :disabled="!previewUrl || imageBusy" :title="translate('打光')" :aria-label="translate('打光')" @click.stop="variationMode = variationMode === 'lighting' ? undefined : 'lighting'; editor?.cancel()" />
       <el-button v-if="previewUrl" :icon="IconCamera" text :disabled="!previewUrl || imageBusy" :title="translate('多角度')" :aria-label="translate('多角度')" @click.stop="variationMode = variationMode === 'angle' ? undefined : 'angle'; editor?.cancel()" />
-      <el-button v-if="previewUrl" :icon="IconPanoramaHorizontal" text :disabled="!previewUrl || imageBusy" :title="translate('全景')" :aria-label="translate('全景')" @click.stop="panorama?.open($event)" />
+      <el-button v-if="previewUrl" :icon="IconPanoramaHorizontal" text :disabled="!previewUrl || imageBusy" :title="translate('720度全景图')" :aria-label="translate('720度全景图')" @click.stop="panorama?.open($event)" />
       <el-button v-if="previewUrl"
         :icon="IconBrush"
         :disabled="imageBusy || !previewUrl || gridSplit?.splitting"
         text
-        :title="translate('局部重绘')"
-        :aria-label="translate('局部重绘')"
+        :title="translate('重绘')"
+        :aria-label="translate('重绘')"
         @click.stop="editor?.start('inpaint')" />
       <el-button v-if="previewUrl"
         :icon="IconLayoutGrid"
@@ -34,8 +34,8 @@
         :icon="IconPencil"
         :disabled="imageBusy || !previewUrl || gridSplit?.splitting"
         text
-        :title="translate('标记')"
-        :aria-label="translate('标记')"
+        :title="translate('标注')"
+        :aria-label="translate('标注')"
         @click.stop="editor?.start('mark')" />
       <el-button
         :icon="IconTransfer"
@@ -259,8 +259,8 @@ const { canLink, createLinked } = useLinkedNode();
 const emptyHints = computed<EmptyHint[]>(() => [
   { key: "upload", label: "上传本地图片", icon: IconUpload },
   { key: "paste", label: "粘贴剪贴板里的图片", icon: IconClipboard },
-  ...(canLink(node, "remote-imageGenerationNode") ? [{ key: "image", label: "以图生图", icon: IconPhotoAi }] : []),
-  ...(canLink(node, "remote-videoGenerationNode") ? [{ key: "video", label: "图片生成视频", icon: IconVideo }] : []),
+  ...(canLink(node, "remote-imageGenerationNode") ? [{ key: "image", label: "图生图", icon: IconPhotoAi }] : []),
+  ...(canLink(node, "remote-videoGenerationNode") ? [{ key: "video", label: "首帧生成视频", icon: IconVideo }] : []),
 ]);
 async function pickHint(key: string) {
   if (key === "upload") return fileInput.value?.click();

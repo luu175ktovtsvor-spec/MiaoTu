@@ -2063,5 +2063,9 @@
   "已达到 20 MiB 文本的搜索上限，已停止。以下为部分结果，可缩小查找文本后重试。": "Đã đạt giới hạn tìm kiếm 20 MiB văn bản và dừng. Dưới đây là một phần kết quả; hãy thu hẹp văn bản cần tìm rồi thử lại.",
   "已达到 500 处匹配的展示上限，已停止。以下为部分结果，可缩小查找文本后重试。": "Đã đạt giới hạn hiển thị 500 vị trí khớp và dừng. Dưới đây là một phần kết quả; hãy thu hẹp văn bản cần tìm rồi thử lại.",
   "正在搜索磁盘文件…": "Đang tìm kiếm tệp trên đĩa…",
-  "节点类型未启用或尚未加载，请先用 getCanvas({include:[\"nodeTypes\"]}) 查询可用类型": "Loại nút chưa được bật hoặc chưa được tải. Vui lòng truy vấn getCanvas({include:[\"nodeTypes\"]}) trước."
+  "节点类型未启用或尚未加载，请先用 getCanvas({include:[\"nodeTypes\"]}) 查询可用类型": "Loại nút chưa được bật hoặc chưa được tải. Vui lòng truy vấn getCanvas({include:[\"nodeTypes\"]}) trước.",
+  "切换小地图": "Hiện hoặc ẩn bản đồ",
+  "隐藏节点连线": "Ẩn kết nối",
+  "显示节点连线": "Hiển thị kết nối",
+  "缩放选项": "Thu phóng menu"
 }

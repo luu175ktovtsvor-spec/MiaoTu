@@ -105,7 +105,7 @@
       <nodeSearch ref="nodeSearchRef" :disabled="!active || settingsVisible || !canvasId || !project?.directory" />
     </vue-flow>
     <div v-if="showEmptyHint" class="emptyCanvasHint">
-      <p><IconPointer :size="18" aria-hidden="true" />{{ translate('双击画布，自由添加节点') }}</p>
+      <p><IconPointer :size="18" aria-hidden="true" />{{ translate('双击画布，自由生成节点') }}</p>
       <div class="emptyCanvasActions">
         <button v-for="node in quickNodes" :key="node.type" type="button" @click="addQuickNode(node.type)">
           <span class="emptyCanvasIcon"><component :is="node.icon" v-if="node.icon" :size="18" /></span>{{ translate(node.label) }}
@@ -260,7 +260,7 @@ const nodeOptions = ref<{ type: string; label: string }[]>([
   { type: "remote-videoGenerationNode", label: "视频生成" },
   { type: "remote-videoNode", label: "视频" },
   { type: "remote-audioNode", label: "音频" },
-  { type: "remote-director3dNode", label: "3D导演台" },
+  { type: "remote-director3dNode", label: "导演台" },
 ]);
 const nodeLoads = shallowReactive(new Map<string, Promise<void>>());
 const nodeReloads = new Set<string>();

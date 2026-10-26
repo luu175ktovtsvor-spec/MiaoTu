@@ -32,7 +32,10 @@ function responseError(response: Response, data, submitting=false) {
 let discovery: {key:string;at:number;rows:any[];pending?:Promise<any[]>} | undefined
 export async function refreshSuiheModels({env=process.env,fetchImpl=fetch,force=false}: Record<string,any> = {}): Promise<any[]> {
   const config=suiheSettings(env)
-  if (!config.apiKey) return []
+  if (!config.apiKey) {
+    if (env === process.env) setSuiheModels([])
+    return []
+  }
   const key=createHash('sha256').update(config.baseUrl+'\0'+config.apiKey).digest('hex')
   if(discovery?.key!==key) discovery={key,at:0,rows:[]}
   const cache=discovery
@@ -46,7 +49,10 @@ export async function refreshSuiheModels({env=process.env,fetchImpl=fetch,force=
     cache.rows=data.data;cache.at=Date.now()
     if(env===process.env) setSuiheModels(data.data)
     return cache.rows
-  })().finally(()=>{cache.pending=undefined})
+  })().catch(error => {
+    if (env === process.env) setSuiheModels([])
+    throw error
+  }).finally(()=>{cache.pending=undefined})
   return cache.pending
 }
 
@@ -65,13 +71,13 @@ async function referenceBlob(source:string,kind:string,{fetchImpl,signal,bytes:p
     const chunks=[];let size=0
     for await(const chunk of response.body as any) {
       size+=chunk.length
-      if(size>=max) throw fail('参考素材超过穗禾上传上限',{status:422,submissionNotStarted:true})
+      if(kind === 'image' ? size >= max : size > max) throw fail('参考素材超过穗禾上传上限',{status:422,submissionNotStarted:true})
       chunks.push(chunk)
     }
     bytes=Buffer.concat(chunks)
   }
-  if(!bytes.length||bytes.length>=max) throw fail('参考素材为空或超过上传上限',{status:422,submissionNotStarted:true})
-  return new Blob([bytes],{type:mime})
+  if(!bytes.length || (kind === 'image' ? bytes.length >= max : bytes.length > max)) throw fail('参考素材为空或超过上传上限',{status:422,submissionNotStarted:true})
+  return new Blob([new Uint8Array(bytes)],{type:mime})
 }
 
 export async function createSuiheTask(request, {env=process.env,fetchImpl=fetch,discoveryFetch=fetchImpl,signal}: Record<string,any> = {}) {
@@ -113,7 +119,7 @@ export async function createSuiheTask(request, {env=process.env,fetchImpl=fetch,
     // The catalog groups frame conditioning under first_last_frames; the
     // integration guide still requires first_frame/end_frame for one frame.
     const functionModes = capability.function_modes
-    if (Array.isArray(functionModes) && functionModes.length && body.function_mode) {
+    if (Array.isArray(functionModes) && body.function_mode) {
       const frameAlias=['first_frame','end_frame'].includes(body.function_mode) && functionModes.includes('first_last_frames')
       if (!functionModes.includes(body.function_mode) && !frameAlias) throw fail('当前模型不支持这个视频参考模式',{status:422,submissionNotStarted:true})
     }

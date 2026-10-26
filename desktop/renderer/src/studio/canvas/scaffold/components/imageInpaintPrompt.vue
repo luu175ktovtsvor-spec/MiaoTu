@@ -43,8 +43,8 @@
         class="sendButton"
         :icon="generating ? IconPlayerStop : IconArrowUp"
         :disabled="!generating && (disabled || !pending && (!prompt.trim() || !selectedModel))"
-        :title="generating ? translate('停止生成') : pending ? translate('继续取回') : translate('局部重绘')"
-        :aria-label="generating ? translate('停止生成') : pending ? translate('继续取回') : translate('局部重绘')"
+        :title="generating ? translate('停止生成') : pending ? translate('继续取回') : translate('重绘')"
+        :aria-label="generating ? translate('停止生成') : pending ? translate('继续取回') : translate('重绘')"
         @click="generating ? cancel() : startGeneration()" />
     </div>
   </el-card>

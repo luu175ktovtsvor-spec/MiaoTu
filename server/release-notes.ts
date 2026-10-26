@@ -10,6 +10,20 @@ export type ReleaseNotes = {
 // 更新说明直接写软件修好了什么：哪一个界面、哪一项操作，以前错在哪里，现在怎样。
 // 不写「上游」「部分问题」「体验优化」这类看不出具体改动的话。
 export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
+  '3.1.9': {
+    title: { zh: '生成选项与节点说明更准确', en: 'Clearer generation options and node descriptions' },
+    fixes: [
+      { zh: '图片和视频节点按所选模型与模式显示可用的分辨率、时长和参考素材要求，切换模型时清理不适用的旧参数。', en: 'Image and video nodes show resolution, duration and reference requirements for the selected model and mode, and clear incompatible saved options when switching models.' },
+      { zh: '修复模型列表使用旧缓存的问题，重新打开模型菜单会读取当前可用选项。', en: 'Reopening the model menu now refreshes currently available options instead of displaying a saved catalog.' },
+    ],
+    improvements: [
+      { zh: '统一文本、图片、视频、音频和导演台的节点名称、操作说明与提示文案，保留已有自定义名称。', en: 'Text, image, video, audio and director nodes have consistent names and clearer instructions while preserving custom names.' },
+      { zh: '参考素材说明补充格式、数量、大小及时长限制。', en: 'Reference guidance now includes format, count, size and duration limits.' },
+    ],
+    knownIssues: [
+      { zh: 'Seedance 2.0、Fast 和 Mini 暂不提供首尾帧模式，可使用文生视频和全能参考模式。', en: 'First and last frame modes are temporarily unavailable for Seedance 2.0, Fast and Mini. Text and multimodal reference modes remain available.' },
+    ],
+  },
   '3.1.8': {
     title: { zh: '视频精选补齐提示词与译文', en: 'Complete prompts and translations for selected films' },
     fixes: [

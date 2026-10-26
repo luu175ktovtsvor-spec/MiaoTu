@@ -77,7 +77,7 @@
     <settings-section :title="translate('在节点里使用')" :description="translate('在文本、图片或视频节点的模型菜单里，选「豆包」或「Dola」分组下的模型。')">
       <local-media-info :model="{ providerId: platform + '-local', modelId: platform + '-local-video' }" />
       <p class="hint">{{ translate('时长、比例等选项按平台实际提供的显示；平台窗口要求验证时，在窗口里完成后会自动继续。') }}</p>
-      <p class="hint">{{ translate('豆包、Dola 的文本模型只在文本节点里用；Agent 和 3D 导演台请在「文本模型」里换成其他模型。') }}</p>
+      <p class="hint">{{ translate('豆包、Dola 的文本模型只在文本节点里用；Agent 和导演台请在「文本模型」里换成其他模型。') }}</p>
       <p class="hint">{{ translate('每个平台账号使用独立的本机网页登录状态；新生成任务会固定到当时使用的账号，切换默认账号不会把旧任务改到别的账号。') }}</p>
     </settings-section>
     <settings-section :title="translate('支持的地区')" :description="translate('平台按你登录和生成时所用网络的地区判断能不能用。')">

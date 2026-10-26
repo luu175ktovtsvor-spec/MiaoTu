@@ -11,7 +11,7 @@ import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from
 import { estimateGenerationCost, estimateUpstreamCostRmb, publicCostPolicy, setPricingOverrides } from './generation-cost.ts'
 import { ArtifactFiles } from './artifact-files.ts'
 import { BlobStore, mediaLayout } from './blob-store.ts'
-import { activeModelForSettings, modelById, modelForGeneration, defaultModel, modelCatalog, normalizeModelChannelSettings } from './image-models.ts'
+import { activeModelForSettings, modelPriceSizes, modelById, modelForGeneration, defaultModel, modelCatalog, normalizeModelChannelSettings } from './image-models.ts'
 import { ownTextModelById, ownTextModelIds } from './text-model-registry.ts'
 import { supportedImageMime } from './result-cache.ts'
 import { MEDIA_INPUT_VERSION } from './media-input.ts'
@@ -611,7 +611,7 @@ export class ManagementStore {
           if (typeof price.image === 'number') price.image = credits(price.image, 0.01, 10000)
           else if (price.image && typeof price.image === 'object' && !Array.isArray(price.image)) {
             for (const [size, value] of Object.entries(price.image)) {
-              if (size !== 'default' && !(model.sizes || []).some((item) => item.value === size)) throw failure(`图片尺寸 ${size} 不属于该模型`)
+              if (size !== 'default' && !modelPriceSizes(id).includes(size)) throw failure(`图片尺寸 ${size} 不属于该模型`)
               price.image[size] = credits(value, 0.01, 10000)
             }
           } else throw failure('图片计费无效')
@@ -619,7 +619,7 @@ export class ManagementStore {
         if (price.video !== undefined) {
           if (!price.video || typeof price.video !== 'object' || Array.isArray(price.video)) throw failure('视频计费无效')
           for (const [resolution, value] of Object.entries(price.video)) {
-            if (!(model.sizes || []).some((item) => item.value.toLowerCase() === resolution.toLowerCase())) throw failure(`分辨率 ${resolution} 不属于该模型`)
+            if (!modelPriceSizes(id).some(value => value.toLowerCase() === resolution.toLowerCase())) throw failure(`分辨率 ${resolution} 不属于该模型`)
             price.video[resolution] = credits(value, 0.01, 10000)
           }
         }
