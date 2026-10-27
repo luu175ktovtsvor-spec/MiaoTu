@@ -87,10 +87,17 @@ jobs:
         shell: pwsh
         run: |
           gh release delete $env:RELEASE_TAG --yes --cleanup-tag 2>$null
+          $publish = Join-Path $env:RUNNER_TEMP 'miaoimg-release-assets'
+          New-Item -ItemType Directory -Force -Path $publish | Out-Null
+          Get-ChildItem 'desktop/release/妙图-*-Windows-x64.exe', 'desktop/release/妙图-*.blockmap' | ForEach-Object {
+            $name = $_.Name -replace '^妙图-', 'MiaoImg-'
+            Copy-Item $_.FullName (Join-Path $publish $name)
+          }
+          (Get-Content 'desktop/release/latest.yml' -Raw).Replace('妙图-', 'MiaoImg-') |
+            Set-Content (Join-Path $publish 'latest.yml') -NoNewline -Encoding utf8NoBOM
+          $assets = Get-ChildItem -File $publish | ForEach-Object { $_.FullName }
           gh release create $env:RELEASE_TAG `
             --target $env:GITHUB_SHA --latest=false `
-            desktop/release/妙图-*-Windows-x64.exe `
-            desktop/release/latest.yml `
-            desktop/release/*.blockmap `
+            @assets `
             --title "临时 Windows 构建 $env:GITHUB_SHA" `
             --notes "Temporary build asset; delete after retrieval."

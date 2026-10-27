@@ -76,7 +76,7 @@ jobs:
             name=$(basename "$path")
             cp "$path" "desktop/release/publish/${name/妙图/MiaoImg}"
           done
-          cp desktop/release/latest-mac.yml desktop/release/publish/
+          sed 's/妙图-/MiaoImg-/g' desktop/release/latest-mac.yml > desktop/release/publish/latest-mac.yml
           gh release create "$RELEASE_TAG" desktop/release/publish/* \
             --target "$GITHUB_SHA" --latest=false \
             --title "临时 macOS 构建 $GITHUB_SHA" \
