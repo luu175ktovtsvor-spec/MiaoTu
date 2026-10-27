@@ -134,7 +134,29 @@ async function canvasReview() {
     if (status.sync.enabled !== false) throw new Error('Isolated package must have synchronization disabled');
     const session = await (await fetch('/api/imagine/session')).json();
     const headers = { 'content-type': 'application/json', 'x-csrf-token': session.session?.csrf || session.csrf };
-    const access = await (await fetch('/api/imagine/mcp', { method: 'PUT', headers, body: JSON.stringify({ enabled: true }) })).json();
+    // Enable MCP through the packaged UI so the renderer's local settings store
+    // starts the real control stream. A direct API toggle leaves that store
+    // unchanged and would test a state the user cannot actually reach.
+    await (async () => {
+      window.dispatchEvent(new Event('miao-desktop-settings'));
+      const until = Date.now() + 30000;
+      while (Date.now() < until && !document.querySelector('.settingsDialog')) await new Promise(r => setTimeout(r, 100));
+      const mcpTab = document.querySelector('.settingsDialog button[aria-label="MCP"]');
+      if (!(mcpTab instanceof HTMLElement)) throw new Error('MCP settings tab did not open');
+      mcpTab.click();
+      while (Date.now() < until && !document.querySelector('.mcpPanel [role="switch"]')) await new Promise(r => setTimeout(r, 100));
+      const toggle = document.querySelector('.mcpPanel [role="switch"]');
+      if (!(toggle instanceof HTMLElement)) throw new Error('MCP settings switch did not render');
+      if (toggle.getAttribute('aria-checked') !== 'true') toggle.click();
+      while (Date.now() < until) {
+        const current = await (await fetch('/api/imagine/mcp', { cache: 'no-store' })).json();
+        if (current.enabled === true) return;
+        await new Promise(r => setTimeout(r, 250));
+      }
+      throw new Error('MCP settings switch did not enable the connection');
+    })();
+    const access = await (await fetch('/api/imagine/mcp', { cache: 'no-store' })).json();
+    if (access.enabled !== true || !access.token) throw new Error('MCP access token was not enabled by the packaged UI');
     let transport, serial = 0;
     const parse = text => { try { return JSON.parse(text) } catch { return text.split('\n').filter(x => x.startsWith('data:')).map(x => JSON.parse(x.slice(5))).at(-1) } };
     const rpc = async (method, params) => {
