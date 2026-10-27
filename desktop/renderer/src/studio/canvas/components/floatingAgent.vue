@@ -126,17 +126,18 @@ function resizePanel(edge: ResizeEdge, value: number, anchor = resizeAnchor(edge
 }
 
 function resizeWithKeyboard(event: KeyboardEvent, edge: ResizeEdge) {
-  const keys = edge === "bottom" ? ["ArrowUp", "ArrowDown"] : ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"];
-  const direction = keys.indexOf(event.key);
-  if (direction < 0) return;
+  const horizontal = event.key === "ArrowLeft" || event.key === "ArrowRight";
+  const vertical = event.key === "ArrowUp" || event.key === "ArrowDown";
+  if (edge === "bottom" && !vertical) return;
+  if ((edge === "left" || edge === "right") && !horizontal) return;
+  if (edge === "corner" && !horizontal && !vertical) return;
   event.preventDefault();
-  if (edge === "corner") {
-    if (event.key === "ArrowUp" || event.key === "ArrowDown") resizePanel("bottom", height.value + (event.key === "ArrowUp" ? -16 : 16));
-    else resizePanel("right", width.value + (event.key === "ArrowLeft" ? -16 : 16));
+  if (vertical) {
+    resizePanel("bottom", height.value + (event.key === "ArrowUp" ? -16 : 16));
     return;
   }
-  const delta = (direction === 0 ? -16 : 16) * (edge === "left" ? -1 : 1);
-  resizePanel(edge, (edge === "bottom" ? height.value : width.value) + delta);
+  const delta = (event.key === "ArrowLeft" ? -16 : 16) * (edge === "left" ? -1 : 1);
+  resizePanel(edge === "corner" ? "right" : edge, width.value + delta);
 }
 
 function startMenuMove(event: PointerEvent) {

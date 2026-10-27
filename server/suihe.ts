@@ -249,15 +249,16 @@ export async function pollSuiheTask(id,{env=process.env,fetchImpl=fetch,signal}:
   const data=await json(response)
   if(!response.ok) throw responseError(response,data)
   const urls=(Array.isArray(data.result_urls)?data.result_urls:[]).map(url=>new URL(String(url),config.baseUrl).href)
-  const status=String(data.status||'')
+  const status=String(data.status||'').trim().toLowerCase()
   // Current task responses expose an explicit CNY settlement. Keep that
   // separate from the supplier's raw credit amounts; never guess their unit.
   const billing=data.billing && typeof data.billing==='object' ? data.billing : null
   // `expired` is a terminal supplier state. The local generation lifecycle
   // settles terminal upstream failures through its failed/refund path, so do
   // not leave an expired supplier task polling forever as `running`.
-  const terminalFailure = ['failed', 'cancelled', 'expired'].includes(status)
-  return {id,status:status==='success'?'succeeded':terminalFailure?'failed':'running',urls,url:urls[0]||'',duration:data.duration??null,width:data.width??null,height:data.height??null,mime:'video/mp4',progress:data.progress_pct??null,error:data.fail_reason || (status === 'expired' ? '穗禾任务已过期' : ''),upstreamModel:data.model||'',upstreamRequestId:id,upstreamStatus:response.status,usage:{...(data.usage||{}),suihe_billing:billing,suihe_actual_cost:data.actual_cost??null,suihe_estimated_cost:data.estimated_cost??null,suihe_cost_unit:'unconfirmed'},metadata:{raw:data,status}}
+  const terminalSuccess = ['success', 'succeeded', 'completed', 'complete', 'done'].includes(status)
+  const terminalFailure = ['failed', 'failure', 'cancelled', 'canceled', 'expired', 'error'].includes(status)
+  return {id,status:terminalSuccess?'succeeded':terminalFailure?'failed':'running',urls,url:urls[0]||'',duration:data.duration??null,width:data.width??null,height:data.height??null,mime:'video/mp4',progress:data.progress_pct??null,error:data.fail_reason || (status === 'expired' ? '穗禾任务已过期' : ''),upstreamModel:data.model||'',upstreamRequestId:id,upstreamStatus:response.status,usage:{...(data.usage||{}),suihe_billing:billing,suihe_actual_cost:data.actual_cost??null,suihe_estimated_cost:data.estimated_cost??null,suihe_cost_unit:'unconfirmed'},metadata:{raw:data,status}}
 }
 export async function receiveSuiheImages(request,id,{env=process.env,fetchImpl=fetch,signal}:Record<string,any>={}) {
   const config=suiheSettings(env)

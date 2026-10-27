@@ -46,6 +46,7 @@ export async function uploadSuiheAsset({ userId, bytes, mime, name, library = 'w
 
 export async function listSuiheAssets({ userId, library = 'whitelist', page = 1, pageSize = 100, env = process.env, fetchImpl = fetch, signal }: Record<string, any> = {}) {
   const config = settings(env)
+  if (!config.apiKey) throw Object.assign(new Error('穗禾素材库尚未配置'), { status: 503 })
   if (!['whitelist', 'cloud'].includes(library)) throw Object.assign(new Error('穗禾素材库类型无效'), { status: 422 })
   const endpoint = library === 'whitelist' ? 'whitelist' : 'assets'
   const response = await createMediaProviderFetch({ env, fetchImpl })(`${config.baseUrl}/v1/asset-library/${endpoint}/list`, {
@@ -57,6 +58,7 @@ export async function listSuiheAssets({ userId, library = 'whitelist', page = 1,
 
 export async function getSuiheWhitelistAsset({ userId, id, env = process.env, fetchImpl = fetch, signal }: Record<string, any> = {}) {
   const config = settings(env)
+  if (!config.apiKey) throw Object.assign(new Error('穗禾素材库尚未配置'), { status: 503 })
   const safeId = encodeURIComponent(String(id || '').trim())
   if (!safeId) throw Object.assign(new Error('穗禾素材 ID 无效'), { status: 422 })
   const response = await createMediaProviderFetch({ env, fetchImpl })(`${config.baseUrl}/v1/asset-library/whitelist/${safeId}`, {

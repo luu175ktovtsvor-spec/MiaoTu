@@ -12,7 +12,7 @@ if (!new RegExp(`['"]${version.replaceAll('.', '\\.')}['"]\\s*:`).test(source)) 
 // Only inspect the current version's displayed copy; older entries remain as
 // historical records, while new records must be written for customers.
 const current = source.match(new RegExp(`['"]${version.replaceAll('.', '\\.')}['"]\\s*:\\s*\\{([\\s\\S]*?)\\n  \\},\\n  ['"]`))?.[1] || ''
-if (/knownIssues:\s*\[\s*\{/.test(current)) {
+if (/knownIssues\s*:/.test(current)) {
   throw new Error('发布说明只写修复和优化，不添加“已知问题”。')
 }
 for (const [, copy] of current.matchAll(/(?:zh|en):\s*'([^']*)'/g)) {

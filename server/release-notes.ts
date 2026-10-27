@@ -4,7 +4,6 @@ export type ReleaseNotes = {
   title: { zh: string; en: string }
   fixes: ReleaseNoteItem[]
   improvements: ReleaseNoteItem[]
-  knownIssues: ReleaseNoteItem[]
 }
 
 // 更新说明直接写软件修好了什么：哪一个界面、哪一项操作，以前错在哪里，现在怎样。
@@ -21,7 +20,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
     improvements: [
       { zh: '切换图片或视频模型后，模式和参数会自动跟随新模型，减少保留旧设置造成的误操作。', en: 'After switching image or video models, modes and parameters now follow the new model to reduce mistakes caused by old settings.' },
     ],
-    knownIssues: [],
   },
   '3.1.10': {
     title: { zh: '价格、渠道与反馈管理更完整', en: 'More complete pricing, channel controls and feedback management' },
@@ -34,9 +32,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
       { zh: '模型菜单和节点说明会随当前可用能力刷新，切换模型时清理不兼容参数。', en: 'Model menus and node guidance refresh from current capabilities, and incompatible options are cleared when switching models.' },
       { zh: '生成请求增加账号会话、重复提交和并发保护，减少旧会话或重复点击造成的异常。', en: 'Generation requests add session, duplicate submission and concurrency protections to reduce errors from stale sessions or repeated clicks.' },
     ],
-    knownIssues: [
-      { zh: '本版本未执行真实付费视频生成；上线前仍需用隔离账号完成穗禾非生成询价和页面验收。', en: 'This version has not run a real paid video generation; an isolated-account Suihe quote and page acceptance are still required before release.' },
-    ],
   },
   '3.1.9': {
     title: { zh: '生成选项与节点说明更准确', en: 'Clearer generation options and node descriptions' },
@@ -48,7 +43,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
       { zh: '统一文本、图片、视频、音频和导演台的节点名称、操作说明与提示文案，保留已有自定义名称。', en: 'Text, image, video, audio and director nodes have consistent names and clearer instructions while preserving custom names.' },
       { zh: '参考素材说明补充格式、数量、大小及时长限制。', en: 'Reference guidance now includes format, count, size and duration limits.' },
     ],
-    knownIssues: [],
   },
   '3.1.8': {
     title: { zh: '视频精选补齐提示词与译文', en: 'Complete prompts and translations for selected films' },
@@ -59,7 +53,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
     improvements: [
       { zh: '视频精选支持分段自适应播放。', en: 'Selected films support adaptive playback.' },
     ],
-    knownIssues: [],
   },
   '3.1.7': {
     title: { zh: '豆包与 Dola 的模型参数提前显示', en: 'Doubao and Dola model parameters appear immediately' },
@@ -70,9 +63,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
     improvements: [
       { zh: '账号设置会区分“预置参数”和“当前账号菜单”，方便确认参数来源。', en: 'Account settings distinguish preset parameters from the current account menu.' },
     ],
-    knownIssues: [
-      { zh: '参数预置不代表账号已获得生成权限；发送前仍需登录并读取当前账号菜单。', en: 'Presets do not grant generation access; sending still requires signing in and loading the current account menu.' },
-    ],
   },
   '3.1.6': {
     title: { zh: 'Dola 图片生成可以直接返回画布', en: 'Dola image generation returns directly to the canvas' },
@@ -82,9 +72,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
     ],
     improvements: [
       { zh: 'Dola 路由回执使用账号当前真实能力编号和模型标识核对，图片、视频不会因为写死旧编号而被误拦。', en: 'Dola routing receipts now use the account’s current ability type and model key, so image and video requests are not rejected by an outdated hard-coded ability number.' },
-    ],
-    knownIssues: [
-      { zh: 'Dola 视频是否可用仍取决于账号权益和平台状态。本次账号生成图片成功；视频请求由 Dola 返回“视频生成失败、额度未扣除”，妙图会显示失败，不会重新下单。', en: 'Dola video availability still depends on account entitlements and platform status. Image generation succeeded in testing; Dola returned “video generation failed, quota not deducted” for video, and MiaoImg reports the failure without resubmitting.' },
     ],
   },
   '3.1.5': {
@@ -97,7 +84,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
     improvements: [
       { zh: '豆包视频的比例、时长和清晰度仍按平台当前菜单发送；能读到平台请求回执时会继续核对，读不到时也会保留任务并明确记录未核验状态。', en: 'Doubao video ratio, duration and resolution still follow the current platform menu; MiaoImg verifies the platform request when a receipt is available and keeps the task with an explicit unverified state when it is not.' },
     ],
-    knownIssues: [],
   },
   '3.1.4': {
     title: { zh: '豆包和 Dola 选中后文字清晰可读', en: 'Doubao and Dola labels stay readable when selected' },
@@ -105,7 +91,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
       { zh: '修复设置里选中 Dola 后白色胶囊配白色文字的问题，现在选中和未选中状态都能清楚看见。', en: 'Fixed the selected Dola pill using white text on a white background; both selected and unselected states are now readable.' },
     ],
     improvements: [],
-    knownIssues: [],
   },
   '3.1.3': {
     title: { zh: '项目删除遇到残缺文件时也能正常完成', en: 'Project deletion now completes even when old files are missing' },
@@ -115,7 +100,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
     improvements: [
       { zh: '视频模型的时长和清晰度选项按各自实际支持的范围显示：MiniMax H3 的 480p、768P 和 1080p 最长 30 秒，2K 最长 15 秒；其他模型也分别显示自己的可用范围。', en: 'Video duration and resolution choices now follow each model’s actual capabilities: MiniMax H3 supports up to 30 seconds at 480p, 768P and 1080p, and up to 15 seconds at 2K; other models show their own supported ranges too.' },
     ],
-    knownIssues: [],
   },
   '3.1.2': {
     title: { zh: '豆包和 Dola 的设置标签分开显示', en: 'Doubao and Dola settings now use separate labels' },
@@ -123,7 +107,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
     improvements: [
       { zh: '「豆包与 Dola」的平台切换改成两个有间距的独立圆角标签，选中状态清楚，不再连成一片。', en: 'The Doubao and Dola selector now uses two separate rounded pills with clear spacing, so the selected state is easy to see.' },
     ],
-    knownIssues: [],
   },
   '3.1.1': {
     title: { zh: '客户端换上官网的配色与控件、登录输入更简洁、所有项目都能删除', en: 'Client styling now matches the website, cleaner sign-in fields and every project can be deleted' },
@@ -146,9 +129,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
       { zh: '提示和报错不再是带底色的框，只用左侧一根细线标出状态。生成历史的模型筛选按图片、视频分组，显示模型名和官方标识；充值页的支付方式改成小巧的选项，配支付宝官方标识。', en: 'Notices and errors are a thin line instead of a tinted box. The history model filter is grouped by image and video with model names and official logos; the top-up page shows a compact payment choice with the official Alipay logo.' },
       { zh: '「豆包与 Dola」设置的说明重写：直接写明可用地区，其余说法也改得更直白。', en: 'The Doubao and Dola settings are rewritten in plain language and state the supported regions directly.' },
       { zh: 'macOS 安装镜像增加「首次使用」辅助程序，可自动复制应用、清理下载隔离并启动。', en: 'The macOS disk image now includes a first-use helper that copies the app, clears the download quarantine and launches it.' },
-    ],
-    knownIssues: [
-      { zh: 'macOS 未签名版本第一次运行「首次使用」辅助程序时，可能需要在文件上右键选择「打开」一次。', en: 'The unsigned macOS build may require right-clicking the first-use helper and choosing Open once.' },
     ],
   },
   '3.1.0': {
@@ -186,7 +166,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
       { zh: '3D 导演台的文本模型菜单按来源分组；图片打光页的阴影更柔和，更接近真实光照。', en: 'The 3D director groups its text models by source, and shadows on the image lighting page are softer and closer to real light.' },
       { zh: '启动时不再自动弹出更新说明，想看随时点左侧的「版本更新记录」；左上角品牌改为「妙图 MiaoImg」。', en: 'Release notes no longer pop up on launch; open Release notes on the left whenever you like. The top-left brand now reads 妙图 MiaoImg.' },
     ],
-    knownIssues: [],
   },
   '3.0.2': {
     title: { zh: '修复关闭应用时偶发卡住', en: 'Fixes the app occasionally getting stuck while closing' },
@@ -195,7 +174,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
       { zh: '如果保存本身超时，会取消这次关闭并恢复窗口，不再出现本机服务已经停止、界面却无法继续操作的情况。', en: 'If saving itself times out, closing is cancelled and the window becomes usable again instead of leaving local services stopped behind an unresponsive interface.' },
     ],
     improvements: [],
-    knownIssues: [],
   },
   '3.0.1': {
     title: { zh: 'MiniMax H3 可选比例与提示词优化开关，Seedream 4.0 支持 4K', en: 'MiniMax H3 ratios and prompt optimisation switch, 4K for Seedream 4.0' },
@@ -208,7 +186,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
       { zh: 'MiniMax H3 的「高级设置」新增「原样使用提示词」：打开后不再做提示词优化，按你写的原文生成，每次少收这部分费用；默认仍会优化。', en: 'MiniMax H3 Advanced settings add Use prompt as written: prompt optimisation is skipped, the video follows your exact wording and that charge is removed. Optimisation stays on by default.' },
       { zh: 'Seedream 4.0 新增 7 个 4K 尺寸（方形、横屏、竖屏等），价格和 2K 相同。', en: 'Seedream 4.0 adds seven 4K sizes (square, landscape, portrait and more) at the same price as 2K.' },
     ],
-    knownIssues: [],
   },
   '3.0.0': {
     title: { zh: '画布全新排布、反馈入口与更顺手的登录', en: 'A rearranged canvas, a feedback channel and simpler sign-in' },
@@ -265,12 +242,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
       { zh: 'MiniMax H3 按当前官方能力开放 480p、768P、1080p 和 2K，并支持 4–30 秒；2K 仍按官方限制最长 15 秒，16–30 秒报价按官方长视频档计算。', en: 'MiniMax H3 now follows its current official options for 480p, 768P, 1080p and 2K with 4–30 second clips. 2K keeps the official 15-second limit, while 16–30 second quotes use the official long-video rate.' },
       { zh: 'Grok Imagine Image 2.0 补上官方支持的自动质量选项；多图编辑上限按当前官方能力保持 5 张。', en: 'Grok Imagine Image 2.0 now includes the official automatic quality option; multi-image editing keeps the current official five-image limit.' },
     ],
-    knownIssues: [
-      { zh: '收不到验证码时，请先看看垃圾邮件；仍然没有的话，可以改用密码登录。', en: 'If the email code does not arrive, check your spam folder, or switch to password sign-in.' },
-      { zh: '豆包和 Dola 的参考图需要先保存在本机项目里，画布上还没落盘的图片不能直接发送。', en: 'Doubao and Dola reference images must already be saved in the local project. An image still only on the canvas cannot be sent directly.' },
-      { zh: '妙图不会自动切换 Clash 节点、系统代理或 TUN。Dola 是否可用仍取决于当前账号地区、登录状态和妙图窗口实际使用的网络出口。', en: 'MiaoImg does not switch Clash nodes, System Proxy or TUN automatically. Dola availability still depends on the account region, sign-in state and the network exit actually used by the MiaoImg window.' },
-      { zh: '遇到问题可以在左侧「反馈」里告诉我们，附上截图会更快处理。', en: 'If something goes wrong, tell us from Feedback in the left rail; a screenshot helps us fix it faster.' },
-    ],
   },
   '0.2.19': {
     title: { zh: '充值页与案例入口', en: 'Top-up page and cases' },
@@ -280,11 +251,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
     ],
     improvements: [
       { zh: '「灵感库」更名为「案例」。打开后先看到项目和案例。点一个项目进入这一份画布。案例在项目下方，可切换视频精选和提示词。', en: '“灵感库” is now called “案例”. Opening the app shows projects and cases first. Choosing a project opens that canvas. Cases sit below the projects, with curated films and prompts.' },
-    ],
-    knownIssues: [
-      { zh: '还停在只填密码登录页的旧版本，需要安装这个版本后再登录。', en: 'Older installs still showing password-only sign-in need this version before signing in again.' },
-      { zh: '豆包和 Dola 的参考图需要先保存在本机项目里，画布上还没落盘的图片不能直接发送。', en: 'Doubao and Dola reference images must already be saved in the local project. An image still only on the canvas cannot be sent directly.' },
-      { zh: '豆包普通账号仍会保留品牌水印。Dola 的品牌标识以实际返回为准。', en: 'Ordinary Doubao accounts still keep the brand watermark. Dola’s brand mark follows what the account actually returns.' },
     ],
   },
   '0.2.18': {
@@ -304,11 +270,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
       { zh: '设置里的创作说明、创作记忆，以及开发设置里的 Agent 系统提示词，不再卡在 20000 字。保存保留全文，字数只作显示。', en: 'Creative notes, creative memory and the Agent system prompt in developer settings are no longer capped at 20,000 characters. Saving keeps the full text; the count is only a display.' },
       { zh: '发送豆包或 Dola 的图片、视频前，会先打开该账号里的去除 AI 明水印。确认不了就停在发送前。节点上的「参数与水印」可以查看这项说明。', en: 'Before sending a Doubao or Dola image or video, the app turns on that account’s removal of the visible AI mark. If it cannot be confirmed, sending stops. The node’s “Settings and watermark” control explains this.' },
     ],
-    knownIssues: [
-      { zh: '还停在只填密码登录页的旧版本，需要安装这个版本后再登录。', en: 'Older installs still showing password-only sign-in need this version before signing in again.' },
-      { zh: '豆包和 Dola 的参考图需要先保存在本机项目里，画布上还没落盘的图片不能直接发送。', en: 'Doubao and Dola reference images must already be saved in the local project. An image still only on the canvas cannot be sent directly.' },
-      { zh: '豆包普通账号仍会保留品牌水印。Dola 的品牌标识以实际返回为准。', en: 'Ordinary Doubao accounts still keep the brand watermark. Dola’s brand mark follows what the account actually returns.' },
-    ],
   },
   '0.2.17': {
     title: { zh: '生成选择与结果恢复改进', en: 'Clearer generation choices and result recovery' },
@@ -323,10 +284,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
       { zh: '节点标题和模型选择框显示更清晰，便于区分相同版本的选项。', en: 'Clearer node titles and model selectors distinguish options with the same version name.' },
       { zh: '视频参数按具体选项分别展示，未开放的清晰度会明确标注。', en: 'Video settings follow each selected option, with unavailable resolution controls clearly indicated.' },
       { zh: '修复参数下拉菜单点选时意外关闭的问题。', en: 'Fixed settings menus closing unexpectedly while choosing an option.' },
-    ],
-    knownIssues: [
-      { zh: '部分生成选项受账号权限和所在地区限制，不可用时会在提交前提示。', en: 'Some generation options depend on account permissions and region; unavailable options are reported before submission.' },
-      { zh: '去除 AI 明水印后，普通账号仍可能保留品牌水印，具体以账号可用权限为准。', en: 'Brand watermarks may remain on free accounts after removing the AI visible mark, depending on account permissions.' },
     ],
   },
   '0.2.16': {
@@ -345,9 +302,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
       { zh: '完善回收站恢复和备份清理，恢复失败时继续保留原文件。', en: 'Improved trash recovery and backup cleanup, preserving original files when recovery fails.' },
       { zh: '完善退出和重新加载时的保存与操作收尾，减少状态丢失。', en: 'Improved saving and cleanup when exiting or reloading to reduce lost state.' },
     ],
-    knownIssues: [
-      { zh: '本机文件与命令仍受系统权限限制；已开始的操作停止等待后，请先查看实际结果再重试。', en: 'Local files and commands remain subject to system permissions. After stopping a wait for an operation already underway, check its actual result before retrying.' },
-    ],
   },
   '0.2.15': {
     title: { zh: '画布工具与本机操作完善', en: 'Canvas tools and local operations' },
@@ -363,9 +317,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
       { zh: 'Agent 默认复制节点时保留系统剪贴板内容，可继续在其他画布粘贴。', en: 'Agent node copying preserves the system clipboard by default and supports pasting into other canvases.' },
       { zh: '本机操作与画布能力使用统一工具目录，节点功能按需发现。', en: 'Local operations and canvas controls use a shared tool directory with node functions discovered on demand.' },
     ],
-    knownIssues: [
-      { zh: '本机文件操作受系统权限限制；应用退出后，需先确认未完成命令的实际结果。', en: 'Local file operations require system permissions; check unfinished commands after reopening the app.' },
-    ],
   },
   '0.2.14': {
     title: { zh: 'Agent 连续任务与视频预览优化', en: 'Continuous Agent tasks and lighter video previews' },
@@ -380,9 +331,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
       { zh: '拖动视频进度条时先选择位置，松手后定位，减少反复缓冲。', en: 'Choose a position while dragging the video timeline and seek on release, reducing repeated buffering.' },
       { zh: '长对话保留完整可见历史，按需展开更早记录；分镜表可在对话内横向查看。', en: 'Long chats preserve visible history with earlier records loaded on demand; storyboard tables scroll within the conversation.' },
     ],
-    knownIssues: [
-      { zh: '应用退出会中断正在执行的本机命令；重新打开后，请先确认未完成操作的实际结果。', en: 'Exiting the app interrupts running local commands; check unfinished operations before continuing after reopening.' },
-    ],
   },
   '0.2.13': {
     title: { zh: 'Agent 画布操作与灵感库升级', en: 'Agent canvas controls and inspiration library updates' },
@@ -396,9 +344,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
       { zh: '执行中可直接补充要求，继续同一任务；子任务保留独立完整记录，可单独查看和停止。', en: 'Add instructions during a running task; child tasks keep separate full histories and can be viewed or stopped independently.' },
       { zh: '长对话自动整理上下文，保留原始记录；在文档面板中也能让 Agent 操作画布。', en: 'Long conversations compact automatically while preserving original records; the Agent can operate the canvas from the document panel.' },
       { zh: '灵感库整合精选视频与图片、视频提示词，按需加载素材，支持查看原始提示词。', en: 'The inspiration library brings together curated videos and image and video prompts, loading media on demand and showing original prompts.' },
-    ],
-    knownIssues: [
-      { zh: '参考视频用于近似动作预演；精细舞蹈仍需调整关键帧，动画导出耗时约等于影片时长。', en: 'Video references guide approximate motion previs; detailed choreography still needs keyframe adjustments, and export takes approximately the video duration.' },
     ],
   },
   '0.2.12': {
@@ -419,10 +364,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
       { zh: '工具调用以清楚的动作、处理对象和状态呈现，详细参数可按需展开。', en: 'Tool calls show clear actions, targets and states, with details available on demand.' },
       { zh: '网页操作默认在后台进行，需要查看或登录时再打开浏览器窗口。', en: 'Web interactions run in the background by default, with visible browser windows available when needed.' },
     ],
-    knownIssues: [
-      { zh: '导演台视频目前按播放时长录制，导出耗时约等于影片时长。', en: 'Director videos are recorded in real time, so export takes approximately the video duration.' },
-      { zh: '参考视频用于近似动作预演，精细舞蹈仍需调整关键帧。', en: 'Video references guide approximate motion previs; detailed choreography still needs keyframe adjustments.' },
-    ],
   },
   '0.2.11': {
     title: { zh: '导演台参考素材与场景编辑修复', en: 'Director reference media and scene editing fixes' },
@@ -432,9 +373,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
     ],
     improvements: [
       { zh: '视频参考带时间标记，可继续查看动作细节；修改方案前后检查草稿，失败保留原方案。', en: 'Video references include timestamps and support closer inspection; draft validation preserves the original plan on failure.' },
-    ],
-    knownIssues: [
-      { zh: '参考视频生成的是近似动作预演，不等同于逐帧动作捕捉；精细舞蹈仍需调整关键帧。', en: 'Reference videos guide approximate motion previs, not frame-by-frame motion capture; detailed choreography still needs keyframe adjustments.' },
     ],
   },
   '0.2.10': {
@@ -447,7 +385,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
       { zh: '视频截取优先保留原始音画，范围向外对齐关键帧并标注实际起止时间。', en: 'Video trimming preserves original media, aligns the range outward to keyframes and shows the actual times.' },
       { zh: '提取和分离优先保留原始音轨，精确音频剪辑使用无损格式，原素材保持不变。', en: 'Extraction and separation preserve original audio where supported; precise audio edits use lossless output and leave source files unchanged.' },
     ],
-    knownIssues: [],
   },
   '0.2.9': {
     title: { zh: '外观随心切换', en: 'Choose your appearance' },
@@ -459,7 +396,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
       { zh: '背景、面板、文字和网格同步适配，图片与视频保持原色。', en: 'Backgrounds, panels, text and grids adapt together while media keeps its original colors.' },
       { zh: '记住你的外观选择，登录页和重新启动后继续沿用。', en: 'Keep your appearance on the sign-in screen and after restarting.' },
     ],
-    knownIssues: [],
   },
   '0.2.8': {
     title: { zh: 'MCP 操作范围与任务控制优化', en: 'MCP project and task controls' },
@@ -472,7 +408,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
       { zh: '统一文件改名、目录操作与媒体处理的编辑保护。', en: 'Apply consistent file protection to renaming, folders and media processing.' },
       { zh: '完善项目连接状态与画布工具发现。', en: 'Clarify project connections and available canvas tools.' },
     ],
-    knownIssues: [],
   },
   '0.2.7': {
     title: { zh: '外部 Agent 画布连接修复', en: 'External agent canvas connection fixes' },
@@ -485,7 +420,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
       { zh: '提供 Codex 专用连接配置与可导出的妙图画布 Skill。', en: 'Added Codex connection settings and an exportable MiaoImg canvas skill.' },
       { zh: '加强文档编辑冲突保护，避免覆盖正在编辑的内容。', en: 'Protect open documents and reject conflicting edits.' },
     ],
-    knownIssues: [],
   },
   '0.2.6': {
     title: { zh: '登录与连接体验优化', en: 'Sign-in and connection improvements' },
@@ -500,7 +434,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
       { zh: '登录连接适配电脑的系统网络与代理设置。', en: 'Sign-in connections now follow system network and proxy settings.' },
       { zh: '登录、注册和退出在同一界面完成，重启后直接恢复已保存的账号。', en: 'Sign in, register and sign out in one place, with saved accounts restored on restart.' },
     ],
-    knownIssues: [],
   },
   '0.2.5': {
     title: { zh: '素材与视频处理优化', en: 'Media and video processing improvements' },
@@ -514,9 +447,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
       { zh: '优化连续截取片段和视频帧时的摆放，避免结果相互遮挡。', en: 'Keep successive clips and captured frames from overlapping on the canvas.' },
       { zh: '保留原视频，处理后的片段继续保存到当前项目。', en: 'Keep the original video and save processed clips in the current project.' },
     ],
-    knownIssues: [
-      { zh: '导出预演视频时，请保持妙图窗口可见，直到导出完成。', en: 'Keep the MiaoImg window visible until previs video export finishes.' },
-    ],
   },
   '0.2.4': {
     title: { zh: '3D 导演台创作优化', en: '3D director improvements' },
@@ -529,9 +459,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
       { zh: '生成未完成时保留原来的修改要求，方便调整后继续。', en: 'Keep your instructions when generation does not finish, so you can revise and continue.' },
       { zh: '优化生成中断提示，让下一步操作更清楚。', en: 'Clearer messages when generation is interrupted.' },
     ],
-    knownIssues: [
-      { zh: '导出预演视频时，请保持妙图窗口可见，直到导出完成。', en: 'Keep the MiaoImg window visible until previs video export finishes.' },
-    ],
   },
   '0.2.3': {
     title: { zh: '灵感库与联网工具修复', en: 'Library and web tool fixes' },
@@ -542,9 +469,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
     improvements: [
       { zh: '重新整理灵感库文案，显示图片与视频数量。', en: 'Refreshed library copy and added image and video counts.' },
       { zh: '支持卡片静音预览、详情播放与拖动进度，自动切换可用视频来源。', en: 'Added muted card previews, detail playback, seeking and video source fallback.' },
-    ],
-    knownIssues: [
-      { zh: '部分视频使用原站地址，播放取决于原站状态和网络连接。', en: 'Some videos use original URLs; playback depends on source availability and your connection.' },
     ],
   },
   '0.2.2': {
@@ -557,9 +481,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
       { zh: '明确本机操作允许访问当前系统账号可读写的文件，默认文件夹不限制访问范围。', en: 'Computer access covers files available to your system account, beyond the default folder.' },
       { zh: '新增 macOS 系统文件权限设置入口。', en: 'Added a shortcut to macOS file permission settings.' },
     ],
-    knownIssues: [
-      { zh: '受系统保护的文件需要额外系统授权；Windows 版本本次未进行真机操作验证。', en: 'Protected files require additional system permissions. This Windows version has not been checked on a physical device.' },
-    ],
   },
   '0.2.1': {
     title: { zh: '30 秒完整视频创作', en: 'Create complete 30-second videos' },
@@ -571,9 +492,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
     improvements: [
       { zh: '新增 Seedance 2.5，支持最长 30 秒视频、多素材参考和原生声音。', en: 'Added Seedance 2.5 with videos up to 30 seconds, multiple references and generated audio.' },
       { zh: '补充微电影、人物对白、音乐 MV、动画和旅行等创作方法。', en: 'Expanded workflows for short films, dialogue, music videos, animation and travel.' },
-    ],
-    knownIssues: [
-      { zh: '部分设备播放 1080p 视频时需要兼容 H.265 的播放器，可下载原片查看。', en: 'Some devices need an H.265-compatible player for 1080p video. Download the original to view it.' },
     ],
   },
   '0.2.0': {
@@ -589,9 +507,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
       { zh: '新增画布搜索、文件夹整理、图片打光、多角度和全景创作入口。', en: 'Added canvas search, folders, image lighting, camera angles and panorama tools.' },
       { zh: '新增使用手册与联系入口，支持粘贴文字和媒体到画布。', en: 'Added a user guide, contact details and pasting text or media onto the canvas.' },
     ],
-    knownIssues: [
-      { zh: '大视频项目保存在本机，暂不支持云端同步。部分创作方法需要先自行安装所需软件。', en: 'Projects containing large videos stay on this computer and currently do not sync. Some creative methods require software you install separately.' },
-    ],
   },
   '0.1.19': {
     title: { zh: '妙图桌面版更新', en: 'MiaoImg desktop update' },
@@ -604,9 +519,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
       { zh: '未登录时直接显示登录界面；已登录时直接进入画布。', en: 'The app opens sign-in when signed out and the canvas when signed in.' },
       { zh: '保留邮箱验证码和密码登录，优化小窗口下的登录布局。', en: 'Kept email-code and password sign-in and improved the layout in smaller windows.' },
     ],
-    knownIssues: [
-      { zh: '首次登录和重新验证账号需要联网。', en: 'An internet connection is required to sign in or verify your account again.' },
-    ],
   },
   '0.1.18': {
     title: { zh: '妙图桌面版更新', en: 'MiaoImg desktop update' },
@@ -617,9 +529,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
     improvements: [
       { zh: '优化图片、视频和文本模型的选择与价格展示。', en: 'Improved model selection and price displays for images, videos, and text.' },
       { zh: '可用模型列表会及时更新。', en: 'The available model list now stays up to date.' },
-    ],
-    knownIssues: [
-      { zh: '暂未发现影响正常使用的已知问题；如果遇到异常，请先重启妙图后再重试。', en: 'No known issue currently affects normal use. Restart MiaoImg and retry if something looks unusual.' },
     ],
   },
   '0.1.17': {
@@ -632,9 +541,6 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
     improvements: [
       { zh: '更新检查、下载和重启安装流程的状态提示更清晰。', en: 'Clarified update checking, downloading, and restart-to-install status.' },
       { zh: 'Mac 版可在应用内下载更新，重启后完成安装。', en: 'On Mac, download updates in the app and restart to finish installing.' },
-    ],
-    knownIssues: [
-      { zh: '暂未发现影响正常使用的已知问题；如果遇到异常，请先重启妙图后再重试。', en: 'No known issue currently affects normal use. Restart MiaoImg and retry if something looks unusual.' },
     ],
   },
 }
