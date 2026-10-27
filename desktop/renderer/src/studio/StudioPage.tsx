@@ -109,7 +109,7 @@ export default function StudioPage() {
   const setSurface = useCallback((value: string) => { surfaceRequestRef.current++; setSurfaceState(value) }, [])
   useEffect(() => {
     const openHome = () => { void window.miaoDesktop?.flushSave?.().finally(() => setSurface('home')) }
-    const openCanvas = () => { void window.miaoDesktop?.flushSave?.().finally(() => setSurface('look')) }
+    const openCanvas = () => { void Promise.resolve(window.miaoDesktop?.flushSave?.()).finally(() => setSurface('look')) }
     window.addEventListener('miao-open-home', openHome)
     window.addEventListener('miao-open-canvas', openCanvas)
     return () => { window.removeEventListener('miao-open-home', openHome); window.removeEventListener('miao-open-canvas', openCanvas) }
