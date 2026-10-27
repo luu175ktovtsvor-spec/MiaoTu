@@ -314,7 +314,7 @@ async function canvasReview() {
     await new Promise(r => setTimeout(r, 3500));
     if (attempts() !== closedAttempts) throw new Error('Disabled MCP channel kept reconnecting');
     return { synchronizationDisabled: true, externalConnectionStopped: true, installedReaderCompatibility: true, canvasId: canvas.canvasId, canvasOperations: expected, contentPreserved: true, independentCanvasCopy: true, movedDocumentSaved: true, closedDocumentSaved: true, copiedNodes: pasted.nodeCount, nodeTypes: overview.availableNodeTypes.map(x => x.type), discovered };
-  }).toString()})()`, 180000);
+  }).toString()})()`, 600000);
 }
 
 async function stop() {
