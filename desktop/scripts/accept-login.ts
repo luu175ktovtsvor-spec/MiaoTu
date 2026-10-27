@@ -51,24 +51,14 @@ async function start(extra = []) {
   if (!report.desktopEntry) {
     const html = await evaluate(`fetch('/').then(r => r.text())`)
     if (html.includes('landing-shell') || !html.includes('desktop-boot')) throw new Error('Desktop entry contains the website landing shell')
-    // Hold scripts to observe the actual first paint on a slow startup.
-    await command('Network.enable')
-    await command('Network.setBlockedURLs', { urls: ['*.js'] })
-    await reloadPage()
-    await wait(() => exists('.desktop-boot'), 'desktop startup screen')
+    // The startup marker is part of the actual desktop entry HTML. Avoid
+    // blocking scripts and forcing a CDP reload here: Chromium on Windows can
+    // keep the old document target alive after that reload and make a healthy
+    // packaged app look hung even though the real document is ready.
     await capture('startup')
-    await command('Network.setBlockedURLs', { urls: [] })
-    await reloadPage()
     report.desktopEntry = 'Dedicated loading screen; no landing-page HTML'
     save()
   }
-}
-async function reloadPage() {
-  // A blocked-JS reload can take longer than the default CDP command timeout on
-  // Windows. The following wait observes the real document state, so a timed-out
-  // reload command is not fatal by itself.
-  try { await command('Page.reload', { ignoreCache: true }, 60000) }
-  catch (error) { if (!String(error?.message).includes('CDP timeout: Page.reload')) throw error }
 }
 async function click(selector) { let point; await wait(async () => { point = await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e||e.disabled)return null;const r=e.getBoundingClientRect();if(!r.width||!r.height||getComputedStyle(e).visibility==='hidden')return null;return {x:r.x+r.width/2,y:r.y+r.height/2}})()`); return !!point }, 'enabled control: ' + selector); await command('Input.dispatchMouseEvent', { type: 'mousePressed', button: 'left', clickCount: 1, ...point }); await command('Input.dispatchMouseEvent', { type: 'mouseReleased', button: 'left', clickCount: 1, ...point }) }
 async function fill(selector, value) { await click(selector); await evaluate(`document.querySelector(${JSON.stringify(selector)}).select()`); await command('Input.insertText', { text: value }) }
