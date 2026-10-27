@@ -18,10 +18,10 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
       { zh: '官网、账号、管理端和媒体服务统一迁移到大陆服务，Sub2API 相关模型继续按原出口请求。', en: 'The website, accounts, admin console and media services now use the mainland runtime, while Sub2API-backed models continue through their existing route.' },
     ],
     improvements: [
-      { zh: '桌面更新文件继续使用独立下载入口，发布脚本保留可回滚版本并在发布后检查服务端口。', en: 'Desktop update files continue to use a separate download entry, with rollback versions retained and service ports checked after publication.' },
+      { zh: '桌面更新文件继续使用独立下载入口，发布脚本保留可回滚版本并在发布后检查登录、后台和下载入口。', en: 'Desktop update files continue to use a separate download entry, with rollback versions retained and sign-in, admin and download entry points checked after publication.' },
     ],
     knownIssues: [
-      { zh: '大陆服务器域名在完成备案前可能被云服务商拦截；临时可通过服务器 IP 访问，正式域名访问需要备案或合规的边缘入口。', en: 'Before mainland filing is completed, the cloud provider may block the mainland domain. The server IP can be used temporarily; formal domain access needs filing or a compliant edge entry.' },
+      { zh: '大陆域名在完成备案前可能被网络入口拦截；临时可通过 IP 地址访问，正式域名访问需要备案或合规的边缘入口。', en: 'Before mainland filing is completed, a network edge may block the mainland domain. The IP address can be used temporarily; formal domain access needs filing or a compliant edge entry.' },
     ],
   },
   '3.1.10': {
