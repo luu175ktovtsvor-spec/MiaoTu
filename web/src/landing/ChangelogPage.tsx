@@ -12,7 +12,7 @@ export default function ChangelogPage() {
   const { lang, setLang } = useLang()
   const zh = lang === 'zh'
   useEffect(() => { document.title = zh ? '更新日志 · 妙图 MiaoImg' : 'Changelog · MiaoImg' }, [zh])
-  const section = (key: 'fixes' | 'improvements' | 'knownIssues') => zh ? { fixes: '修复', improvements: '改进', knownIssues: '已知问题' }[key] : { fixes: 'Fixes', improvements: 'Improvements', knownIssues: 'Known issues' }[key]
+  const section = (key: 'fixes' | 'improvements') => zh ? { fixes: '修复', improvements: '改进' }[key] : { fixes: 'Fixes', improvements: 'Improvements' }[key]
   return <div className="miao-site site-changelog-page">
     <header className="site-header is-scrolled">
       <div className="site-header-inner">
@@ -32,7 +32,7 @@ export default function ChangelogPage() {
           <div className="site-changelog-version"><a href={`#v${version}`}>v{version}</a>{index === 0 && <span>{zh ? '最新' : 'Latest'}</span>}</div>
           <article>
             <h2>{zh ? notes.title.zh : notes.title.en}</h2>
-            {(['fixes', 'improvements', 'knownIssues'] as const).map(key => notes[key].length > 0 && <section key={key}>
+            {(['fixes', 'improvements'] as const).map(key => notes[key].length > 0 && <section key={key}>
               <h3>{section(key)}</h3>
               <ul>{notes[key].map((item, i) => <li key={i}>{zh ? item.zh : item.en}</li>)}</ul>
             </section>)}

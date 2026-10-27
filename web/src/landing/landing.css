@@ -296,7 +296,7 @@
   .site-agent-demo-steps li::before{transform:none}
 }
 
-/* 更新日志页：左侧版本号，右侧该版本的修复、改进和已知问题。 */
+/* 更新日志页：左侧版本号，右侧该版本的修复和改进。 */
 .site-changelog{padding:120px 0 80px;max-width:920px}
 .site-changelog-back{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--site-muted)}
 .site-changelog h1{margin:18px 0 12px;font-size:clamp(34px,5vw,52px);font-weight:650;letter-spacing:-.03em;line-height:1.1}

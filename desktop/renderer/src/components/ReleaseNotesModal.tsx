@@ -12,7 +12,6 @@ function ReleaseNotesModal({ version, notes, onClose }: { version: string; notes
   const sections = [
     ['修复', 'Fixes', notes.fixes],
     ['优化', 'Improvements', notes.improvements],
-    ['已知问题', 'Known issues', notes.knownIssues],
   ] as const
   return <div className="release-notes-mask" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
     <section className="release-notes-modal" role="dialog" aria-modal="true" aria-labelledby="release-notes-title">

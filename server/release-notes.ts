@@ -11,18 +11,17 @@ export type ReleaseNotes = {
 // 不写「上游」「部分问题」「体验优化」这类看不出具体改动的话。
 export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
   '3.1.11': {
-    title: { zh: '创作精选与大陆服务迁移', en: 'Creation showcase and mainland service migration' },
+    title: { zh: '创作精选与模型选项更准确', en: 'More accurate showcase and model options' },
     fixes: [
       { zh: '创作精选按实际来源、分页和缓存状态返回结果，找不到本地精选素材时会明确提示，不再把缺失数据当成已加载。', en: 'Creation showcase results now follow the actual source, pagination and cache state, and missing local showcase data is reported clearly instead of appearing loaded.' },
-      { zh: '修复创作精选封面保存、MCP 流式消息解析和路径校验问题，桌面 Agent 可以正确读取并保存精选素材。', en: 'Fixed showcase cover saving, MCP stream parsing and path validation so the desktop Agent can read and save selected references correctly.' },
-      { zh: '官网、账号、管理端和媒体服务统一迁移到大陆服务，Sub2API 相关模型继续按原出口请求。', en: 'The website, accounts, admin console and media services now use the mainland runtime, while Sub2API-backed models continue through their existing route.' },
+      { zh: '修复创作精选封面保存、消息解析和路径校验问题，桌面 Agent 可以正确读取并保存精选素材。', en: 'Fixed showcase cover saving, message parsing and path validation so the desktop Agent can read and save selected references correctly.' },
+      { zh: '图片和视频模型会按当前实际能力显示可用的模式、尺寸、比例、时长和参考素材类型，不再展示当前模型无法使用的选项。', en: 'Image and video models now show the modes, sizes, ratios, durations and reference types they can actually use, without displaying unsupported options.' },
+      { zh: '参考素材格式不符合模型要求时，提示会写明当前格式和可用格式，方便转换后重新上传。', en: 'When a reference format does not fit the selected model, the message now shows the current and accepted formats so you can convert and upload again.' },
     ],
     improvements: [
-      { zh: '桌面更新文件继续使用独立下载入口，发布脚本保留可回滚版本并在发布后检查登录、后台和下载入口。', en: 'Desktop update files continue to use a separate download entry, with rollback versions retained and sign-in, admin and download entry points checked after publication.' },
+      { zh: '切换图片或视频模型后，模式和参数会自动跟随新模型，减少保留旧设置造成的误操作。', en: 'After switching image or video models, modes and parameters now follow the new model to reduce mistakes caused by old settings.' },
     ],
-    knownIssues: [
-      { zh: '大陆域名在完成备案前可能被网络入口拦截；临时可通过 IP 地址访问，正式域名访问需要备案或合规的边缘入口。', en: 'Before mainland filing is completed, a network edge may block the mainland domain. The IP address can be used temporarily; formal domain access needs filing or a compliant edge entry.' },
-    ],
+    knownIssues: [],
   },
   '3.1.10': {
     title: { zh: '价格、渠道与反馈管理更完整', en: 'More complete pricing, channel controls and feedback management' },
