@@ -7,6 +7,12 @@ export const PROTOCOL_FIELDS = Object.freeze({
 })
 export const DEFAULT_CONTEXT_WINDOW = 1_000_000
 export const DEFAULT_MAX_OUTPUT_TOKENS = 32_768
+// GPT-6.1 Sol 官方公共 API 模型卡：1.05M 上下文、128K 输出，作为妙图客户端预算。
+// 不代表当前 Yunshu/Codex OAuth 通道已实测同一容量；网关的 OAuth 路径会删除
+// max_output_tokens，因此客户端发出该值也不等于上游已执行相同输出上限。
+// 未知自定义供应商仍沿用安全兜底值；依据与验收范围见 docs/模型参数对照.md。
+export const OPENAI_GPT_CONTEXT_WINDOW = 1_050_000
+export const OPENAI_GPT_MAX_OUTPUT_TOKENS = 128_000
 const EFFORTS = Object.freeze(['low', 'medium', 'high', 'xhigh'])
 const COMPLETIONS_COMPAT = Object.freeze({ maxTokensField: 'max_completion_tokens', supportsDeveloperRole: false, supportsReasoningEffort: true, supportsUsageInStreaming: true, supportsStore: false, supportsStrictMode: false })
 
@@ -37,12 +43,14 @@ function builtin(id, label, contextWindow, reasoning = false, contextSource = ''
     reasoning, ...(reasoning ? { reasoningEffort: 'medium', reasoningEfforts: EFFORTS, thinkingLevelMap: { off: null } } : {}), input: ['text', 'image'] }
   return Object.freeze({ ...base, ...extra, fields: extra.fields || base.fields, compat: extra.compat || base.compat })
 }
-// 1M是妙图的上下文预算；不声明云枢或模型上游已实测支持这个容量。
+// 注册表中的运行预算不等于实际网关通道的容量实测结果。
 export const OWN_TEXT_MODELS = Object.freeze([
   // 云枢的 GPT 通道只有走 Responses 才真的思考：同一通道走 Chat Completions 时 reasoning_effort
   // 会被收下但什么都不发生（返回里既没有推理块、也没有 reasoning_tokens，实测同题还会答错）。
   // 档位清单是拿一个非法值去问上游、由它的报错列出来的。
-  builtin('gpt-6.1-sol', 'GPT 6.1 Sol', DEFAULT_CONTEXT_WINDOW, true, '妙图上下文预算（上游容量未实测）', 'openai-responses', {
+  builtin('gpt-6.1-sol', 'GPT 6.1 Sol', OPENAI_GPT_CONTEXT_WINDOW, true, 'GPT-6.1 Sol 公共 API 模型卡（客户端预算，网关通道未实测）', 'openai-responses', {
+    maxOutputTokens: OPENAI_GPT_MAX_OUTPUT_TOKENS,
+    maxOutputSource: 'GPT-6.1 Sol 公共 API 模型卡（客户端预算，网关通道未实测）',
     reasoningEffort: 'high',
     reasoningEfforts: Object.freeze(['low', 'medium', 'high', 'xhigh', 'max']),
   }),
@@ -106,6 +114,7 @@ export function protocolUsage(models) {
 export function assertOwnTextModelRegistry(env = process.env) {
   const models = ownTextModelIds(env).map(id => ownTextModelById(id, env))
   for (const model of models) {
+    if (model.protocol !== 'openai-responses') throw new Error(`内置模型 ${model.id} 必须使用 openai-responses`)
     console.log(`[registry] model=${model.id} protocol=${model.protocol} contextWindow=${model.contextWindow} maxOutputTokens=${model.maxOutputTokens} sources=${JSON.stringify(model.sources)}`)
   }
   for (const item of protocolUsage(models)) {

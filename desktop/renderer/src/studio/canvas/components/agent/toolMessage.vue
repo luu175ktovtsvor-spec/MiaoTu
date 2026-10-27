@@ -12,17 +12,14 @@
       <span v-if="toolTarget" class="toolTarget">{{ toolTarget }}</span>
       <span v-if="outcome" class="toolOutcome" :title="outcome">{{ outcome }}</span>
     </button>
-    <div v-if="!collapsed" class="toolDetails">
-      <template v-for="(data, index) in [args, result]" :key="index">
-        <template v-if="data">
-          <span class="toolLabel">
-            {{ index === 0 ? translate("参数") : translate("结果") }}
-            <el-button v-if="!data.markdown" text size="small" :icon="IconCopy" :aria-label="index === 0 ? translate('复制工具参数') : translate('复制工具结果')" @click="emit('copy', data.content)" />
-          </span>
-          <messageMarkdown v-if="data.markdown" class="toolData" :class="{ toolError: index === 1 && tool.status === 'error' }" :content="data.markdown" :codeOptions="toolCodeOptions" />
-          <pre v-else class="toolData toolPlain" :class="{ toolError: index === 1 && tool.status === 'error' }" tabindex="0" :aria-label="index === 0 ? translate('工具参数') : translate('工具结果')">{{ data.content }}</pre>
-        </template>
-      </template>
+    <div v-if="!collapsed && detailLines.length" class="toolDetails">
+      <span class="toolLabel">
+        {{ translate("执行摘要") }}
+        <el-button text size="small" :icon="IconCopy" :aria-label="translate('复制执行摘要')" @click="emit('copy', detailLines.join('\n'))" />
+      </span>
+      <ul class="toolDetailList">
+        <li v-for="line in detailLines" :key="line">{{ line }}</li>
+      </ul>
     </div>
     <div v-if="childTasks.length" class="childTaskList">
       <button v-for="child in childTasks" :key="child.file" type="button" class="childTaskButton" :data-status="child.status" @click="emit('openChild', child.file)">
@@ -34,13 +31,11 @@
 
 <script setup lang="ts">
 import { canvasOperations } from "../../toolRuntimeCompat";
-import { computed, defineAsyncComponent, onErrorCaptured, ref, shallowRef, watch, type Component } from "vue";
+import { computed, onErrorCaptured, ref, shallowRef, watch, type Component } from "vue";
 import { loadToolComponent } from "@miaoimg/tools-scaffold/client";
 import { IconCopy, IconTool, IconLoader2, IconCheck, IconAlertCircle, IconPlayerStop, IconChevronRight } from "@tabler/icons-vue";
 import type { AgentSubAgent, AgentToolCall } from "@miaoimg/server/agent/types";
 import { translate } from "@miaoimg/i18n/vue";
-const messageMarkdown = defineAsyncComponent(() => import("../messageMarkdown.vue"));
-
 const { tool, directory, subAgents } = defineProps<{ tool: AgentToolCall; directory?: string; subAgents?: AgentSubAgent[] }>();
 const emit = defineEmits<{ copy: [content: string]; openChild: [file: string] }>();
 const renderer = shallowRef<Component>();
@@ -82,7 +77,7 @@ const toolLabels: Record<string, string> = {
   connectNodes: "连接节点", deleteEdges: "删除连线", selectNodes: "选中节点", arrangeCanvas: "整理画布", fitCanvas: "适合屏幕",
   editDocument: "修改文档", readDocument: "读取文档", openDocument: "打开文档", getDocument: "读取文档", writeDocument: "修改文档",
   inspectVideo: "查看视频画面", inspectReference: "查看参考素材", probeMedia: "读取媒体信息", ffmpeg: "处理媒体", ffprobe: "读取媒体信息",
-  messageSubAgent: "补充子任务", waitSubAgents: "等待子任务", stopSubAgent: "停止子任务", getSubAgents: "查看子任务", delegate: "委派团队成员", teamResources: "读取团队资料", askUser: "提问", report: "上报进展", subAgent: "执行子任务", listWorkspaceFiles: "查看工作区文件", readWorkspaceFile: "读取工作区文件", writeWorkspaceFile: "写入工作区文件", searchInspirationLibrary: "检索案例",
+  messageSubAgent: "补充子任务", waitSubAgents: "等待子任务", stopSubAgent: "停止子任务", getSubAgents: "查看子任务", delegate: "委派团队成员", teamResources: "读取团队资料", askUser: "提问", report: "上报进展", subAgent: "执行子任务", listWorkspaceFiles: "查看工作区文件", readWorkspaceFile: "读取工作区文件", writeWorkspaceFile: "写入工作区文件", searchInspirationLibrary: "检索创作精选",
 };
 Object.assign(toolLabels, Object.fromEntries(canvasOperations.map(tool => [tool.name, tool.label])));
 const nodeActions: Record<string, string> = { "node:setText": "写入文本", "node:getConfig": "读取节点配置", "node:setConfig": "更新节点配置", "node:processVideo": "剪辑视频", "node:processAudio": "处理音频", "node:splitImageGrid": "图片宫格切分", "node:editImageMarks": "编辑图片标记", "node:saveOutputAsAsset": "保存素材", "node:prepareImageVariation": "创建图片编辑节点" };
@@ -102,7 +97,11 @@ const toolTarget = computed(() => {
 const outcome = computed(() => {
   if (tool.outcomeUnknown) return translate("操作可能已经完成或部分执行，请先核对文件、画布或任务状态。");
   const value = parsed(tool.result);
-  if (tool.status === "error") return String(value.message || value.error || (typeof tool.result === "string" ? tool.result : translate("操作未完成，展开查看原因"))).slice(0, 180);
+  if (tool.status === "error") {
+    const raw = typeof tool.result === "string" ? tool.result.trim() : "";
+    const message = value.message || value.error || (raw && !/^[\[{]/.test(raw) ? raw : "");
+    return String(message || translate("操作未完成，展开查看原因")).slice(0, 180);
+  }
   if (tool.status !== "success") return "";
   if (tool.name === "importLocalFile") return translate("素材已导入项目，待放入画布");
   let detail = value;
@@ -110,26 +109,38 @@ const outcome = computed(() => {
   if (Array.isArray(detail.results)) return translate("找到 {0} 项", { 0: detail.results.length }) + (detail.complete === false ? translate(" · 部分范围未搜索") : "");
   return "";
 });
-const toolCodeOptions = { maxHeight: 240, lineNumbers: false };
 const childStatusLabels: Record<string,string> = { inputRequired: '需要你的回答', completed: '已完成', cancelled: '已停止', error: '查看问题', limited: '查看结果', queued: '排队中' };
 const childTasks = computed(() => {
   if (!['subAgent','delegate','waitSubAgents','getSubAgents'].includes(tool.name)) return [];
   const tasks = parsed(tool.result).tasks;
   return Array.isArray(tasks) ? tasks.filter((item: any) => typeof item.file === 'string').map((item: any) => ({ file: item.file, name: String(item.name || '子任务'), status: String(subAgents?.find(child => child.file === item.file)?.status || item.status || 'running') })) : [];
 });
-const args = computed(() => formatToolData(tool.args));
-const result = computed(() => formatToolData(tool.result));
-
-function formatToolData(value: unknown) {
-  if (value === undefined) return;
-  try {
-    const content = JSON.stringify(typeof value === "string" ? JSON.parse(value) : value, null, 2) ?? "";
-    // ACT: 超过 16K 字符只渲染完整文本，限制高亮与 token DOM 开销；更大数据量可改为虚拟行。
-    return { content, markdown: content.length <= 16_384 ? `~~~json\n${content}\n~~~` : undefined };
-  } catch {
-    return { content: String(value), markdown: undefined };
+const detailLines = computed(() => {
+  const lines: string[] = [];
+  const args = parsed(tool.args);
+  const result = parsed(tool.result);
+  if (toolTarget.value) lines.push(`${translate("目标")}：${toolTarget.value}`);
+  if (Array.isArray(args.nodeIds)) lines.push(`${translate("节点")}：${args.nodeIds.length}${translate(" 个")}`);
+  if (Array.isArray(args.nodeIds) && args.nodeIds.length === 0) lines.push(`${translate("节点")}：${translate("已清空选择")}`);
+  if (Array.isArray(args.moves)) lines.push(`${translate("移动")}：${args.moves.length}${translate(" 个节点")}`);
+  if (Array.isArray(args.renames)) lines.push(`${translate("重命名")}：${args.renames.length}${translate(" 个节点")}`);
+  if (Array.isArray(args.connections)) lines.push(`${translate("连线")}：${args.connections.length}${translate(" 条")}`);
+  if (Array.isArray(args.tasks)) lines.push(`${translate("子任务")}：${args.tasks.length}${translate(" 个")}`);
+  if (tool.status === "success") {
+    if (Array.isArray(result.results)) lines.push(`${translate("结果")}：${translate("找到 {0} 项", { 0: result.results.length })}`);
+    if (Array.isArray(result.items)) lines.push(`${translate("结果")}：${translate("返回 {0} 项", { 0: result.items.length })}`);
+    if (Array.isArray(result.nodes)) lines.push(`${translate("结果")}：${translate("处理 {0} 个节点", { 0: result.nodes.length })}`);
+    if (Array.isArray(result.tasks)) lines.push(`${translate("结果")}：${translate("已返回 {0} 个子任务", { 0: result.tasks.length })}`);
+    if (Number.isFinite(Number(result.removedEdgeCount))) lines.push(`${translate("连线")}：${translate("移除 {0} 条", { 0: Number(result.removedEdgeCount) })}`);
+    if (typeof result.path === "string" && result.path) lines.push(`${translate("文件")}：${result.path}`);
+    if (typeof result.canvasId === "string" && result.canvasId) lines.push(`${translate("画布")}：${result.canvasId}`);
+    if (typeof result.name === "string" && result.name) lines.push(`${translate("名称")}：${result.name}`);
+    if (typeof tool.result === "string" && !Object.keys(result).length && tool.result.trim() && !/^[\[{]/.test(tool.result.trim())) lines.push(tool.result.trim().slice(0, 240));
   }
-}
+  if (tool.status === "error" && outcome.value) lines.push(outcome.value);
+  if (tool.outcomeUnknown) lines.push(translate("已下发的操作需要重新读取状态确认"));
+  return [...new Set(lines)].slice(0, 8);
+});
 </script>
 
 <style scoped lang="scss">
@@ -195,42 +206,14 @@ function formatToolData(value: unknown) {
       color: var(--el-text-color-secondary);
     }
 
-    .toolData {
-      margin: 0 0 6px;
-      font-size: 12px;
+    .toolDetailList {
+      display: grid;
+      gap: 4px;
+      margin: 0;
+      padding-left: 18px;
+      color: var(--el-text-color-primary);
       line-height: 1.5;
-
-      :deep([data-stream-markdown="code-block"]) {
-        margin: 0;
-      }
-
-      :deep([data-stream-markdown="code-block-content"]) {
-        overscroll-behavior: contain;
-        pre {
-          white-space: pre;
-          overflow-wrap: normal;
-        }
-      }
-
-      &.toolError :deep([data-stream-markdown="code-block"]) { border-color: var(--el-color-danger-light-5); }
-
-      &.toolPlain {
-        min-width: 0;
-        max-width: 100%;
-        max-height: 240px;
-        padding: 12px;
-        overflow: auto;
-        overscroll-behavior: contain;
-        white-space: pre;
-        overflow-wrap: normal;
-        font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-        color: var(--el-text-color-primary);
-        background: var(--el-fill-color-light);
-        border: 1px solid var(--el-border-color-lighter);
-        border-radius: var(--ui-radius);
-
-        &.toolError { border-color: var(--el-color-danger-light-5); }
-      }
+      overflow-wrap: anywhere;
     }
   }
 }

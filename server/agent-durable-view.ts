@@ -2,6 +2,16 @@
 // Never send model image payloads or provider credentials to the chat observer.
 const textOf = content => typeof content === 'string' ? content : (content || []).filter(part => part.type === 'text').map(part => part.text).join('\n\n')
 const summary = message => typeof message.details?.publicSummary === 'string' ? message.details.publicSummary : textOf(message.content).slice(0, 8000)
+const READ_ONLY_TOOLS = new Set([
+  'getCanvas', 'getCanvasNodes', 'getCanvasEdges', 'findCanvasNodes', 'getNodeTools', 'getAppState',
+  'listWorkspaceFiles', 'readWorkspaceFile', 'read', 'ls', 'find', 'grep', 'listSkills', 'readSkill',
+  'webSearch', 'webFetch', 'probeMedia', 'ffprobe', 'inspectVideo', 'inspectReference',
+  'getDocument', 'readDocument', 'openDocument', 'getSubAgents', 'waitSubAgents', 'report', 'askUser',
+])
+function mayHaveSideEffect(tool) {
+  if (tool?.name === 'searchInspirationLibrary') return Boolean(tool.args?.saveReference || tool.args?.saveReferences)
+  return !READ_ONLY_TOOLS.has(tool?.name)
+}
 function projectHistory(metadata, entries, running, retrying) {
   const entryKey = id => metadata.timelineId ? `e:${metadata.timelineId}:${id}` : `e:${id}`
   const messages = [], toolParts = new Map()
@@ -39,8 +49,9 @@ function projectHistory(metadata, entries, running, retrying) {
         const part = toolParts.get(message.toolCallId)
         // Pi distinguishes an uncertain interrupted side effect from a confirmed
         // tool failure. Keep that distinction without interpreting error prose.
-        const outcomeUnknown = message.isError && entry.kind === 'pi.tool-result'
-          && entry.data?.diagnostics?.some(diagnostic => diagnostic.severity === 'error' && diagnostic.code === 'interrupted')
+        const outcomeUnknown = Boolean(part && message.isError && entry.kind === 'pi.tool-result'
+          && mayHaveSideEffect(part.tool)
+          && entry.data?.diagnostics?.some(diagnostic => diagnostic.severity === 'error' && ['interrupted', 'aborted'].includes(diagnostic.code)))
         if (part) Object.assign(part.tool, { status: outcomeUnknown ? 'interrupted' : message.isError ? 'error' : 'success', result: summary(message), ...(outcomeUnknown ? { outcomeUnknown: true } : {}) })
       }
     }

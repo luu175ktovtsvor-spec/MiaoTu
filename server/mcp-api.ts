@@ -83,7 +83,7 @@ function toolResult(value) {
   return { content: [{ type: 'text', text }] }
 }
 
-export function createMcpApi({ management, workspaceFiles, webTools, webToolsForUser, ensureMediaTools, additionalTools,
+export function createMcpApi({ management, workspaceFiles, showcaseRoot = '', showcaseAssetFetch, webTools, webToolsForUser, ensureMediaTools, additionalTools,
   assertProjectAccess = (userId, project) => workspaceFiles.projectRoot(userId, project),
 }: Record<string, any>) {
   const activeCalls = new Set<any>()
@@ -262,7 +262,7 @@ export function createMcpApi({ management, workspaceFiles, webTools, webToolsFor
   const sharedTools = createSharedTools({ workspaceFiles: guardedFiles, webTools,
     webToolsForUser: webToolsForUser || (management ? userId => createCloudWebTools({ management, userId }) : undefined) })
   // 工具实例跨请求复用，但账号不能闭包固定；每次执行都从已验过的 MCP token 传入 userId。
-  const libraryTools = createLibraryTools({ workspaceFiles: guardedFiles, userId: call => call.userId })
+  const libraryTools = createLibraryTools({ workspaceFiles: guardedFiles, showcaseRoot, showcaseAssetFetch, userId: call => call.userId })
 
   function serverTool(name) {
     if (name === 'getAppState') return (_args, userId) => {

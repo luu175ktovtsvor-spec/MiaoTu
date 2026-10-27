@@ -3,7 +3,7 @@
 # HTTP, systemd metadata, files, and SQLite through read-only connections.
 set -Eeuo pipefail
 
-REMOTE_HOST=${REMOTE_HOST:-root@96.9.225.212}
+REMOTE_HOST=${REMOTE_HOST:-miaoimg-cn}
 REMOTE_CONTAINER=${REMOTE_CONTAINER:-miaoimg}
 OUTPUT=text
 usage() {
@@ -26,6 +26,15 @@ while [ "$#" -gt 0 ]; do
 done
 case "$REMOTE_HOST" in *[!A-Za-z0-9_.@:-]*) echo "REMOTE_HOST 含有不安全字符" >&2; exit 2 ;; esac
 case "$REMOTE_CONTAINER" in *[!A-Za-z0-9_.-]*) echo "REMOTE_CONTAINER 含有不安全字符" >&2; exit 2 ;; esac
+
+# Mainland production is native. Keep the container inspector only for an
+# explicitly selected legacy/customer Docker host, without assuming US root.
+if [ "$REMOTE_CONTAINER" = "miaoimg" ]; then
+  inspector=$(ssh -o BatchMode=yes -- "$REMOTE_HOST" 'if [ -f /opt/miaoimg-ops/native/inspect.py ]; then echo native; else echo docker; fi')
+  if [ "$inspector" = "native" ]; then
+    exec ssh -o BatchMode=yes -- "$REMOTE_HOST" python3 /opt/miaoimg-ops/native/inspect.py
+  fi
+fi
 
 # The remote program only invokes read-only inspection commands. It uses a
 # read-only SQLite URI, so opening the production database cannot upgrade the

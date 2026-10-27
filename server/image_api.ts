@@ -96,6 +96,24 @@ const DEFAULT_ARK_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3'
 const DEFAULT_YUNSHU_BASE_URL = 'https://api.zzyppz.cn/v1'
 const MAX_BODY_BYTES = 200 * 1024 * 1024
 const SMALL_BODY_BYTES = 256 * 1024
+// The web build emits the reviewed showcase catalog and prompt shards into
+// web/dist. Keep this path configurable for source checkouts and alternate
+// deployment layouts; media itself remains on the public static asset route.
+const showcaseRoot = process.env.OIP_SHOWCASE_ROOT || join(process.cwd(), 'web', 'dist')
+const showcasePublicOrigin = String(
+  process.env.OIP_PUBLIC_ORIGIN
+    || String(process.env.OIP_PUBLIC_ORIGINS || '').split(',')[0]
+    || `http://127.0.0.1:${process.env.OIP_WEB_PORT || '4173'}`
+    || '',
+).trim().replace(/\/$/, '')
+const showcaseAssetFetch = async (path, signal) => {
+  if (!showcasePublicOrigin) throw Object.assign(new Error('精选媒体地址未配置'), { status: 503 })
+  return fetch(new URL(String(path || '/'), showcasePublicOrigin), {
+    signal,
+    redirect: 'error',
+    headers: { accept: 'image/*' },
+  })
+}
 assertMockProviderConfiguration(process.env)
 const management = new ManagementStore()
 const imageReceipts = new ImageReceiptFiles(join(mediaRoot(), IMAGE_RECEIPT_DIRECTORY), IMAGE_PROXY_MAX_BYTES)
@@ -118,8 +136,8 @@ workspaceFiles.userMutationGuard = desktopMedia.assertWorkspaceMutation
 workspaceFiles.userListFilter = desktopMedia.filterWorkspaceEntries
 const probeReferenceMedia = createReferenceMediaProbe({ workspaceFiles, secret: () => management.referenceSecret(), publicOrigin: process.env.OIP_PUBLIC_ORIGIN })
 const materializeReference = createReferenceMaterializer({ workspaceFiles, secret: () => management.referenceSecret(), publicOrigin: process.env.OIP_PUBLIC_ORIGIN })
-const agentApi = createAgentApi({ management, workspaceFiles, assertTextAccess: (session, { providerId = 'miaoimg' } = {}) => providerId === 'miaoimg' ? assertTextAccess({ management, session }) : assertTextIdentity({ management, session }) })
-const mcpApi = createMcpApi({ management, workspaceFiles })
+const agentApi = createAgentApi({ management, workspaceFiles, showcaseRoot, showcaseAssetFetch, assertTextAccess: (session, { providerId = 'miaoimg' } = {}) => providerId === 'miaoimg' ? assertTextAccess({ management, session }) : assertTextIdentity({ management, session }) })
+const mcpApi = createMcpApi({ management, workspaceFiles, showcaseRoot, showcaseAssetFetch })
 const nodePlugins = createNodePlugins({ workspaceFiles })
 const extPlugins = createExtPlugins({ workspaceFiles })
 const pluginExport = createPluginExport({ workspaceFiles })
@@ -1531,7 +1549,7 @@ const server = createServer(withRequestProject(async (request, response) => {
     try {
       // 管理端是独立进程：询价前先读生效设置，后台刚改的视频价和下单扣费一致。
       const payload = await bodyJson(request)
-      const estimate = await estimateVideoCredits(payload, session, { management, env: process.env, probeReferenceMedia })
+      const estimate = await estimateVideoCredits(payload, session, { management, env: process.env, probeReferenceMedia, signal: incoming.signal })
       json(response, 200, { ok: true, ...estimate, billingSource: estimate.breakdown?.billingSource || 'parameter_reserve', source: 'estimateGenerationCost + prepareVideoRequest' })
     } catch (error) {
       json(response, Number(error.status) || 502, { ok: false, error: error.message || '积分估算失败' })
@@ -1581,7 +1599,7 @@ const server = createServer(withRequestProject(async (request, response) => {
       const body = await bodyJson(request)
       delete body.desktopDelivery; delete body.desktopReferences
       const desktop = url.pathname === '/api/imagine/desktop/video'
-      const result = await withWorkspaceProject(desktop ? DEFAULT_PROJECT_ID : currentProject(), () => createVideo(body, session, { management, env: process.env, probeReferenceMedia,
+      const result = await withWorkspaceProject(desktop ? DEFAULT_PROJECT_ID : currentProject(), () => createVideo(body, session, { management, env: process.env, probeReferenceMedia, signal: incoming.signal,
         ...(desktop ? { preparePayload: payload => desktopMedia.prepare(payload, session) } : {}) }))
       const stored = management.get('SELECT id FROM generations WHERE request_id=?', result.requestId)
       if (stored) try { syncCanvasGeneration(stored.id, { management, workspaceFiles }) } catch (error) { console.warn('[canvas] 视频任务绑定待恢复', error?.message) }

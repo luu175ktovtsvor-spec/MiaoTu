@@ -589,7 +589,8 @@ function identity(payload: Record<string, any> = {}) {
  * 预览用（estimateVideoCredits）和真正下单（createVideo）都走这一条，
  * 保证「界面上显示的积分」和「请求时预扣的积分」是同一个数字。
  */
-export async function prepareVideoRequest(payload, session, { env = process.env, probeReferenceMedia }: Record<string, any> = {}) {
+export async function prepareVideoRequest(payload, session, { env = process.env, probeReferenceMedia, signal }: Record<string, any> = {}) {
+  signal?.throwIfAborted()
   const modelForProbe = modelById(String(payload.model || '').trim())
   const needsMediaProbe = Boolean(probeReferenceMedia && (payload.video || (Array.isArray(payload.videos) && payload.videos.length) || (Array.isArray(payload.audios) && payload.audios.length)))
   // 先校验模型、模式和其它字段；输入媒体的秒数随后由服务器读取，
@@ -602,7 +603,8 @@ export async function prepareVideoRequest(payload, session, { env = process.env,
   // 可按所选比例生成。保留首帧语义，不静默改参考模式或裁切用户素材。
   if (request.model.id === 'grok-imagine-video' && request.mode === 'singleImage' && request.ratio) {
     if (!probeReferenceMedia) throw failure('参考图比例校验服务不可用，已阻止生成', 503)
-    const source = await probeReferenceMedia(request.image || request.images[0], session?.userId, 'image')
+    const source = await probeReferenceMedia(request.image || request.images[0], session?.userId, 'image', { signal })
+    signal?.throwIfAborted()
     const [width, height] = request.ratio.split(':').map(Number)
     if (!(source?.width > 0 && source?.height > 0)) throw failure('无法读取参考图尺寸，已阻止生成', 422)
     if (Math.abs((source.width / source.height) / (width / height) - 1) > 0.03) {
@@ -615,24 +617,33 @@ export async function prepareVideoRequest(payload, session, { env = process.env,
   // Each probe is cached by the authenticated file revision. Run independent
   // media probes together so mixed-reference estimates do not pay one serial
   // ffprobe round trip per file; the probe pool still caps actual processes.
-  const [imageMetadata, videoMetadata, audioMetadata] = await Promise.all([
-    (needsImageValidation ? imageUrls : []).map(async (url) => {
-      const metadata = await probeReferenceMedia(url, session?.userId, 'image')
-      assertReferenceInput(request.model, 'image', metadata, request.mode)
+  const probes = new AbortController()
+  const probeSignal = signal ? AbortSignal.any([signal, probes.signal]) : probes.signal
+  const probe = async (url, kind) => {
+    try {
+      probeSignal.throwIfAborted()
+      const metadata = await probeReferenceMedia(url, session?.userId, kind, { signal: probeSignal })
+      probeSignal.throwIfAborted()
+      assertReferenceInput(request.model, kind, metadata, request.mode)
+      if (kind === 'video' && isSeedance25(request.model) && request.mode === 'edit' && metadata.duration < 4) throw failure('Seedance 2.5 编辑视频需要 4–30 秒的参考视频', 422)
       return metadata
-    }),
-    request.videos.map(async (url) => {
-      const metadata = await probeReferenceMedia(url, session?.userId, 'video')
-      assertReferenceInput(request.model, 'video', metadata, request.mode)
-      if (isSeedance25(request.model) && request.mode === 'edit' && metadata.duration < 4) throw failure('Seedance 2.5 编辑视频需要 4–30 秒的参考视频', 422)
-      return metadata
-    }),
-    request.audios.map(async (url) => {
-      const metadata = await probeReferenceMedia(url, session?.userId, 'audio')
-      assertReferenceInput(request.model, 'audio', metadata, request.mode)
-      return metadata
-    }),
-  ])
+    } catch (error) { probes.abort(error); throw error }
+  }
+  const imageJobs = (needsImageValidation ? imageUrls : []).map(url => probe(url, 'image'))
+  const videoJobs = request.videos.map(url => probe(url, 'video'))
+  const audioJobs = request.audios.map(url => probe(url, 'audio'))
+  // Join every admitted probe, including sibling process/temp-file cleanup
+  // after a validation failure or caller cancellation. Promise.all on arrays
+  // returns unresolved metadata promises and misses their later rejections.
+  const settled = await Promise.allSettled([...imageJobs, ...videoJobs, ...audioJobs])
+  probeSignal.throwIfAborted()
+  const metadata = settled.map(result => {
+    if (result.status === 'rejected') throw result.reason
+    return result.value
+  })
+  const imageMetadata = metadata.slice(0, imageJobs.length)
+  const videoMetadata = metadata.slice(imageJobs.length, imageJobs.length + videoJobs.length)
+  const audioMetadata = metadata.slice(imageJobs.length + videoJobs.length)
   request.parameters.imageMetadata = imageMetadata
   if (request.videos.length || request.audios.length) {
     if (request.model.provider === 'grok' && videoMetadata.some(item => !String(item.format || '').split(',').includes('mp4'))) throw failure('Grok 视频编辑或延长需要 MP4 格式输入', 422)
@@ -649,9 +660,13 @@ export async function prepareVideoRequest(payload, session, { env = process.env,
     request.parameters.audioSeconds = audioSeconds
   }
   if(request.model.provider==='suihe') {
+    signal?.throwIfAborted()
     const quote=await estimateSuiheVideo(request,{env})
+    signal?.throwIfAborted()
     const generationSnapshot=suihePricingSnapshot(request.model,{resolution:quote.generationResolution,creativeMode:quote.creativeMode})
-    request.parameters.suiheCost={...request.parameters.suiheCost,preEstimate:{...quote,generationRates:generationSnapshot.rates,generationPixels:generationSnapshot.pixels}}
+    request.parameters.suiheCost={...request.parameters.suiheCost,preEstimate:{...quote,
+      generationRates:'rates' in generationSnapshot?generationSnapshot.rates:undefined,
+      generationPixels:'pixels' in generationSnapshot?generationSnapshot.pixels:undefined}}
     request.cost=estimateVideoCost(request.model,request.parameters)
   }
   return request
@@ -666,10 +681,10 @@ function routeNewVideo(payload, management, env) {
   return { ...payload, __provider: model.provider, upstreamProvider: model.provider }
 }
 
-export async function estimateVideoCredits(payload, session, { management, env = process.env, probeReferenceMedia }: Record<string, any> = {}) {
+export async function estimateVideoCredits(payload, session, { management, env = process.env, probeReferenceMedia, signal }: Record<string, any> = {}) {
   if (!session) throw failure('请先登录再查看积分', 401)
   if (management) payload = routeNewVideo(payload, management, env)
-  const request = await prepareVideoRequest(payload, session, { env, probeReferenceMedia })
+  const request = await prepareVideoRequest(payload, session, { env, probeReferenceMedia, signal })
   return {
     model: request.model.publicId || request.model.id,
     points: request.cost.points,
@@ -679,7 +694,7 @@ export async function estimateVideoCredits(payload, session, { management, env =
   }
 }
 
-export async function createVideo(payload, session, { management, env = process.env, probeReferenceMedia, preparePayload }: Record<string, any> = {}) {
+export async function createVideo(payload, session, { management, env = process.env, probeReferenceMedia, preparePayload, signal }: Record<string, any> = {}) {
   if (!management) throw failure('视频处理器缺少 ManagementStore', 500)
   if (!session) throw failure('请先登录再生成', 401)
   const ids = identity(payload)
@@ -695,11 +710,12 @@ export async function createVideo(payload, session, { management, env = process.
   if (preparePayload) payload = preparePayload(payload)
   if (!management.settings().videoEnabled) throw failure('管理员尚未开启视频生成', 503)
   payload = routeNewVideo(payload, management, env)
-  const request = await prepareVideoRequest(payload, session, { env, probeReferenceMedia })
+  const request = await prepareVideoRequest(payload, session, { env, probeReferenceMedia, signal })
   request.parameters.workspaceProject = currentProject() || DEFAULT_PROJECT_ID
   request.parameters.referenceVideoCount = request.parameters.videos.length
   request.parameters.referenceAudioCount = request.parameters.audios.length
   if (payload.desktopDelivery === 1) Object.assign(request.parameters, { desktopDelivery: 1, desktopReferences: payload.desktopReferences })
+  signal?.throwIfAborted()
   const reservation = management.reserve({ session, model: request.model, points: request.cost.points, prompt: request.prompt, parameters: request.parameters, requestId: ids.requestId, idempotencyKey: ids.idempotencyKey, status: GENERATION_STATES.QUEUED, inputs: {}, accessToken: payload.accessToken })
   const current = management.generationForViewer(reservation.requestId, session, reservation.accessToken || payload.accessToken)
   if (!current) throw failure('生成记录不存在', 404)

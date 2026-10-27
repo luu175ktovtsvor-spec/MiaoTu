@@ -19,7 +19,7 @@ description_en: Turn a vague creative intent into an actionable visual direction
 ## 操作顺序
 
 1. 先从用户话术提取主体、情绪、场景和限制，列出 2–4 个可比较的视觉方向。每个方向至少包含：风格关键词、主/辅色、光线与时间、构图重心、材质或镜头感觉。
-2. 需要真实参考时调用 `searchInspirationLibrary`。把当前方向的画面意图作为 `query`，必要时用 `tag` 或 `tool` 缩小范围；一次先取 1–5 条，结果不足再递增 `offset`。
+2. 需要真实参考时调用 `searchInspirationLibrary`。默认检索全部可用来源；把当前方向的画面意图作为 `query`，必要时用 `source`、`tag` 或 `tool` 缩小范围；一次先取 1–5 条，结果不足再递增 `offset`。`source:all` 若返回 `partial:true` 或来源错误字段，明确说明本次参考范围不完整。
 3. 从返回结果中说明“为什么选它”以及它支持方向卡的哪一项（色调、用光、构图或质感）。可以总结、比较和改写方向卡，但不要把总结写回 `prompt` 或声称它是档案原文。
 4. 用户明确要把参考放到当前画布时，才使用 `saveReference:true`、`saveReference:N` 或 `saveReferences:[索引]`。多张返回值逐张读取 `savedReferences[].path` 与 `savedReferences[].mime`，然后按画布工具顺序执行：`getCanvas({include:["nodeTypes"]})` → `addNode` → `getNodeTools` → 对应图片节点的 `nodeTools.setImage`。
 5. 完成后用 `getCanvasNodes` 核对每个图片节点实际挂载的工作区路径，并输出方向卡与参考来源的对应关系。

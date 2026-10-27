@@ -6,7 +6,7 @@
       <el-tag size="small" :type="answer && !skipped ? 'success' : 'info'">{{ statusText }}</el-tag>
     </div>
     <p v-if="question" class="questionText">{{ question }}</p>
-    <p v-if="tool.status === 'error'" class="submitError">{{ tool.result || translate('提问未完成，可以在输入框里继续。') }}</p>
+    <p v-if="tool.status === 'error'" class="submitError">{{ resultText }}</p>
     <template v-if="waiting">
       <template v-if="fields.length">
         <div v-for="field in fields" :key="field.id" class="field">
@@ -151,6 +151,18 @@ const toolResult = computed(() => {
   if (props.tool.status !== "success" || !props.tool.result) return undefined;
   try { return JSON.parse(props.tool.result) as { answer?: unknown; values?: unknown; skipped?: boolean }; } catch { return undefined; }
 });
+const resultText = computed(() => {
+  const raw = typeof props.tool.result === "string" ? props.tool.result.trim() : "";
+  if (!raw) return translate("提问未完成，可以在输入框里继续。");
+  try {
+    const value = JSON.parse(raw) as Record<string, unknown>;
+    if (typeof value?.message === "string") return value.message;
+    if (typeof value?.error === "string") return value.error;
+    return translate("提问未完成，可以在输入框里继续。");
+  } catch {
+    return /^[\[{]/.test(raw) ? translate("提问未完成，可以在输入框里继续。") : raw;
+  }
+});
 const skipped = computed(() => submittedSkipped.value || toolResult.value?.skipped === true);
 const answer = computed(() => {
   if (skipped.value) return "";
@@ -158,7 +170,7 @@ const answer = computed(() => {
   if (props.tool.status !== "success") return "";
   if (typeof toolResult.value?.answer === "string") return toolResult.value.answer;
   if (toolResult.value?.values) return formatAnswers(toolResult.value.values);
-  return props.tool.result ?? "";
+  return resultText.value;
 });
 const waiting = computed(() => props.tool.status === "running" && !!props.tool.question?.callId && submittedAnswer.value === undefined && !skipped.value);
 watch([selected, text, values], () => {

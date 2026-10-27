@@ -257,6 +257,7 @@ const SYSTEM_PROMPT = [
   '3. 需要节点自己的能力（例如让文本节点写入内容、触发图片生成）时，先用 getNodeTools 查看再调用 nodeTools。',
   '3.1 涉及生成积分、预算或费用时，必须调用对应节点的 node:getConfig 重新读取当前参数的 estimate.points；管理员可随时调价，历史对话、技能示例和模型目录价格不能作为本次报价。参数、参考素材或数量变化后重新询价；报价为 null 时明确说明暂时无法确认，不猜价格。视频报价是预计预扣，最终按实际使用结算。',
   '4. 工具报错时先读错误信息再决定是否重试，不要重复同样的失败调用。',
+  '4.1 涉及「创作精选」、提示词灵感或案例检索时，先调用 searchInspirationLibrary；它默认搜索全部可用来源，需要时用 source 指定来源，不要只凭记忆回答。source=all 如果返回 partial:true、archiveError 或 showcaseError，必须明确告诉用户结果不完整；每条结果按自己的 source 与对应 datasetReady 判断能否称为档案原文。',
   '5. 回答使用简体中文，简洁直接，不要编造工具结果。',
   '6. 有相互独立的子任务（如文字分镜创作）时，可以用 subAgent 委派；需要分镜团队时给任务传 team:"storyboardTeam"。委派不扩大权限，结果要核验后再交付。',
 ].join('\n')
@@ -416,7 +417,7 @@ async function dispatchToolCall(call, { serverToolMap, sendEvent, signal, toolLo
   }
 }
 
-export function createAgentApi({ management, workspaceFiles, env = () => process.env, fetchImpl = fetch, customProviderFetch, resolveTextSettings = textSettings, webTools, webToolsForUser, localSkills, ensureMediaTools, assertTextAccess, additionalTools = () => [], additionalInstructions = () => '', nativeAgentPrompt, nativeAgentScope, nativeConversationDefaults, durableDirectory, durableIdentity, durableProjectAccess }: Record<string, any>) {
+export function createAgentApi({ management, workspaceFiles, env = () => process.env, fetchImpl = fetch, showcaseRoot = '', showcaseAssetFetch, customProviderFetch, resolveTextSettings = textSettings, webTools, webToolsForUser, localSkills, ensureMediaTools, assertTextAccess, additionalTools = () => [], additionalInstructions = () => '', nativeAgentPrompt, nativeAgentScope, nativeConversationDefaults, durableDirectory, durableIdentity, durableProjectAccess }: Record<string, any>) {
   const incomingRequests = new HttpIncomingRequests('Agent 服务正在关闭，请稍后重试')
   let closing: Promise<void> | undefined
   const activeTurns = new Map()
@@ -489,7 +490,7 @@ export function createAgentApi({ management, workspaceFiles, env = () => process
     const { writeSkill, removeSkill } = createSkillStore({ workspaceFiles: toolFiles, localSkills })
     const sharedTools = createSharedTools({ workspaceFiles: toolFiles, fetchImpl, userId, webTools, localSkills,
       webToolsForUser: webToolsForUser || (management ? userId => createCloudWebTools({ management, userId, fetchImpl, beforeRequest: runtime.beforeWebRequest }) : undefined) })
-    const libraryTools = createLibraryTools({ workspaceFiles: toolFiles, fetchImpl, env, userId, signal: runtime.signal })
+    const libraryTools = createLibraryTools({ workspaceFiles: toolFiles, fetchImpl, env, showcaseRoot, showcaseAssetFetch, userId, signal: runtime.signal })
     const sharedTool = (name) => sharedTools.find(tool => tool.name === name)
     const mediaTools = createMediaTools({ workspaceFiles: toolFiles, userId, signal: runtime.signal, beforeExecute: ensureMediaTools })
     return [

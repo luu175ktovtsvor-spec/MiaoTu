@@ -228,7 +228,9 @@ export const createMediaBufferProbe = createMediaProbe
 export function createReferenceMediaProbe({ workspaceFiles, secret, publicOrigin, execImpl = execFileAsync }: Record<string, any> = {}) {
   const probeBytes = createMediaBufferProbe({ execImpl })
   const cache = new Map()
-  return async function probeReference(url, userId, kind) {
+  const pendingProbes = new Map()
+  return async function probeReference(url, userId, kind, { signal }: { signal?: AbortSignal } = {}) {
+    signal?.throwIfAborted()
     if (!userId) throw Object.assign(new Error('请先登录后使用参考素材'), { status: 401 })
     let target
     try { target = new URL(String(url)) } catch { throw Object.assign(new Error('参考素材地址无效'), { status: 422 }) }
@@ -243,14 +245,22 @@ export function createReferenceMediaProbe({ workspaceFiles, secret, publicOrigin
     if (!String(file.mime || '').startsWith(kind + '/')) throw Object.assign(new Error('参考素材类型不匹配'), { status: 422 })
     const key = JSON.stringify([userId, token.project || '', file.path, file.revision, kind])
     if (cache.has(key)) return cache.get(key)
+    // Completed metadata is reusable. A cancellable caller owns its own probe
+    // lifetime instead of aborting another request's shared child process.
+    if (!signal && pendingProbes.has(key)) return pendingProbes.get(key)
     const pending = (async () => {
       const content = workspaceFiles.read(userId, token.path, token.project)
       if (content.revision !== file.revision) throw Object.assign(new Error('参考素材已更新，请重新连接后生成'), { status: 409 })
-      return { ...await probeBytes(content.bytes, kind), mime: file.mime }
+      const metadata = { ...await probeBytes(content.bytes, kind, { signal }), mime: file.mime }
+      signal?.throwIfAborted()
+      return metadata
     })()
-    cache.set(key, pending)
-    if (cache.size > 200) cache.delete(cache.keys().next().value)
-    try { return await pending }
-    catch (error) { if (cache.get(key) === pending) cache.delete(key); throw error }
+    if (!signal) pendingProbes.set(key, pending)
+    try {
+      const result = await pending
+      cache.set(key, result)
+      if (cache.size > 200) cache.delete(cache.keys().next().value)
+      return result
+    } finally { if (pendingProbes.get(key) === pending) pendingProbes.delete(key) }
   }
 }

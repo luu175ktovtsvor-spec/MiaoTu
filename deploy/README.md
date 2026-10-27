@@ -1,10 +1,12 @@
 # 部署与运行
 
+> 2026-10-27 起，妙图正式部署以[大陆原生部署](native/README.md)为准：Nginx + systemd，账号库和媒体在大陆；美国仅保留 Sub2API 及所属组件。下文 Docker 拓扑、容器发布和旧同机维护内容属于历史/显式选择的 Docker 交付方式，不再是妙图生产默认。不得把旧 Docker 清理或同步脚本直接用于大陆原生实例。备案拦截及用户接受暂不可用、全量迁移的最终决定见原生部署文档。
+
 桌面开发、真包验收和更新源发布先读[开发隔离与桌面发布](../docs/开发隔离与桌面发布.md)。本机默认使用 Node + Electron；本文 Docker 部分适用于远端服务及另行选择的服务端镜像交付。
 
 主线服务镜像保留 `server/` 的运行模块；主应用还保留提示词 CLI 所需的 `retrieval/`、`taxonomy/` 及其 JSON。画布只使用当前格式标记，不再依赖额外的兼容配置文件。
 
-桌面源码不上传到服务构建目录，也不进入 Docker 构建输入。运行所需资源按原路径保留，不能把整个 docs 目录一并排除。
+桌面业务源码不上传到服务构建目录，也不进入 Docker 构建输入。共享创作精选资料是明确例外：只放行 `desktop/renderer/src/library/showcase.json`，以及 `desktop/renderer/public/inspiration/prompts/`、`translations/` 下的 JSON；不传桌面代码、依赖或媒体。`deploy/cloud-showcase.filter` 与 `.dockerignore` 保持相同白名单，官网构建把它们输出为 Agent 可读资源，缺少任一资料目录时构建失败。它们仍以桌面资料目录为唯一源，不维护重复的提交副本。运行所需资源按原路径保留，不能把整个 docs 目录一并排除。
 
 换容器前的 `scripts/check-server-modules.ts` 只解析源码，不执行服务。它扫描服务端及存在时的 `web/scripts/`，检查裸依赖和字面相对导入（包括 JSON）；不能据此证明动态计算的资源路径、数据库或真实业务已经运行。完整发布仍须核对实际镜像、挂载与四端口，并完成用户路径验收。
 

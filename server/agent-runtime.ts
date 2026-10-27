@@ -64,7 +64,7 @@ export async function createAgentModel({ providerId = 'miaoimg', baseUrl, apiKey
         ...options,
         ...(providerFetch ? { fetch: providerFetch } : {}),
         onPayload: async (payload) => {
-          // 注册表里的 32768 只是 SDK 必填的 maxTokens，不是模型公布的输出上限。没公布的不写进请求。
+          // 未声明上游上限的自定义模型不强行发送 SDK 兜底值；内置模型按注册表的明确规格发送。
           const publishedOutput = registered.sources?.maxOutputTokens && !String(registered.sources.maxOutputTokens).startsWith('兜底')
           if (!publishedOutput && registered.protocol !== 'anthropic-messages') {
             delete payload.max_output_tokens

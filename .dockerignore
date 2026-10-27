@@ -45,5 +45,10 @@ web/runtime/node_modules
 本地资料
 docs/验收证据/
 
-# Source references and native client are not cloud runtime input
+# Native business code is not cloud build input. These reviewed JSON assets are
+# shared by the web/desktop Agent; keep their canonical paths, without copying
+# the desktop application or its dependencies. Match deploy/cloud-showcase.filter.
 desktop/
+!desktop/renderer/src/library/showcase.json
+!desktop/renderer/public/inspiration/prompts/*.json
+!desktop/renderer/public/inspiration/translations/*.json

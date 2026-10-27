@@ -37,8 +37,10 @@ for (const [id, resolution, native, economy] of fixtures) {
     if (credits === null) continue
     const generationResolution = creativeMode === 'super_economy' ? '480p' : resolution
     const generationSnapshot = suihePricingSnapshot(model, {resolution:generationResolution})
-    const preEstimate = {costRmb:credits/1000, tokens:50000, generationResolution, generationRates:generationSnapshot.rates,
-      generationPixels:generationSnapshot.pixels, billingMode:creativeMode==='native'?'token':'token_enhance', enhancementRmb:creativeMode==='native'?0:0.5}
+    const preEstimate = {costRmb:credits/1000, tokens:50000, generationResolution,
+      generationRates:'rates' in generationSnapshot?generationSnapshot.rates:undefined,
+      generationPixels:'pixels' in generationSnapshot?generationSnapshot.pixels:undefined,
+      billingMode:creativeMode==='native'?'token':'token_enhance', enhancementRmb:creativeMode==='native'?0:0.5}
     const parameters = {duration:5, resolution, ratio:'16:9', creativeMode, videoPricing:videoPricingSnapshot(),
       suiheCost:{...suihePricingSnapshot(model, {resolution, creativeMode}), preEstimate}}
     const quote = estimateGenerationCost({model, generation:parameters})

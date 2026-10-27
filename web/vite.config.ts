@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
@@ -44,9 +44,32 @@ function archiveAssetsPlugin() {
   }
 }
 
+// The web Agent shares the reviewed showcase catalog with the desktop Agent.
+// Keep the catalog and prompt shards as build assets so the API can search
+// them without importing the renderer bundle or copying the full media set.
+function showcaseAgentManifestPlugin() {
+  const catalog = resolve(WEB_DIR, '../desktop/renderer/src/library/showcase.json')
+  const promptDir = resolve(WEB_DIR, '../desktop/renderer/public/inspiration/prompts')
+  const translationDir = resolve(WEB_DIR, '../desktop/renderer/public/inspiration/translations')
+  return {
+    name: 'miaoimg-showcase-agent-manifest',
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'showcase-agent.json', source: readFileSync(catalog) })
+      for (const [directory, prefix] of [[promptDir, 'inspiration/prompts'], [translationDir, 'inspiration/translations']] as const) {
+        // Both directories are committed build inputs. A missing shard source
+        // must fail the build instead of shipping a partially searchable catalog.
+        for (const file of readdirSync(directory).sort()) {
+          if (!file.endsWith('.json')) continue
+          this.emitFile({ type: 'asset', fileName: `${prefix}/${file}`, source: readFileSync(resolve(directory, file)) })
+        }
+      }
+    },
+  }
+}
+
 export default defineConfig({
   base: './',
-  plugins: [react(), tailwindcss(), archiveImagesPlugin(), archiveAssetsPlugin()],
+  plugins: [react(), tailwindcss(), archiveImagesPlugin(), archiveAssetsPlugin(), showcaseAgentManifestPlugin()],
   server: {
     // Never inherit Vite's dual-stack `localhost` default: it lets the dev
     // server bind [::1] while an unrelated process owns IPv4 on the same port,

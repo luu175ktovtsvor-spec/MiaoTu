@@ -5,7 +5,7 @@ set -Eeuo pipefail
 # 本地模拟 amd64 构建只作为兜底（DEPLOY_BUILD=local）。构建与运行方式见 AGENTS.md。
 
 ROOT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
-REMOTE_HOST=${REMOTE_HOST:-root}
+REMOTE_HOST=${REMOTE_HOST:?此脚本仅用于显式指定的 Docker 目标；妙图大陆生产使用 deploy/native，不再默认发布到美国 root}
 REMOTE_CONTAINER=${REMOTE_CONTAINER:-miaoimg}
 IMAGE_REF=${IMAGE_REF:-miaoimg:$(date +%Y%m%d-%H%M%S)}
 BUILD_MODE=${DEPLOY_BUILD:-remote}
@@ -110,7 +110,7 @@ else
   ssh "$REMOTE_HOST" "umask 077; test ! -L /opt/miaoimg-builds && mkdir -p /opt/miaoimg-builds && mkdir '$REMOTE_BUILD_DIR'"
   rsync -az --delete \
     --exclude '.git/' --exclude 'node_modules/' --exclude 'web/node_modules/' --exclude 'web/dist/' \
-    --exclude 'reference-sources/' --exclude 'desktop/' \
+    --exclude 'reference-sources/' --filter="merge $SOURCE_DIR/deploy/cloud-showcase.filter" \
     --exclude 'docs/验收证据/' \
     --exclude 'vendor/' --exclude 'secrets/' --exclude '.oip/' --exclude 'media/' \
     --exclude 'images/' --exclude 'previews/' \

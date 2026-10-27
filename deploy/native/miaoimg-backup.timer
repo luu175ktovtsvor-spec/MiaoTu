@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily MiaoImg native account database backup
+
+[Timer]
+OnCalendar=*-*-* 04:15:00 Asia/Shanghai
+RandomizedDelaySec=10min
+Persistent=true
+Unit=miaoimg-backup.service
+
+[Install]
+WantedBy=timers.target

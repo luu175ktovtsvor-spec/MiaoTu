@@ -12,9 +12,9 @@ description_en: Search the MiaoImg library for traceable prompts and image or vi
 
 ## 操作顺序
 
-1. 先调用 `searchInspirationLibrary`，把用户原话放进 `query`；需要限定受控标签时再传 `tag`，知道工具或模型时传 `tool`。`limit` 保持在 1–5；结果不足时用同一筛选条件递增 `offset` 分页，不要猜测分页游标。
-2. 只有工具返回 `datasetReady:true` 时，结果中的 `prompt` 才能作为档案原文交付；`datasetReady:false` 或版本口径报错时，停止把结果称为档案原文，也不要保存参考图，并把工具给出的口径说明原样告诉用户。
-3. 结果里的 `prompt` 是档案原文，`sourceUrl`、作者、稳定 ID、图片/视频地址一起保留；不要把翻译或改写冒充原文。
+1. 先调用 `searchInspirationLibrary`，默认搜索全部可用来源；把用户原话放进 `query`。需要限定来源时传 `source`；需要限定受控标签时再传 `tag`，知道工具或模型时传 `tool`。`limit` 保持在 1–5；结果不足时用同一筛选条件递增 `offset` 分页，不要猜测分页游标。
+2. 只有结果所属来源明确具备 `datasetReady:true` 时，结果中的 `prompt` 才能作为档案原文交付；`datasetReady:false`、缺少该标记或版本口径报错时，停止把该条称为档案原文，也不要保存该来源的参考图，并把工具给出的口径说明原样告诉用户。`source:all` 若返回 `partial:true`、`archiveError` 或 `showcaseError`，必须明确告诉用户本次结果不完整；按结果中的 `source`、来源级就绪字段、`sourceUrl`、作者、稳定 ID、图片/视频地址保留来源信息。
+3. 结果里的 `prompt`、`sourceUrl`、作者、稳定 ID、图片/视频地址一起保留；不要把翻译或改写冒充原文。
 4. 用户明确要把首张图放到画布时，在检索调用里传 `saveReference:true`。它仍只保存第一条图片，返回 `savedReference.path` 与 `savedReference.mime`。需要一次落多张时，可传 `saveReference:3` 保存扁平图片候选的前 3 张，或传 `saveReferences:[0,2,4]` 选择索引；单次最多 6 张，超过上限会报错并且不应改成静默截断。返回的 `savedReferences` 为每张图提供独立的 `path`、`mime`、`itemId` 和 `imageId`，之后分别走现有画布工具：
    - `getCanvas({include:["nodeTypes"]})` 读取真实节点类型；
    - `addNode` 创建已有的图片节点；

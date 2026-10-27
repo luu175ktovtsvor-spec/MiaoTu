@@ -1,0 +1,10 @@
+[Unit]
+Description=Consistent MiaoImg native account database backup
+After=miaoimg.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/miaoimg-ops/native/backup.py
+UMask=0077
+Nice=10
+IOSchedulingClass=idle

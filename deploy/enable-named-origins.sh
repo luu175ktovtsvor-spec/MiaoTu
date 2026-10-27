@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+if [[ ${ALLOW_LEGACY_NAMED_ORIGINS:-0} != 1 ]]; then
+  echo '此脚本仅适用于旧 Docker 命名域名入口；现行妙图大陆原生部署不使用它。请改用 deploy/native 流程；如确需维护旧环境，请显式设置 ALLOW_LEGACY_NAMED_ORIGINS=1。' >&2
+  exit 2
+fi
+
 # 启用 canvas.miaoimg.cn / admin.miaoimg.cn（并在验收后用 REMOVE_LEGACY=1 撤掉旧域名）。
 #
 # 为什么要有这一步：网页版按 hostname 决定渲染哪一层（miaoimg.cn 落地页、canvas. 画布、
@@ -14,8 +19,10 @@ set -Eeuo pipefail
 #
 # 详细背景见 docs/部署与域名.md 与 AGENTS.md。
 
-REMOTE_HOST=${REMOTE_HOST:-root}
-REMOTE_IP=${REMOTE_IP:-96.9.225.212}
+# Mainland production is native. Require an explicit target so this legacy
+# helper can never silently mutate the retired US host.
+REMOTE_HOST=${REMOTE_HOST:?请显式指定大陆 SSH 目标（例如 miaoimg-cn）}
+REMOTE_IP=${REMOTE_IP:-114.215.210.134}
 LEGACY=prompts.zzyppz.cn
 SUBDOMAINS=(canvas.miaoimg.cn admin.miaoimg.cn)
 SITE=/etc/nginx/sites-available/miaoimg.conf

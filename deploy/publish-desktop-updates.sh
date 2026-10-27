@@ -5,7 +5,7 @@ set -Eeuo pipefail
 # 顺序：本地核对 sha512 → 上传到 .staging → 服务器再核对一次 → 安装包落位并更新版本文件名
 # → latest*.yml 最后落位 → 从公网回读版本。中途中断时线上仍指向旧版本。
 VERSION=${1:?用法：DEPLOY_CONFIRM=I-am-the-release-manager bash deploy/publish-desktop-updates.sh <版本号>}
-REMOTE_HOST=${REMOTE_HOST:-root}
+REMOTE_HOST=${REMOTE_HOST:-miaoimg-cn}
 REMOTE_DIR=${REMOTE_DIR:-/opt/miaoimg/desktop-downloads/updates}
 PUBLIC_BASE=${PUBLIC_BASE:-https://miaoimg.cn/desktop-downloads/updates}
 SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)

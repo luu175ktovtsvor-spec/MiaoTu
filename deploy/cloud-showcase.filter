@@ -1,0 +1,14 @@
+# Shared reviewed data only; no native client source, dependencies or media.
+# Keep these exceptions aligned with the desktop rules in .dockerignore.
++ /desktop/
++ /desktop/renderer/
++ /desktop/renderer/src/
++ /desktop/renderer/src/library/
++ /desktop/renderer/src/library/showcase.json
++ /desktop/renderer/public/
++ /desktop/renderer/public/inspiration/
++ /desktop/renderer/public/inspiration/prompts/
++ /desktop/renderer/public/inspiration/prompts/*.json
++ /desktop/renderer/public/inspiration/translations/
++ /desktop/renderer/public/inspiration/translations/*.json
+- /desktop/***
