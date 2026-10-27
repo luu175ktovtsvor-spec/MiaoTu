@@ -13,7 +13,24 @@ const save = () => writeFileSync(join(output, 'result.json'), JSON.stringify(rep
 save()
 const delay = ms => new Promise <void>(r => setTimeout(r, ms))
 let child, ws, pending = new Map(), serial = 0
-async function wait(check, label, timeout = 45000) { const until = Date.now() + timeout; while (Date.now() < until) { if (await check()) return; await delay(150) } throw new Error('Timed out: ' + label) }
+function transientCdpError(error) {
+  const message = String(error?.message || error)
+  return message.includes('CDP timeout: Runtime.evaluate') || message.includes('CDP timeout: Page.reload')
+}
+async function wait(check, label, timeout = 45000) {
+  const until = Date.now() + timeout
+  let lastError
+  while (Date.now() < until) {
+    try {
+      if (await check()) return
+    } catch (error) {
+      if (!transientCdpError(error)) throw error
+      lastError = error
+    }
+    await delay(150)
+  }
+  throw new Error('Timed out: ' + label + (lastError ? ` (${lastError.message})` : ''))
+}
 function command(method, params: Record<string, any> = {}, timeout = 20000) { const id = ++serial; return new Promise<any>((resolve, reject) => { const timer = setTimeout(() => { pending.delete(id); reject(new Error('CDP timeout: ' + method)) }, timeout); pending.set(id, { resolve, reject, timer }); ws.send(JSON.stringify({ id, method, params })) }) }
 async function evaluate(expression, timeout = 20000) { const r = await command('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true }, timeout); if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text); return r.result?.value }
 async function start(extra = []) {

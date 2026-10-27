@@ -371,6 +371,16 @@ function handleMentionKey(event: KeyboardEvent) {
   animation: none;
 }
 
+:global(.textNodeMentions .chat-mention-dialog-item),
+:global(.textNodeMentions .chat-mention-dialog-item-name) {
+  color: var(--el-text-color-primary);
+  opacity: 1;
+}
+
+:global(.textNodeMentions .chat-mention-dialog-item:hover) {
+  opacity: 1;
+}
+
 .promptInput {
   display: block;
   cursor: text;

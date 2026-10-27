@@ -53,13 +53,12 @@
           <el-switch v-model="generateAudio" :disabled="disabled" :aria-label="translate('生成音频')" />
         </div>
         <template v-for="control in controls" :key="control.key">
-          <div class="sectionLabel">{{ translate(control.label) }}</div>
-          <el-switch v-if="control.type === 'boolean'" :model-value="Boolean(parameters[control.key])" :disabled="disabled" :aria-label="translate(control.label)" @update:model-value="parameters = { ...parameters, [control.key]: $event }" />
-          <el-select v-else-if="control.type === 'select'" :model-value="String(parameters[control.key] || control.default || '')" :disabled="disabled" :aria-label="translate(control.label)" @update:model-value="parameters = { ...parameters, [control.key]: $event }">
-            <el-option v-for="option in control.options || []" :key="option" :value="option" :label="option" />
+          <div class="sectionLabel">{{ controlLabel(control.key, control.label) }}</div>
+          <el-switch v-if="control.type === 'boolean'" :model-value="Boolean(parameters[control.key])" :disabled="disabled" :aria-label="controlLabel(control.key, control.label)" @update:model-value="parameters = { ...parameters, [control.key]: $event }" />
+          <el-select v-else-if="control.type === 'select'" :model-value="String(parameters[control.key] || control.default || '')" :disabled="disabled" :aria-label="controlLabel(control.key, control.label)" @update:model-value="parameters = { ...parameters, [control.key]: $event }">
+            <el-option v-for="option in control.options || []" :key="option" :value="option" :label="controlOptionLabel(control.key, option)" />
           </el-select>
         </template>
-        <local-media-info :model="model" :mode="mode" />
       </div>
     </div>
   </el-popover>
@@ -71,9 +70,9 @@ import { ElButton, ElPopover, ElSelect, ElOption, ElSwitch } from "element-plus"
 import { IconChevronUp } from "@tabler/icons-vue";
 import type { NodeMediaModel } from "@miaoimg/nodes-scaffold/runtime";
 import { translate } from "@miaoimg/i18n/vue";
-import localMediaInfo from './localMediaInfo.vue';
 import { durationsForMode, inheritedFields, resolutionsForMode, visibleControls } from "../scaffold/mediaParameters";
 import { videoModeDescription, videoModeLabel } from './videoModeText';
+import { getLocale } from "../i18n";
 
 const props = defineProps<{ model?: NodeMediaModel; disabled?: boolean; ratios: string[]; videoReferences?: number; imageReferences?: number }>();
 const duration = defineModel<number | undefined>("duration", { required: true });
@@ -103,10 +102,25 @@ const inheritsSourceFormat = computed(() => inherited.value.includes("resolution
 const inheritsSourceRatio = computed(() => inherited.value.includes("ratio") || inheritsSourceFormat.value);
 const audioOptional = computed(() => props.model?.audio === "optional" && props.model.parameterRules?.audioByMode?.[selectedModeName.value] !== "hidden");
 const controls = computed(() => visibleControls(props.model, selectedModeName.value));
-const modes = computed(() => (props.model?.mode ?? []).map(item => ({
+
+function controlOptionLabel(key: string, option: string) {
+  if (key === "creativeMode") {
+    if (option === "native") return translate("标准");
+    if (option === "super_economy") return ["zh-CN", "zh-TW"].includes(getLocale()) ? (getLocale() === "zh-TW" ? "節省模式" : "节省模式") : "Economy mode";
+  }
+  return translate(option);
+}
+
+function controlLabel(key: string, label: string) {
+  return key === "creativeMode" ? translate("生成模式") : translate(label);
+}
+const modes = computed(() => [...(props.model?.mode ?? [])]
+  // Seedance 的全能参考是多素材入口，优先放在展开菜单顶部，保存值仍保持原样。
+  .sort((left, right) => Number(Array.isArray(right)) - Number(Array.isArray(left)))
+  .map(item => ({
   value: JSON.stringify(item),
   label: videoModeLabel(item, props.model),
-})));
+  })));
 const currentMode = computed(() => props.model?.mode?.find(item => JSON.stringify(item) === mode.value));
 const currentModeLabel = computed(() => videoModeLabel(currentMode.value, props.model));
 const modeDescription = computed(() => videoModeDescription(currentMode.value, props.model));

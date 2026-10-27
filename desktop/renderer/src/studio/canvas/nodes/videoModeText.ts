@@ -38,6 +38,8 @@ export function videoModeDescription(mode: VideoMode, model?: NodeMediaModel): s
     startEndRequired: '上传首帧和尾帧图片，控制视频的开始与结束',
     endFrameOptional: '上传首帧图片，可添加尾帧控制结束画面',
     startFrameOptional: '仅一张图片时作为尾帧；两张图片按顺序作为首帧、尾帧',
+    edit: '上传一个 4–30 秒的视频，在原视频基础上进行编辑',
+    extend: '上传一个视频，生成它的延长片段',
   };
   return descriptions[mode || ''] ? translate(descriptions[mode!]) : '';
 }

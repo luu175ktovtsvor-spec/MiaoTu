@@ -7,7 +7,7 @@
       :class="{ docked, dragging: interaction?.mode === 'move' }"
       :style="panelStyle"
       :aria-label="translate('AI 对话')"
-      @pointerdown="startMenuMove"
+      @pointerdown.capture="startMenuMove"
       @pointermove="moveInteraction"
       @pointerup="stopInteraction"
       @pointercancel="stopInteraction"
@@ -19,10 +19,10 @@
         :class="handle.edge"
         role="separator"
         :aria-label="handle.label"
-        :aria-orientation="handle.edge === 'bottom' ? 'horizontal' : 'vertical'"
-        :aria-valuemin="Math.min(handle.edge === 'bottom' ? 240 : 320, resizeLimit(handle.edge))"
+        :aria-orientation="handle.edge === 'bottom' ? 'horizontal' : handle.edge === 'corner' ? undefined : 'vertical'"
+        :aria-valuemin="handle.edge === 'bottom' ? Math.min(240, resizeLimit(handle.edge)) : handle.edge === 'corner' ? undefined : Math.min(320, resizeLimit(handle.edge))"
         :aria-valuemax="resizeLimit(handle.edge)"
-        :aria-valuenow="handle.edge === 'bottom' ? height : width"
+        :aria-valuenow="handle.edge === 'bottom' ? height : handle.edge === 'corner' ? undefined : width"
         tabindex="0"
         @pointerdown.stop="startInteraction($event, handle.edge)"
         @keydown="resizeWithKeyboard($event, handle.edge)" />
@@ -74,6 +74,7 @@ const resizeHandles = computed(
         : [
             { edge: "right", label: translate("从右侧调整对话宽度") },
             { edge: "bottom", label: translate("从下方调整对话高度") },
+            { edge: "corner", label: translate("从右下角调整对话大小") },
           ]),
     ] as { edge: ResizeEdge; label: string }[]
 );
@@ -97,7 +98,7 @@ const interaction = shallowRef<{
   width: number;
   height: number;
 }>();
-type ResizeEdge = "left" | "right" | "bottom";
+type ResizeEdge = "left" | "right" | "bottom" | "corner";
 
 function movePanel(x: number, y: number) {
   left.value = Math.max(gap.value, Math.min(x, viewport.width - gap.value - width.value));
@@ -111,22 +112,29 @@ function resizeAnchor(edge: ResizeEdge) {
 
 function resizeLimit(edge: ResizeEdge, anchor = resizeAnchor(edge)) {
   if (edge === "left") return Math.min(maxWidth.value, anchor - (docked.value ? 0 : gap.value));
+  if (edge === "corner") return Math.max(0, viewport.width - gap.value - left.value);
   return Math.max(0, (edge === "right" ? viewport.width : viewport.top + viewport.height) - gap.value - anchor);
 }
 
 function resizePanel(edge: ResizeEdge, value: number, anchor = resizeAnchor(edge)) {
   const limit = resizeLimit(edge, anchor);
-  const size = Math.min(limit, Math.max(Math.min(edge === "bottom" ? 240 : 320, limit), value));
+  const minimum = edge === "bottom" ? 240 : 320;
+  const size = Math.min(limit, Math.max(Math.min(minimum, limit), value));
   if (edge === "bottom") preferredHeight.value = size;
   else preferredWidth.value = size;
   if (!docked.value && edge === "left") movePanel(anchor - width.value, top.value);
 }
 
 function resizeWithKeyboard(event: KeyboardEvent, edge: ResizeEdge) {
-  const keys = edge === "bottom" ? ["ArrowUp", "ArrowDown"] : ["ArrowLeft", "ArrowRight"];
+  const keys = edge === "bottom" ? ["ArrowUp", "ArrowDown"] : ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"];
   const direction = keys.indexOf(event.key);
   if (direction < 0) return;
   event.preventDefault();
+  if (edge === "corner") {
+    if (event.key === "ArrowUp" || event.key === "ArrowDown") resizePanel("bottom", height.value + (event.key === "ArrowUp" ? -16 : 16));
+    else resizePanel("right", width.value + (event.key === "ArrowLeft" ? -16 : 16));
+    return;
+  }
   const delta = (direction === 0 ? -16 : 16) * (edge === "left" ? -1 : 1);
   resizePanel(edge, (edge === "bottom" ? height.value : width.value) + delta);
 }
@@ -162,7 +170,11 @@ function moveInteraction(event: PointerEvent) {
   if (current.mode === "move") movePanel(current.left + event.clientX - current.x, current.top + event.clientY - current.y);
   else if (current.mode === "left") resizePanel("left", current.width + current.x - event.clientX, current.right);
   else if (current.mode === "right") resizePanel("right", current.width + event.clientX - current.x, current.left);
-  else resizePanel("bottom", current.height + event.clientY - current.y, current.top);
+  else if (current.mode === "bottom") resizePanel("bottom", current.height + event.clientY - current.y, current.top);
+  else {
+    resizePanel("right", current.width + event.clientX - current.x, current.left);
+    resizePanel("bottom", current.height + event.clientY - current.y, current.top);
+  }
 }
 
 function stopInteraction(event?: PointerEvent) {
@@ -268,6 +280,26 @@ onBeforeUnmount(() => {
       left: 0;
       height: 5px;
       cursor: ns-resize;
+    }
+
+    &.corner {
+      right: 0;
+      bottom: 0;
+      width: 16px;
+      height: 16px;
+      cursor: nwse-resize;
+
+      &::after {
+        content: "";
+        position: absolute;
+        right: 3px;
+        bottom: 3px;
+        width: 7px;
+        height: 7px;
+        border-right: 2px solid var(--el-color-primary-light-5);
+        border-bottom: 2px solid var(--el-color-primary-light-5);
+        opacity: .55;
+      }
     }
 
     &:hover,

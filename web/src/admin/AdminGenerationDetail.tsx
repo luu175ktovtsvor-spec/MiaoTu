@@ -25,11 +25,13 @@ export default function AdminGenerationDetail({record:r,api,onRecord,lang}) {
  }
  const p=r.parameters||{},u=r.usage||{},d=r.upstreamCost?.detail||{}
  const modes={text:t('文生视频','Text to video'),image:t('混合参考','Mixed references'),singleImage:t('单图生视频','Image to video'),startFrameOptional:t('首帧','First frame'),endFrameOptional:t('首尾帧','First / last frame'),edit:t('编辑','Edit'),extend:t('延长','Extend')}
+ const creativeModes={native:t('标准','Standard'),super_economy:t('节省模式','Economy mode')}
  const isVideo=p.duration!=null||Boolean(p.resolution)
  const unknown=t('未留存','Not retained')
  const bool=value=>typeof value==='boolean'?(value?t('开启','On'):t('关闭','Off')):unknown
  const parameters=isVideo?[
   [t('生成模式','Mode'),modes[p.mode]||p.mode||unknown],
+  ...(p.creativeMode?[[t('创作模式','Creative mode'),creativeModes[p.creativeMode]||p.creativeMode]]:[]),
   [t('分辨率 / 比例','Resolution / aspect ratio'),(p.resolution||unknown)+' / '+(p.ratio||unknown)],
   [t('请求 / 计费时长','Requested / billable duration'),(p.duration??unknown)+' / '+(p.billableDuration??unknown)+' s'],
   [t('参考图片 / 视频 / 音频数量','Reference image / video / audio count'),(p.referenceImages??unknown)+' / '+(p.videos?.length??unknown)+' / '+(p.audios?.length??unknown)],

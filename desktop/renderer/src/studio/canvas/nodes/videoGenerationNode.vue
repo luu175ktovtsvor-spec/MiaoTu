@@ -75,7 +75,6 @@
             expand-mode="external" />
           <div v-if="promptOptional && !generationPrompt" class="referenceHint">{{ translate('当前模型可只使用图片参考，不填写提示词') }}</div>
         </div>
-        <local-media-info :model="selectedModel" :mode="data.mode" compact />
         <div class="promptFooter">
           <el-select
             v-model="data.model"
@@ -83,7 +82,7 @@
             filterable
             popper-class="modelSelectPopper"
             :loading="modelsLoading"
-            :disabled="generating || deleting"
+            :disabled="generating || deleting || pendingTask || checkingTask"
             :placeholder="translate('选择模型')"
             :aria-label="translate('生成模型')"
             :noDataText="modelsNeedSignIn ? translate('登录后可选择模型') : translate('请先在设置中添加视频模型')"
@@ -107,7 +106,7 @@
             :model="selectedModel"
             :videoReferences="mediaCounts.video"
             :imageReferences="mediaCounts.image"
-            :disabled="generating || deleting || !selectedModel" />
+            :disabled="generating || deleting || pendingTask || checkingTask || !selectedModel" />
           <div class="sendActions">
             <div class="estimateLine" aria-live="polite" :data-estimate-source="videoEstimate?.breakdown?.billingSource || 'unavailable'">
               <icon-coins :size="14" aria-hidden="true" />
@@ -156,7 +155,6 @@ import { beginUpload } from "../uploadStatus";
 import { assetFileType, ASSET_MAX_BYTES } from "../assetFile";
 import generationSettings from "./videoGenerationSettings.vue";
 import { controlPayload, durationsForMode, inheritedFields, modeName, ratiosForMode, resolutionsForMode } from "../scaffold/mediaParameters";
-import localMediaInfo from './localMediaInfo.vue';
 import { translate } from "@miaoimg/i18n/vue";
 import { localReferenceRejection } from '../../../../../local-media/catalog.ts';
 import { getTargetValues } from "../scaffold/nodeInputs";
@@ -809,10 +807,10 @@ nodeTools.register({
   }).refine((args) => (args.providerId === undefined) === (args.modelId === undefined), "providerId 与 modelId 必须同时提供"),
   async execute(args, { signal }) {
     signal?.throwIfAborted();
-    if (generating.value || deleting.value) throw new Error("节点正在生成或删除，请稍后修改配置");
+    if (generating.value || deleting.value || pendingTask.value || checkingTask.value) throw new Error("节点正在生成、取回原任务或删除，请稍后修改配置");
     await loadModels();
     signal?.throwIfAborted();
-    if (generating.value || deleting.value) throw new Error("节点正在生成或删除，请稍后修改配置");
+    if (generating.value || deleting.value || pendingTask.value || checkingTask.value) throw new Error("节点正在生成、取回原任务或删除，请稍后修改配置");
     const choice = args.modelId === undefined ? selectedModel.value
       : models.value.find((item) => item.providerId === args.providerId && item.modelId === args.modelId);
     if (!choice) throw new Error("请选择 getConfig 返回的有效视频模型");

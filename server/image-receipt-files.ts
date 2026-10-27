@@ -17,7 +17,7 @@ const validId = (id: unknown): id is string => typeof id === 'string' && /^[A-Za
 const temporaryId = (name: string) => /^\.([A-Za-z0-9][A-Za-z0-9_-]{0,99})\.tmp-[a-f0-9-]{36}$/.exec(name)?.[1]
 const hash = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex')
 const problem = (message: string, code = 'IMAGE_RECEIPT_INVALID') => Object.assign(new Error(message), { status: 503, code, upstreamAccepted: true, submissionUncertain: true })
-const expired = () => problem('原图暂存期已结束，请联系管理员核对原任务，避免重复生成', 'IMAGE_RECEIPT_EXPIRED')
+const expired = () => problem('原图暂存期已结束，请联系妙图团队核对原任务，避免重复生成', 'IMAGE_RECEIPT_EXPIRED')
 
 async function directory(path: string) {
   await mkdir(path, { recursive: true, mode: 0o700 })

@@ -77,7 +77,7 @@ export async function desktopModel(request, response, session, url, { management
     // an upstream Location cannot replay private conversation bytes elsewhere.
     const upstream = await createCustomProviderFetch({ allowPrivate: true, env, fetchImpl: meter.fetch,
       beforeDispatch: () => assertTextModelAccess({ management, session, modelId: model.id }),
-      redirectMessage: '模型服务地址已变化，请联系管理员' })(config.baseUrl + (endpoint === 'openai-responses' ? '/responses' : '/chat/completions'), {
+      redirectMessage: '模型服务地址已变化，请联系妙图团队' })(config.baseUrl + (endpoint === 'openai-responses' ? '/responses' : '/chat/completions'), {
       method: 'POST', headers: { authorization: `Bearer ${config.apiKey}`, 'content-type': 'application/json' },
       // 取消模型供应商的持久存储；本机 SDK 自己保留上下文。
       body: JSON.stringify(payload), signal: controller.signal,

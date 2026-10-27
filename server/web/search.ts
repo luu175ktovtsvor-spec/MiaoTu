@@ -149,7 +149,7 @@ export function createWebSearch({ fetchImpl = fetch, apiKey = () => runtimeSecre
       if (lifetime.aborted || error?.name === 'McpTimeoutError') throw failure('搜索服务响应超时，请稍后重试', 504)
       if (error?.webSearchFailure) throw error
       if (error?.status === 429) throw failure('搜索服务额度或频率已达上限，请稍后重试', 429)
-      if (error?.status === 401 || error?.status === 403) throw failure('搜索服务暂不可用，请联系管理员检查服务配置', 503)
+      if (error?.status === 401 || error?.status === 403) throw failure('搜索服务暂不可用，请联系妙图团队检查服务配置', 503)
       // Do not forward provider response bodies or credentials into conversations.
       throw failure('搜索服务暂时无法完成请求，请稍后重试；也可直接读取已知网址', 502)
     } finally {

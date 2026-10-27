@@ -72,6 +72,26 @@ function invalid(message) {
   throw Object.assign(new Error(message), { status: 422 })
 }
 
+function formatName(value) {
+  const text = String(value || '').split(';', 1)[0].trim()
+  if (!text) return ''
+  if (text.includes('/')) return text.split('/').at(-1).toUpperCase()
+  return text.toUpperCase()
+}
+
+function allowedFormats(limit) {
+  const values = limit.mimes?.length ? limit.mimes : limit.formats
+  return [...new Set((values || []).map(formatName).filter(Boolean))].join('、')
+}
+
+export function unsupportedReferenceFormat(model, kind, metadata = {}, mode = '') {
+  const limit = referenceInputPolicy(model, kind, mode)
+  const title = kind === 'image' ? '参考图片' : kind === 'video' ? '参考视频' : '参考音频'
+  const actual = formatName(kind === 'image' ? metadata.mime : metadata.format || metadata.mime)
+  const accepted = allowedFormats(limit)
+  return `当前模型不支持这个${title}格式${actual ? `（当前为 ${actual}` : ''}${accepted ? `${actual ? '；' : '（'}支持 ${accepted}` : ''}${actual || accepted ? '）' : ''}，请转换后重新上传`
+}
+
 export function assertReferenceInput(model, kind, metadata, mode = '') {
   const limit = referenceInputPolicy(model, kind, mode)
   const title = kind === 'image' ? '参考图片' : kind === 'video' ? '参考视频' : '参考音频'
@@ -80,7 +100,7 @@ export function assertReferenceInput(model, kind, metadata, mode = '') {
     invalid(title + (limit.exclusiveMaxBytes ? '需小于 ' : '不能超过 ') + limit.maxBytes / MB + 'MB；请处理后重新上传，原素材未被压缩')
   }
   const mime = String(metadata.mime || '').split(';')[0].trim().toLowerCase().replace('image/jpg', 'image/jpeg')
-  if (limit.mimes && !limit.mimes.includes(mime)) invalid('当前模型不支持这个' + title + '格式，请转换后重新上传')
+  if (limit.mimes && !limit.mimes.includes(mime)) invalid(unsupportedReferenceFormat(model, kind, { ...metadata, mime }, mode))
   if ((limit.minDuration && metadata.duration < limit.minDuration) || (limit.maxDuration && metadata.duration > limit.maxDuration)) {
     const range = limit.minDuration && limit.maxDuration ? `需为 ${limit.minDuration}–${limit.maxDuration}`
       : limit.maxDuration ? `不能超过 ${limit.maxDuration}` : `不能少于 ${limit.minDuration}`
@@ -96,7 +116,7 @@ export function assertReferenceInput(model, kind, metadata, mode = '') {
   if ((limit.minPixels && pixels < limit.minPixels) || (limit.maxPixels && pixels > limit.maxPixels)) invalid(title + '总像素数超出当前模型范围；请调整后重新上传')
   const ratio = width / height
   if ((limit.minRatio && ratio < limit.minRatio) || (limit.maxRatio && ratio > limit.maxRatio)) invalid(title + '宽高比超出当前模型范围；原素材未被裁切')
-  if (limit.formats && !String(metadata.format || '').split(',').some(value => limit.formats.includes(value))) invalid('当前模型不支持这个' + title + '容器格式，请转换后重新上传')
-  if (limit.codecs && !limit.codecs.includes(metadata.codec)) invalid('当前模型不支持这个' + title + '编码，请转换后重新上传')
+  if (limit.formats && !String(metadata.format || '').split(',').some(value => limit.formats.includes(value))) invalid(unsupportedReferenceFormat(model, kind, metadata, mode).replace('格式', '容器格式'))
+  if (limit.codecs && !limit.codecs.includes(metadata.codec)) invalid(`当前模型不支持这个${title}编码（当前为 ${formatName(metadata.codec) || '未知'}；支持 ${limit.codecs.map(formatName).join('、')}），请转换后重新上传`)
   if (limit.minFps && (!(metadata.fps >= limit.minFps) || metadata.fps > limit.maxFps)) invalid(title + '帧率需为 ' + limit.minFps + '–' + limit.maxFps + ' FPS；原素材未被改帧')
 }

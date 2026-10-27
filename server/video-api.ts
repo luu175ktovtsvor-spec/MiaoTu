@@ -65,6 +65,10 @@ function uniqueUrls(values) {
     .filter(Boolean))]
 }
 
+function isSuiheLibraryReference(value) {
+  return /^(?:asset|whitelist):\/\/[^\s]+$/i.test(String(value || '').trim())
+}
+
 function modelModes(model) {
   return Array.isArray(model?.modes) ? model.modes : []
 }
@@ -246,6 +250,9 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
   const images = genericImages
   const videos = uniqueUrls([payload.video, ...requestedVideos])
   const audios = requestedAudios
+  const libraryReferences = [...images, ...frameEntries].filter(isSuiheLibraryReference)
+  if (libraryReferences.length && model.provider !== 'suihe') throw failure('人物白名单或云端素材只能用于穗禾模型', 422)
+  if (libraryReferences.length && (mode !== 'image' || frameEntries.some(isSuiheLibraryReference))) throw failure('人物白名单或云端素材请放在全能参考模式中', 422)
   const videoLimit = (mode === 'edit' || mode === 'extend') ? Math.max(1, limits.video ?? 0) : (limits.video ?? 0)
   const video = videos[0] || ''
   const referenceImageCount = frameEntries.length + images.length
@@ -405,7 +412,7 @@ function upstreamError(response, data) {
   const upstreamCode = String(data?.error?.code || data?.error?.type || data?.code || '').slice(0, 100)
   // 没有符合资格的媒体账号可能是路由或资格过滤，不能据此断言额度用尽。
   const message = upstreamCode === 'grok_media_no_eligible_account' || /No eligible Grok media accounts/i.test(raw)
-    ? 'Grok 视频通道暂无可用账号，请稍后重试或联系管理员'
+    ? 'Grok 视频通道暂无可用账号，请稍后重试或联系妙图团队'
     : raw
   return Object.assign(new Error(message), { status: response.ok ? 502 : response.status >= 500 ? 502 : 422, upstreamStatus: response.status, upstreamCode, upstreamMessage: raw, upstreamRequestId: String(data?.request_id || data?.requestId || response.headers.get('x-request-id') || '') })
 }
@@ -611,7 +618,7 @@ export async function prepareVideoRequest(payload, session, { env = process.env,
       throw failure(`当前普通 Grok 单图通道会沿用参考图比例（${source.width}×${source.height}），与所选 ${request.ratio} 不一致；请切换“混合参考”，或使用同比例参考图`, 422)
     }
   }
-  const imageUrls = uniqueUrls([request.image, ...request.images, request.firstFrame, request.lastFrame, ...request.keyframes.map(item => item.image.url)])
+  const imageUrls = uniqueUrls([request.image, ...request.images, request.firstFrame, request.lastFrame, ...request.keyframes.map(item => item.image.url)]).filter(url => !isSuiheLibraryReference(url))
   const needsImageValidation = Object.keys(referenceInputPolicy(request.model, 'image')).length > 0
   if ((needsImageValidation && imageUrls.length || request.videos.length || request.audios.length) && !probeReferenceMedia) throw failure('参考素材校验服务不可用，已阻止生成', 503)
   // Each probe is cached by the authenticated file revision. Run independent

@@ -12,7 +12,7 @@ import { appendUpload, uploadStatus, UPLOAD_CHUNK_BYTES } from './workspace-uplo
 import { videoPlayback, stopVideoPlayback } from './video-playback.ts'
 import { WorkspaceFiles, WORKSPACE_FILE_MAX_BYTES } from './workspace-files.ts'
 import { normalizeVideoBuffer } from './video-normalize.ts'
-import { assertReferenceInput, referenceInputPolicy } from './reference-input-contract.ts'
+import { assertReferenceInput, referenceInputPolicy, unsupportedReferenceFormat } from './reference-input-contract.ts'
 import { DEFAULT_PROJECT_ID, DEFAULT_PROJECT_NAME, projectId } from './projects.ts'
 import { IMAGE_RECEIPT_DIRECTORY, PREVIEW_DIRECTORY, mediaPermissions, mediaRoot, validMediaOwner, writeFileAtomic } from './media-files.ts'
 import { withRequestProject, withWorkspaceProject, currentProject } from './workspace-scope.ts'
@@ -89,6 +89,7 @@ import {
 import { qqOAuthConfig } from './qq-oauth.ts'
 import { dingTalkOAuthConfig, githubOAuthConfig, linuxDoOAuthConfig, oidcOAuthConfig, wechatOAuthConfig } from './oauth-extra.ts'
 import { enforceRequestLimit, requestOperation } from './request-guard.ts'
+import { getSuiheWhitelistAsset, listSuiheAssets, uploadSuiheAsset } from './suihe-assets.ts'
 
 const HOST = process.env.OIP_IMAGE_API_HOST || '127.0.0.1'
 const PORT = Number(process.env.OIP_IMAGE_API_PORT || 8788)
@@ -229,7 +230,7 @@ function parseImageData(value, model) {
   const bytes = Buffer.from(match[2], 'base64')
   if (!bytes.length) throw Object.assign(new Error('参考图内容为空'), { status: 422 })
   const limit = referenceInputPolicy(model, 'image')
-  if (!limit.mimes.includes(mime)) throw failure('当前模型不支持这个参考图片格式', 422)
+  if (!limit.mimes.includes(mime)) throw failure(unsupportedReferenceFormat(model, 'image', { mime }), 422)
   if (bytes.length > limit.maxBytes) throw failure('单张参考图不能超过 ' + limit.maxBytes / (1024 * 1024) + 'MB；原素材未被压缩', 422)
   return { value, mime, bytes, extension: mime === 'image/jpeg' ? 'jpg' : mime.split('/')[1] }
 }
@@ -249,7 +250,7 @@ function resolveImageReferenceFiles(payload, session, env = process.env) {
     if (!item || typeof item.path !== 'string') throw failure('参考素材路径无效', 422)
     const file = workspaceFiles.stat(session.userId, item.path, project)
     const mime = String(file.mime || '').split(';')[0].trim().toLowerCase().replace('image/jpg', 'image/jpeg')
-    if (!limit.mimes.includes(mime)) throw failure('当前模型不支持这个参考图片格式', 422)
+    if (!limit.mimes.includes(mime)) throw failure(unsupportedReferenceFormat(model, 'image', { mime }), 422)
     if (file.size > limit.maxBytes) throw failure('单张参考图不能超过 ' + limit.maxBytes / (1024 * 1024) + 'MB；原素材未被压缩', 422)
     if (item.revision && item.revision !== file.revision) throw failure('参考素材已更新，请刷新后重新选择', 409)
     const content = workspaceFiles.read(session.userId, item.path, project)
@@ -1139,6 +1140,35 @@ const server = createServer(withRequestProject(async (request, response) => {
     const origin = String(process.env.OIP_PUBLIC_ORIGIN || '').replace(/\/$/, '') || `http://${request.headers.host}`
     const token = createReferenceToken(management.referenceSecret(), { userId: session.userId, path, revision: file.revision, project })
     json(response, 200, { ok: true, url: `${origin}/api/imagine/reference?t=${encodeURIComponent(token)}`, expiresIn: Math.floor(REFERENCE_TTL_MS / 1000) })
+    return
+  }
+  // Suihe's person whitelist/cloud library is a server-side integration.
+  // The browser only selects a workspace file; API keys, sub-user namespaces,
+  // upload sequencing and supplier IDs stay behind this authenticated route.
+  if (url.pathname === '/api/imagine/suihe/library') {
+    if (session?.role !== 'user') throw failure('请先登录', 401)
+    if (request.method === 'GET') {
+      const library = url.searchParams.get('library') || 'whitelist'
+      json(response, 200, { ok: true, ...(await listSuiheAssets({ userId: session.userId, library, page: url.searchParams.get('page'), pageSize: url.searchParams.get('pageSize') })) })
+      return
+    }
+    if (request.method === 'POST') {
+      mutation(request, session)
+      const payload = await readJson(request, SMALL_BODY_BYTES)
+      const library = payload?.library || 'whitelist'
+      const project = resolveWorkspaceProject(session.userId, payload?.project)
+      const path = workspaceFiles.path(String(payload?.path || '').trim())
+      const file = workspaceFiles.locate(session.userId, path, project)
+      const content = workspaceFiles.read(session.userId, path, project)
+      if (content.revision !== file.revision) throw failure('素材已更新，请重新选择后上传', 409)
+      json(response, 200, { ok: true, ...(await uploadSuiheAsset({ userId: session.userId, bytes: content.bytes, mime: file.mime, name: payload?.name || path.split('/').at(-1), library })) })
+      return
+    }
+  }
+  const suiheWhitelist = /^\/api\/imagine\/suihe\/library\/whitelist\/([^/]+)$/.exec(url.pathname)
+  if (suiheWhitelist && request.method === 'GET') {
+    if (session?.role !== 'user') throw failure('请先登录', 401)
+    json(response, 200, { ok: true, ...(await getSuiheWhitelistAsset({ userId: session.userId, id: decodeURIComponent(suiheWhitelist[1]) })) })
     return
   }
   if (url.pathname.startsWith('/api/imagine/workspace')) {

@@ -214,6 +214,10 @@ function metasoRules(ratios, extra = {}, frameRatios = ['adaptive']) {
   return {
     ratiosByMode: {
       text: ratios.filter(item => item !== 'adaptive'),
+      // Mixed references are represented by an array mode, which the client
+      // normalizes to `image`. Keep this explicit so Seedance's fixed-ratio
+      // contract does not fall back to model.ratios and expose `adaptive`.
+      image: ratios.filter(item => item !== 'adaptive'),
       singleImage: frameRatios,
       startFrameOptional: frameRatios,
       endFrameOptional: frameRatios,

@@ -7,6 +7,7 @@ import { setSuiheModels, suiheModelId } from './suihe-catalog.ts'
 import { arkVideoContent } from './ark-video.ts'
 
 const fail = (message, extra = {}) => Object.assign(new Error(message), {status:502,...extra})
+const isLibraryReference = value => /^(?:asset|whitelist):\/\/[^\s]+$/i.test(String(value || '').trim())
 export function suiheSettings(env = process.env) {
   const baseUrl = String(env.SUIHE_BASE_URL || 'https://api.suihemedia.cloud').replace(/\/+$/, '').replace(/\/v1$/, '')
   assertProviderRequestAllowed('suihe',baseUrl,env)
@@ -78,7 +79,7 @@ export async function estimateSuiheVideo(request, {env=process.env,fetchImpl=fet
   // omni reference and video edit pricing rules.
   const functionMode=request.mode==='edit' ? 'video_edit' : request.mode==='image' || request.mode==='extend' ? 'omni_reference' : 'first_last_frames'
   const body={model:request.model.upstreamModelId || suiheModelId(request.model),prompt:String(request.prompt || ''),function_mode:functionMode,duration,
-    ratio:request.ratio || 'adaptive',resolution,video_resolution:resolution,creative_mode:creativeMode,generate_audio:request.generateAudio!==false}
+    ratio:request.ratio || 'adaptive',video_resolution:resolution,creative_mode:creativeMode,generate_audio:request.generateAudio!==false}
   const key=createHash('sha256').update(config.baseUrl+'\0'+config.apiKey+'\0'+JSON.stringify(body)).digest('hex')
   let entry=videoEstimates.get(key)
   if(entry?.value && Date.now()-entry.at<30_000) return entry.value
@@ -143,17 +144,21 @@ export async function createSuiheTask(request, {env=process.env,fetchImpl=fetch,
   const parameters=request.parameters || request.generation || {}
   const body:Record<string,any>={model:model.request_model,prompt:request.prompt}
   const files:Array<{field:string;value:string;kind:string;bytes?:BlobPart;mime?:string}>=[]
+  let firstFrame = ''
+  let lastFrame = ''
   if(video) {
     // Use the official content roles, then adapt only the supplier transport.
     const content = arkVideoContent(request)
-    const firstFrame = content.find(part => part.role === 'first_frame')?.image_url?.url
-    const lastFrame = content.find(part => part.role === 'last_frame')?.image_url?.url
+    firstFrame = content.find(part => part.role === 'first_frame')?.image_url?.url || ''
+    lastFrame = content.find(part => part.role === 'last_frame')?.image_url?.url || ''
     const options=request.arkOptions && typeof request.arkOptions==='object' ? request.arkOptions : {}
     const capability=model.capabilities || {}
     const creativeMode=String(request.creativeMode || parameters.creativeMode || capability.default_creative_mode || 'super_economy')
-    // v1.1 documents resolution; live pre-estimate still reads video_resolution.
-    // Send identical aliases in JSON and multipart so neither route defaults to 720p.
-    Object.assign(body,{video_resolution:String(request.resolution).toLowerCase(),ratio:request.ratio || '16:9',duration:request.mode==='edit'?Math.round(request.billableDuration):request.duration,resolution:String(request.resolution).toLowerCase(),creative_mode:creativeMode,generate_audio:request.generateAudio!==false})
+    // v1.1 uses video_resolution as the canonical field. The generation
+    // endpoint still accepts the legacy resolution alias; send the same value
+    // for compatibility with older supplier gateways, never two values.
+    const videoResolution=String(request.resolution).toLowerCase()
+    Object.assign(body,{video_resolution:videoResolution,resolution:videoResolution,ratio:request.ratio || '16:9',duration:request.mode==='edit'?Math.round(request.billableDuration):request.duration,creative_mode:creativeMode,generate_audio:request.generateAudio!==false})
     for(const [key,value] of Object.entries({
       frames:options.frames ?? parameters.frames,
       seed:options.seed ?? parameters.seed,
@@ -177,7 +182,10 @@ export async function createSuiheTask(request, {env=process.env,fetchImpl=fetch,
     }
     if(firstFrame) files.push({field:'first_frame',value:firstFrame,kind:'image'})
     if(lastFrame) files.push({field:'end_frame',value:lastFrame,kind:'image'})
-    if(body.function_mode==='omni_reference') [...new Set<string>([request.image,...request.images||[]].filter(Boolean))].forEach((value,index)=>files.push({field:`image_file_${index+1}`,value,kind:'image'}))
+    const imageReferences = [...new Set<string>([request.image,...request.images||[]].filter(Boolean))]
+    const libraryMaterials = body.function_mode === 'omni_reference' ? imageReferences.filter(isLibraryReference) : []
+    if (libraryMaterials.length) body.materials = libraryMaterials.map(url => ({type:'image',url}))
+    if(body.function_mode==='omni_reference') imageReferences.filter(value => !isLibraryReference(value)).forEach((value,index)=>files.push({field:`image_file_${index+1}`,value,kind:'image'}))
     for(const [index,value] of (request.videos||[]).entries()) files.push({field:`video_file_${index+1}`,value,kind:'video'})
     for(const [index,value] of (request.audios||[]).entries()) files.push({field:`audio_file_${index+1}`,value,kind:'audio'})
     if(Number(parameters.videoSeconds)>0) body.reference_video_duration=request.mode==='edit'?Math.round(request.billableDuration):parameters.videoSeconds
@@ -194,6 +202,17 @@ export async function createSuiheTask(request, {env=process.env,fetchImpl=fetch,
     })) if(value!==undefined&&value!==null&&value!=='') body[key]=value
     for(const item of request.references||[]) files.push({field:'images',value:item.value,kind:'image',bytes:item.bytes,mime:item.mime})
   }
+  // Keep the transport honest: every admitted reference must become exactly
+  // one multipart file, and no file may be silently dropped or invented while
+  // adapting the canvas request to Suihe's field names.
+  const expectedFirstFrame = video ? (request.firstFrame || (request.mode === 'singleImage' ? request.image || request.images?.[0] : '')) : ''
+  const expectedImageFiles = video && body.function_mode === 'omni_reference'
+    ? [...new Set<string>([request.image, ...(request.images || [])].filter(Boolean))].filter(value => !isLibraryReference(value)).length : 0
+  const expectedFileCount = (expectedFirstFrame ? 1 : 0) + (video && lastFrame ? 1 : 0) + expectedImageFiles
+    + (video ? (request.videos || []).length + (request.audios || []).length : (request.references || []).length)
+  if (files.length !== expectedFileCount || files.some(file => !String(file.value || '').trim())) {
+    throw fail('参考素材没有完整进入穗禾上传队列，请重新连接素材后重试',{status:422,submissionNotStarted:true})
+  }
   let payload:BodyInit,headers:Record<string,string>={authorization:`Bearer ${config.apiKey}`}
   let sentFields = body
   const sentFiles:Array<Record<string,any>>=[]
@@ -201,11 +220,15 @@ export async function createSuiheTask(request, {env=process.env,fetchImpl=fetch,
     const form=new FormData()
     const fields={...body}
     sentFields=fields
-    for(const [key,value] of Object.entries(fields)) form.append(key,String(value))
+    for(const [key,value] of Object.entries(fields)) form.append(key,typeof value === 'object' ? JSON.stringify(value) : String(value))
     for(const file of files) {
       const blob=await referenceBlob(file.value,file.kind,{fetchImpl:discoveryFetch,signal,bytes:file.bytes,mime:file.mime})
+      if (!(blob.size > 0)) throw fail('参考素材读取为空，穗禾任务未提交',{status:422,submissionNotStarted:true})
       form.append(file.field,blob,`${file.field}.${({'image/jpeg':'jpg','image/png':'png','image/webp':'webp','video/mp4':'mp4','video/quicktime':'mov','audio/mpeg':'mp3','audio/wav':'wav'})[blob.type]||'bin'}`)
       sentFiles.push({field:file.field,kind:file.kind,mime:blob.type,bytes:blob.size})
+    }
+    if (sentFiles.length !== files.length || sentFiles.some(file => !(file.bytes > 0))) {
+      throw fail('参考素材未完整上传，穗禾任务未提交',{status:422,submissionNotStarted:true})
     }
     payload=form
   } else {headers['content-type']='application/json';payload=JSON.stringify(body)}
@@ -230,7 +253,11 @@ export async function pollSuiheTask(id,{env=process.env,fetchImpl=fetch,signal}:
   // Current task responses expose an explicit CNY settlement. Keep that
   // separate from the supplier's raw credit amounts; never guess their unit.
   const billing=data.billing && typeof data.billing==='object' ? data.billing : null
-  return {id,status:status==='success'?'succeeded':['failed','cancelled'].includes(status)?'failed':'running',urls,url:urls[0]||'',duration:data.duration??null,width:data.width??null,height:data.height??null,mime:'video/mp4',progress:data.progress_pct??null,error:data.fail_reason||'',upstreamModel:data.model||'',upstreamRequestId:id,upstreamStatus:response.status,usage:{...(data.usage||{}),suihe_billing:billing,suihe_actual_cost:data.actual_cost??null,suihe_estimated_cost:data.estimated_cost??null,suihe_cost_unit:'unconfirmed'},metadata:{raw:data,status}}
+  // `expired` is a terminal supplier state. The local generation lifecycle
+  // settles terminal upstream failures through its failed/refund path, so do
+  // not leave an expired supplier task polling forever as `running`.
+  const terminalFailure = ['failed', 'cancelled', 'expired'].includes(status)
+  return {id,status:status==='success'?'succeeded':terminalFailure?'failed':'running',urls,url:urls[0]||'',duration:data.duration??null,width:data.width??null,height:data.height??null,mime:'video/mp4',progress:data.progress_pct??null,error:data.fail_reason || (status === 'expired' ? '穗禾任务已过期' : ''),upstreamModel:data.model||'',upstreamRequestId:id,upstreamStatus:response.status,usage:{...(data.usage||{}),suihe_billing:billing,suihe_actual_cost:data.actual_cost??null,suihe_estimated_cost:data.estimated_cost??null,suihe_cost_unit:'unconfirmed'},metadata:{raw:data,status}}
 }
 export async function receiveSuiheImages(request,id,{env=process.env,fetchImpl=fetch,signal}:Record<string,any>={}) {
   const config=suiheSettings(env)

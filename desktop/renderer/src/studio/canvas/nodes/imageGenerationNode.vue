@@ -95,7 +95,6 @@
             expandable
             expand-mode="external" />
         </div>
-        <local-media-info :model="selectedModel" compact />
         <div class="promptFooter">
           <el-select
             v-model="data.model"
@@ -125,7 +124,6 @@
               </el-radio-group>
             </div>
             <p v-else>{{ translate('图片尺寸、比例跟随平台页面') }}</p>
-            <local-media-info :model="selectedModel" />
           </el-popover>
           <generationSettings v-else
             v-model:size="data.size"
@@ -199,7 +197,6 @@ import uploadProgress from "../components/uploadProgress.vue";
 import { beginUpload } from "../uploadStatus";
 import { assetFileType, ASSET_MAX_BYTES } from "../assetFile";
 import generationSettings from "./generationSettings.vue";
-import localMediaInfo from './localMediaInfo.vue';
 import { localReferenceRejection } from '../../../../../local-media/catalog.ts';
 import { getTargetValues } from "../scaffold/nodeInputs";
 import { translate } from "@miaoimg/i18n/vue";

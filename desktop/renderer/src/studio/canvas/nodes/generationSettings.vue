@@ -92,7 +92,6 @@
           <small>{{ layerReady ? translate("1 张底图 + 最多 16 个透明图层") : translate("需要恰好 1 张参考图") }}</small>
         </span>
       </label>
-      <local-media-info :model="model" />
     </div>
   </el-popover>
 </template>
@@ -104,7 +103,6 @@ import { IconChevronUp } from "@tabler/icons-vue";
 import { translate } from "@miaoimg/i18n/vue";
 import { fitsCustomSize } from "../scaffold/nodeAi";
 import { visibleControls } from "../scaffold/mediaParameters";
-import localMediaInfo from './localMediaInfo.vue';
 
 const props = defineProps<{ sizes: string[]; ratios: string[]; disabled?: boolean; model?: { providerId?: string; modelId?: string; formats?: string[]; quality?: string[]; inputFidelity?: string[]; maxCount?: number; supportsTransparent?: boolean; supportsLayerDecomposition?: boolean; optimizePromptModes?: string[]; customSize?: boolean; sizes?: { value: string; ratio?: string; label?: string }[]; sizeRule?: { minPixels: number; maxPixels: number; minRatio: number; maxRatio: number; multipleOf?: number; maxEdge?: number } | null }; referenceCount?: number }>();
 const size = defineModel<string>("size", { required: true });
