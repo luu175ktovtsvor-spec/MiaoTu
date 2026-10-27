@@ -66,6 +66,7 @@ const exists = selector => evaluate(`!!document.querySelector(${JSON.stringify(s
 async function canvas() {
   await wait(async () => !(await exists('#desktop-account-email')) && await evaluate(`[...document.querySelectorAll('.studio-top button')].some(b => (b.innerText||'').trim() === '账号')`), 'authenticated canvas', 60000)
   if (await exists('.release-notes-close')) { await evaluate(`document.querySelector('.release-notes-close')?.click()`); await wait(() => !exists('.release-notes-close'), 'release notes closed', 15000) }
+  await evaluate(`window.dispatchEvent(new Event('miao-open-home'))`)
   if (!(await exists('.miaoimgApp'))) {
     await wait(() => exists('.studio-home__card:not(.is-empty)') || exists('.studio-home__hero button'), 'existing project')
     if (await exists('.studio-home__card:not(.is-empty)')) await evaluate(`document.querySelector('.studio-home__card:not(.is-empty)')?.click()`)
