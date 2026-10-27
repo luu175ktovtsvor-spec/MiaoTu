@@ -10,6 +10,20 @@ export type ReleaseNotes = {
 // 更新说明直接写软件修好了什么：哪一个界面、哪一项操作，以前错在哪里，现在怎样。
 // 不写「上游」「部分问题」「体验优化」这类看不出具体改动的话。
 export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
+  '3.1.11': {
+    title: { zh: '创作精选与大陆服务迁移', en: 'Creation showcase and mainland service migration' },
+    fixes: [
+      { zh: '创作精选按实际来源、分页和缓存状态返回结果，找不到本地精选素材时会明确提示，不再把缺失数据当成已加载。', en: 'Creation showcase results now follow the actual source, pagination and cache state, and missing local showcase data is reported clearly instead of appearing loaded.' },
+      { zh: '修复创作精选封面保存、MCP 流式消息解析和路径校验问题，桌面 Agent 可以正确读取并保存精选素材。', en: 'Fixed showcase cover saving, MCP stream parsing and path validation so the desktop Agent can read and save selected references correctly.' },
+      { zh: '官网、账号、管理端和媒体服务统一迁移到大陆服务，Sub2API 相关模型继续按原出口请求。', en: 'The website, accounts, admin console and media services now use the mainland runtime, while Sub2API-backed models continue through their existing route.' },
+    ],
+    improvements: [
+      { zh: '桌面更新文件继续使用独立下载入口，发布脚本保留可回滚版本并在发布后检查服务端口。', en: 'Desktop update files continue to use a separate download entry, with rollback versions retained and service ports checked after publication.' },
+    ],
+    knownIssues: [
+      { zh: '大陆服务器域名在完成备案前可能被云服务商拦截；临时可通过服务器 IP 访问，正式域名访问需要备案或合规的边缘入口。', en: 'Before mainland filing is completed, the cloud provider may block the mainland domain. The server IP can be used temporarily; formal domain access needs filing or a compliant edge entry.' },
+    ],
+  },
   '3.1.10': {
     title: { zh: '价格、渠道与反馈管理更完整', en: 'More complete pricing, channel controls and feedback management' },
     fixes: [
