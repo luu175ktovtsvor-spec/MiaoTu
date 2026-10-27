@@ -20,6 +20,7 @@ export type BaseNodeMediaModel = Omit<MediaModel, "mode"> & {
 
 // 图片、视频节点使用的可选能力。
 export interface NodeMediaModelExtensions {
+  pricingNotice?: string;
   maxReferences?: number;
   // 本机豆包/Dola 先展示已核对的预置，账号菜单返回后覆盖并标记来源。
   parameterSource?: 'preset' | 'account';

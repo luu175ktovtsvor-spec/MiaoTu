@@ -4,7 +4,7 @@ import { imageSources } from '../media'
 import { clearLibraryHandoff, readLibraryHandoff, LIBRARY_TEXT_LIMIT } from '../libraryHandoff'
 import { DEFAULT_PROJECT, setActiveProject, setWorkspaceSession, subscribeWorkspaceScope, workspaceDirectory } from '../lib/workspaceRemote'
 import useWorkspaceFiles from '../lib/workspaceFiles'
-import { ClockCounterClockwise, FolderSimple, Receipt, SignOut, Sparkle } from '@phosphor-icons/react'
+import { ArrowLeft, CaretDown, ClockCounterClockwise, FolderSimple, Receipt, ShieldCheck, SignOut, Sparkle, UserCircle } from '@phosphor-icons/react'
 import { dictText, useLang } from '../i18n'
 // 进度计算全仓只有一份：与框架无关的核心，画布 composable 和历史面板共用（见 generationProgressCore.ts）
 import { createProgressTracker } from './generationProgressCore'
@@ -21,6 +21,7 @@ import { navigateWorkspace, reloadWorkspace } from '../desktop/navigation'
 import DesktopRail from '../desktop/DesktopRail'
 import { studioPage, studioPoint, studioPointParts, studioRecords, studioText } from './studioText'
 import './studio.css'
+import './account.css'
 import { ACTIVE_STATUSES, TERMINAL_STATUSES, HISTORY_KINDS, historyProgress, currentMonthRange } from './history'
 import { HistoryCard, LedgerTable, PanelEmpty } from './historyView'
 import { emptyHistory, emptyLedger, type BoundCanvasInsert, type HistoryItem, type HistoryState, type LedgerState, type StudioConfig, type StudioSession, type HistoryProgress, type LibrarySelection } from './studioState'
@@ -142,6 +143,10 @@ export default function StudioPage() {
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '' })
   const [passwordBusy, setPasswordBusy] = useState(false)
   const passwordPendingRef = useRef(false)
+  const [profileName, setProfileName] = useState('')
+  const [profileBusy, setProfileBusy] = useState(false)
+  const profilePendingRef = useRef(false)
+  useEffect(() => { setProfileName(userSession?.user?.name || '') }, [historyOwner, userSession?.user?.name])
   // 用验证码或第三方登录建的账号没有密码，那种情况下不摆「原密码」，直接设一个。
   const hasPassword = userSession?.user?.hasPassword !== false
 
@@ -448,6 +453,7 @@ export default function StudioPage() {
   // Server balance is authoritative. A delayed response must never replace
   // another account's session or overwrite a newer refresh.
   const refreshSession = useCallback(async () => {
+    if (profilePendingRef.current) return
     sessionRefreshRef.current?.abort()
     const controller = new AbortController()
     sessionRefreshRef.current = controller
@@ -637,7 +643,7 @@ export default function StudioPage() {
   }
 
   async function logoutUser() {
-    if (logoutPendingRef.current) return
+    if (logoutPendingRef.current || profilePendingRef.current) return
     logoutPendingRef.current = true
     setLogoutBusy(true)
     setError('')
@@ -657,8 +663,33 @@ export default function StudioPage() {
     finally { logoutPendingRef.current = false; setLogoutBusy(false) }
   }
 
+  async function saveProfile() {
+    if (logoutPendingRef.current || passwordPendingRef.current || profilePendingRef.current) return
+    const name = profileName.trim()
+    if (!name || name.length > 60 || /[\u0000-\u001f\u007f]/.test(name)) { setError(studioText('请输入 1–60 字的昵称，不能包含换行或控制字符', lang)); return }
+    profilePendingRef.current = true
+    sessionRefreshRef.current?.abort()
+    setProfileBusy(true); setError(''); setNotice('')
+    const lifetime = pageLifetimeRef.current
+    const authEpoch = authEpochRef.current, owner = workspaceOwnerRef.current
+    const current = () => !lifetime.signal.aborted && authEpoch === authEpochRef.current && owner === workspaceOwnerRef.current
+    try {
+      const response = await fetch('./api/imagine/profile', { method: 'POST', signal: lifetime.signal, headers: { 'content-type': 'application/json', 'x-csrf-token': userSession?.csrf || '' }, body: JSON.stringify({ name }) })
+      const data = await response.json()
+      if (!current()) return
+      if (!response.ok) throw new Error(data.error || studioText('昵称保存失败，请重试', lang))
+      if (!data.session?.user || workspaceOwnerKey(data.session) !== owner) throw new Error(studioText('昵称保存失败，请重试', lang))
+      setUserSession(data.session)
+      setConfig(value => value ? { ...value, session: data.session } : value)
+      setProfileName(data.session.user.name)
+      setNotice(studioText('昵称已更新', lang))
+      try { localStorage.setItem(SESSION_CHANGE_KEY, String(Date.now()) + ':' + Math.random()) } catch { /* Focus refresh reconciles other views. */ }
+    } catch (profileError) { if (current()) setError(profileError.message) }
+    finally { profilePendingRef.current = false; setProfileBusy(false) }
+  }
+
   async function changePassword() {
-    if (logoutPendingRef.current || passwordPendingRef.current) return
+    if (logoutPendingRef.current || passwordPendingRef.current || profilePendingRef.current) return
     if (passwordForm.newPassword.length < 8) { setError(studioText('新密码至少需要 8 位', lang)); return }
     passwordPendingRef.current = true
     setPasswordBusy(true); setError('')
@@ -744,10 +775,10 @@ export default function StudioPage() {
   const statusMessage = error || libraryHandoffError || notice
   const openAccountSurface = () => {
     closeSettings()
-    if (window.miaoDesktop) window.dispatchEvent(new Event('miao-desktop-account'))
+    if (window.miaoDesktop && !signedIn) window.dispatchEvent(new Event('miao-desktop-account'))
     else void changeSurface('account')
   }
-  // 桌面账号弹窗只放余额和退出，充值与积分明细在账号页里。
+  // 已登录直接进入完整账号页；未登录仍使用原生登录弹窗。
   const openAccountPage = () => { closeSettings(); void changeSurface('account') }
 
   return (
@@ -765,7 +796,7 @@ export default function StudioPage() {
           void changeSurface('history')
         }}
         onSettings={openSettings}
-        onAccount={() => { closeSettings(); window.dispatchEvent(new Event('miao-desktop-account')) }}
+        onAccount={openAccountSurface}
       />}
       <div className="studio-app__body">
       <div className="grain-overlay" aria-hidden="true" />
@@ -869,20 +900,49 @@ export default function StudioPage() {
       ) : surface === 'feedback' ? (
         <FeedbackPage csrf={userSession?.csrf} signedIn={signedIn} lang={lang} onLogin={() => window.dispatchEvent(new Event('miao-desktop-account'))} onBack={() => openHomeSection('home')} onUnread={setFeedbackUnread} />
       ) : surface === 'account' ? (
-      <main className="studio-record">
-        <button type="button" className="make-back" onClick={() => setSurface('look')}>{studioText('返回', lang)}</button>
-        <div className="account-heading">
-          <h1>{studioText('账号', lang)}</h1>
-          <button type="button" className="account-logout" onClick={logoutUser} disabled={logoutBusy || passwordBusy} aria-busy={logoutBusy}>
+      <main className="studio-record account-page">
+        <button type="button" className="account-back" onClick={() => void changeSurface(window.miaoDesktop ? 'home' : 'look')}><ArrowLeft size={15} aria-hidden="true" />{studioText('返回', lang)}</button>
+        <header className="account-heading">
+          <div><h1>{studioText('账号', lang)}</h1><p>{studioText('管理个人资料、账号安全与积分', lang)}</p></div>
+          <button type="button" className="account-logout" onClick={logoutUser} disabled={logoutBusy || passwordBusy || profileBusy} aria-busy={logoutBusy}>
             <SignOut size={16} aria-hidden="true" />
             {studioText(logoutBusy ? '正在退出…' : '退出登录', lang)}
           </button>
-        </div>
-        <PaymentPanel payment={config?.payment} csrf={userSession?.csrf} onPaid={refreshAccount} points={balance} />
-        <div className="panel-section">
-          <div className="panel-section__head">
-            <h3>{studioText('积分流水', lang)}</h3>
+        </header>
+        <div className="account-layout">
+          <div className="account-settings">
+            <section className="account-card" aria-labelledby="account-profile-title">
+              <header className="account-card__heading"><UserCircle size={20} aria-hidden="true" /><h2 id="account-profile-title">{studioText('个人资料', lang)}</h2></header>
+              <form className="account-form" onSubmit={(event) => { event.preventDefault(); void saveProfile() }}>
+                <div className="account-field"><label htmlFor="account-nickname">{studioText('昵称', lang)}<span className="account-field__count">{profileName.length}/60</span></label>
+                  <input id="account-nickname" type="text" autoComplete="nickname" value={profileName} onChange={(event) => setProfileName(event.target.value)} maxLength={60} required disabled={profileBusy || logoutBusy || passwordBusy} />
+                </div>
+                <div className="account-email"><span>{studioText('登录邮箱', lang)}</span><p>{userSession?.user?.email || '—'}</p></div>
+                <button className="account-save" type="submit" disabled={profileBusy || logoutBusy || passwordBusy || !profileName.trim() || profileName.trim() === userSession?.user?.name} aria-busy={profileBusy}>{studioText(profileBusy ? '正在保存…' : '保存昵称', lang)}</button>
+              </form>
+            </section>
+            <section className="account-card" aria-labelledby="account-security-title">
+              <header className="account-card__heading"><ShieldCheck size={20} aria-hidden="true" /><h2 id="account-security-title">{studioText('账号安全', lang)}</h2></header>
+              <details className="account-security">
+                <summary><span>{studioText(hasPassword ? '修改密码' : '设置密码', lang)}</span><CaretDown size={16} aria-hidden="true" /></summary>
+                <form className="account-form" onSubmit={(event) => { event.preventDefault(); void changePassword() }}>
+                  {hasPassword && <div className="account-field"><label htmlFor="account-current-password">{studioText('原密码', lang)}</label><input id="account-current-password" type="password" autoComplete="current-password" value={passwordForm.currentPassword} onChange={(event) => setPasswordForm((current) => ({ ...current, currentPassword: event.target.value }))} disabled={passwordBusy || logoutBusy || profileBusy} required /></div>}
+                  <div className="account-field"><label htmlFor="account-new-password">{studioText(hasPassword ? '新密码' : '密码', lang)}</label><input id="account-new-password" type="password" autoComplete="new-password" placeholder={studioText('至少 8 位', lang)} value={passwordForm.newPassword} onChange={(event) => setPasswordForm((current) => ({ ...current, newPassword: event.target.value }))} minLength={8} maxLength={128} disabled={passwordBusy || logoutBusy || profileBusy} required /></div>
+                  {!hasPassword && <p className="account-form__hint">{studioText('设置后可使用邮箱和密码登录。', lang)}</p>}
+                  <button className="account-save" type="submit" disabled={passwordBusy || logoutBusy || profileBusy}>{passwordBusy ? studioText('正在保存…', lang) : studioText(hasPassword ? '修改密码' : '设置密码', lang)}</button>
+                </form>
+              </details>
+            </section>
           </div>
+          <div className="account-billing">
+            <div className="account-card account-credit">
+        <PaymentPanel payment={config?.payment} csrf={userSession?.csrf} onPaid={refreshAccount} points={balance} />
+            </div>
+        <section className="account-card account-ledger" aria-labelledby="account-ledger-title">
+          <header className="account-card__heading">
+            <Receipt size={20} aria-hidden="true" /><h2 id="account-ledger-title">{studioText('积分流水', lang)}</h2>
+            {ledgerState.status === 'ready' && ledgerState.items.length > 8 && <button type="button" className="account-ledger__toggle" aria-expanded={ledgerExpanded} onClick={() => setLedgerExpanded((value) => !value)}>{studioText(ledgerExpanded ? '收起' : '显示全部', lang)}</button>}
+          </header>
           {ledgerState.status === 'loading' && <p>{studioText('正在读取额度流水…', lang)}</p>}
           {ledgerState.status === 'error' && <FeedbackNotice message={ledgerState.error} />}
           {ledgerState.status === 'ready' && ledgerState.items.length === 0 && (
@@ -892,22 +952,12 @@ export default function StudioPage() {
               note={studioText('充值和消耗都会记在这里，方便随时对账。', lang)}
             />
           )}
-          {ledgerState.status === 'ready' && ledgerState.items.length > 0 && <>
+          {ledgerState.status === 'ready' && ledgerState.items.length > 0 && (
             <LedgerTable rows={ledgerExpanded ? ledgerState.items : ledgerState.items.slice(0, 8)} lang={lang} locale={locale} />
-            {ledgerState.items.length > 8 && (
-              <button type="button" className="ledger-toggle" onClick={() => setLedgerExpanded((value) => !value)}>
-                {studioText(ledgerExpanded ? '收起' : '显示全部', lang)}
-              </button>
-            )}
-          </>}
+          )}
+        </section>
+          </div>
         </div>
-        <form className="account-password" onSubmit={(event) => { event.preventDefault(); void changePassword() }}>
-          <h2>{studioText(hasPassword ? '修改密码' : '设置密码', lang)}</h2>
-          {hasPassword && <input type="password" autoComplete="current-password" placeholder={studioText('原密码', lang)} value={passwordForm.currentPassword} onChange={(event) => setPasswordForm((current) => ({ ...current, currentPassword: event.target.value }))} required />}
-          <input type="password" autoComplete="new-password" placeholder={studioText(hasPassword ? '新密码（至少 8 位）' : '密码（至少 8 位）', lang)} value={passwordForm.newPassword} onChange={(event) => setPasswordForm((current) => ({ ...current, newPassword: event.target.value }))} minLength={8} required />
-          {!hasPassword && <p className="account-password-hint">{studioText('登录需要密码和邮箱验证码。还没有密码的账号，在这里设一个。', lang)}</p>}
-          <button type="submit" disabled={passwordBusy || logoutBusy}>{passwordBusy ? studioText('正在保存…', lang) : studioText(hasPassword ? '修改密码' : '设置密码', lang)}</button>
-        </form>
       </main>
       ) : surface === 'home' ? (
       <StudioHome

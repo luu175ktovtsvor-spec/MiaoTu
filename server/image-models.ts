@@ -529,7 +529,10 @@ export function defaultModelChannelSettings(env = process.env) {
 // the database row carries an explicit provider snapshot.
 export function modelForGeneration(id, parameters: Record<string, any> = {}, provider = ''): Record<string, any> | null {
   const current = modelById(id)
-  const original = CATALOG.find(model => model.id === current?.id || model.publicId === current?.publicId) || current
+  if (!current) return null
+  // A missing publicId must not match another model's missing publicId.
+  // Grok has only id; that comparison previously selected the first image model.
+  const original = CATALOG.find(model => model.id === current.id || (current.publicId && model.publicId === current.publicId)) || current
   const frozen = parameters.upstreamProvider || provider
   // New requests resolve through activeModelForSettings and freeze the provider.
   // Legacy records without a snapshot keep their catalog resolution; accepted
@@ -557,7 +560,7 @@ export function publicModelCatalog(env = process.env, settings: Record<string, a
   // 公开目录只给模型 ID 与能力：不暴露供应商标识，前端不展示供应商。
   const seen = new Set()
   return CATALOG.map((base: any) => activeModelForSettings(base.publicId || base.id, settings, env))
-    .filter((model: any) => model && !model.video && !model.internalOnly && !seen.has(model.publicId || model.id))
+    .filter((model: any) => model && !model.video && !model.internalOnly && (model.provider !== 'suihe' || Boolean(suiheCapability(model)?.request_model)) && !seen.has(model.publicId || model.id))
     .map((model: any) => {
       seen.add(model.publicId || model.id)
       return ({
@@ -594,7 +597,7 @@ export function publicModelCatalog(env = process.env, settings: Record<string, a
 export function publicVideoCatalog(env = process.env, settings: Record<string, any> = {}) {
   const seen = new Set()
   return CATALOG.map((base: any) => activeModelForSettings(base.publicId || base.id, settings, env))
-    .filter((model: any) => model && model.video && !model.internalOnly && !seen.has(model.publicId || model.id))
+    .filter((model: any) => model && model.video && !model.internalOnly && (model.provider !== 'suihe' || Boolean(suiheCapability(model)?.request_model)) && !seen.has(model.publicId || model.id))
     .map((model: any) => {
       seen.add(model.publicId || model.id)
       return ({

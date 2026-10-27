@@ -258,7 +258,7 @@ export function videoCreditsPerSecond(model, resolution) {
   if (isCostPlusVideo(id)) {
     const policy = adminVideoPricing(); const tier = policy.metasoTiers[id];
     const selected = resolution || (id === 'MiniMax-H3' ? '768P' : '720p');
-    if (tier) { const item = tier[String(selected).toLowerCase()]; if (!item) return null; const expenses=videoExpenses(policy);return withSuiheMarkup(Math.ceil((item.withoutVideo * policy.metasoRmbPerCredit + policy.markupPerSecond+expenses.rmbPerOutputSecond)/(1-expenses.paymentFeePercent/100)*10000)/10000) }
+    if (tier) { const item = tier[String(selected).toLowerCase()]; if (!item) return null; return Math.round((item.withoutVideo * policy.metasoRmbPerCredit + policy.markupPerSecond)*10000)/10000 }
     return withSuiheMarkup(costPlusVideoEstimate({model:id,parameters:{duration:5,resolution:selected,ratio:'16:9'}}).points/5)
   }
   const rates = VIDEO_CREDIT_RATES[id] || { default: 0.5 }
@@ -360,9 +360,9 @@ export function estimateGenerationCost({ model, generation, referenceCount = 0, 
       if (!cost) throw Error('该穗禾视频档位采购价尚未配置')
       const outputSeconds = Number(cost.outputSeconds || requestedSeconds)
       // Accepted tasks keep the surcharge frozen at submission. Older tasks
-      // without this field used RMB 0.5 and must not be repriced retroactively.
+      // without this field used RMB 0.05 and must not be repriced retroactively.
       const markupPerUnit = generation?.suiheCost?.customerMarkupRmbPerUnit
-        ?? (generation?.submissionState !== undefined ? 0.5 : SUIHE_CUSTOMER_MARKUP)
+        ?? (generation?.submissionState !== undefined ? 0.05 : SUIHE_CUSTOMER_MARKUP)
       const markup = Math.round(outputSeconds * markupPerUnit * 10000) / 10000
       const points = Math.max(0.0001, Math.round((cost.rmb + markup) * 10000) / 10000)
       return {
@@ -689,7 +689,7 @@ export function publicCostPolicy(catalog = modelCatalog()) {
     arkImageMarkup: ARK_IMAGE_CREDIT_MARKUP,
     rules: [
       '每张生成图片按模型的积分单价计费：GPT 图片 0.1、Grok 图片 0.1、豆包按官方原价 + 0.1（分辨率越高单价越高）',
-      '非 Grok 视频：上游成本加生成时长每秒加价，向上取到 0.01 积分；先预扣，成功后按实际用量结算；Grok 原价保持',
+      '视频按采购成本加输出时长加价：穗禾每秒 0.10，其他每秒 0.10；不叠加服务器分摊或支付费；管理员人工价优先',
       '每个视频模型的秒数、分辨率不同，可选项由模型能力给出（如 4–15 秒、720p）',
       'H3 参考视频按输入时长计费，图片素材前 5 张免费、超出按张计费',
       '用户积分按任务状态结算；上游失败、取消或返回不明是否扣费须凭原请求查账，未知不当零成本',
@@ -704,7 +704,7 @@ export function publicCostPolicy(catalog = modelCatalog()) {
         return [id, { creditsPerImage: imageCreditsPerImage(model), creditsPerImageBySize: bySize }]
       }
       const perSecond = Object.fromEntries((model.sizes || []).map((size) => [size.value, videoCreditsPerSecond(model, size.value)]))
-      if (isCostPlusVideo(id)) return [id, { durations:model.durations, sizes:(model.sizes||[]).map(x=>x.value), creditsPerSecond:perSecond, defaultCreditsPerSecond:videoCreditsPerSecond(model,''), inputPricing:{billReferenceVideoSeconds:true,...(id==='MiniMax-H3'?{freeReferenceImages:5,extraImageCredits:5.7*adminVideoPricing().metasoRmbPerCredit}:{} )}, billingMode:'upstream_usage', minimumCredits:0.01, rounding:'ceil-0.01', pricingMode:'cost_plus', settlesActualUsage:true }]
+      if (isCostPlusVideo(id)) return [id, { durations:model.durations, sizes:(model.sizes||[]).map(x=>x.value), creditsPerSecond:perSecond, defaultCreditsPerSecond:videoCreditsPerSecond(model,''), inputPricing:{billReferenceVideoSeconds:true,...(id==='MiniMax-H3'?{freeReferenceImages:5,extraImageCredits:5.7*adminVideoPricing().metasoRmbPerCredit}:{} )}, billingMode:model.provider==='grok'?'parameter_estimate':'upstream_usage', minimumCredits:0.0001, rounding:'round-0.0001', pricingMode:'cost_plus', settlesActualUsage:model.provider!=='grok', pricingNotice:model.provider==='suihe'?'参考价按5秒、16:9、原生档计算；实际按所选参数询价':id==='MiniMax-H3'?'基础秒价不含提示词处理及参考素材；16–30秒按长视频档询价':'按所选时长与参考素材询价' }]
       return [id, {
         durations: model.durations || [],
         sizes: (model.sizes || []).map((size) => size.value),

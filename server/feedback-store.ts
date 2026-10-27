@@ -31,6 +31,8 @@ export function createFeedbackStore(store: Store) {
     CREATE TABLE IF NOT EXISTS feedback_comments(id TEXT PRIMARY KEY,issue_id TEXT NOT NULL REFERENCES feedback_issues(id) ON DELETE CASCADE,author TEXT NOT NULL,body TEXT NOT NULL,created_at TEXT NOT NULL);
     CREATE INDEX IF NOT EXISTS feedback_comments_issue ON feedback_comments(issue_id,created_at);
     CREATE TABLE IF NOT EXISTS feedback_attachments(id TEXT PRIMARY KEY,issue_id TEXT NOT NULL REFERENCES feedback_issues(id) ON DELETE CASCADE,name TEXT NOT NULL,mime TEXT NOT NULL,size INTEGER NOT NULL,bytes BLOB NOT NULL,created_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS feedback_number_sequence(id INTEGER PRIMARY KEY CHECK(id=1),value INTEGER NOT NULL);
+    INSERT OR IGNORE INTO feedback_number_sequence(id,value) SELECT 1,COALESCE(MAX(number),0) FROM feedback_issues;
   `)
 
   const parse = (value: string, fallback: any) => { try { return JSON.parse(value) } catch { return fallback } }
@@ -92,7 +94,9 @@ export function createFeedbackStore(store: Store) {
         const recent = Number(store.get("SELECT COUNT(*) AS n FROM feedback_issues WHERE user_id=? AND created_at>?", userId, new Date(Date.now() - 3600_000).toISOString())?.n || 0)
         if (recent >= 10) throw failure('一小时内提交的反馈太多了，请稍后再试', 429)
         const id = randomUUID(), now = new Date().toISOString()
-        const number = Number(store.get('SELECT COALESCE(MAX(number),0)+1 AS n FROM feedback_issues')?.n || 1)
+        // 删除最后一条反馈后也不复用已发出的编号；兼容旧进程仍按 MAX 分配的过渡期。
+        store.run('UPDATE feedback_number_sequence SET value=MAX(value,(SELECT COALESCE(MAX(number),0) FROM feedback_issues))+1 WHERE id=1')
+        const number = Number(store.get('SELECT value FROM feedback_number_sequence WHERE id=1').value)
         store.run('INSERT INTO feedback_issues(id,number,user_id,title,body,category,status,labels,context,user_unread,admin_unread,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)', id, number, userId, title, body, category, 'open', '[]', JSON.stringify(context), 0, 1, now, now)
         for (const file of files) store.run('INSERT INTO feedback_attachments VALUES(?,?,?,?,?,?,?)', randomUUID(), id, file.name, file.mime, file.bytes.length, file.bytes, now)
         store.audit(userId, 'feedback.create', id, { number, category })
@@ -103,6 +107,18 @@ export function createFeedbackStore(store: Store) {
       const row = issueFor(id, userId)
       if (row.user_unread) store.run('UPDATE feedback_issues SET user_unread=0 WHERE id=?', row.id)
       return detail({ ...row, user_unread: 0 }, false)
+    },
+    deleteForUser(userId: string, id: string) {
+      return store.transaction(() => {
+        const row = issueFor(id, userId)
+        store.run('UPDATE feedback_number_sequence SET value=MAX(value,?) WHERE id=1', row.number)
+        // 显式删除子项，不依赖每个历史数据库连接均开启外键。
+        store.run('DELETE FROM feedback_attachments WHERE issue_id=?', row.id)
+        store.run('DELETE FROM feedback_comments WHERE issue_id=?', row.id)
+        store.run('DELETE FROM feedback_issues WHERE id=? AND user_id=?', row.id, userId)
+        store.audit(userId, 'feedback.delete', row.id, { number: row.number })
+        return { ok: true }
+      })
     },
     commentAsUser(userId: string, id: string, body: unknown) {
       const row = issueFor(id, userId), content = text(body, MAX_COMMENT, '回复内容')

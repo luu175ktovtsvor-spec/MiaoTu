@@ -1355,21 +1355,6 @@
 .panel-empty__action { display: inline-flex; min-height: 38px; align-items: center; margin-top: 6px; padding: 0 18px; border: 1px solid rgb(244 244 245 / .22); border-radius: 999px; color: var(--color-ink); font-size: 13px; font-weight: 600; text-decoration: none; }
 .panel-empty__action:hover { border-color: var(--color-brass); background: color-mix(in srgb,var(--color-accent) 8%,transparent); }
 
-/* 账号页的修改密码：原来这块没有任何样式，和充值面板并排就显得是断的；用同一套输入/按钮语言 */
-.account-password { display: grid; gap: 12px; max-width: 420px; margin: 28px 0 0; }
-.account-password h2 { margin: 0; color: var(--color-ink); font-size: 13px; font-weight: 600; }
-.account-password input { width: 100%; min-height: 44px; padding: 0 14px; border: 1px solid rgb(244 244 245 / .18); border-radius: 12px; background: var(--color-canvas); color: var(--color-ink); font-size: 14px; }
-.account-password input:focus { outline: none; border-color: color-mix(in srgb,var(--color-accent) 72%,transparent); }
-.account-password button { justify-self: start; min-height: 42px; padding: 0 20px; border: 1px solid rgb(244 244 245 / .22); border-radius: 999px; background: transparent; color: var(--color-ink); cursor: pointer; font-size: 14px; font-weight: 600; }
-.account-password button:hover:not(:disabled) { border-color: var(--color-brass); background: color-mix(in srgb,var(--color-accent) 8%,transparent); }
-.account-password button:disabled { opacity: .45; cursor: not-allowed; }
-.account-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; margin: 18px 0 26px; }
-.studio-record .account-heading h1 { margin: 0; }
-.account-logout { display: inline-flex; flex-shrink: 0; align-items: center; gap: 7px; min-height: 40px; padding: 0 15px; border: 1px solid var(--color-line-strong); border-radius: 999px; background: var(--color-surface); color: var(--color-body); font-size: 13px; cursor: pointer; }
-.account-logout:hover:not(:disabled) { border-color: var(--color-accent); color: var(--color-ink); background: var(--color-brass-soft); }
-.account-logout:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
-.account-logout:disabled { opacity: .55; cursor: wait; }
-
 /* 窄屏：该换行换行、该收起收起 */
 @media (max-width: 1280px) {
   .gen-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
@@ -1431,6 +1416,16 @@
 .feedback-tabs button[aria-selected="true"], .feedback-tabs button[aria-checked="true"] { background: var(--color-elevate); color: var(--color-ink); }
 .feedback-list { display: grid; margin: 0; padding: 0; overflow: hidden; border: 1px solid var(--color-line); border-radius: 14px; background: var(--color-surface); list-style: none; }
 .feedback-list li + li { border-top: 1px solid var(--color-line); }
+.feedback-list li { display: flex; align-items: center; }
+.feedback-list .feedback-open { flex: 1; min-width: 0; }
+.feedback-list .feedback-delete { width: 40px; flex: 0 0 40px; justify-content: center; padding: 12px; margin-right: 8px; border-radius: 8px; color: var(--color-muted); }
+.feedback-list .feedback-delete:hover { color: var(--el-color-danger, #e56b6f); }
+.feedback-delete-dialog { margin: auto; max-height: calc(100dvh - 40px); overflow-y: auto; width: min(440px, calc(100vw - 40px)); box-sizing: border-box; padding: 24px; border: 1px solid var(--color-line); border-radius: 16px; background: var(--color-surface); color: var(--color-ink); }
+.feedback-delete-dialog::backdrop { background: rgb(0 0 0 / .55); }
+.feedback-delete-dialog h2 { margin: 0 0 12px; font-size: 18px; }
+.feedback-delete-dialog p { overflow-wrap: anywhere; color: var(--color-muted); font-size: 13px; line-height: 1.7; }
+.feedback-danger { padding: 9px 14px; border: 0; border-radius: 8px; background: var(--el-color-danger, #d94e55); color: #fff; cursor: pointer; }
+.feedback-danger:disabled { opacity: .5; cursor: wait; }
 .feedback-list button { display: flex; width: 100%; align-items: center; gap: 12px; padding: 14px 16px; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
 .feedback-list button:hover { background: var(--color-hover, var(--color-elevate)); }
 .feedback-state.open { width: 10px; height: 10px; flex-shrink: 0; border: 2px solid var(--color-accent); border-radius: 50%; }

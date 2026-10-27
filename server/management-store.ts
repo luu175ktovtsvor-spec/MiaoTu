@@ -1,7 +1,7 @@
 import { TextBilling, normalizeTextBilling } from './text-billing.ts'
 import { finiteCost, costEvidence } from './cost-evidence.ts'
 import { mergeOperatingSettings } from './operating-settings.ts'
-import { setVideoPricing, normalizeVideoPricing, isCostPlusVideo } from './video-pricing.ts'
+import { setVideoPricing, normalizeVideoPricing, isCostPlusVideo, VIDEO_PRICING_VERSION } from './video-pricing.ts'
 import { userFacingError, explainUserError } from './user-errors.ts'
 import { historyPrompt } from './user-prompts.ts'
 import { DatabaseSync } from 'node:sqlite'
@@ -423,9 +423,31 @@ export class ManagementStore {
     // 真正搬字节的迁移由 image API 启动时显式调用 migrateToDisk()，不让每个进程都跑一遍。
     this.textBilling = new TextBilling(this, sql => execRetry(this.db, sql))
     this.artifactFiles()
+    this.migrateVideoPricingRules()
     this.recoverStale()
     // 启动时先读一次后台调价，避免开局几笔请求按内置价预扣。
     try { setPricingOverrides(this.settings().prices) } catch { /* 首次建库时忽略 */ }
+  }
+  // Apply the new default formula without overwriting administrator prices.
+  // One transaction and a separate marker preserve later administrator edits.
+  // Old task snapshots and historical ledger rows are never rewritten.
+  migrateVideoPricingRules() {
+    this.transaction(() => {
+      const marker='video-pricing-rules-20261026-simple'
+      if(this.get('SELECT value FROM settings WHERE key=?',marker)) return
+      const row=this.get("SELECT value FROM settings WHERE key='operating'")
+      const previous=row ? parse(row.value) : {}
+      const next=structuredClone(previous)
+      next.prices ||= {}
+      // Keep procurement/expense records readable; only the new default formula changes.
+      // Existing manual prices remain authoritative, as do accepted task snapshots.
+      next.videoPricing={...normalizeVideoPricing(previous.videoPricing),markupPerSecond:0.1,
+        serverAllocationMode:'none'}
+      this.run('INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)','video-pricing-before-20261026-simple',JSON.stringify(previous))
+      this.run("INSERT INTO settings(key,value) VALUES('operating',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",JSON.stringify(next))
+      this.run('INSERT INTO settings(key,value) VALUES(?,?)',marker,JSON.stringify({version:VIDEO_PRICING_VERSION,preservedManualPrices:true}))
+      this.audit('system','pricing.rules.migrate','video',{version:VIDEO_PRICING_VERSION,preservedManualPrices:true})
+    })
   }
   // 懒建、全局一份：过期清理和结果回读都要用它删/读磁盘文件，
   // admin 进程（overview → recoverStale）也会走到，所以不能只在 image API 里建。
@@ -826,7 +848,11 @@ export class ManagementStore {
       if (!row) throw failure('这个邮箱还没有注册，请用验证码登录', 404)
       if (row.status !== 'active') throw failure('账号已停用', 403)
       this.run('UPDATE users SET password_hash=?, email_verified=1 WHERE id=?', passwordHash(password), row.id)
-      this.audit(email, 'user.password.reset', row.id, { email })
+      // A password reset is also a credential-recovery event. Revoke every
+      // older session before issuing the one returned to the user, otherwise a
+      // previously copied desktop cookie would remain usable after the reset.
+      const revoked = this.run('DELETE FROM sessions WHERE user_id=?', row.id).changes
+      this.audit(email, 'user.password.reset', row.id, { email, revokeOtherSessions: true, revokedSessions: revoked })
       return this.createSession('user', row.id)
     })
   }
@@ -987,6 +1013,20 @@ export class ManagementStore {
       this.run('DELETE FROM sessions WHERE user_id=?', id)
       this.audit(actor,'user.password.reset',id,{email:user.email})
       return this.user(id)
+    })
+  }
+  updateProfile(id, name) {
+    if (typeof name !== 'string') throw failure('请输入 1–60 字的昵称')
+    name = name.trim()
+    if (!name || name.length > 60 || /[\u0000-\u001f\u007f]/.test(name)) throw failure('请输入 1–60 字的昵称，不能包含换行或控制字符')
+    return this.transaction(() => {
+      const user = this.user(id)
+      if (!user || user.status !== 'active') throw failure('会话失效，请重新登录', 401)
+      if (user.name === name) return this.publicUser(id)
+      if (this.get('SELECT id FROM users WHERE name=? AND id<>?', name, id)) throw failure('这个昵称已经被使用，请换一个', 409)
+      this.run('UPDATE users SET name=? WHERE id=?', name, id)
+      this.audit(user.email || id, 'user.profile.update', id, { previousName: user.name, name })
+      return this.publicUser(id)
     })
   }
   updateUser(id, patch, actor) {
@@ -1460,7 +1500,7 @@ export class ManagementStore {
       const allowed = this.user(userId)?.models
       if (Array.isArray(allowed) && allowed.length && !allowed.includes(publicId)) throw failure('这个模型未对你的账号开放', 403)
       if (![GENERATION_STATES.QUEUED, GENERATION_STATES.RUNNING].includes(status)) throw failure('生成状态无效',422)
-      points = credits(points, 0, 1000000, model.provider === 'suihe' ? 10000 : 100)
+      points = credits(points, 0, 1000000, model.provider === 'suihe' || parameters.videoPricing?.version===VIDEO_PRICING_VERSION ? 10000 : 100)
       // This is a new reservation; never reset the marker on a duplicate above.
       // Preparation can yield before the worker starts the actual transport.
       parameters = { ...parameters, submissionState: 'not_started' }
@@ -1474,10 +1514,20 @@ export class ManagementStore {
           : undefined
         parameters = { ...parameters, ...(Number.isFinite(Number(manualRate)) ? { manualVideoCreditsPerSecond: Number(manualRate) } : {}) }
       }
+      if (model.video && parameters.videoPricing?.version === VIDEO_PRICING_VERSION) {
+        const frozenQuote = estimateGenerationCost({model,generation:parameters})
+        if (Math.round(frozenQuote.points*10000) !== Math.round(points*10000)) {
+          throw failure('模型价格刚刚发生变化，请重新询价后再提交',409)
+        }
+      }
       const user = this.user(userId)
       if (!user || user.status !== 'active') throw failure('账号已停用',403)
       if (!(Number(user.points) > 0)) throw failure('积分不足，请先充值后生成',402)
       if (user.models.length && !user.models.includes(publicId)) throw failure('账号未获准使用这个模型',403)
+      const configuredActiveLimit = Number(process.env.MIAO_MAX_ACTIVE_GENERATIONS_PER_USER || 8)
+      const activeLimit = Number.isSafeInteger(configuredActiveLimit) && configuredActiveLimit > 0 ? Math.min(configuredActiveLimit, 1000) : 8
+      const active = Number(this.get("SELECT COUNT(*) AS count FROM generations WHERE user_id=? AND status IN ('queued','running')", userId)?.count || 0)
+      if (active >= activeLimit) throw failure('当前账号进行中的生成任务过多，请等待已有任务完成后再试', 429)
       if (this.run('UPDATE users SET points=ROUND(points-?,4) WHERE id=? AND points>=?',points,userId,points).changes !== 1) throw failure('积分不足，请联系管理员',402)
       const id = newGenerationId()
       const now = new Date().toISOString()
@@ -1926,21 +1976,25 @@ export class ManagementStore {
       // 实际 usage 对应的较低金额退回，避免把上游 token 用量错误地吞掉。
       const parameters = parse(g.parameters)
       const model = modelForGeneration(g.model,parameters,g.provider)
-      const usageCost = model?.video && result.usage
+      const hasOutputDuration = Number.isFinite(Number(result.duration)) && Number(result.duration) > 0
+      const settleTariffDuration = parameters.videoPricing?.version === VIDEO_PRICING_VERSION
+        && model?.provider === 'grok' && hasOutputDuration
+      const usageCost = model?.video && (result.usage || (hasOutputDuration && (parameters.manualVideoCreditsPerSecond != null || settleTariffDuration)))
         ? estimateGenerationCost({ model, generation: { ...parameters, ...(isCostPlusVideo(g.model) && result.duration != null ? { billableDuration: Number(result.duration) } : {}), usage: result.usage } })
         : null
       // 预扣是上限。若上游账单意外高于预扣，保留预扣金额并记录原始 usage，
       // 不在任务已经成功后再让用户余额出现负数；下一次预扣仍会按安全参数上限执行。
       const canSettleManualDuration = usageCost && parameters.manualVideoCreditsPerSecond != null && Number(result.duration) > 0
-      const charged = usageCost?.usageBased || canSettleManualDuration ? Math.min(reserved, Number(usageCost.points)) : reserved
-      const refund = Math.round((reserved - charged) * (model?.provider === 'suihe' ? 10000 : 100)) / (model?.provider === 'suihe' ? 10000 : 100)
+      const charged = usageCost?.usageBased || canSettleManualDuration || (usageCost && settleTariffDuration) ? Math.min(reserved, Number(usageCost.points)) : reserved
+      const settlementPrecision=model?.provider==='suihe' || parameters.videoPricing?.version===VIDEO_PRICING_VERSION ? 10000 : 100
+      const refund = Math.round((reserved - charged) * settlementPrecision) / settlementPrecision
       if (g.user_id && refund > 0) {
         this.run('UPDATE users SET points=ROUND(points+?,4) WHERE id=?', refund, g.user_id)
         this.ledger(g.user_id, refund, '视频实际用量对账退还', id)
       }
       const cost = estimateUpstreamCostRmb({ model, parameters, usage: result.usage, seconds: result.duration == null ? parameters.billableDuration ?? parameters.duration : Number(result.duration) })
       if (cost && isCostPlusVideo(g.model)) {
-        const precision=model?.provider==='suihe'?10000:100
+        const precision=model?.provider==='suihe' || parameters.videoPricing?.version===VIDEO_PRICING_VERSION ?10000:100
         cost.detail = { ...cost.detail, pricing: { reservedPoints:reserved, requiredPoints:usageCost?.points ?? reserved, chargedPoints:charged, shortfallPoints:Math.max(0,Math.round(((usageCost?.points??reserved)-charged)*precision)/precision), markupPerSecond:model?.provider==='suihe'?parameters.suiheCost?.customerMarkupRmbPerUnit:parameters.videoPricing?.markupPerSecond ?? this.settings().videoPricing.markupPerSecond, policyVersion:model?.provider==='suihe'?parameters.suiheCost?.version:parameters.videoPricing?.version || null, expenseConfigured:Boolean(cost.detail.expenses?.configured), paymentFeeRmb:charged*(cost.detail.expenses?.paymentFeePercent||0)/100, allocatedExpenseRmb:(cost.detail.expenses?.rmbPerRequest||0)+(cost.detail.outputSeconds||0)*(cost.detail.expenses?.rmbPerOutputSecond||0), estimatedNetRmb:cost.detail.expenses?.configured ? Math.round((charged*(1-cost.detail.expenses.paymentFeePercent/100)-cost.rmb-(cost.detail.expenses.rmbPerRequest||0)-cost.detail.outputSeconds*cost.detail.expenses.rmbPerOutputSecond)*10000)/10000 : null } }
       }
       this.run("UPDATE generations SET status='succeeded',points=?,charged_points=?,finished_at=?,usage=?,upstream_cost=?,upstream_model=?,upstream_request_id=?,upstream_status=?,lease_id=NULL,lease_at=NULL,expires_at=NULL WHERE id=?", charged, charged, now, result.usage ? JSON.stringify(result.usage) : g.usage, cost ? JSON.stringify(cost) : g.upstream_cost || null, result.upstreamModel || g.upstream_model, result.upstreamRequestId || videoId, result.upstreamStatus ?? g.upstream_status ?? null, id)

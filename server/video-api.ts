@@ -22,7 +22,7 @@ import { createMediaProviderFetch, ProviderRedirectError } from './provider-fetc
 import { createMetasoVideoTask, metasoCreditsBalance, metasoVideoSettings, pollMetasoVideoTask } from './metaso-video.ts'
 import { createMediaProbe, REFERENCE_RETRY_DELAYS_MS, redactReferencePayload, summarizeReferenceValue } from './reference-assets.ts'
 import { acceptedVideoSubmissionError } from './video-submission.ts'
-import { createSuiheTask, pollSuiheTask, suiheSettings } from './suihe.ts'
+import { createSuiheTask, pollSuiheTask, suiheSettings, estimateSuiheVideo } from './suihe.ts'
 import { suihePricingSnapshot } from './suihe-pricing.ts'
 
 const probeVideoFile = createMediaProbe()
@@ -612,29 +612,29 @@ export async function prepareVideoRequest(payload, session, { env = process.env,
   const imageUrls = uniqueUrls([request.image, ...request.images, request.firstFrame, request.lastFrame, ...request.keyframes.map(item => item.image.url)])
   const needsImageValidation = Object.keys(referenceInputPolicy(request.model, 'image')).length > 0
   if ((needsImageValidation && imageUrls.length || request.videos.length || request.audios.length) && !probeReferenceMedia) throw failure('参考素材校验服务不可用，已阻止生成', 503)
-  const imageMetadata = []
-  // Probe sequentially within a request: up to 9 pictures + 3 videos + 3 audio
-  // must not exhaust the shared metadata queue just by being valid multimodal input.
-  for (const url of needsImageValidation ? imageUrls : []) {
-    const metadata = await probeReferenceMedia(url, session?.userId, 'image')
-    assertReferenceInput(request.model, 'image', metadata, request.mode)
-    imageMetadata.push(metadata)
-  }
-  request.parameters.imageMetadata = imageMetadata
-  if (request.videos.length || request.audios.length) {
-    const videoMetadata = []
-    const audioMetadata = []
-    for (const url of request.videos) {
+  // Each probe is cached by the authenticated file revision. Run independent
+  // media probes together so mixed-reference estimates do not pay one serial
+  // ffprobe round trip per file; the probe pool still caps actual processes.
+  const [imageMetadata, videoMetadata, audioMetadata] = await Promise.all([
+    (needsImageValidation ? imageUrls : []).map(async (url) => {
+      const metadata = await probeReferenceMedia(url, session?.userId, 'image')
+      assertReferenceInput(request.model, 'image', metadata, request.mode)
+      return metadata
+    }),
+    request.videos.map(async (url) => {
       const metadata = await probeReferenceMedia(url, session?.userId, 'video')
       assertReferenceInput(request.model, 'video', metadata, request.mode)
       if (isSeedance25(request.model) && request.mode === 'edit' && metadata.duration < 4) throw failure('Seedance 2.5 编辑视频需要 4–30 秒的参考视频', 422)
-      videoMetadata.push(metadata)
-    }
-    for (const url of request.audios) {
+      return metadata
+    }),
+    request.audios.map(async (url) => {
       const metadata = await probeReferenceMedia(url, session?.userId, 'audio')
       assertReferenceInput(request.model, 'audio', metadata, request.mode)
-      audioMetadata.push(metadata)
-    }
+      return metadata
+    }),
+  ])
+  request.parameters.imageMetadata = imageMetadata
+  if (request.videos.length || request.audios.length) {
     if (request.model.provider === 'grok' && videoMetadata.some(item => !String(item.format || '').split(',').includes('mp4'))) throw failure('Grok 视频编辑或延长需要 MP4 格式输入', 422)
     const videoSeconds = videoMetadata.reduce((sum, item) => sum + item.duration, 0)
     const audioSeconds = audioMetadata.reduce((sum, item) => sum + item.duration, 0)
@@ -647,6 +647,12 @@ export async function prepareVideoRequest(payload, session, { env = process.env,
     request.parameters.videoMetadata = videoMetadata
     request.parameters.audioMetadata = audioMetadata
     request.parameters.audioSeconds = audioSeconds
+  }
+  if(request.model.provider==='suihe') {
+    const quote=await estimateSuiheVideo(request,{env})
+    const generationSnapshot=suihePricingSnapshot(request.model,{resolution:quote.generationResolution,creativeMode:quote.creativeMode})
+    request.parameters.suiheCost={...request.parameters.suiheCost,preEstimate:{...quote,generationRates:generationSnapshot.rates,generationPixels:generationSnapshot.pixels}}
+    request.cost=estimateVideoCost(request.model,request.parameters)
   }
   return request
 }

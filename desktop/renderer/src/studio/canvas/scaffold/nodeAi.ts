@@ -224,13 +224,14 @@ async function requestData<T>(url: string, signal?: AbortSignal): Promise<T> {
   return payload.data as T;
 }
 
-async function loadMediaModels(): Promise<NodeMediaModel[]> {
+export async function loadMediaModels(force = false): Promise<NodeMediaModel[]> {
   bindModelScope();
-  if (mediaCatalogValue && Date.now() - mediaCatalogLoadedAt < 30_000) return mediaCatalogValue;
+  if (!force && mediaCatalogValue && Date.now() - mediaCatalogLoadedAt < 30_000) return mediaCatalogValue;
   if (!mediaCatalog) {
+    const scope = captureWorkspaceScope();
     // 服务端已按「管理员暂停 + 账号可用范围」过滤，节点侧不再重复判断。
     const pending: Promise<NodeMediaModel[]> = requestData<NodeMediaModel[]>("./api/ai/media/models")
-      .then(value => { mediaCatalogValue = value; mediaCatalogLoadedAt = Date.now(); return value })
+      .then(value => { assertWorkspaceScope(scope); mediaCatalogValue = value; mediaCatalogLoadedAt = Date.now(); return value })
       .finally(() => { if (mediaCatalog === pending) mediaCatalog = undefined; });
     mediaCatalog = pending;
   }

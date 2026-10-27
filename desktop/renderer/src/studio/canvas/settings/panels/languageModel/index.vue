@@ -13,13 +13,14 @@
             :disabled="loading || !modelOptions.length"
             :placeholder="translate('选择模型')"
             :aria-label="translate('选择模型')"
+            @visible-change="refreshModels"
             @change="saveModel">
             <el-option-group v-for="group in modelGroups" :key="group.label" :label="group.label">
               <el-option v-for="model in group.models" :key="model.value" :label="model.label" :value="model.value">
-                <div class="modelOption">
+                <div class="textModelOption">
                   <modelIcon :model="model.modelId" :size="18" />
                   <span class="modelLabel">{{ model.label }}</span>
-                  <el-tag v-if="model.reasoning" size="small" effect="plain">{{ translate('支持推理') }}</el-tag>
+                  <el-tag v-if="model.reasoning" class="modelCapability" size="small" effect="plain">{{ translate('支持推理') }}</el-tag>
                 </div>
               </el-option>
             </el-option-group>
@@ -117,6 +118,10 @@ async function remove(provider: UserProvider) {
 }
 const selectedModelInfo = computed(() => modelOptions.value.find(model => model.value === selectedModel.value));
 
+function refreshModels(visible: boolean) {
+  if (visible) void loadServerModelChoices(true);
+}
+
 function syncSelection() {
   const saved = textModelSettings.value;
   selectedModel.value = modelOptions.value.some(model => model.value === saved) ? saved : modelOptions.value[0]?.value || "";
@@ -160,14 +165,6 @@ onMounted(async () => {
 
   .el-select { width: min(100%, 420px); }
 
-  .modelOption {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-
-    .modelLabel { flex: 1; min-width: 0; }
-  }
-
   .ownProviders { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none;
     li { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--el-border-color-lighter); border-radius: 10px; }
     .providerMark { display: grid; flex: 0 0 36px; height: 36px; place-items: center; border-radius: 9px; background: var(--el-fill-color-light); color: var(--el-text-color-primary); font-weight: 600; }
@@ -189,5 +186,12 @@ onMounted(async () => {
 
     strong { color: var(--el-text-color-primary); font-size: 13px; }
   }
+}
+
+// 下拉内容 teleport 到 body，不能依赖 .textModelPanel 祖先选择器。
+.textModelOption {
+  display: flex; align-items: center; gap: 10px; min-width: 0; height: 100%;
+  .modelLabel { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .modelCapability { flex: none; margin-left: auto; font-weight: 400; }
 }
 </style>

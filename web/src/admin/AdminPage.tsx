@@ -173,23 +173,6 @@ function readSection() {
   const key = window.location.hash.slice(1);
   return sections.some(([id]) => id === key) ? key : "overview";
 }
-function hasVideoExpenses(p: Record<string, unknown> = {}) {
-  const known = (k) =>
-    p[k] !== null &&
-    p[k] !== undefined &&
-    p[k] !== "" &&
-    Number.isFinite(Number(p[k]));
-  return (
-    known("paymentFeePercent") &&
-    known("otherRmbPerSecond") &&
-    (p.serverAllocationMode === "all_media_requests"
-      ? known("monthlyMediaRequests") && Number(p.monthlyMediaRequests) > 0
-      : known("monthlyBillableVideoSeconds") &&
-        Number(p.monthlyBillableVideoSeconds) > 0) &&
-    (known("serverMonthlyRmb") ||
-      (known("serverAnnualUsd") && known("usdToRmb") && Number(p.usdToRmb) > 0))
-  );
-}
 export default function AdminPage() {
   const { lang } = useLang();
   const { choice, theme, choose } = useAdminTheme();
@@ -1157,7 +1140,7 @@ export default function AdminPage() {
                       : section === "text"
                       ? adminText("管理文本调用、收费规则与用户赠送。", lang)
                       : section === "models"
-                        ? adminText("管理模型开关、参数价格与成本分摊。", lang)
+                        ? adminText("管理模型开关、参数价格与采购成本。", lang)
                         : section === "generations"
                           ? adminText(
                               "查看生成结果、任务状态与积分消耗。",
@@ -2555,6 +2538,52 @@ export default function AdminPage() {
           <>
             <section className="admin-panel">
               <header>
+                <h2>{adminText("采购成本口径", lang)}</h2>
+                <span className="admin-badge active">
+                  {adminText("仅管理员可见", lang)}
+                </span>
+              </header>
+              <p className="admin-footnote">
+                {adminText(
+                  "这里显示各模型的上游采购成本公式，不是客户公布价。客户公布价在模型与价格页按档位设置；穗禾视频的逐单成本按请求参数询价，最终数值在调用记录和生成详情中查看。",
+                  lang,
+                )}
+              </p>
+              {Object.entries(overview?.upstreamCosts || {}).length ? (
+                <div className="admin-table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>{adminText("模型", lang)}</th>
+                        <th>{adminText("上游通道", lang)}</th>
+                        <th>{adminText("采购成本公式", lang)}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(overview?.upstreamCosts || {}).map(
+                        ([id, value]: [string, any]) => {
+                          const model = allModelRows.find((item) => item.id === id);
+                          return (
+                            <tr key={id}>
+                              <td>
+                                <strong>{model?.label || id}</strong>
+                                <small>{id}</small>
+                              </td>
+                              <td>{model?.providerLabel || model?.provider || "—"}</td>
+                              <td>{value?.label || adminText("未登记", lang)}</td>
+                            </tr>
+                          );
+                        },
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <Empty>{adminText("暂无采购成本口径", lang)}</Empty>
+              )}
+            </section>
+            <section className="admin-panel">
+              <header>
                 <h2>{adminText("秘塔余额快照核对（运维）", lang)}</h2>
                 <span
                   className={`admin-badge ${upstream?.reconciliation?.some((r) => r.alarm) ? "failed" : "active"}`}
@@ -3553,7 +3582,7 @@ export default function AdminPage() {
                   >
                     <summary>{adminText("成本参数", lang)}</summary>
                     <fieldset className="admin-price-group">
-                      <legend>{adminText("视频成本与净利目标", lang)}</legend>
+                      <legend>{adminText("采购成本与默认加价", lang)}</legend>
                       <label className="admin-price-row">
                         <span>{adminText("秘塔每积分成本（元）", lang)}</span>
                         <input
@@ -3578,42 +3607,9 @@ export default function AdminPage() {
                         />
                       </label>
                       <label className="admin-price-row">
-                        <span>
-                          {lang === "en"
-                            ? "Server allocation"
-                            : "服务器分摊方式"}
-                        </span>
-                        <select
-                          value={
-                            form.videoPricing?.serverAllocationMode ||
-                            "video_seconds"
-                          }
-                          onChange={(e) =>
-                            setForm({
-                              ...form,
-                              videoPricing: {
-                                ...form.videoPricing,
-                                serverAllocationMode: e.target.value,
-                              },
-                            })
-                          }
-                        >
-                          <option value="all_media_requests">
-                            {lang === "en"
-                              ? "All image and video requests"
-                              : "全站图片与视频请求共同分摊"}
-                          </option>
-                          <option value="video_seconds">
-                            {lang === "en"
-                              ? "Video output seconds"
-                              : "按视频生成秒数分摊"}
-                          </option>
-                        </select>
-                      </label>
-                      <label className="admin-price-row">
-                        <span>{adminText("目标净利每秒（元）", lang)}</span>
+                        <span>{adminText("其他视频每输出秒加价（元）", lang)}</span>
                         <input
-                          aria-label={adminText("目标净利每秒（元）", lang)}
+                          aria-label={adminText("其他视频每输出秒加价（元）", lang)}
                           type="number"
                           required
                           min="0.10"
@@ -3632,55 +3628,8 @@ export default function AdminPage() {
                         />
                       </label>
                       {[
-                        {
-                          key: "paymentFeePercent",
-                          label: "支付总手续费（%）",
-                          min: "0",
-                          max: "50",
-                          step: "0.01",
-                        },
-                        {
-                          key: "serverAnnualUsd",
-                          label: "服务器年费（美元）",
-                          min: "0",
-                          max: "1000000",
-                          step: "0.01",
-                        },
-                        {
-                          key: "usdToRmb",
-                          label: "预算汇率（元/美元）",
-                          min: "0.000001",
-                          max: "100",
-                          step: "0.000001",
-                        },
-                        {
-                          key: "serverMonthlyRmb",
-                          label: "服务器月费（元，可覆盖美元折算）",
-                          min: "0",
-                          max: "1000000",
-                          step: "0.01",
-                        },
-                        {
-                          key: "monthlyMediaRequests",
-                          label: "预计每月图片与视频请求数",
-                          min: "1",
-                          max: "10000000000",
-                          step: "1",
-                        },
-                        {
-                          key: "monthlyBillableVideoSeconds",
-                          label: "预计每月付费生成视频秒数",
-                          min: "1",
-                          max: "10000000000",
-                          step: "1",
-                        },
-                        {
-                          key: "otherRmbPerSecond",
-                          label: "其他成本（元/生成秒）",
-                          min: "0",
-                          max: "10000",
-                          step: "0.000001",
-                        },
+                        {key: "paymentFeePercent", label: "支付手续费记录（%，不叠加售价）", min: "0", max: "50", step: "0.01"},
+                        {key: "usdToRmb", label: "采购汇率（元/美元）", min: "0.000001", max: "100", step: "0.000001"},
                       ].map((field) => (
                         <label key={field.key} className="admin-price-row">
                           <span>{adminText(field.label, lang)}</span>
@@ -3708,9 +3657,7 @@ export default function AdminPage() {
                       ))}
                       <p role="status" className="admin-muted">
                         {adminText(
-                          hasVideoExpenses(form.videoPricing)
-                            ? "成本已配置：按预计付费生成量分摊，实际生成量下降时应重新调整。"
-                            : "成本未配置完整：已知费用计入报价，缺失项尚未计入，不能确认净利达标。",
+                          "自动价：穗禾采购成本 + 0.10 元/输出秒，其他视频采购成本 + 默认加价。参考素材传递采购成本；人工档位价优先。支付手续费只记成本，服务器费用不参与计价。",
                           lang,
                         )}
                       </p>

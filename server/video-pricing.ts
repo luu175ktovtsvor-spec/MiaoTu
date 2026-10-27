@@ -2,7 +2,14 @@
 // Cost and markup are captured at submission so later admin edits cannot alter a task.
 import { isSeedance25, SEEDANCE25_PRICING } from './seedance25.ts'
 import { suiheCost } from './suihe-pricing.ts'
-export const VIDEO_PRICING_VERSION = 'video-cost-plus-2026-10-22'
+export const VIDEO_PRICING_VERSION = 'video-cost-plus-2026-10-26-simple'
+export const GROK_VIDEO_USD = Object.freeze({
+  'grok-imagine-video': {'480p':0.05,'720p':0.07},
+  'grok-imagine-video-1.5': {'480p':0.08,'720p':0.14,'1080p':0.25},
+})
+// Current media key belongs to Sub2API group 13; verified read-only 2026-10-26.
+// This is gateway procurement accounting, not a claim about subscription cash cost.
+export const GROK_VIDEO_MULTIPLIER = 0.5
 export const DEFAULT_VIDEO_PRICING = Object.freeze({ metasoRmbPerCredit: 0.0108, markupPerSecond: 0.1, paymentFeePercent:null, serverMonthlyRmb:null, serverAnnualUsd:null, usdToRmb:null, monthlyBillableVideoSeconds:null, otherRmbPerSecond:null, serverAllocationMode:'video_seconds', monthlyMediaRequests:null })
 export const METASO_VIDEO_CREDITS = Object.freeze({
   'MiniMax-H3': {
@@ -20,25 +27,27 @@ let effectivePolicy: Record<string, any> = { ...DEFAULT_VIDEO_PRICING }
 export function setVideoPricing(policy: Record<string, any> = {}) {
   effectivePolicy = { ...DEFAULT_VIDEO_PRICING, ...policy }
 }
-export function videoPricingSnapshot(): Record<string, any> { return { version: VIDEO_PRICING_VERSION, ...effectivePolicy, supplierPricing: structuredClone({metasoTiers:METASO_VIDEO_CREDITS,arkFast:{noVideoRmbPerMillion:37,withVideoRmbPerMillion:22},ark25:SEEDANCE25_PRICING,h3:{freeImages:5,extraImageCredits:5.7,contextCredits:5.7},pixels:PIXELS,minimumTokens480p:FLOOR_480}) } }
-export function videoExpenses(policy=effectivePolicy) {
+export function videoPricingSnapshot(): Record<string, any> { return { version: VIDEO_PRICING_VERSION, ...effectivePolicy, pricingFormula:'supplier_plus_output', serverAllocationMode:'none', supplierPricing: structuredClone({metasoTiers:METASO_VIDEO_CREDITS,arkFast:{noVideoRmbPerMillion:37,withVideoRmbPerMillion:22},ark25:SEEDANCE25_PRICING,grok:{rates:GROK_VIDEO_USD,multiplier:GROK_VIDEO_MULTIPLIER,rmbPerUsd:Number(effectivePolicy.usdToRmb)||7.2,source:'current_gateway_media_group'},h3:{freeImages:5,extraImageCredits:5.7,contextCredits:5.7},pixels:PIXELS,minimumTokens480p:FLOOR_480}) } }
+export function videoExpenses(policy=videoPricingSnapshot()) {
   const known = key => policy[key] !== null && policy[key] !== undefined && policy[key] !== '' && Number.isFinite(Number(policy[key]))
   const monthlyServerRmb = known('serverMonthlyRmb') ? Number(policy.serverMonthlyRmb) : known('serverAnnualUsd') && known('usdToRmb') && Number(policy.usdToRmb)>0 ? Number(policy.serverAnnualUsd)*Number(policy.usdToRmb)/12 : null
   const feeKnown=known('paymentFeePercent')
   const shared=policy.serverAllocationMode==='all_media_requests'
   const serverAllocationKnown=monthlyServerRmb!==null && (shared ? known('monthlyMediaRequests') && Number(policy.monthlyMediaRequests)>0 : known('monthlyBillableVideoSeconds') && Number(policy.monthlyBillableVideoSeconds)>0)
   const allocationKnown=serverAllocationKnown && known('otherRmbPerSecond')
+  const simple=policy.pricingFormula==='supplier_plus_output'
+  if(simple) return {configured:feeKnown,paymentFeeConfigured:feeKnown,allocationConfigured:true,monthlyServerRmb,paymentFeePercent:feeKnown?Number(policy.paymentFeePercent):0,serverAllocationMode:'none',monthlyMediaRequests:null,rmbPerRequest:0,rmbPerOutputSecond:0}
   const configured=feeKnown && allocationKnown
   // Apply each known expense immediately; unknown amounts remain explicit in admin.
   return {configured,paymentFeeConfigured:feeKnown,allocationConfigured:allocationKnown,monthlyServerRmb,paymentFeePercent:feeKnown?Number(policy.paymentFeePercent):0,serverAllocationMode:shared?'all_media_requests':'video_seconds',monthlyMediaRequests:shared&&known('monthlyMediaRequests')?Number(policy.monthlyMediaRequests):null,rmbPerRequest:shared&&serverAllocationKnown?monthlyServerRmb/Number(policy.monthlyMediaRequests):0,rmbPerOutputSecond:(!shared&&serverAllocationKnown?monthlyServerRmb/Number(policy.monthlyBillableVideoSeconds):0)+(known('otherRmbPerSecond')?Number(policy.otherRmbPerSecond):0)}
 }
-export function isCostPlusVideo(id) { return Boolean(METASO_VIDEO_CREDITS[id] || FAST_IDS.has(id) || isSeedance25(id)) }
+export function isCostPlusVideo(id) { return Boolean(METASO_VIDEO_CREDITS[id] || FAST_IDS.has(id) || isSeedance25(id) || GROK_VIDEO_USD[id]) }
 export function normalizeVideoPricing(value: Record<string, any> = {}) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !['metasoRmbPerCredit','markupPerSecond','paymentFeePercent','serverMonthlyRmb','serverAnnualUsd','usdToRmb','monthlyBillableVideoSeconds','otherRmbPerSecond','serverAllocationMode','monthlyMediaRequests'].includes(key))) throw Error('视频定价设置无效')
   const next = { ...DEFAULT_VIDEO_PRICING, ...value }
   if (!Number.isFinite(Number(next.metasoRmbPerCredit)) || Number(next.metasoRmbPerCredit) < 0.008798 || Number(next.metasoRmbPerCredit) > 1) throw Error('秘塔积分成本需为 0.008798 至 1 元')
-  if (!Number.isFinite(Number(next.markupPerSecond)) || Number(next.markupPerSecond) < 0.1 || Number(next.markupPerSecond) > 100) throw Error('视频每秒净利目标不能低于 0.10 元')
-  if (!['video_seconds','all_media_requests'].includes(next.serverAllocationMode)) throw Error('服务器分摊方式无效')
+  if (!Number.isFinite(Number(next.markupPerSecond)) || Number(next.markupPerSecond) < 0.1 || Number(next.markupPerSecond) > 100) throw Error('视频每输出秒加价不能低于 0.10 元')
+  if (!['none','video_seconds','all_media_requests'].includes(next.serverAllocationMode)) throw Error('服务器分摊方式无效')
   const result = { serverAllocationMode:next.serverAllocationMode, metasoRmbPerCredit: Math.round(Number(next.metasoRmbPerCredit)*1e6)/1e6, markupPerSecond: Math.round(Number(next.markupPerSecond)*100)/100 }
   for (const [key, max] of Object.entries({paymentFeePercent:50,serverMonthlyRmb:1000000,serverAnnualUsd:1000000,usdToRmb:100,monthlyBillableVideoSeconds:10000000000,otherRmbPerSecond:10000,monthlyMediaRequests:10000000000})) {
     const value=next[key]
@@ -59,7 +68,9 @@ const present = value => value !== null && value !== undefined && Number.isFinit
 export function costPlusVideoCost({ model, parameters = {}, usage, seconds }: Record<string, any> = {}) {
   const id = String(model?.publicId || model?.id || model || '')
   if (!isCostPlusVideo(id)) return null
-  const snapshot = [VIDEO_PRICING_VERSION, 'video-cost-plus-2026-10-13', 'video-cost-plus-2026-10-08'].includes(parameters.videoPricing?.version) ? parameters.videoPricing : videoPricingSnapshot()
+  // Old Grok tasks used fixed customer rates and had no policy snapshot.
+  if (GROK_VIDEO_USD[id] && parameters.submissionState !== undefined && !parameters.videoPricing) return null
+  const snapshot = [VIDEO_PRICING_VERSION, 'video-cost-plus-2026-10-22', 'video-cost-plus-2026-10-13', 'video-cost-plus-2026-10-08'].includes(parameters.videoPricing?.version) ? parameters.videoPricing : videoPricingSnapshot()
   const expenses = videoExpenses(snapshot)
   const output = present(usage?.output_seconds) && Number(usage.output_seconds)>0 ? Number(usage.output_seconds) : nonnegative(seconds ?? parameters.billableDuration ?? parameters.duration)
   if (!(output > 0)) throw Error('视频计费时长无效')
@@ -69,6 +80,18 @@ export function costPlusVideoCost({ model, parameters = {}, usage, seconds }: Re
     const cost=suiheCost(model,parameters,{seconds:output,usage})
     if (!cost) throw Error('该视频档位采购价尚未配置')
     return {...cost,detail:{...cost.detail,expenses},markupPerSecond:cost.detail.pricingSnapshot.customerMarkupRmbPerUnit}
+  }
+  if (GROK_VIDEO_USD[id]) {
+    const pricing=snapshot.supplierPricing?.grok || {rates:GROK_VIDEO_USD,multiplier:GROK_VIDEO_MULTIPLIER,rmbPerUsd:7.2}
+    const usd=pricing.rates[id]?.[resolution]
+    if (!(usd>0)) throw Error('该视频分辨率尚无已核准的价格')
+    const perSecondRmb=usd*pricing.multiplier*pricing.rmbPerUsd
+    const inputPerSecondRmb=0.01*pricing.multiplier*pricing.rmbPerUsd
+    const images=nonnegative(parameters.referenceImages)
+    const imageRmb=images*inputPerSecondRmb
+    const rawRmb=output*perSecondRmb+input*inputPerSecondRmb+imageRmb
+    return {rmb:Math.round(rawRmb*10000)/10000,rawRmb,outputSeconds:output,markupPerSecond:snapshot.markupPerSecond,usageBased:false,
+      basis:'gateway_grok_video_tariff_snapshot',detail:{perSecondRmb,inputPerSecondRmb,outputSeconds:output,inputSeconds:input,images,imageRmb,contextIrRmb:0,perSecondUsd:usd,multiplier:pricing.multiplier,rmbPerUsd:pricing.rmbPerUsd,pricingPolicy:snapshot,expenses,source:'gateway_tariff_estimate'}}
   }
   if (METASO_VIDEO_CREDITS[id]) {
     const supplier = snapshot.supplierPricing
@@ -124,9 +147,11 @@ export function costPlusVideoCost({ model, parameters = {}, usage, seconds }: Re
     : Math.ceil((minimumTokens[Math.ceil(output)] || minimumTokens[15]) * pixels / (864*496)) : 0
   const tokens = reported || Math.max(formula, floor)
   const costRmb = tokens / 1e6 * rate
+  const outputOnlyTokens = Math.ceil(pixels * (Math.ceil(output * 24) + 1) / 1024)
+  const referenceCostRmb = input > 0 ? Math.max(0, tokens-outputOnlyTokens) / 1e6 * rate : 0
   return {
     rmb: Math.round(costRmb*10000)/10000, basis: reported ? 'volcengine_reported_tokens' : 'volcengine_parameter_forecast',
-    detail: { tokens, reportedTokens: reported, floorTokens: reported ? 0 : floor, rmbPerMillion: rate, hasInputVideo: input>0, outputSeconds: output, inputSeconds: input, inputAudioSeconds:nonnegative(parameters.audioSeconds), forecastPixels:pixels, forecastRatio:table[parameters.ratio] ? parameters.ratio : 'maximum_supported', source: reported ? 'upstream_usage' : 'parameter_estimate', pricingPolicy:snapshot, expenses },
+    detail: { tokens, reportedTokens: reported, floorTokens: reported ? 0 : floor, referenceCostRmb, rmbPerMillion: rate, hasInputVideo: input>0, outputSeconds: output, inputSeconds: input, inputAudioSeconds:nonnegative(parameters.audioSeconds), forecastPixels:pixels, forecastRatio:table[parameters.ratio] ? parameters.ratio : 'maximum_supported', source: reported ? 'upstream_usage' : 'parameter_estimate', pricingPolicy:snapshot, expenses },
     rawRmb: costRmb, outputSeconds: output, markupPerSecond: snapshot.markupPerSecond, usageBased: reported>0,
   }
 }
@@ -139,7 +164,13 @@ export function costPlusVideoEstimate(input) {
     const inputSeconds = Number(cost.detail?.inputSeconds || input.parameters?.videoSeconds || 0)
     const images = Number(cost.detail?.images || input.parameters?.referenceImages || 0)
     const isH3 = String(input?.model?.publicId || input?.model?.id || input?.model || '') === 'MiniMax-H3'
-    const extraImageCredits = isH3 ? Math.max(0, images - 5) * 5.7 : 0
+    const simple=cost.detail.pricingPolicy?.pricingFormula==='supplier_plus_output' || cost.detail.pricingSnapshot?.version==='suihe-quoted-cost-2026-10-26'
+    const extraImageCredits = simple ? Number(cost.detail.imageRmb||0)+Number(cost.detail.contextIrRmb||0) : isH3 ? Math.max(0, images - 5) * 5.7 : 0
+    if(simple) {
+      const inputCost=cost.detail.referenceCostRmb ?? Number(cost.detail.inputPerSecondRmb ?? cost.detail.perSecondRmb ?? 0)*inputSeconds
+      const points=Math.max(0.0001,Math.round((output*manualRate+inputCost+extraImageCredits)*10000)/10000)
+      return {points,count:1,duration:output,usageBased:false,policyVersion:'admin-manual-video-price',breakdown:{durationSeconds:output,resolution:input.parameters?.resolution,perSecond:manualRate,outputPerSecond:manualRate,inputVideoSeconds:inputSeconds,inputVideoPerSecond:inputSeconds>0?inputCost/inputSeconds:0,inputImageCredits:cost.detail.imageRmb||0,contextCredits:cost.detail.contextIrRmb||0,billingSource:'admin_manual_price',minimum:0.0001,rounding:'round-0.0001'}}
+    }
     const points = Math.max(0.01, Math.ceil(((output + inputSeconds) * manualRate + extraImageCredits) * 100 - 1e-8) / 100)
     return {
       points,
@@ -161,15 +192,16 @@ export function costPlusVideoEstimate(input) {
     }
   }
   const expenses = cost.detail.expenses
-  const requiredRevenue = (cost.rawRmb + expenses.rmbPerRequest + cost.outputSeconds * (cost.markupPerSecond+expenses.rmbPerOutputSecond))/(1-expenses.paymentFeePercent/100)
-  const points = Math.max(0.01, Math.ceil(requiredRevenue*100 - 1e-8)/100)
+  const simple=cost.detail.pricingPolicy?.pricingFormula==='supplier_plus_output' || cost.detail.pricingSnapshot?.version==='suihe-quoted-cost-2026-10-26'
+  const requiredRevenue = simple ? cost.rawRmb+cost.outputSeconds*cost.markupPerSecond : (cost.rawRmb + expenses.rmbPerRequest + cost.outputSeconds * (cost.markupPerSecond+expenses.rmbPerOutputSecond))/(1-expenses.paymentFeePercent/100)
+  const points = simple ? Math.max(0.0001,Math.round(requiredRevenue*10000)/10000) : Math.max(0.01, Math.ceil(requiredRevenue*100 - 1e-8)/100)
   const inputSeconds = cost.detail.inputSeconds
   const perSecond = cost.detail.perSecondRmb ?? cost.rawRmb / Math.max(1, cost.outputSeconds+inputSeconds)
   return {
     points, count: 1, duration: cost.outputSeconds, usageBased: cost.usageBased, policyVersion: VIDEO_PRICING_VERSION,
-    breakdown: { durationSeconds: cost.outputSeconds, resolution: input.parameters?.resolution, perSecond: (perSecond+cost.markupPerSecond+expenses.rmbPerOutputSecond)/(1-expenses.paymentFeePercent/100), outputPerSecond: (perSecond+cost.markupPerSecond+expenses.rmbPerOutputSecond)/(1-expenses.paymentFeePercent/100), inputVideoSeconds: inputSeconds, inputVideoPerSecond: perSecond, inputImageCredits: cost.detail.imageRmb || 0, contextCredits: cost.detail.contextIrRmb || 0, billingSource: cost.usageBased ? 'upstream_usage' : 'parameter_reserve', usageTokens: cost.detail.tokens || 0, minimum: 0.01, rounding: 'ceil-0.01', settlesActualUsage: true },
+    breakdown: { durationSeconds: cost.outputSeconds, resolution: input.parameters?.resolution, perSecond: simple?perSecond+cost.markupPerSecond:(perSecond+cost.markupPerSecond+expenses.rmbPerOutputSecond)/(1-expenses.paymentFeePercent/100), outputPerSecond: simple?perSecond+cost.markupPerSecond:(perSecond+cost.markupPerSecond+expenses.rmbPerOutputSecond)/(1-expenses.paymentFeePercent/100), inputVideoSeconds: inputSeconds, inputVideoPerSecond: cost.detail.inputPerSecondRmb ?? perSecond, inputImageCredits: cost.detail.imageRmb || 0, contextCredits: cost.detail.contextIrRmb || 0, billingSource: cost.usageBased ? 'upstream_usage' : 'parameter_reserve', usageTokens: cost.detail.tokens || 0, minimum: simple?0.0001:0.01, rounding: simple?'round-0.0001':'ceil-0.01', settlesActualUsage: !GROK_VIDEO_USD[String(input.model?.publicId||input.model?.id||input.model)] },
   }
 }
 export function adminVideoPricing(): Record<string, any> {
-  return { ...videoPricingSnapshot(), expenses:videoExpenses(), supplierSource: 'https://metaso.cn/minimax-h3', arkSource: 'https://docs.volcengine.com/docs/ark/model-pricing', metasoTiers: METASO_VIDEO_CREDITS, arkFast: { noVideoRmbPerMillion:37, withVideoRmbPerMillion:22 }, ark25: structuredClone(SEEDANCE25_PRICING), h3: { freeImages:5, extraImageCredits:5.7, contextCredits:5.7, audioFree:true }, seedance: { imageFree:true, audioFree:true } }
+  return { ...videoPricingSnapshot(), expenses:videoExpenses(videoPricingSnapshot()), supplierSource: 'https://metaso.cn/minimax-h3', arkSource: 'https://docs.volcengine.com/docs/ark/model-pricing', metasoTiers: METASO_VIDEO_CREDITS, arkFast: { noVideoRmbPerMillion:37, withVideoRmbPerMillion:22 }, ark25: structuredClone(SEEDANCE25_PRICING), h3: { freeImages:5, extraImageCredits:5.7, contextCredits:5.7, audioFree:true }, seedance: { imageFree:true, audioFree:true } }
 }

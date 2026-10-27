@@ -225,7 +225,7 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
     catalogRefreshes.set(pendingKey, pending)
     return pending
   }
-  async function config() {
+  async function config(fresh = false) {
     const account = cloud.account
     const authRevision = cloud.authRevision
     const configFile = join(directory, 'catalog-' + createHash('sha256').update(account || 'anonymous').digest('hex') + '.json')
@@ -234,7 +234,7 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
     // The encrypted account session and last successful catalog are already on
     // disk. Paint from them immediately; cloud reconciliation runs in the
     // background so a slow proxy no longer holds the login, balance or canvas.
-    if (catalog) {
+    if (catalog && !fresh) {
       void refreshConfigCatalog(account, authRevision, configFile)
         .then(value => { if (cloud.account === account && cloud.authRevision === authRevision) lastConfig = value })
         .catch(error => {
@@ -247,6 +247,8 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
     } catch (error) {
       if (cloud.account !== account || error.status === 409) throw error
       cloud.status = cloud.cookie ? 'offline' : 'disconnected'
+      // 明确刷新失败时不把过期的开关/报价伪装成最新目录。
+      if (fresh) throw error
     }
     // 不用内置全目录补回已关闭的模型；离线仅复用当前账号实际取得的目录。
     return configResponse(catalog)
@@ -455,7 +457,7 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
         return
       }
       if (url.pathname === '/api/imagine/image' && request.method === 'GET') { await proxy(request, response, url.pathname + url.search); return }
-      if (url.pathname === '/api/imagine/config') { json(response, 200, await config()); return }
+      if (url.pathname === '/api/imagine/config') { json(response, 200, await config(url.searchParams.get('fresh') === '1')); return }
       if (url.pathname === '/api/imagine/personalization') {
         const name = url.searchParams.get('document') || 'agents'
         if (request.method === 'GET') { json(response, 200, { ok: true, ...agent.readPersonalization('local', name) }); return }
@@ -719,6 +721,16 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
         json(response, 200, { ...catalog, data: [...(Array.isArray(catalog.data) ? catalog.data : []), ...[...localRoutes.values()].flatMap(route => route.models())] })
         return
       }
+      if (url.pathname === '/api/imagine/profile' && request.method === 'POST') {
+        mutate(request)
+        const account = cloud.account, revision = cloud.authRevision, signal = AbortSignal.any([incoming.signal, modelSession.signal])
+        const body = await readJson(request, 64000, signal)
+        signal.throwIfAborted()
+        if (account !== cloud.account || revision !== cloud.authRevision || cloud.sessionChanging || cloud.authenticationExpired) throw Object.assign(new Error('账号已切换，昵称尚未修改'), { status: 409 })
+        const value = await cloud.json(url.pathname, { method: 'POST', body: { name: body?.name }, signal })
+        await cloud.updateSession(value.session, revision)
+        json(response, 200, { session: userSession() }); return
+      }
       if (url.pathname === '/api/imagine/password' && request.method === 'POST') {
         mutate(request)
         const account = cloud.account, revision = cloud.authRevision, signal = AbortSignal.any([incoming.signal, modelSession.signal])
@@ -738,7 +750,7 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
         if (request.method === 'GET') { await proxy(request, response, url.pathname + url.search, { method: 'GET' }); return }
         mutate(request)
         const account = cloud.account, revision = cloud.authRevision, signal = AbortSignal.any([incoming.signal, modelSession.signal])
-        const body = await readJson(request, 24 * 1024 * 1024, signal)
+        const body = request.method === 'DELETE' ? undefined : await readJson(request, 24 * 1024 * 1024, signal)
         signal.throwIfAborted()
         if (account !== cloud.account || revision !== cloud.authRevision || cloud.sessionChanging || cloud.authenticationExpired) throw Object.assign(new Error('账号已切换，这条反馈尚未提交'), { status: 409 })
         await proxy(request, response, url.pathname, { method: request.method, body, signal }); return

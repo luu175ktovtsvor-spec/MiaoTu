@@ -2356,6 +2356,8 @@
   "生成视频": "Generated video",
   "暂无生成视频": "No generated video yet",
   "视频生成进度": "Video generation progress",
+  "正在更新报价": "Updating the estimate",
+  "当前参数报价失败，请稍后重试": "Could not estimate the current parameters. Try again later.",
   "请先在设置中添加视频模型": "Add a video model in Settings first",
   "仅一张图片时作为尾帧；两张图片按顺序作为首帧、尾帧": "With one image it is used as the last frame; with two images they are used in order as the first and last frame",
   "图片引用按顺序作为首帧、尾帧": "Image references are used in order as the first and last frame",
@@ -3553,5 +3555,10 @@
   "片段截取": "Trim clip",
   "写下你想讲的故事、场景或角色设定。例如：一个来自未来的机器人，在城市屋顶看星星。": "Write the story, scene or character you have in mind. For example: a robot from the future watching the stars on a city rooftop.",
   "使用豆包或 Dola 账号自带的权益生成文本回复；Agent 和导演台请选择上面的妙图模型或你接入的模型。": "Uses the Doubao or Dola account’s own allowance for text replies. For the agent and the director, choose a MiaoImg model or one you added above.",
-  "最多 {0} 个参考素材": "Up to {0} reference assets"
+  "最多 {0} 个参考素材": "Up to {0} reference assets",
+  "正在读取模型目录…": "Loading model catalog…",
+  "当前没有可用的图片或视频模型。": "No image or video models are currently available.",
+  "积分/张": "credits/image",
+  "参考视频按时长另计": "Reference video duration is charged separately",
+  "按实际用量结算": "Settled using actual usage"
 }

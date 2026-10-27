@@ -88,6 +88,7 @@ import {
 } from './text-providers.ts'
 import { qqOAuthConfig } from './qq-oauth.ts'
 import { dingTalkOAuthConfig, githubOAuthConfig, linuxDoOAuthConfig, oidcOAuthConfig, wechatOAuthConfig } from './oauth-extra.ts'
+import { enforceRequestLimit, requestOperation } from './request-guard.ts'
 
 const HOST = process.env.OIP_IMAGE_API_HOST || '127.0.0.1'
 const PORT = Number(process.env.OIP_IMAGE_API_PORT || 8788)
@@ -965,6 +966,8 @@ const server = createServer(withRequestProject(async (request, response) => {
   currentProject()
   const url = new URL(request.url || '/', `http://${HOST}:${PORT}`)
   const session = management.session(cookieToken(request)) || management.session(cookieToken(request, 'miao_admin'))
+  const operation = requestOperation(url.pathname, request.method || 'GET')
+  if (operation) enforceRequestLimit(request, session, operation)
   if (await desktopModel(request, response, session, url, { management, readJson, mutation })) return
   if (await desktopWeb(request, response, session, url, { management, readJson, mutation })) return
   // 参考素材只读链接：上游按签名直接抓取，不要求登录（token 已绑定用户、路径和过期时间）。
@@ -1327,6 +1330,15 @@ const server = createServer(withRequestProject(async (request, response) => {
     json(response, 200, { session: publicSession(next) }, { 'set-cookie': sessionCookie(request, next.token) }); return
   }
   if (url.pathname.startsWith('/api/imagine/oauth/') && await oauthLogin.handle(request, response, url)) return
+  if (url.pathname === '/api/imagine/profile' && request.method === 'POST') {
+    mutation(request, session)
+    if (session.role !== 'user') throw failure('请先登录账号', 403)
+    const payload = await readJson(request, SMALL_BODY_BYTES)
+    if (management.session(cookieToken(request))?.userId !== session.userId) throw failure('会话失效，请重新登录', 401)
+    management.updateProfile(session.userId, payload?.name)
+    json(response, 200, { session: publicSession(session) })
+    return
+  }
   if (url.pathname === '/api/imagine/password' && request.method === 'POST') {
     mutation(request,session)
     if (session.role !== 'user') throw failure('只有普通用户可以修改密码', 403)
@@ -1512,7 +1524,7 @@ const server = createServer(withRequestProject(async (request, response) => {
   }
   // 画布在用户点生成之前问「这次会扣多少积分」。这条路径和真正下单共用
   // prepareVideoRequest（含服务端 ffprobe 读参考素材真实时长），所以返回的数字
-  // 就是下单时预扣的数字；只读、不占额、不调用上游。
+  // 就是下单时预扣的数字；不占额、不创建生成任务，穗禾会调用无生成报价接口。
   if (url.pathname === '/api/imagine/video/estimate' && request.method === 'POST') {
     if (!session) throw failure('请先登录', 401)
     sameOrigin(request)
@@ -1621,6 +1633,7 @@ const server = createServer(withRequestProject(async (request, response) => {
     if (!id && request.method === 'GET') { json(response, 200, feedback.listForUser(session.userId, url.searchParams.get('status') || 'all')); return }
     if (!id && request.method === 'POST') { mutation(request, session); json(response, 201, feedback.create(session.userId, await readJson(request, 24 * 1024 * 1024))); return }
     if (id && !action && request.method === 'GET') { json(response, 200, feedback.getForUser(session.userId, id)); return }
+    if (id && !action && request.method === 'DELETE') { mutation(request, session); json(response, 200, feedback.deleteForUser(session.userId, id)); return }
     if (action === 'comments' && request.method === 'POST') { mutation(request, session); json(response, 200, feedback.commentAsUser(session.userId, id, (await readJson(request, SMALL_BODY_BYTES)).body)); return }
     if (action === 'status' && request.method === 'POST') { mutation(request, session); json(response, 200, feedback.setStatusAsUser(session.userId, id, (await readJson(request, SMALL_BODY_BYTES)).status)); return }
     if (action === 'attachments' && attachmentId && request.method === 'GET') {
@@ -1735,6 +1748,7 @@ const server = createServer(withRequestProject(async (request, response) => {
       minimumCredits: costPolicy.models?.[model.id]?.minimumCredits ?? 0.1,
       inputPricing: costPolicy.models?.[model.id]?.inputPricing || null,
       billingMode: costPolicy.models?.[model.id]?.billingMode || 'parameter_estimate',
+        pricingNotice: costPolicy.models?.[model.id]?.pricingNotice || '',
     }))
     const textCatalog = (await publicTextCatalog(env)).filter((model) => operating.models[model.id] !== false && allowedForUser(model.id))
     publicDefaultModel = models.find(model => model.id === publicDefaultModel)?.id || models[0]?.id || ''

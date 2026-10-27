@@ -1,5 +1,5 @@
 import FeedbackNotice from '../components/FeedbackNotice'
-import { ArrowLeft, ChatCircleText, CheckCircle, ImageSquare, PaperPlaneTilt, Plus, X } from '@phosphor-icons/react'
+import { ArrowLeft, ChatCircleText, CheckCircle, ImageSquare, PaperPlaneTilt, Plus, Trash, X } from '@phosphor-icons/react'
 import { useCallback, useEffect, useRef, useState, type ClipboardEvent } from 'react'
 
 // 反馈：用户在这里提交问题和建议，管理后台回复后显示在同一条反馈下面，形式类似 issue。
@@ -31,6 +31,22 @@ export function desktopAppVersion() {
 
 type FeedbackPageProps = { csrf?: string; signedIn: boolean; lang: 'zh' | 'en'; onLogin(): void; onBack(): void; onUnread?(count: number): void }
 
+function DeleteFeedbackDialog({ item, busy, error, lang, onCancel, onDelete }: { item: Summary; busy: boolean; error: string; lang: 'zh' | 'en'; onCancel(): void; onDelete(): void }) {
+  const dialog = useRef<HTMLDialogElement>(null)
+  const t = (zh: string, en: string) => lang === 'en' ? en : zh
+  useEffect(() => { const node = dialog.current; node?.showModal(); return () => node?.close() }, [])
+  return <dialog ref={dialog} className="feedback-delete-dialog" aria-labelledby="feedback-delete-title" onCancel={event => { event.preventDefault(); if (!busy) onCancel() }}>
+    <h2 id="feedback-delete-title">{t('删除反馈', 'Delete feedback')}</h2>
+    <p>{item.title}</p>
+    <p>{t('这条反馈及其回复和截图将被删除，无法恢复。', 'This feedback, its replies and screenshots will be permanently deleted.')}</p>
+    {error && <FeedbackNotice message={error} />}
+    <div className="feedback-actions">
+      <button type="button" className="feedback-secondary" autoFocus disabled={busy} onClick={onCancel}>{t('取消', 'Cancel')}</button>
+      <button type="button" className="feedback-danger" disabled={busy} onClick={onDelete}>{busy ? t('删除中…', 'Deleting…') : t('确认删除', 'Delete')}</button>
+    </div>
+  </dialog>
+}
+
 export default function FeedbackPage({ csrf, signedIn, lang, onLogin, onBack, onUnread }: FeedbackPageProps) {
   const t = (zh: string, en: string) => (lang === 'en' ? en : zh)
   const [tab, setTab] = useState<'open' | 'closed'>('open')
@@ -38,6 +54,8 @@ export default function FeedbackPage({ csrf, signedIn, lang, onLogin, onBack, on
   const [loading, setLoading] = useState(false), [error, setError] = useState(''), [busy, setBusy] = useState(false)
   const [view, setView] = useState<'list' | 'new' | 'detail'>('list')
   const [detail, setDetail] = useState<Detail | null>(null)
+  const [deleting, setDeleting] = useState<Summary | null>(null)
+  const [deleteError, setDeleteError] = useState('')
   const [reply, setReply] = useState('')
   const [category, setCategory] = useState<Category>('bug'), [title, setTitle] = useState(''), [body, setBody] = useState(''), [files, setFiles] = useState<Draft[]>([])
   const fileInput = useRef<HTMLInputElement>(null)
@@ -79,6 +97,22 @@ export default function FeedbackPage({ csrf, signedIn, lang, onLogin, onBack, on
     } catch (e) { setError(e instanceof Error ? e.message : String(e)) }
     finally { setBusy(false) }
   }
+  async function removeFeedback() {
+    if (!deleting || busy) return
+    const id = deleting.id
+    setBusy(true); setDeleteError('')
+    try {
+      const response = await fetch(`/api/imagine/feedback/${encodeURIComponent(id)}`, { method: 'DELETE', headers: headers() })
+      const result = await response.json()
+      if (!response.ok || result.ok !== true) throw new Error(result.error || t('删除失败，请重试', 'Could not delete feedback. Try again.'))
+      setItems(list => list.filter(item => item.id !== id))
+      if (detail?.id === id) { setDetail(null); setReply(''); setView('list') }
+      setDeleting(null)
+      await load()
+    } catch (e) { setDeleteError(e instanceof Error ? e.message : String(e)) }
+    finally { setBusy(false) }
+  }
+  function requestDelete(item: Summary) { setDeleteError(''); setDeleting(item) }
   async function addFiles(list: FileList | File[]) {
     const accepted: Draft[] = []
     for (const file of Array.from(list)) {
@@ -124,6 +158,7 @@ export default function FeedbackPage({ csrf, signedIn, lang, onLogin, onBack, on
 
   return (
     <main className="studio-record feedback-page" onPaste={view === 'new' ? pasteImages : undefined}>
+      {deleting && <DeleteFeedbackDialog item={deleting} busy={busy} error={deleteError} lang={lang} onCancel={() => { setDeleting(null); setDeleteError('') }} onDelete={() => void removeFeedback()} />}
       {view === 'list' ? <>
         <div className="feedback-heading">
           <div>
@@ -145,7 +180,7 @@ export default function FeedbackPage({ csrf, signedIn, lang, onLogin, onBack, on
           : <ul className="feedback-list">
             {visible.map(item => (
               <li key={item.id}>
-                <button type="button" onClick={() => open(item.id)} disabled={busy}>
+                <button type="button" className="feedback-open" onClick={() => open(item.id)} disabled={busy}>
                   {item.status === 'open' ? <span className="feedback-state open" aria-hidden="true" /> : <CheckCircle size={16} className="feedback-state closed" aria-hidden="true" />}
                   <span className="feedback-row-main">
                     <span className="feedback-row-title">{item.unread && <i className="feedback-unread" aria-label={t('有新回复', 'New reply')} />}{item.title}</span>
@@ -154,6 +189,7 @@ export default function FeedbackPage({ csrf, signedIn, lang, onLogin, onBack, on
                   {item.labels.map(label => <span key={label} className="feedback-label">{label}</span>)}
                   {item.comments > 0 && <span className="feedback-count"><ChatCircleText size={14} aria-hidden="true" />{item.comments}</span>}
                 </button>
+                <button type="button" className="feedback-delete" aria-label={t(`删除反馈：${item.title}`, `Delete feedback: ${item.title}`)} title={t('删除反馈', 'Delete feedback')} disabled={busy} onClick={() => requestDelete(item)}><Trash size={16} aria-hidden="true" /></button>
               </li>
             ))}
           </ul>}
@@ -188,6 +224,7 @@ export default function FeedbackPage({ csrf, signedIn, lang, onLogin, onBack, on
         <button type="button" className="feedback-back" onClick={() => { setView('list'); setError(''); void load() }}><ArrowLeft size={15} aria-hidden="true" />{t('返回列表', 'Back to list')}</button>
         <div className="feedback-detail-head">
           <h1>{detail.title} <span>#{detail.number}</span></h1>
+          <button type="button" className="feedback-secondary" disabled={busy} onClick={() => requestDelete(detail)}><Trash size={16} aria-hidden="true" />{t('删除反馈', 'Delete feedback')}</button>
           <div className="feedback-row-meta">
             <span className={`feedback-pill ${detail.status}`}>{detail.status === 'open' ? t('处理中', 'Open') : t('已关闭', 'Closed')}</span>
             {categoryLabel(detail.category)} · {t('提交于', 'Opened')} {when(detail.createdAt, lang)}

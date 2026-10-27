@@ -112,9 +112,10 @@
             <div class="estimateLine" aria-live="polite" :data-estimate-source="videoEstimate?.breakdown?.billingSource || 'unavailable'">
               <icon-coins :size="14" aria-hidden="true" />
               <strong v-if="['doubao-local', 'dola-local'].includes(selectedModel?.providerId || '')">{{ translate(selectedModel?.providerId === 'dola-local' ? '使用 Dola 额度' : '使用豆包额度') }}</strong>
+              <strong v-else-if="videoEstimateLoading">{{ translate('正在更新报价') }}</strong>
               <span v-else>{{ translate('预计') }}</span>
-              <strong v-if="!['doubao-local', 'dola-local'].includes(selectedModel?.providerId || '') && videoEstimate?.points != null">{{ translate('{0} 积分', { 0: formatCredits(videoEstimate.points) }) }}</strong>
-              <strong v-else-if="!['doubao-local', 'dola-local'].includes(selectedModel?.providerId || '')">—</strong>
+              <strong v-if="!['doubao-local', 'dola-local'].includes(selectedModel?.providerId || '') && !videoEstimateLoading && videoEstimate?.points != null">{{ translate('{0} 积分', { 0: formatCredits(videoEstimate.points) }) }}</strong>
+              <strong v-else-if="!['doubao-local', 'dola-local'].includes(selectedModel?.providerId || '') && !videoEstimateLoading">—</strong>
             </div>
             <feedbackNotice :message="referenceMismatchMessage || videoEstimateError" />
             <el-button
@@ -264,9 +265,13 @@ const referenceMismatchMessage = computed(() => selectedModel.value && !matching
 type VideoEstimate = { points?: number | null; billingSource?: string; breakdown?: { outputPerSecond?: number; perSecond?: number; billingSource?: string } };
 const videoEstimate = ref<VideoEstimate | null>(null);
 const videoEstimateError = ref("");
+const videoEstimateLoading = ref(false);
 let videoEstimateTimer: number | undefined;
 let videoEstimateController: AbortController | undefined;
 let videoEstimateSequence = 0;
+let videoEstimateRequestKey = "";
+let videoEstimateInFlight: Promise<VideoEstimate | null> | undefined;
+let videoEstimateInFlightKey = "";
 
 function referenceCap(choice: NodeMediaModel, mode: string | string[], type: string) {
   const exact = choice.parameterRules?.referencesByMode?.[modeName(mode)]?.[type as "image" | "video" | "audio"];
@@ -399,7 +404,6 @@ const outputFile = computed(() => outputs.value.video?.dataType === "VIDEO" ? ou
 const videoEstimateKey = computed(() => JSON.stringify({
   provider: selectedModel.value?.providerId || "",
   model: selectedModel.value?.modelId || "",
-  prompt: generationPrompt.value,
   duration: data.value.duration,
   resolution: data.value.resolution,
   ratio: data.value.ratio,
@@ -411,7 +415,10 @@ const videoEstimateKey = computed(() => JSON.stringify({
 }));
 const documentContext = inject<{ targets: Map<string, HTMLElement> } | undefined>("nodeDocument", undefined);
 const autoEstimateVisible = computed(() => node.selected || Boolean(documentContext?.targets.has(id)));
-watch([videoEstimateKey, autoEstimateVisible], scheduleVideoEstimate, { immediate: true });
+// Prompt text itself never changes the price. Only the transition between
+// "no usable prompt/reference" and "ready to quote" should wake the estimate.
+const estimateReady = computed(() => Boolean(generationPrompt.value || promptOptional.value));
+watch([videoEstimateKey, autoEstimateVisible, estimateReady], scheduleVideoEstimate, { immediate: true });
 const previewUrl = files.useFileUrl(
   outputFile,
   (error) => showNodeError(error, translate("视频读取失败"))
@@ -444,19 +451,40 @@ function scheduleVideoEstimate() {
   if (videoEstimateTimer !== undefined) window.clearTimeout(videoEstimateTimer);
   videoEstimateController?.abort();
   videoEstimateController = undefined;
+  videoEstimateInFlight = undefined;
+  videoEstimateInFlightKey = "";
   videoEstimate.value = null;
+  videoEstimateRequestKey = "";
   videoEstimateError.value = "";
+  videoEstimateLoading.value = false;
   if (!autoEstimateVisible.value) return;
   // Nothing to quote before there is a prompt; the send button already explains it.
   if (!generationPrompt.value && !promptOptional.value) return;
+  videoEstimateLoading.value = true;
   videoEstimateTimer = window.setTimeout(() => {
     if (autoEstimateVisible.value) void refreshVideoEstimate(sequence);
-  }, 220);
+  }, 350);
 }
 
 async function refreshVideoEstimate(sequence: number, signal?: AbortSignal) {
+  const key = videoEstimateKey.value;
+  if (videoEstimateInFlight && videoEstimateInFlightKey === key) return videoEstimateInFlight;
+  const promise = refreshVideoEstimateOnce(sequence, signal);
+  videoEstimateInFlight = promise;
+  videoEstimateInFlightKey = key;
+  try {
+    return await promise;
+  } finally {
+    if (videoEstimateInFlight === promise) {
+      videoEstimateInFlight = undefined;
+      videoEstimateInFlightKey = "";
+    }
+  }
+}
+
+async function refreshVideoEstimateOnce(sequence: number, signal?: AbortSignal): Promise<VideoEstimate | null> {
   const choice = selectedModel.value;
-  if (!choice || disposed || sequence !== videoEstimateSequence) return;
+  if (!choice || disposed || sequence !== videoEstimateSequence) return null;
   const images = refList.value.flatMap(item => item.dataType === "IMAGE" && item.value ? [{ path: item.value.url, mimeType: item.value.mimeType }] : []);
   const videos = refList.value.flatMap(item => item.dataType === "VIDEO" && item.value ? [{ path: item.value.url, mimeType: item.value.mimeType }] : []);
   const audios = refList.value.flatMap(item => item.dataType === "AUDIO" && item.value ? [{ path: item.value.url, mimeType: item.value.mimeType }] : []);
@@ -489,16 +517,20 @@ async function refreshVideoEstimate(sequence: number, signal?: AbortSignal) {
     const result = await ai.estimateVideo(request, controller.signal);
     if (sequence === videoEstimateSequence && !controller.signal.aborted) {
       videoEstimate.value = result;
+      videoEstimateRequestKey = videoEstimateKey.value;
       videoEstimateError.value = "";
     }
+    return result;
   } catch (error) {
     if (sequence === videoEstimateSequence && !controller.signal.aborted) {
       videoEstimate.value = null;
       videoEstimateError.value = error instanceof Error ? error.message : translate("当前素材或参数不符合模型要求");
     }
+    return null;
   } finally {
     signal?.removeEventListener("abort", abort);
     if (videoEstimateController === controller) videoEstimateController = undefined;
+    if (sequence === videoEstimateSequence && !controller.signal.aborted) videoEstimateLoading.value = false;
   }
 }
 
@@ -661,7 +693,17 @@ async function startGeneration(signal?: AbortSignal) {
     .list()
     .then(({ directory }) => {
       controller.signal.throwIfAborted();
-      return ai.estimateVideo(input, controller.signal).then(() => directory);
+      const quoteKey = videoEstimateKey.value;
+      if (videoEstimateRequestKey === quoteKey && videoEstimate.value) return directory;
+      if (videoEstimateTimer !== undefined) {
+        window.clearTimeout(videoEstimateTimer);
+        videoEstimateTimer = undefined;
+      }
+      return refreshVideoEstimate(videoEstimateSequence, controller.signal).then((quote) => {
+        controller.signal.throwIfAborted();
+        if (!quote || videoEstimateRequestKey !== quoteKey) throw new Error(videoEstimateError.value || translate("当前参数报价失败，请稍后重试"));
+        return directory;
+      });
     })
     .then((directory) => {
       controller.signal.throwIfAborted();
@@ -710,14 +752,19 @@ async function getConfigWithEstimate(signal?: AbortSignal) {
   if (videoEstimateTimer !== undefined) window.clearTimeout(videoEstimateTimer);
   videoEstimateTimer = undefined;
   videoEstimateController?.abort();
+  videoEstimateInFlight = undefined;
+  videoEstimateInFlightKey = "";
   const sequence = ++videoEstimateSequence;
   videoEstimate.value = null;
+  videoEstimateRequestKey = "";
+  videoEstimateLoading.value = true;
   await refreshVideoEstimate(sequence, signal);
   signal?.throwIfAborted();
   return getConfig();
 }
 
 function getConfig() {
+  const currentEstimate = videoEstimateRequestKey === videoEstimateKey.value ? videoEstimate.value : null;
   return {
     config: {
       providerId: selectedModel.value?.providerId ?? "",
@@ -732,7 +779,7 @@ function getConfig() {
     models: models.value,
     ratios: ratioOptions.value,
     matchingModes: matchingModes.value,
-    estimate: videoEstimate.value ? { points: videoEstimate.value.points, source: videoEstimate.value.breakdown?.billingSource || 'server' } : null,
+    estimate: currentEstimate ? { points: currentEstimate.points, source: currentEstimate.breakdown?.billingSource || 'server' } : null,
   };
 }
 

@@ -1,0 +1,88 @@
+/* Account uses the client's semantic palette in dark, light and custom themes. */
+.account-page { width: min(1120px, 100%); padding: 30px clamp(20px, 3vw, 40px) 56px; }
+.account-back { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0; border: 0; background: transparent; color: var(--color-muted); font-size: 12px; cursor: pointer; }
+.account-back:hover { color: var(--color-ink); }
+.account-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin: 20px 0 28px; }
+.account-page .account-heading h1 { margin: 0; font: 650 26px/1.25 var(--font-sans); letter-spacing: -.035em; }
+.account-heading p { margin: 8px 0 0; color: var(--color-muted); font-size: 13px; line-height: 1.5; }
+.account-logout { display: inline-flex; flex-shrink: 0; align-items: center; gap: 7px; min-height: 36px; padding: 0 12px; border: 1px solid var(--color-line); border-radius: 8px; background: transparent; color: var(--color-muted); font-size: 12px; cursor: pointer; }
+.account-logout:hover:not(:disabled) { background: var(--color-hover); color: var(--color-ink); border-color: var(--color-line-strong); }
+.account-layout { display: grid; grid-template-columns: minmax(260px, .8fr) minmax(0, 1.45fr); gap: 20px; align-items: start; }
+.account-settings, .account-billing { display: grid; min-width: 0; gap: 20px; align-content: start; }
+.account-card { min-width: 0; padding: 22px; border: 1px solid var(--color-line); border-radius: 14px; background: var(--color-surface); }
+.account-card__heading { display: flex; align-items: center; gap: 9px; margin-bottom: 22px; color: var(--color-body); }
+.account-card__heading > svg { flex-shrink: 0; color: var(--color-muted); }
+.account-card__heading h2 { margin: 0; color: var(--color-ink); font: 600 14px/1.4 var(--font-sans); }
+.account-form { display: grid; gap: 20px; }
+.account-field { display: grid; min-width: 0; gap: 8px; }
+.account-field label { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--color-body); font-size: 12px; }
+.account-field__count { color: var(--color-faint); font-size: 11px; font-variant-numeric: tabular-nums; }
+.account-field input { width: 100%; min-width: 0; height: 42px; padding: 0 12px; border: 1px solid var(--color-line-strong); border-radius: 8px; background: var(--color-canvas); color: var(--color-ink); font: 13px var(--font-sans); transition: border-color .15s; }
+.account-field input::placeholder { color: var(--color-faint); }
+.account-page .account-field input:focus-visible { outline: none; border-color: var(--color-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 12%, transparent); }
+.account-email { display: grid; min-width: 0; gap: 8px; }
+.account-email > span { color: var(--color-muted); font-size: 12px; }
+.account-email p { margin: 0; color: var(--color-body); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.account-save { justify-self: start; display: inline-flex; align-items: center; justify-content: center; min-height: 36px; padding: 0 14px; border: 1px solid transparent; border-radius: 8px; background: var(--color-accent); color: var(--color-accent-ink); font: 600 12px var(--font-sans); cursor: pointer; transition: opacity .15s; }
+.account-save:hover:not(:disabled) { opacity: .85; }
+.account-page button:disabled, .account-field input:disabled { opacity: .45; cursor: not-allowed; }
+.account-form__hint { margin: 0; color: var(--color-muted); font-size: 12px; line-height: 1.6; }
+.account-security summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 36px; margin: -6px -8px; padding: 6px 8px; border-radius: 8px; list-style: none; color: var(--color-body); font-size: 13px; cursor: pointer; }
+.account-security summary::-webkit-details-marker { display: none; }
+.account-security summary:hover { background: var(--color-hover); color: var(--color-ink); }
+.account-security summary > svg { flex-shrink: 0; color: var(--color-muted); transition: transform .15s; }
+.account-security[open] summary > svg { transform: rotate(180deg); }
+.account-security .account-form { margin-top: 24px; }
+.account-security summary:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
+.account-credit .pay { gap: 18px; margin: 0; }
+.account-credit .pay__title { font: 600 14px/1.4 var(--font-sans); }
+.account-credit .pay__balance { padding: 2px 0 6px; border-radius: 0; background: transparent; }
+.account-credit .pay__figure { gap: 6px; margin-top: 10px; }
+.account-credit .pay__figure strong { font: 550 38px/1.1 var(--font-sans); letter-spacing: -.045em; }
+.account-credit .pay__rate { margin-bottom: 4px; font-size: 11px; }
+.account-credit .pay__amounts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.account-credit .pay__amount { min-height: 48px; gap: 4px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-canvas); font-size: 15px; }
+.account-credit .pay__amount:hover:not(.is-selected) { background: var(--color-elevate); border-color: var(--color-line-strong); }
+.account-credit .pay__amount.is-selected { border-color: var(--color-accent); background: var(--color-accent); color: var(--color-accent-ink); }
+.account-credit .pay__custom { grid-template-columns: auto minmax(100px, 1fr); gap: 8px 12px; }
+.account-credit .pay__custom > p { grid-column: 2; font-size: 12px; }
+.account-credit .pay__field { min-height: 40px; border: 1px solid var(--color-line-strong); border-radius: 8px; background: var(--color-canvas); }
+.account-credit .pay__field:focus-within { border-color: var(--color-accent); }
+.account-credit .pay__field input { min-width: 0; font-size: 14px; }
+.account-credit .pay__method, .account-credit .pay__go { min-height: 40px; border-radius: 8px; font-size: 13px; }
+.account-credit .pay__method { border: 1px solid var(--color-line); background: var(--color-canvas); color: var(--color-body); font-weight: 500; }
+.account-credit .pay__method[aria-checked="true"] { border-color: var(--color-line-strong); background: var(--color-elevate); color: var(--color-ink); }
+.account-credit .pay__method[aria-checked="true"] svg { color: inherit; }
+.account-credit .pay__hint, .account-credit .pay__range { font-size: 11px; line-height: 1.7; }
+.account-ledger .account-card__heading { margin-bottom: 16px; }
+.account-ledger__toggle { margin-left: auto; padding: 4px 0 4px 8px; border: 0; background: transparent; color: var(--color-muted); font: 12px var(--font-sans); cursor: pointer; }
+.account-ledger__toggle:hover { color: var(--color-ink); }
+.account-ledger .ledger-wrap { overflow-x: auto; border: 0; border-radius: 0; }
+.account-ledger .ledger-table th { padding: 10px 8px; background: transparent; color: var(--color-muted); font-size: 11px; }
+.account-ledger .ledger-table td { padding: 13px 8px; font-size: 12px; }
+.account-ledger .ledger-table :is(th, td):first-child { padding-left: 0; }
+.account-ledger .ledger-table :is(th, td):last-child { padding-right: 0; white-space: nowrap; }
+.account-ledger .ledger-time, .account-ledger .ledger-sub { color: var(--color-muted); }
+.account-ledger .panel-empty { padding: 20px 6px; }
+.account-ledger > p { margin: 0; color: var(--color-muted); font-size: 12px; }
+/* Keep the shell's highlight treatment while giving account controls one radius. */
+.miao-desktop .studio-record.account-page :is(.account-logout, .pay__go, .pay__amount, .pay__method, .pay__field) { border-radius: 8px; }
+.miao-desktop .studio-record.account-page .ledger-wrap { border-radius: 0; }
+.miao-desktop .studio-record.account-page .pay__balance { background: transparent; border: 0; box-shadow: none; }
+.miao-desktop[data-client-scheme="dark"] .account-save:not(:disabled) { box-shadow: var(--site-glow); }
+.miao-desktop[data-client-scheme="dark"] .account-save:hover:not(:disabled) { box-shadow: var(--site-glow-hover); }
+@media (max-width: 1000px) {
+  .account-page { padding-inline: 24px; }
+  .account-layout { grid-template-columns: minmax(230px, .85fr) minmax(0, 1.3fr); gap: 16px; }
+  .account-settings, .account-billing { gap: 16px; }
+  .account-card { padding: 18px; }
+  .account-credit .pay__balance { align-items: flex-start; flex-direction: column; gap: 12px; }
+}
+@media (max-width: 760px) {
+  .account-page { padding: 22px 18px 40px; }
+  .account-layout { grid-template-columns: minmax(0, 1fr); }
+  .account-heading { align-items: flex-start; margin-bottom: 22px; gap: 12px; }
+  .account-page .account-heading h1 { font-size: 24px; }
+  .account-heading p { max-width: 23ch; font-size: 12px; }
+  .account-credit .pay__balance { align-items: flex-end; flex-direction: row; }
+}

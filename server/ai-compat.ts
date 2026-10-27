@@ -171,6 +171,7 @@ export function createAiCompat({ management, workspaceFiles, generate, probeRefe
         creditsPerSecond: costPolicy.models?.[model.id]?.creditsPerSecond || { default: 0.5 },
         minimumCredits: costPolicy.models?.[model.id]?.minimumCredits ?? 1,
         billingMode: costPolicy.models?.[model.id]?.billingMode || 'parameter_estimate',
+        pricingNotice: costPolicy.models?.[model.id]?.pricingNotice || '',
         inputPricing: costPolicy.models?.[model.id]?.inputPricing || null,
       }))
     return [...images, ...videos]

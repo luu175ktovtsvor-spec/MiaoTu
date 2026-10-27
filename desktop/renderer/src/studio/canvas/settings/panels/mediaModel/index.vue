@@ -1,6 +1,8 @@
 <template>
   <div class="mediaModels">
     <feedbackNotice v-if="error" :message="error"  />
+    <p v-else-if="loading && !models.length" class="mediaStatus" role="status">{{ translate('正在读取模型目录…') }}</p>
+    <p v-else-if="!loading && !groups.length" class="mediaStatus" role="status">{{ translate('当前没有可用的图片或视频模型。') }}</p>
 
     <section v-for="group in groups" :key="group.key" class="mediaGroup">
       <header class="mediaGroupHead">
@@ -8,11 +10,10 @@
         <span class="mediaGroupMeta">{{ group.meta }}</span>
       </header>
       <div class="mediaGrid">
-        <article v-for="model in group.models" :key="model.id" class="mediaCard" :class="{ isPaused: model.paused }">
+        <article v-for="model in group.models" :key="model.id" class="mediaCard">
           <header class="mediaCardHead">
             <span class="mediaLogo"><modelIcon :model="model.id" :size="22" /></span>
             <strong class="mediaName">{{ model.label }}</strong>
-            <span v-if="model.paused" class="mediaPaused">{{ translate('已暂停') }}</span>
           </header>
           <dl class="mediaSpecs">
             <template v-for="spec in model.specs" :key="spec.label">
@@ -29,37 +30,44 @@
 <script setup lang="ts">
 import feedbackNotice from '../../../components/feedbackNotice.vue';
 import { t, translate } from "@miaoimg/i18n/vue";
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import modelIcon from "@/studio/canvas/components/modelIcon.vue";
+import { loadMediaModels, type NodeMediaModel } from "@miaoimg/nodes-scaffold/nodeAi";
+import { captureWorkspaceScope, assertWorkspaceScope, subscribeWorkspaceScope } from "@/lib/workspaceRemote";
 
-const config = ref<{ models?: any[]; videoModels?: any[] } | null>(null);
+const models = ref<NodeMediaModel[]>([]);
 const error = ref("");
+const loading = ref(true);
+let disposed = false;
+let refreshing = false;
+let scopeVersion = 0;
 
-// 服务端只下发模型目录和能力；供应商标识与上游通道都不进用户界面。
-const imageModels = computed(() => (config.value?.models || []).map((model: any) => ({
-  id: String(model.id),
+// 与节点共用实时目录，服务端已过滤管理员开关、通道配置和账号权限。
+// 本机平台的账号权益在「豆包与 Dola」说明，不混入本站积分目录。
+const imageModels = computed(() => models.value.filter(model => model.type === 'image').map((model) => ({
+  id: model.modelId,
   label: String(model.label || translate("模型")),
-  note: String(model.note || ""),
-  paused: model.paused === true,
   sizes: sizeLabels(model.sizes),
   capabilities: imageCapabilities(model),
-  creditText: creditsPerImage(model),
+  creditItems: imageRates(model),
 })));
 
-const videoModels = computed(() => (config.value?.videoModels || []).map((model: any) => ({
-  id: String(model.id),
+const videoModels = computed(() => models.value.filter(model => model.type === 'video').map((model) => ({
+  id: model.modelId,
   label: String(model.label || translate("模型")),
-  note: String(model.note || ""),
-  paused: model.paused === true,
   sizes: sizeLabels(model.sizes),
   ratios: Array.isArray(model.ratios) ? model.ratios : [],
   durationItems: durationItems(model.durations),
   referenceItems: referenceItems(model),
-  rateItems: rateItems(model.creditsPerSecond),
+  rateItems: rateItems(model),
   minimumCredits: Number(model.minimumCredits) || 0,
   maxDuration: Math.max(0, ...(Array.isArray(model.durations) ? model.durations.map(Number).filter(Number.isFinite) : [])),
-  maxDurationByResolution: model.maxDurationByResolution || {},
+  maxDurationByResolution: Object.fromEntries((model.durationResolutionMap || []).flatMap(rule =>
+    (rule.resolution || []).map(resolution => [resolution, Math.max(0, ...(rule.duration || []).filter(value => value > 0))]))),
   maxDurationByMode: model.maxDurationByMode || {},
+  inputPricing: model.inputPricing,
+  billingMode: model.billingMode,
+  pricingNotice: model.pricingNotice,
 })));
 
 // 每一项单独成块，换行只发生在项与项之间。
@@ -82,8 +90,11 @@ function videoSpecs(model: any): Spec[] {
   if (model.sizes.length) specs.push({ label: translate("分辨率"), items: model.sizes });
   if (model.ratios.length) specs.push({ label: translate("比例"), items: model.ratios.map(ratioLabel) });
   if (model.referenceItems.length) specs.push({ label: translate("参考素材"), items: model.referenceItems });
-  if (model.rateItems.length) specs.push({ label: translate("积分"), items: model.rateItems, credit: true });
-  if (model.minimumCredits) specs.push({ label: translate("单次最低"), items: [t`${points(model.minimumCredits)} 积分`], credit: true });
+  const priceHints: string[] = model.pricingNotice ? [translate(model.pricingNotice)] : [];
+  if (model.inputPricing?.billReferenceVideoSeconds) priceHints.push(translate('参考视频按时长另计'));
+  if (model.billingMode === 'upstream_usage') priceHints.push(translate('按实际用量结算'));
+  if (model.rateItems.length) specs.push({ label: translate("积分"), items: model.rateItems, credit: true, hint: priceHints.join('，') });
+  if (model.minimumCredits >= 0.01) specs.push({ label: translate("单次最低"), items: [t`${points(model.minimumCredits)} 积分`], credit: true });
   return specs;
 }
 
@@ -91,7 +102,7 @@ function imageSpecs(model: any): Spec[] {
   const specs: Spec[] = [];
   if (model.sizes.length) specs.push({ label: translate("尺寸"), items: listItems(model.sizes.map(size => pixels(ratioLabel(size)))) });
   if (model.capabilities.length) specs.push({ label: translate("能力"), items: model.capabilities });
-  if (model.creditText) specs.push({ label: translate("积分"), items: [model.creditText], credit: true });
+  if (model.creditItems.length) specs.push({ label: translate("积分"), items: model.creditItems, credit: true });
   return specs;
 }
 
@@ -128,16 +139,28 @@ function referenceItems(model: any): string[] {
 }
 
 // 图片积分按张计：服务端给出的 creditsPerImage 已经是最终口径。
-function creditsPerImage(model: any) {
+function imageRates(model: NodeMediaModel): string[] {
+  const sizes = sizeLabels(model.sizes);
+  const tiers = Object.entries(model.creditsPerImageBySize || {}).filter(([size, price]) => sizes.includes(size) && Number.isFinite(price) && price >= 0);
+  const prices = [...new Set(tiers.map(([, price]) => price))];
+  if (prices.length > 1) return prices.map(price => {
+    const labels = tiers.filter(([, value]) => value === price).map(([size]) => pixels(size));
+    return `${listItems(labels, 3).join('、')} ${points(price)} ${translate('积分/张')}`;
+  });
+  if (tiers.length && tiers.length === sizes.length) return [t`${points(prices[0])} 积分/张`];
   const credits = Number(model?.creditsPerImage);
-  return Number.isFinite(credits) && credits > 0 ? t`${points(credits)} 积分/张` : "";
+  return model.creditsPerImage != null && Number.isFinite(credits) && credits >= 0 ? [t`${points(credits)} 积分/张`] : [];
 }
 
 // 单价由服务端相乘得出，可能带浮点尾数（如 1.7440000000000002），显示时最多保留四位小数。
 const points = (value: unknown) => String(Number(Number(value).toFixed(4)));
-function rateItems(rates?: Record<string, number>): string[] {
+function rateItems(model: NodeMediaModel): string[] {
+  const rates = model.creditsPerSecond;
   if (!rates) return [];
-  return Object.entries(rates).filter(([key]) => key !== "default").map(([resolution, value]) => t`${resolution} ${points(value)}/秒`);
+  return sizeLabels(model.sizes).flatMap(resolution => {
+    const value = rates[resolution] ?? rates.default;
+    return Number.isFinite(value) && value >= 0 ? [t`${resolution} ${points(value)}/秒`] : [];
+  });
 }
 
 function imageCapabilities(model: any) {
@@ -155,25 +178,62 @@ function imageCapabilities(model: any) {
   return capabilities;
 }
 
-onMounted(async () => {
+async function refreshModels() {
+  if (disposed || refreshing || document.visibilityState === 'hidden') return;
+  refreshing = true;
+  const version = scopeVersion;
+  const scope = captureWorkspaceScope();
   try {
-    const response = await fetch("./api/imagine/config", { cache: "no-store" });
-    if (!response.ok) throw new Error(translate("模型目录读取失败（{0}）", { 0: response.status }));
-    config.value = await response.json();
+    const catalog = await loadMediaModels(true);
+    assertWorkspaceScope(scope);
+    if (disposed || version !== scopeVersion) return;
+    const next = catalog.filter(model => model.providerId === 'miaoimg');
+    const changed = JSON.stringify(models.value) !== JSON.stringify(next);
+    models.value = next;
+    error.value = '';
+    if (changed) window.dispatchEvent(new Event('miao-media-models'));
   } catch (loadError) {
+    if (disposed || version !== scopeVersion) return;
+    models.value = [];
     error.value = translate("模型列表暂时无法加载，请稍后重新打开设置。");
+  } finally {
+    refreshing = false;
+    if (!disposed) loading.value = false;
+    if (!disposed && version !== scopeVersion) void refreshModels();
   }
+}
+const unsubscribeScope = subscribeWorkspaceScope(() => {
+  scopeVersion++;
+  models.value = [];
+  error.value = '';
+  loading.value = true;
+  void refreshModels();
+});
+let refreshTimer: ReturnType<typeof setInterval>;
+onMounted(() => {
+  void refreshModels();
+  window.addEventListener('focus', refreshModels);
+  document.addEventListener('visibilitychange', refreshModels);
+  refreshTimer = setInterval(refreshModels, 30_000);
+});
+onUnmounted(() => {
+  disposed = true;
+  unsubscribeScope();
+  clearInterval(refreshTimer);
+  window.removeEventListener('focus', refreshModels);
+  document.removeEventListener('visibilitychange', refreshModels);
 });
 </script>
 
 <style scoped lang="scss">
 .mediaModels { display: grid; gap: 28px; }
+.mediaStatus { margin: 0; color: var(--el-text-color-secondary); font-size: 13px; }
 .mediaGroupHead {
   display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px;
   h3 { margin: 0; color: var(--el-text-color-primary); font-size: 16px; font-weight: 600; letter-spacing: .01em; }
 }
 .mediaGroupMeta { color: var(--el-text-color-secondary); font-size: 12px; letter-spacing: .04em; }
-.mediaGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+.mediaGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 14px; }
 .mediaCard {
   position: relative; display: grid; align-content: start; gap: 16px; min-width: 0; overflow: hidden;
   padding: 20px 22px; border: 1px solid var(--el-border-color); border-radius: 18px;
@@ -182,7 +242,6 @@ onMounted(async () => {
   &::after { position: absolute; top: 0; right: 28px; left: 28px; height: 1px; background: linear-gradient(90deg, transparent, #4c9dff, transparent); content: ""; opacity: 0; transition: opacity .4s; }
   &:hover { border-color: var(--el-border-color-hover, var(--el-border-color)); box-shadow: 0 0 0 1px rgb(76 157 255 / .2), 0 20px 50px -20px rgb(76 157 255 / .35); }
   &:hover::after { opacity: .9; }
-  &.isPaused { opacity: .6; }
 }
 .mediaCardHead { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .mediaLogo {
@@ -190,7 +249,6 @@ onMounted(async () => {
   border: 1px solid var(--el-border-color); border-radius: 12px; background: var(--el-fill-color-light);
 }
 .mediaName { min-width: 0; overflow: hidden; color: var(--el-text-color-primary); font-size: 15px; font-weight: 600; letter-spacing: .01em; text-overflow: ellipsis; white-space: nowrap; }
-.mediaPaused { flex: none; margin-left: auto; padding: 2px 9px; border-radius: 999px; background: color-mix(in srgb, var(--el-color-danger) 14%, transparent); color: var(--el-color-danger); font-size: 11px; font-weight: 600; }
 .mediaSpecs {
   display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 9px 16px; margin: 0;
   dt { color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.7; }

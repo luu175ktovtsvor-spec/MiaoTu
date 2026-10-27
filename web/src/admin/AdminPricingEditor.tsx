@@ -13,76 +13,9 @@ type Props = {
 };
 
 const COST_FIELDS = [
-  {
-    key: "paymentFeePercent",
-    label: "支付总手续费（%）",
-    min: "0",
-    max: "50",
-    step: "0.01",
-  },
-  {
-    key: "serverAnnualUsd",
-    label: "服务器年费（美元）",
-    min: "0",
-    max: "1000000",
-    step: "0.01",
-  },
-  {
-    key: "usdToRmb",
-    label: "预算汇率（元/美元）",
-    min: "0.000001",
-    max: "100",
-    step: "0.000001",
-  },
-  {
-    key: "serverMonthlyRmb",
-    label: "服务器月费（元，可覆盖美元折算）",
-    min: "0",
-    max: "1000000",
-    step: "0.01",
-  },
-  {
-    key: "monthlyMediaRequests",
-    label: "预计每月图片与视频请求数",
-    min: "1",
-    max: "10000000000",
-    step: "1",
-  },
-  {
-    key: "monthlyBillableVideoSeconds",
-    label: "预计每月付费生成视频秒数",
-    min: "1",
-    max: "10000000000",
-    step: "1",
-  },
-  {
-    key: "otherRmbPerSecond",
-    label: "其他成本（元/生成秒）",
-    min: "0",
-    max: "10000",
-    step: "0.000001",
-  },
+  {key: "usdToRmb", label: "采购汇率（元/美元）", min: "0.000001", max: "100", step: "0.000001"},
+  {key: "paymentFeePercent", label: "支付手续费记录（%，不叠加售价）", min: "0", max: "50", step: "0.01"},
 ];
-
-function hasVideoExpenses(policy: Record<string, unknown> = {}) {
-  const known = (key: string) =>
-    policy[key] !== null &&
-    policy[key] !== undefined &&
-    policy[key] !== "" &&
-    Number.isFinite(Number(policy[key]));
-  return (
-    known("paymentFeePercent") &&
-    known("otherRmbPerSecond") &&
-    (policy.serverAllocationMode === "all_media_requests"
-      ? known("monthlyMediaRequests") && Number(policy.monthlyMediaRequests) > 0
-      : known("monthlyBillableVideoSeconds") &&
-        Number(policy.monthlyBillableVideoSeconds) > 0) &&
-    (known("serverMonthlyRmb") ||
-      (known("serverAnnualUsd") &&
-        known("usdToRmb") &&
-        Number(policy.usdToRmb) > 0))
-  );
-}
 
 export default function AdminPricingEditor({
   lang,
@@ -163,7 +96,6 @@ export default function AdminPricingEditor({
     return !term || `${model.label} ${model.id}`.toLowerCase().includes(term);
   });
   const totalVisible = visibleSections.length + visibleTextModels.length;
-  const hasExpenses = hasVideoExpenses(form.videoPricing);
 
   return (
     <div className="pricing-editor">
@@ -394,8 +326,8 @@ export default function AdminPricingEditor({
 
       <details className="pricing-costs">
         <summary>
-          <span>{t("成本与净利参数")}</span>
-          <small>{hasExpenses ? t("已配置") : t("待补全")}</small>
+          <span>{t("采购成本与默认加价")}</span>
+          <small>{t("不分摊服务器费用")}</small>
         </summary>
         <div className="pricing-cost-grid">
           <label className="pricing-field">
@@ -413,21 +345,7 @@ export default function AdminPricingEditor({
             />
           </label>
           <label className="pricing-field">
-            <span>{t("服务器分摊方式")}</span>
-            <select
-              value={form.videoPricing?.serverAllocationMode || "video_seconds"}
-              onChange={(event) =>
-                updateCost("serverAllocationMode", event.target.value)
-              }
-            >
-              <option value="video_seconds">{t("按视频生成秒数分摊")}</option>
-              <option value="all_media_requests">
-                {t("全站图片与视频请求共同分摊")}
-              </option>
-            </select>
-          </label>
-          <label className="pricing-field">
-            <span>{t("目标净利每秒（元）")}</span>
+            <span>{t("其他视频每输出秒加价（元）")}</span>
             <input
               type="number"
               required
@@ -455,9 +373,7 @@ export default function AdminPricingEditor({
           ))}
         </div>
         <p className="pricing-note">
-          {hasExpenses
-            ? t("成本参数已配置；实际生成量下降时应重新调整分摊。")
-            : t("成本参数未补全，不能据此刻意确认净利达标。")}
+          {t("自动价：穗禾采购成本 + 0.10 元/输出秒，其他视频采购成本 + 默认加价。参考素材传递采购成本；人工档位价优先。支付手续费只记成本，服务器费用不参与计价。原生与节约模式按各自报价。") }
         </p>
       </details>
     </div>

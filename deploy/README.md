@@ -1,5 +1,7 @@
 # 部署与运行
 
+桌面开发、真包验收和更新源发布先读[开发隔离与桌面发布](../docs/开发隔离与桌面发布.md)。本机默认使用 Node + Electron；本文 Docker 部分适用于远端服务及另行选择的服务端镜像交付。
+
 主线服务镜像保留 `server/` 的运行模块；主应用还保留提示词 CLI 所需的 `retrieval/`、`taxonomy/` 及其 JSON。画布只使用当前格式标记，不再依赖额外的兼容配置文件。
 
 桌面源码不上传到服务构建目录，也不进入 Docker 构建输入。运行所需资源按原路径保留，不能把整个 docs 目录一并排除。
@@ -46,10 +48,12 @@ python3 /opt/miaoimg-ops/cleanup-production.py miaoimg /opt/miaoimg-builds/<本�
 安装和手动执行：
 
 ```bash
+install -d -m 755 /opt/miaoimg-ops
+install -m 755 deploy/cleanup-production.py /opt/miaoimg-ops/cleanup-production.py
 install -m 644 deploy/miaoimg-storage.service deploy/miaoimg-storage.timer /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now miaoimg-storage.timer
-python3 /opt/miaoimg-source/deploy/cleanup-production.py --maintenance
+python3 /opt/miaoimg-ops/cleanup-production.py --maintenance
 ```
 
 部署数据仍挂载在宿主机。精简运行镜像不内置数据库归档，必须保留 /app/db 等既有挂载；数据集同步的新版本通过校验后删除同步用的 previous 副本，不每次成功后多留一份。数据库快照只是索引/账号恢复用途，不能恢复已删除的原片；硬盘损坏恢复需要另行安排异地备份。
@@ -60,7 +64,8 @@ python3 /opt/miaoimg-source/deploy/cleanup-production.py --maintenance
 
 ## Application image delivery
 
-The application runs as the same Docker image everywhere. Production builds
+This section describes the server application image, not the Electron desktop.
+Desktop development uses local Node + Electron without Docker. Production server builds
 happen **on the server** from an immutable archive of a clean local Git commit.
 `deploy-production.sh` creates a separate directory under `/opt/miaoimg-builds/`
 for each release; the server does not keep a second source checkout. The local
@@ -68,6 +73,9 @@ amd64 build and `docker save` / `docker load` path remains a fallback
 (`DEPLOY_BUILD=local`). Dataset and runtime state remain bind mounts and never
 enter the image. Untracked changes block release, and ignored local files are
 absent from the Git archive even if they would pass Docker's ignore rules.
+
+The following local Compose commands are an optional server-only workflow,
+not a prerequisite or the default path for desktop development:
 
 ```bash
 cp .env.docker.example .env.docker

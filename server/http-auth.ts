@@ -9,8 +9,21 @@ export function json(response,status,value,headers: Record<string, any>={}) {
   response.writeHead(status,{'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff','content-length':Buffer.byteLength(body),...headers,...(closeUpload ? {connection:'close'} : {})})
   response.end(body)
 }
-export function sessionCookie(request,token,expire=false,name='miao_session') { const secure=request.headers['x-forwarded-proto']==='https' || process.env.NODE_ENV==='production';return `${name}=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${expire?0:43200}${secure?'; Secure':''}` }
-export function oauthStateCookie(request, token = '', expire = false, name = 'miao_google_state') { const secure=request.headers['x-forwarded-proto']==='https' || process.env.NODE_ENV==='production';return `${name}=${expire?'':token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${expire?0:600}${secure?'; Secure':''}` }
+function secureCookie(request) {
+  const configuredOrigin = String(process.env.OIP_PUBLIC_ORIGIN || '').trim()
+  let configuredHttps = false
+  try {
+    const configured = new URL(configuredOrigin)
+    const forwardedHost = String(request.headers['x-forwarded-host'] || request.headers.host || '').split(',')[0].trim()
+    configuredHttps = configured.protocol === 'https:' && forwardedHost === configured.host
+  } catch {}
+  return request.headers['x-forwarded-proto'] === 'https' || process.env.NODE_ENV === 'production' || configuredHttps
+}
+export function sessionCookie(request,token,expire=false,name='miao_session') {
+  const secure = secureCookie(request)
+  return `${name}=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${expire?0:43200}${secure?'; Secure':''}`
+}
+export function oauthStateCookie(request, token = '', expire = false, name = 'miao_google_state') { const secure=secureCookie(request);return `${name}=${expire?'':token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${expire?0:600}${secure?'; Secure':''}` }
 export function bodyJson(request, max = 64000, signal?: AbortSignal) { return readJsonRequest(request, { maxBytes: max, objectOnly: false, tooLargeMessage: '请求过大', invalidMessage: '请求格式错误', invalidStatus: 422, emptyBody: '', signal }) }
 export function sameOrigin(request) {
   const origin = request.headers.origin

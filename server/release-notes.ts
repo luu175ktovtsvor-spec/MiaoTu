@@ -10,6 +10,21 @@ export type ReleaseNotes = {
 // 更新说明直接写软件修好了什么：哪一个界面、哪一项操作，以前错在哪里，现在怎样。
 // 不写「上游」「部分问题」「体验优化」这类看不出具体改动的话。
 export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
+  '3.1.10': {
+    title: { zh: '价格、渠道与反馈管理更完整', en: 'More complete pricing, channel controls and feedback management' },
+    fixes: [
+      { zh: '穗禾视频报价会按所选模式和参数询价；提交前再次核对报价，避免界面显示的价格与实际预扣不一致。', en: 'Suihe video quotes now follow the selected mode and parameters, with a final check before submission so the displayed price and reservation cannot drift.' },
+      { zh: '管理端显示各模型的采购成本口径，模型开关、渠道和客户公布价继续分别控制。', en: 'The admin console shows procurement cost formulas while model switches, channels and customer prices remain independently configurable.' },
+      { zh: '用户可以删除自己的反馈及附件，反馈编号不会因删除而复用。', en: 'Users can delete their own feedback and attachments, and deleted feedback numbers are not reused.' },
+    ],
+    improvements: [
+      { zh: '模型菜单和节点说明会随当前可用能力刷新，切换模型时清理不兼容参数。', en: 'Model menus and node guidance refresh from current capabilities, and incompatible options are cleared when switching models.' },
+      { zh: '生成请求增加账号会话、重复提交和并发保护，减少旧会话或重复点击造成的异常。', en: 'Generation requests add session, duplicate submission and concurrency protections to reduce errors from stale sessions or repeated clicks.' },
+    ],
+    knownIssues: [
+      { zh: '本版本未执行真实付费视频生成；上线前仍需用隔离账号完成穗禾非生成询价和页面验收。', en: 'This version has not run a real paid video generation; an isolated-account Suihe quote and page acceptance are still required before release.' },
+    ],
+  },
   '3.1.9': {
     title: { zh: '生成选项与节点说明更准确', en: 'Clearer generation options and node descriptions' },
     fixes: [

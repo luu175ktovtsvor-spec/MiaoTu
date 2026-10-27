@@ -563,6 +563,22 @@ Object.assign(adminEnglish,{'按参数报价':'Quoted by parameters','成本参�
 Object.assign(adminEnglish,{'大语言模型文本价格':'Language model text pricing','输入 token 价格（每百万）':'Input tokens (per million)','输出 token 价格（每百万）':'Output tokens (per million)','每次最低积分':'Minimum credits per request','积分/百万 token':'credits / million tokens','价格为 0 表示免费；设置价格后按实际 token 扣积分。':'A price of 0 is free; otherwise credits are charged from actual token usage.','文本价格按输入与输出 token 分开设置，保存后立即生效。':'Set input and output token prices separately; changes apply immediately.'})
 
 Object.assign(adminEnglish, {
+  '管理模型开关、参数价格与采购成本。': 'Manage model availability, prices and procurement costs.',
+  '采购成本口径': 'Procurement cost basis',
+  '仅管理员可见': 'Admin only',
+  '采购成本公式': 'Procurement cost formula',
+  '这里显示各模型的上游采购成本公式，不是客户公布价。客户公布价在模型与价格页按档位设置；穗禾视频的逐单成本按请求参数询价，最终数值在调用记录和生成详情中查看。': 'These are upstream procurement formulas, not customer prices. Customer prices are set per tier on Models & pricing. Suihe video costs are quoted per request; the final value appears in provider calls and generation details.',
+  '暂无采购成本口径': 'No procurement cost basis recorded',
+  '采购成本与默认加价': 'Procurement cost and default markup',
+  '不分摊服务器费用': 'No server cost allocation',
+  '其他视频每输出秒加价（元）': 'Other video markup per output second (CNY)',
+  '采购汇率（元/美元）': 'Procurement exchange rate (CNY/USD)',
+  '支付手续费记录（%，不叠加售价）': 'Payment fee record (%, excluded from customer prices)',
+  '自动价：穗禾采购成本 + 0.10 元/输出秒，其他视频采购成本 + 默认加价。参考素材传递采购成本；人工档位价优先。支付手续费只记成本，服务器费用不参与计价。': 'Automatic: Suihe procurement cost + CNY 0.10 per output second; other video cost + default markup. References pass through at procurement cost. Manual tier prices take priority. Payment fees are recorded as expenses only; server costs are excluded.',
+  '自动价：穗禾采购成本 + 0.10 元/输出秒，其他视频采购成本 + 默认加价。参考素材传递采购成本；人工档位价优先。支付手续费只记成本，服务器费用不参与计价。原生与节约模式按各自报价。': 'Automatic: Suihe cost + CNY 0.10 per output second; other video cost + default markup. References pass through at cost. Manual prices take priority. Payment fees are expenses only; server costs are excluded. Native and economy modes are quoted separately.',
+})
+
+Object.assign(adminEnglish, {
  '操作未完成': 'The operation could not be completed',
  '后台连接失败，请刷新重试': 'Admin connection failed. Refresh and try again.',
  '管理后台响应无效，请刷新重试': 'Invalid admin response. Refresh and try again.',

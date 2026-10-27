@@ -181,7 +181,7 @@ export async function loadServerModelChoices(force = false) {
   void loadUserProviders(force).catch(() => []);
   pending.promise = (async () => {
     try {
-      const response = await fetch("./api/imagine/config", { cache: "no-store", signal: pending.controller.signal, headers: workspaceHeaders(scope.owner) });
+      const response = await fetch(force ? "./api/imagine/config?fresh=1" : "./api/imagine/config", { cache: "no-store", signal: pending.controller.signal, headers: workspaceHeaders(scope.owner) });
       try { assertWorkspaceScope(scope); pending.controller.signal.throwIfAborted(); }
       catch (error) { await response.body?.cancel().catch(() => {}); throw error; }
       if (!response.ok) { await response.body?.cancel().catch(() => {}); throw new Error('模型列表读取失败'); }
@@ -189,7 +189,7 @@ export async function loadServerModelChoices(force = false) {
       assertWorkspaceScope(scope); pending.controller.signal.throwIfAborted();
       if (!Array.isArray(config?.textModels)) throw new Error('模型列表格式无效');
       const nextDefault = typeof config.defaultTextModel === "string" ? config.defaultTextModel : "";
-      const nextModels = (config.textEnabled === false ? [] : config.textModels).filter((model: { configured?: boolean }) => model.configured !== false)
+      const nextModels = (config.textEnabled === false ? [] : config.textModels).filter((model: { configured?: boolean; paused?: boolean }) => model.configured !== false && model.paused !== true)
         .map((model: { id: string; label: string; provider?: string; providerLabel?: string; note?: string; reasoning?: boolean; reasoningEffort?: string; reasoningEfforts?: string[]; contextWindow?: number }) => ({
           providerId: "miaoimg", providerLabel: model.providerLabel || "妙图", modelId: model.id, label: model.label, note: model.note, reasoning: model.reasoning,
           // 思考档位来自服务端，保留完整选择能力。
@@ -201,7 +201,11 @@ export async function loadServerModelChoices(force = false) {
       serverTextModels.value = nextModels;
       serverModelsLoaded = true;
     } catch {
-      if (serverModelsRequest === pending) serverModelsLoaded = false;
+      if (serverModelsRequest === pending) {
+        serverModelsLoaded = false;
+        serverTextModels.value = [];
+        serverDefaultTextModel.value = '';
+      }
     } finally {
       if (serverModelsRequest === pending) serverModelsRequest = undefined;
     }

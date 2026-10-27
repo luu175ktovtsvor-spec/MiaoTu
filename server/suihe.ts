@@ -37,7 +37,11 @@ export async function refreshSuiheModels({env=process.env,fetchImpl=fetch,force=
     return []
   }
   const key=createHash('sha256').update(config.baseUrl+'\0'+config.apiKey).digest('hex')
-  if(discovery?.key!==key) discovery={key,at:0,rows:[]}
+  if(discovery?.key!==key) {
+    discovery={key,at:0,rows:[]}
+    // Never expose the previous key's live catalog to a newly configured key.
+    if (env === process.env) setSuiheModels([])
+  }
   const cache=discovery
   if (!force&&Date.now()-cache.at<60_000) return cache.rows
   if(cache.pending) return cache.pending
@@ -50,10 +54,58 @@ export async function refreshSuiheModels({env=process.env,fetchImpl=fetch,force=
     if(env===process.env) setSuiheModels(data.data)
     return cache.rows
   })().catch(error => {
-    if (env === process.env) setSuiheModels([])
+    // Preserve the last successful catalog on a transient upstream failure.
+    // Clearing it would make the overlay fall back to static defaults and can
+    // expose modes the current key has not actually advertised.
     throw error
   }).finally(()=>{cache.pending=undefined})
   return cache.pending
+}
+
+// Non-generating supplier estimate. No prompt, files, keys or URLs enter the cache.
+// Live v1.1 ignores reference_video_duration/materials here; quote the generation
+// and enhancement baseline, then apply the verified input-token formula locally.
+const videoEstimates = new Map<string, {at:number;value:any;pending?:Promise<any>}>()
+export async function estimateSuiheVideo(request, {env=process.env,fetchImpl=fetch}:Record<string,any>={}) {
+  const config=suiheSettings(env)
+  if(!config.apiKey) throw fail('视频报价服务尚未配置',{status:503,submissionNotStarted:true})
+  const p=request.parameters || {}
+  const duration=Number(request.billableDuration ?? request.duration)
+  const resolution=String(request.resolution).toLowerCase()
+  const creativeMode=String(request.creativeMode || p.creativeMode || 'super_economy')
+  // Keep the quote contract aligned with the paid submission contract. The
+  // supplier requires prompt and uses function_mode to distinguish text/frame,
+  // omni reference and video edit pricing rules.
+  const functionMode=request.mode==='edit' ? 'video_edit' : request.mode==='image' || request.mode==='extend' ? 'omni_reference' : 'first_last_frames'
+  const body={model:request.model.upstreamModelId || suiheModelId(request.model),prompt:String(request.prompt || ''),function_mode:functionMode,duration,
+    ratio:request.ratio || 'adaptive',resolution,video_resolution:resolution,creative_mode:creativeMode,generate_audio:request.generateAudio!==false}
+  const key=createHash('sha256').update(config.baseUrl+'\0'+config.apiKey+'\0'+JSON.stringify(body)).digest('hex')
+  let entry=videoEstimates.get(key)
+  if(entry?.value && Date.now()-entry.at<30_000) return entry.value
+  if(entry?.pending) return entry.pending
+  if(videoEstimates.size>=256) for(const [id,item] of videoEstimates) if(!item.pending) videoEstimates.delete(id)
+  if(!entry){entry={at:0,value:null};videoEstimates.set(key,entry)}
+  const current=entry
+  current.pending=(async()=>{
+    const response=await createMediaProviderFetch({env,fetchImpl})(`${config.baseUrl}/v1/billing/video-pre-estimate`,{
+      method:'POST',headers:{authorization:`Bearer ${config.apiKey}`,'content-type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(20_000)})
+    const data=await json(response)
+    if(!response.ok || data.error) throw responseError(response,data)
+    const cost=Number(data.credits),tokens=Number(data.estimated_completion_tokens)
+    const generationResolution=String(data.generation_resolution || '').toLowerCase()
+    const enhanced=creativeMode==='super_economy' && resolution!=='480p'
+    if(data.credits==null || data.credits==='' || !Number.isFinite(cost) || cost<0 || !(tokens>0) || !Number.isFinite(tokens)
+      || !Number.isFinite(Number(data.duration)) || Math.abs(Number(data.duration)-duration)>0.001 || String(data.video_resolution).toLowerCase()!==resolution
+      || !generationResolution || (enhanced && (data.billing_mode!=='token_enhance' || generationResolution!=='480p' || data.enhancement_estimated_cny==null || !Number.isFinite(Number(data.enhancement_estimated_cny)) || Number(data.enhancement_estimated_cny)<0))
+      || (!enhanced && (data.billing_mode!=='token' || generationResolution!==resolution))) {
+      throw fail('视频报价与所选参数不一致，请稍后重试',{status:503,submissionNotStarted:true})
+    }
+    const value={version:'suihe-video-estimate-v1',duration,ratio:body.ratio,resolution,creativeMode,generationResolution,
+      costRmb:cost/1000,tokens,billingMode:data.billing_mode,enhancementRmb:enhanced?Number(data.enhancement_estimated_cny):0,
+      source:'supplier_non_generating_estimate',referenceBaselineOnly:true}
+    current.value=value;current.at=Date.now();return value
+  })().finally(()=>{current.pending=undefined})
+  return current.pending
 }
 
 async function referenceBlob(source:string,kind:string,{fetchImpl,signal,bytes:providedBytes,mime:providedMime}: Record<string,any> = {}) {
