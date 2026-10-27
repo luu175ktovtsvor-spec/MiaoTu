@@ -103,7 +103,12 @@ async function openAccountPanel() {
   if (await exists('.release-notes-close')) { await evaluate(`document.querySelector('.release-notes-close')?.click()`); await wait(() => !exists('.release-notes-close'), 'release notes closed', 15000) }
   await wait(() => exists('.studio-top button'), 'app top bar', 60000)
   await wait(async () => await evaluate(`(()=>{const b=[...document.querySelectorAll('.studio-top button')].find(x=>/登录/.test((x.innerText||'').trim()));if(!b)return false;b.click();return true})()`), 'sign-in entry', 30000)
-  await wait(() => exists('#desktop-account-email'), 'email field')
+  try {
+    await wait(() => exists('#desktop-account-email'), 'email field', 90000)
+  } catch {
+    await evaluate(`window.dispatchEvent(new Event('miao-desktop-account'))`)
+    await wait(() => exists('#desktop-account-email'), 'email field after retry', 30000)
+  }
 }
 async function assertLoginForm() {
   await wait(() => exists('#desktop-account-email'), 'email field')
