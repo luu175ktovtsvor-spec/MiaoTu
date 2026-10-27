@@ -110,7 +110,7 @@ async function assertLoginForm() {
   const selectMode = async (mode: 'code' | 'password') => {
     const button = mode === 'code' ? '.desktop-login-methods button:first-of-type' : '.desktop-login-methods button:last-of-type'
     await wait(() => exists(button), mode === 'code' ? 'email-code sign-in mode' : 'password sign-in mode')
-    await wait(async () => await evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(button)});if(!(b instanceof HTMLElement)||b.disabled)return false;if(b.getAttribute('aria-pressed') !== 'true')b.click();return b.getAttribute('aria-pressed') === 'true'})()`), mode + ' sign-in mode switch')
+    await evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(button)});if(b instanceof HTMLElement&&!b.disabled&&b.getAttribute('aria-pressed') !== 'true')b.click()})()`)
     await wait(() => mode === 'code' ? exists('#desktop-account-code') : exists('#desktop-account-password'), mode === 'code' ? 'code field' : 'password field')
   }
   await selectMode('code')
