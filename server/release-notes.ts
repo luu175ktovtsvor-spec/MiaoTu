@@ -25,7 +25,7 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
     title: { zh: '价格、渠道与反馈管理更完整', en: 'More complete pricing, channel controls and feedback management' },
     fixes: [
       { zh: '穗禾视频报价会按所选模式和参数询价；提交前再次核对报价，避免界面显示的价格与实际预扣不一致。', en: 'Suihe video quotes now follow the selected mode and parameters, with a final check before submission so the displayed price and reservation cannot drift.' },
-      { zh: '管理端显示各模型的采购成本口径，模型开关、渠道和客户公布价继续分别控制。', en: 'The admin console shows procurement cost formulas while model switches, channels and customer prices remain independently configurable.' },
+      { zh: '模型信息页的价格说明和可用状态显示得更清楚，切换模型时不再混用旧信息。', en: 'Model information now shows clearer price details and availability, without carrying over stale information when you switch models.' },
       { zh: '用户可以删除自己的反馈及附件，反馈编号不会因删除而复用。', en: 'Users can delete their own feedback and attachments, and deleted feedback numbers are not reused.' },
     ],
     improvements: [
@@ -71,7 +71,7 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
       { zh: 'Dola 不再因为旧版去水印设置接口不存在而阻止发送；平台没有返回可核对的水印选项时，妙图会按实际下载文件保存并如实标明状态。', en: 'Dola is no longer blocked when its older no-watermark settings endpoint is unavailable. If the platform does not expose a verifiable option, MiaoImg saves the returned file and states the actual status.' },
     ],
     improvements: [
-      { zh: 'Dola 路由回执使用账号当前真实能力编号和模型标识核对，图片、视频不会因为写死旧编号而被误拦。', en: 'Dola routing receipts now use the account’s current ability type and model key, so image and video requests are not rejected by an outdated hard-coded ability number.' },
+      { zh: 'Dola 生成结果会按当前选择的模型和内容类型核对，图片和视频不会因为旧设置被误拦。', en: 'Dola results are checked against the selected model and content type, so image and video requests are not rejected because of stale settings.' },
     ],
   },
   '3.1.5': {
@@ -124,7 +124,7 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
       { zh: '创作技能重新整理：「短剧与漫剧制作」升级为完整的「短剧漫剧全流程」，从立项、剧本、资产、分镜、打戏到视频提示词和出稿质检一条线做完；「视频创作」改名「视频复刻与创作」，复刻、单段剧情短片和短视频脚本都归到这里；「拉片与复刻」改为只做分析的「视频拉片」；视频制作工作流并入「画布操作手册」。', en: 'Creative skills are reorganised: short drama and comic drama production becomes a full pipeline from set-up and script to assets, storyboards, action, video prompts and QC; video production is renamed video remake and production and now holds remakes, single-scene drama and short-video scripts; breakdown and remake becomes analysis-only video breakdown; the production workflow joins the canvas guide.' },
       { zh: '设置里的「创作技能」改为卡片排列：每个技能显示来源和开关，顶部显示已启用数量。', en: 'Creative skills in Settings are now shown as cards with their source and switch, and the number enabled at the top.' },
       { zh: '设置里的「图片与视频」改为模型卡片：每个模型显示官方标识，时长、分辨率、比例、参考素材和积分分行列出；自动时长、自适应比例和各分辨率的时长上限直接写清楚。文本模型和画布里的模型选择也换成官方标识。', en: 'Images and video in Settings now shows a card per model with its official logo and its duration, resolution, ratio, reference and credit details, including auto duration, adaptive ratio and per-resolution limits. Text models and the canvas model picker use official logos too.' },
-      { zh: '资产、生成记录、保存提示和报错里的说法改得更直白，例如「本机项目」改成「妙图项目」、文件「保存在这台电脑上」，不再出现「路由」这类内部用词。', en: 'Wording in assets, history, save notices and errors is plainer, for example MiaoImg projects and files stored on this computer, without internal terms.' },
+      { zh: '资产、生成记录、保存提示和报错里的说法更直白，项目和文件状态更容易看懂。', en: 'Wording in assets, history, save notices and errors is clearer, making project and file status easier to understand.' },
       { zh: '生成进度改成节点底部的蓝色进度条：从左往右推进，百分比跟着进度走；上传进度同样改成进度条。', en: 'Generation progress is now a glowing blue bar along the bottom of the node, with the percentage moving along it; uploads use the same bar.' },
       { zh: '提示和报错不再是带底色的框，只用左侧一根细线标出状态。生成历史的模型筛选按图片、视频分组，显示模型名和官方标识；充值页的支付方式改成小巧的选项，配支付宝官方标识。', en: 'Notices and errors are a thin line instead of a tinted box. The history model filter is grouped by image and video with model names and official logos; the top-up page shows a compact payment choice with the official Alipay logo.' },
       { zh: '「豆包与 Dola」设置的说明重写：直接写明可用地区，其余说法也改得更直白。', en: 'The Doubao and Dola settings are rewritten in plain language and state the supported regions directly.' },
@@ -223,7 +223,7 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
       { zh: '登录、退出和积分改在窗口右上角的小面板里。打开软件先看到本机项目和案例，点「登录 / 注册」再登录，不再整页切到登录页。', en: 'Sign-in, sign-out and balance now live in a small panel at the top right. The app opens on local projects and cases; choose Sign in / Register to sign in instead of switching to a full-page sign-in screen.' },
       { zh: '未登录时也能打开本机项目和画布继续查看；历史、积分这些需要账号的入口在登录后才出现。', en: 'Local projects and canvases open without signing in; account-only entries such as history and balance appear after sign-in.' },
       { zh: '项目卡片只显示项目名和日期，不再写「进入这个画布」。', en: 'Project cards show the project name and date without the “enter this canvas” label.' },
-      { zh: '设置入口放在左侧桌边栏；画布底部齿轮仍可直接打开同一设置。外观、语言、画布、模型、技能、MCP、本机操作和版本信息都在这里调整，打开时画布暂停快捷键。', en: 'Settings now sit in the left rail, while the canvas bottom gear opens the same panel directly. Appearance, language, canvas, models, skills, MCP, local tools and version information are managed here; canvas shortcuts pause while settings are open.' },
+      { zh: '设置入口放在左侧桌边栏；画布底部齿轮仍可直接打开同一设置。外观、语言、画布、模型、技能、本机操作和版本信息都在这里调整，打开时画布暂停快捷键。', en: 'Settings now sit in the left rail, while the canvas bottom gear opens the same panel directly. Appearance, language, canvas, models, skills, local tools and version information are managed here; canvas shortcuts pause while settings are open.' },
       { zh: '深色和浅色画布统一了底色、点阵、节点外形、端口、标题和底部工具条；图片与视频节点改为媒体卡加独立提示词卡。', en: 'Dark and light canvases now share one background, dot grid, node shape, port, title and bottom-toolbar treatment. Image and video nodes use a media card with a separate prompt card.' },
       { zh: '桌面画布顶部只保留返回、当前画布切换和画布/文档切换；项目名称仍在项目管理里，画布不再重复显示；画布内不再放独立历史页。', en: 'The desktop canvas header now keeps only Back, the current canvas switcher and Canvas/Document tabs. Project naming stays in project management, and the canvas no longer repeats it or contains a separate History page.' },
       { zh: '展开提示词会把整张生成卡放大到画布中央，输入、模型、参数和发送操作保持在一起；收起入口固定在卡片右上角，参考素材不再把它挤到下一行。', en: 'Expanding a prompt enlarges the whole generation card in the canvas center, keeping prompt, model, parameters and send action together. The collapse action stays at the card’s top-right instead of being pushed down by references.' },
@@ -398,11 +398,11 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
     ],
   },
   '0.2.8': {
-    title: { zh: 'MCP 操作范围与任务控制优化', en: 'MCP project and task controls' },
+    title: { zh: '外部连接操作范围与任务控制优化', en: 'Project and task controls' },
     fixes: [
-      { zh: '修复 MCP 指令可能操作到其他已打开项目的问题。', en: 'Fixed MCP commands reaching a different open project.' },
+      { zh: '修复外部操作可能误用其他已打开项目的问题。', en: 'Fixed external actions from reaching a different open project.' },
       { zh: '修复素材列表较长时无法继续读取的问题。', en: 'Fixed incomplete file lists in larger projects.' },
-      { zh: '修复取消连接后部分画布与媒体操作仍继续执行的问题。', en: 'Stop pending canvas and media operations when an MCP request is cancelled.' },
+      { zh: '修复取消连接后部分画布与媒体操作仍继续执行的问题。', en: 'Pending canvas and media operations now stop when a connection is cancelled.' },
     ],
     improvements: [
       { zh: '统一文件改名、目录操作与媒体处理的编辑保护。', en: 'Apply consistent file protection to renaming, folders and media processing.' },
@@ -412,7 +412,7 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
   '0.2.7': {
     title: { zh: '外部 Agent 画布连接修复', en: 'External agent canvas connection fixes' },
     fixes: [
-      { zh: '补回 MCP 设置入口，修复画布连接刚建立就断开的问题。', en: 'Restored MCP settings and fixed canvas connections closing immediately.' },
+      { zh: '补回外部连接设置入口，修复画布连接刚建立就断开的问题。', en: 'Restored external connection settings and fixed canvas connections closing immediately.' },
       { zh: '正常重启后保留连接配置，关闭授权和更新令牌立即生效。', en: 'Keep connection settings across normal restarts, with immediate disable and token rotation.' },
       { zh: '修复复制配置缺少有效令牌和首次调用媒体工具失败的问题。', en: 'Fixed invalid copied credentials and first-use media tool failures.' },
     ],
