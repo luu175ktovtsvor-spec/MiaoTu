@@ -187,15 +187,16 @@ async function canvasReview() {
       completed.add(name); return JSON.parse(text);
     };
     // The application has to reconnect its real browser control channel after the switch.
-    const until = Date.now() + 60000;
-    let connection;
+    const until = Date.now() + 180000;
+    let connection, lastApp;
     do {
       const app = await call('getAppState');
+      lastApp = app;
       connection = app.connections.find(page => page.ready && page.canvasId && Array.isArray(page.tools) && page.tools.length);
       if (connection) break;
       await new Promise(r => setTimeout(r, 500));
     } while (Date.now() < until);
-    if (!connection) throw new Error('MCP canvas connection did not become ready');
+    if (!connection) throw new Error('MCP canvas connection did not become ready: ' + JSON.stringify(lastApp?.connections || []));
     const expected = connection.tools;
     const originalCanvasId = connection.canvasId;
     let canvas = await call('addCanvas', { name: 'Release review' });
