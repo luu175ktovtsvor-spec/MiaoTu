@@ -30,7 +30,6 @@ jobs:
     env:
       MIAO_DESKTOP_NO_GENERATION: '1'
       ENABLE_MODEL_CALLS: 'false'
-      MIAO_ACCEPT_SMOKE: '1'
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
