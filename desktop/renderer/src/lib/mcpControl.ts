@@ -94,6 +94,12 @@ export function useMcpControl() {
     updateMcpSettings({ enabled })
   }
   void refreshAccess(setupLifetime.signal).catch(() => {})
+  const onSettingsChanged = (event: Event) => {
+    const enabled = (event as CustomEvent<{ enabled?: unknown }>).detail?.enabled
+    if (typeof enabled === 'boolean') updateMcpSettings({ enabled })
+  }
+  window.addEventListener('miao-mcp-settings-changed', onSettingsChanged)
+  onScopeDispose(() => window.removeEventListener('miao-mcp-settings-changed', onSettingsChanged))
   const workspaceStore = useWorkspaceStore()
   const calls = new Map<string, AbortController>()
   // Aborting a transport/controller does not mean an accepted save has ended.

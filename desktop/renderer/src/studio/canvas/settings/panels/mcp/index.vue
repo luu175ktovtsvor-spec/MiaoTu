@@ -177,6 +177,7 @@ async function setEnabled(enabled: boolean) {
     if (enabled && !access.hasToken) access = await generateToken();
     if (access.enabled !== enabled) throw new Error(translate("MCP 状态已变化，请刷新后重试"));
     applyAccess(access);
+    window.dispatchEvent(new CustomEvent('miao-mcp-settings-changed', { detail: { enabled } }));
     saved = true;
   } catch (error) {
     if (isCurrent()) statusError.value = error instanceof Error ? error.message : translate("更新 MCP 状态失败");
