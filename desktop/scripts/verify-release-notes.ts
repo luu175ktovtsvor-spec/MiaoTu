@@ -13,7 +13,7 @@ if (/knownIssues\s*:/.test(source)) {
   throw new Error('发布说明只写修复和优化，不添加“已知问题”。')
 }
 for (const [, copy] of source.matchAll(/(?:zh|en):\s*'([^']*)'/g)) {
-  if (/上游|供应商|网关|服务端|后端|管理端|通道|大陆|迁移|备案|云厂商|官方账号|Sub2API|MCP|\b(?:API|upstream|provider|gateway|backend|server)\b/i.test(copy)) {
+  if (/上游|供应商|网关|服务端|服务器|后端|管理端|通道|大陆|迁移|备案|云厂商|官方账号|Sub2API|MCP|\b(?:API|upstream|provider|gateway|backend|server)\b/i.test(copy)) {
     throw new Error('发布说明只能写客户能理解的功能修复和使用改进。')
   }
 }

@@ -94,17 +94,16 @@ async function openAccountPanel() {
 }
 async function assertLoginForm() {
   await wait(() => exists('#desktop-account-email'), 'email field')
-  if (!(await exists('#desktop-account-code'))) {
-    await wait(() => evaluate(`!![...document.querySelectorAll('.desktop-login-methods button')].find(b => /验证码登录/.test(b.textContent || ''))`), 'email-code sign-in mode')
-    await evaluate(`[...document.querySelectorAll('.desktop-login-methods button')].find(b => /验证码登录/.test(b.textContent || ''))?.click()`)
+  const selectMode = async (mode: 'code' | 'password') => {
+    const button = mode === 'code' ? '.desktop-login-methods button:first-of-type' : '.desktop-login-methods button:last-of-type'
+    await wait(() => exists(button), mode === 'code' ? 'email-code sign-in mode' : 'password sign-in mode')
+    await wait(async () => await evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(button)});if(!(b instanceof HTMLElement)||b.disabled)return false;if(b.getAttribute('aria-pressed') !== 'true')b.click();return b.getAttribute('aria-pressed') === 'true'})()`), mode + ' sign-in mode switch')
+    await wait(() => mode === 'code' ? exists('#desktop-account-code') : exists('#desktop-account-password'), mode === 'code' ? 'code field' : 'password field')
   }
-  await wait(() => exists('#desktop-account-code'), 'code field')
+  await selectMode('code')
   await wait(() => exists('.desktop-account-send'), 'code request button')
-  await wait(() => evaluate(`!![...document.querySelectorAll('.desktop-login-methods button')].find(b => /密码登录/.test(b.textContent || ''))`), 'password sign-in mode')
-  await evaluate(`[...document.querySelectorAll('.desktop-login-methods button')].find(b => /密码登录/.test(b.textContent || ''))?.click()`)
-  await wait(() => exists('#desktop-account-password'), 'password field')
-  await evaluate(`[...document.querySelectorAll('.desktop-login-methods button')].find(b => /验证码登录/.test(b.textContent || ''))?.click()`)
-  await wait(() => exists('#desktop-account-code'), 'code field after mode switch')
+  await selectMode('password')
+  await selectMode('code')
   const modeCheck = 'sign-in exposes separate password and email-code modes'
   if (!report.checks.includes(modeCheck)) report.checks.push(modeCheck)
   save()
@@ -239,8 +238,8 @@ async function canvasReview() {
     await call('createAssetFolder', { folder: 'Release review assets' });
     await call('workspaceFiles', { action: 'writeText', path: 'Release review.md', content: 'Before review' });
     await call('switchPanel', { panel: 'document' }); await call('openDocument', { path: 'Release review.md' });
-    const document = await call('getDocument');
-    await call('writeDocument', { documentId: document.documentId, expectedText: document.text, text: 'After review' });
+    const documentState = await call('getDocument');
+    await call('writeDocument', { documentId: documentState.documentId, expectedText: documentState.text, text: 'After review' });
     const saved = await call('getDocument');
     if (saved.text !== 'After review') throw new Error('Document was not saved');
     const movedDocumentPath = 'Moved release review.md';
