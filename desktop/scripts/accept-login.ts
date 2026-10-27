@@ -63,7 +63,16 @@ async function start(extra = []) {
 async function click(selector) { let point; await wait(async () => { point = await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e||e.disabled)return null;const r=e.getBoundingClientRect();if(!r.width||!r.height||getComputedStyle(e).visibility==='hidden')return null;return {x:r.x+r.width/2,y:r.y+r.height/2}})()`); return !!point }, 'enabled control: ' + selector); await command('Input.dispatchMouseEvent', { type: 'mousePressed', button: 'left', clickCount: 1, ...point }); await command('Input.dispatchMouseEvent', { type: 'mouseReleased', button: 'left', clickCount: 1, ...point }) }
 async function fill(selector, value) { await click(selector); await evaluate(`document.querySelector(${JSON.stringify(selector)}).select()`); await command('Input.insertText', { text: value }) }
 const exists = selector => evaluate(`!!document.querySelector(${JSON.stringify(selector)})`)
-async function canvas() { await wait(async () => !(await exists('#desktop-account-email')) && await evaluate(`[...document.querySelectorAll('.studio-top button')].some(b => (b.innerText||'').trim() === '账号')`), 'authenticated canvas', 60000); if (await exists('.release-notes-close')) { await evaluate(`document.querySelector('.release-notes-close')?.click()`); await wait(() => !exists('.release-notes-close'), 'release notes closed', 15000) } }
+async function canvas() {
+  await wait(async () => !(await exists('#desktop-account-email')) && await evaluate(`[...document.querySelectorAll('.studio-top button')].some(b => (b.innerText||'').trim() === '账号')`), 'authenticated canvas', 60000)
+  if (await exists('.release-notes-close')) { await evaluate(`document.querySelector('.release-notes-close')?.click()`); await wait(() => !exists('.release-notes-close'), 'release notes closed', 15000) }
+  if (!(await exists('.miaoimgApp .vue-flow'))) {
+    await wait(() => exists('.studio-home__card:not(.is-empty)') || exists('.studio-home__hero button'), 'existing project')
+    if (await exists('.studio-home__card:not(.is-empty)')) await evaluate(`document.querySelector('.studio-home__card:not(.is-empty)')?.click()`)
+    else throw new Error('No existing project is available for the installed package review')
+  }
+  await wait(() => exists('.miaoimgApp .vue-flow'), 'canvas surface', 90000)
+}
 async function signout() {
   await evaluate(`window.dispatchEvent(new Event('miao-desktop-account'))`)
   await wait(() => exists('.desktop-account-signout'), 'account panel', 30000)
