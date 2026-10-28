@@ -1,0 +1,36 @@
+name: Verify installed desktop relay login
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  verify-relay:
+    runs-on: macos-15
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24'
+      - name: Download the already verified installation package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$(uname -m)" = arm64 ]; then arch=arm64; else arch=x64; fi
+          gh release download v3.1.13 --pattern "MiaoImg-3.1.13-$arch.zip" --dir "$RUNNER_TEMP/package"
+          ditto -x -k "$RUNNER_TEMP/package/MiaoImg-3.1.13-$arch.zip" "$RUNNER_TEMP/installed"
+      - name: Verify login while the direct origin cannot resolve
+        env:
+          MIAO_ACCEPT_EMAIL: ${{ secrets.MIAO_ACCEPT_EMAIL }}
+          MIAO_ACCEPT_PASSWORD: ${{ secrets.MIAO_ACCEPT_PASSWORD }}
+          MIAO_ACCEPT_SMOKE: '1'
+          MIAO_DESKTOP_NO_GENERATION: '1'
+        run: node desktop/scripts/accept-login.ts "$RUNNER_TEMP/installed/妙图.app/Contents/MacOS/妙图" "$RUNNER_TEMP/relay-proof" '--host-resolver-rules=MAP miaoimg.cn ~NOTFOUND'
+      - name: Save sanitized acceptance proof
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -f "$RUNNER_TEMP/relay-proof/result.json" ]; then
+            gh release create "desktop-relay-proof-${{ github.run_id }}" "$RUNNER_TEMP/relay-proof/result.json" --target "$GITHUB_SHA" --latest=false --title "Temporary relay acceptance" --notes 'Sanitized installed-package relay proof; delete after retrieval.'
+          fi
