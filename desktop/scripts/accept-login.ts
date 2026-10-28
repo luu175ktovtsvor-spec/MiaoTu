@@ -338,9 +338,6 @@ try {
   await signout(); await signIn(); await canvas()
   if (await evaluate('performance.timeOrigin') !== navigation) throw new Error('Login or logout reloaded the page')
   report.checks.push('logout and password login work without reloading'); save()
-  const beforeReload = await evaluate('performance.timeOrigin');
-  await evaluate(`(async()=>{const s=await(await fetch('/api/imagine/session')).json();await fetch('/api/imagine/mcp',{method:'PUT',headers:{'content-type':'application/json','x-csrf-token':s.session?.csrf||s.csrf},body:JSON.stringify({enabled:true})});location.reload()})()`);
-  await wait(async () => await evaluate('performance.timeOrigin') !== beforeReload && await exists('.studio-app'), 'canvas reload');
   report.canvasReview = await canvasReview(); report.checks.push('installed package executes every exposed canvas operation through MCP'); await capture('canvas-reviewed'); save()
   report.version = (await evaluate('window.miaoDesktop.updateStatus()')).currentVersion
   await stop(); await start(); await canvas()
