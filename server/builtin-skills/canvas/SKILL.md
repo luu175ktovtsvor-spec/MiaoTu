@@ -196,6 +196,11 @@ setImage/setVideo/setAudio 选择普通项目媒体时保留内部副本，已�
 
 - 文本：getConfig/setConfig 选择模型与提示词，getText 分页读正文、setText 写正文；修改已有正文时先读完整内容，再传 expectedText 核对，内容已变化时重新读取，不强行覆盖。setTextEditor 打开/关闭正文编辑窗口并设置全屏。generateText 开始文本生成，getGenerationStatus/cancelGeneration 查询和停止；getReferences/setReferenceOrder 重排真实输入。
 - 图片/视频生成：getConfig/setConfig 覆盖界面当前全部输出参数；setPrompt 改提示词；generateImage/generateVideo 开始生成，getGenerationStatus/cancelGeneration 查询和停止。getOutputHistory 分页查历史，setImage/setVideo 恢复项目内已有结果，不发生成。
+- 模型能力边界：每个图片/视频模型能用的模式、比例、清晰度、时长、张数和参考素材上限，只以节点 getConfig 返回的目录为准（与界面菜单、服务端校验同一来源），不凭模型名称或别的平台经验推断。视频节点的 getConfig.modeGuide 逐个模型列出全部模式：mode 是 setConfig 的原始值，requirement 写明要连入什么素材，fitsCurrentReferences 表示当前素材能否直接生成。
+  - 模型支持的模式都可以先选再连素材；setConfig 返回 referenceMismatch 时按提示补齐或调整连线，补齐前不能生成。模型没有列出的模式（例如某模型没有首尾帧、编辑或延长）就是不支持，直接告诉用户并建议换支持的模型，不能用全能参考、图片参考等其他模式冒充，也不能自己拼接口参数绕过。
+  - 首帧、首尾帧、全能参考是不同的生成方式：用户要“从这张图开始”用图生视频/首帧，要“从 A 过渡到 B”用首尾帧，要“参考这些人物/动作/声音”用全能参考；用户没说清时先问，不默认改成全能参考。
+  - 图片的比例与清晰度组合、生成张数（含“参考图 + 生成张数”上限）同样只取 getConfig 列出的值；需要的组合不在列表里时说明当前模型不支持，不改用近似尺寸冒充。
+- 批量准备：文本节点 createStoryboard 按正文拆分镜，建好已填提示词的图片生成节点并放进同一分组（只准备，不生成）；图片节点 listImagePresets / applyImagePreset 使用与工具栏相同的快捷预设新建生成节点。整组生成前用画布工具 estimateGroup 读取组内全部生成节点的当前报价合计，向用户确认后再逐个 generateImage / generateVideo。
 - 生成状态 `pending` 表示已停止等待，但取消未确认或原任务已经完成；这不是已取消或生成失败。保留原节点和 requestId，调用该节点的 generateImage/generateVideo 继续取回，不另建节点重新下单。`saving` 的保存问题同样只恢复原任务；取消以回执为准，不能根据观察连接断开推断成功或退款。
 - 图片：splitImageGrid 宫格切分；editImageMarks 标记、文字、矩形、笔刷和蒙版及编辑历史。mark 的 save 新建图片节点；inpaint 只准备选区。进入局部重绘后重新 getNodeTools 获取 getInpaintConfig/setInpaintConfig，切换模型后再画选区。generateInpaint/cancelInpaint/getGenerationStatus 常驻图片节点；状态为 pending 时调用 generateInpaint 只继续取回原任务，无需重新打开面板、选模型或画选区。关闭面板或画布不会取消已提交任务，重新打开画布后自动取回；cancelled=true 才表示已确认取消。未结束任务需取回或确认取消后再替换图片、删除节点，复制节点不接管原任务。
 - 图片打光、多角度、全景：getImageTools 查询真实能力；prepareImageVariation 复用界面设置和提示词构建，只创建并连接生成节点，不自动生图。openPanorama 打开已有全景的预览，随后 getNodeTools 发现 getPanoramaView/setPanoramaView；capturePanorama 按当前校正真实截图、合图或分图成组，不发模型请求。

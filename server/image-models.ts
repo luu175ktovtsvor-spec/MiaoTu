@@ -39,45 +39,34 @@ const SEEDREAM5_SIZE_RULE = Object.freeze({ minPixels: 921_600, maxPixels: 4_624
 // Seedream 4.0 custom pixels stay inside its own documented range, not the 5.0 cap.
 const SEEDREAM4_SIZE_RULE = Object.freeze({ minPixels: 921_600, maxPixels: 16_777_216, minRatio: 1 / 16, maxRatio: 16 })
 
-// Seedream 5.0 pro / flash 官方图片 API（2026-09-22）：size 支持分辨率档位（1K / 1.5K / 2K，
-// 默认 2K；1.5K 与 1K 同价）或宽高像素值（总像素 921600–4624220、比例 1/16–16）。
-// 下面是档位 + 1.5K/2K 常用像素档，输出格式官方只支持 png / jpeg。
+// 火山方舟官方图片 API「size」参数（2026-10-26 读取的官方推荐宽高表）：每个分辨率档位都给出
+// 1:1 / 4:3 / 3:4 / 16:9 / 9:16 / 3:2 / 2:3 / 21:9 八个比例的像素值。像素值必须同时满足各模型的
+// 总像素与宽高比范围；这里只收录官方表里的值，画布按「比例 × 清晰度」选择时每个组合都有对应像素。
+const SEEDREAM_RATIO_NAMES = { '1:1': '方形', '4:3': '传统横图', '3:4': '人物竖图', '16:9': '横屏', '9:16': '竖屏', '3:2': '摄影横图', '2:3': '竖版海报', '21:9': '超宽横幅' }
+function seedreamTier(tier, rows) {
+  return Object.entries(rows).map(([ratio, value]) => ({ value, label: `${tier} ${SEEDREAM_RATIO_NAMES[ratio]}`, ratio }))
+}
+const SEEDREAM5_1K = seedreamTier('1K', { '1:1': '1024x1024', '4:3': '1152x864', '3:4': '864x1152', '16:9': '1424x800', '9:16': '800x1424', '3:2': '1248x832', '2:3': '832x1248', '21:9': '1568x672' })
+const SEEDREAM5_15K = seedreamTier('1.5K', { '1:1': '1536x1536', '4:3': '1792x1344', '3:4': '1344x1792', '16:9': '2048x1152', '9:16': '1152x2048', '3:2': '1872x1248', '2:3': '1248x1872', '21:9': '2352x1008' })
+const SEEDREAM5_2K = seedreamTier('2K', { '1:1': '2048x2048', '4:3': '2368x1776', '3:4': '1776x2368', '16:9': '2816x1584', '9:16': '1584x2816', '3:2': '2496x1664', '2:3': '1664x2496', '21:9': '3136x1344' })
+// Seedream 4.0 / 4.5 / 5.0 Lite 共用的官方表（4.0 有 1K，Lite 另有 3K）。
+const SEEDREAM4_1K = seedreamTier('1K', { '1:1': '1024x1024', '4:3': '1152x864', '3:4': '864x1152', '16:9': '1280x720', '9:16': '720x1280', '3:2': '1248x832', '2:3': '832x1248', '21:9': '1512x648' })
+const SEEDREAM4_2K = seedreamTier('2K', { '1:1': '2048x2048', '4:3': '2304x1728', '3:4': '1728x2304', '16:9': '2848x1600', '9:16': '1600x2848', '3:2': '2496x1664', '2:3': '1664x2496', '21:9': '3136x1344' })
+const SEEDREAM_3K = seedreamTier('3K', { '1:1': '3072x3072', '4:3': '3456x2592', '3:4': '2592x3456', '16:9': '4096x2304', '9:16': '2304x4096', '3:2': '3744x2496', '2:3': '2496x3744', '21:9': '4704x2016' })
+const SEEDREAM4_4K = seedreamTier('4K', { '1:1': '4096x4096', '4:3': '4704x3520', '3:4': '3520x4704', '16:9': '5504x3040', '9:16': '3040x5504', '3:2': '4992x3328', '2:3': '3328x4992', '21:9': '6240x2656' })
+
+// Seedream 5.0 pro / flash：size 支持分辨率档位（1K / 1.5K / 2K，默认 2K；1.5K 与 1K 同价）
+// 或宽高像素值（总像素 921600–4624220、比例 1/16–16）。输出格式官方只支持 png / jpeg。
 const SEEDREAM_SIZES = [
   { value: '1K', label: '1K 智能', ratio: 'auto', detail: '模型按描述定尺寸' },
   { value: '1.5K', label: '1.5K 智能', ratio: 'auto', detail: '与 1K 同价 · 更清晰' },
   { value: '2K', label: '2K 智能', ratio: 'auto', detail: '模型按描述定尺寸' },
-  { value: '1536x1536', label: '1.5K 方形', ratio: '1:1', detail: '头像 · 商品卡 · 社媒方图' },
-  { value: '2048x1152', label: '1.5K 横屏', ratio: '16:9', detail: 'YouTube · 网页横幅 · PPT' },
-  { value: '1152x2048', label: '1.5K 竖屏', ratio: '9:16', detail: '抖音 · TikTok · Shorts · 故事' },
-  { value: '1872x1248', label: '1.5K 摄影横图', ratio: '3:2', detail: '风景 · 产品 · 相机照片' },
-  { value: '1344x1792', label: '1.5K 人物竖图', ratio: '3:4', detail: '小红书 · 人物 · 封面' },
-  { value: '2048x2048', label: '2K 方形', ratio: '1:1', detail: '头像 · 商品卡 · 社媒方图' },
-  { value: '2816x1584', label: '横屏宽幅', ratio: '16:9', detail: 'YouTube · 网页横幅 · PPT' },
-  { value: '1584x2816', label: '手机全屏', ratio: '9:16', detail: '抖音 · TikTok · Shorts · 故事' },
-  { value: '2496x1664', label: '摄影横图', ratio: '3:2', detail: '风景 · 产品 · 相机照片' },
-  { value: '1776x2368', label: '人物竖图', ratio: '3:4', detail: '小红书 · 人物 · 封面' },
+  ...SEEDREAM5_1K, ...SEEDREAM5_15K, ...SEEDREAM5_2K,
 ]
 
-// Seedream 4.0 accepts explicit pixel dimensions inside a documented pixel
-// and ratio range, so expose the useful 4:3 and 2:3 presets instead of
-// pretending it has the narrower fixed-size catalog used by other models.
-const SEEDREAM4_SIZES = [
-  { value: '2048x2048', label: '2K 方形', ratio: '1:1', detail: '头像 · 商品卡 · 社媒方图' },
-  { value: '2304x1728', label: '传统横图', ratio: '4:3', detail: '电商详情 · 传统照片 · 产品图' },
-  { value: '2848x1600', label: '横屏宽幅', ratio: '16:9', detail: 'YouTube · 网页横幅 · PPT' },
-  { value: '2496x1664', label: '摄影横图', ratio: '3:2', detail: '风景 · 产品 · 相机照片' },
-  { value: '1728x2304', label: '人物竖图', ratio: '3:4', detail: '小红书 · 人物 · 封面' },
-  { value: '1664x2496', label: '竖版海报', ratio: '2:3', detail: '海报 · 印刷 · 电商长图' },
-  { value: '1600x2848', label: '手机全屏', ratio: '9:16', detail: '抖音 · TikTok · Shorts · 故事' },
-  // 官方图片 API 的 4K 档映射值（Seedream 4.0 按张计价，4K 与 2K 同价）。
-  { value: '4096x4096', label: '4K 方形', ratio: '1:1', detail: '大幅印刷 · 高清素材' },
-  { value: '4704x3520', label: '4K 传统横图', ratio: '4:3', detail: '电商详情 · 高清产品图' },
-  { value: '5504x3040', label: '4K 横屏宽幅', ratio: '16:9', detail: '大屏 · 高清横幅' },
-  { value: '4992x3328', label: '4K 摄影横图', ratio: '3:2', detail: '风景 · 高清照片' },
-  { value: '3520x4704', label: '4K 人物竖图', ratio: '3:4', detail: '人物 · 高清封面' },
-  { value: '3328x4992', label: '4K 竖版海报', ratio: '2:3', detail: '海报 · 印刷' },
-  { value: '3040x5504', label: '4K 手机全屏', ratio: '9:16', detail: '高清壁纸 · 竖屏' },
-]
+// Seedream 4.0：1K/2K/4K 档或宽高像素（总像素 921600–16777216）。第一项是默认尺寸，保持 2K 方形；
+// 按张计价，各尺寸同价。
+const SEEDREAM4_SIZES = [...SEEDREAM4_2K, ...SEEDREAM4_4K, ...SEEDREAM4_1K]
 
 // Official Lite/4.5 require at least 2K (3,686,400 pixels).
 const SEEDREAM_LITE_SIZE_RULE = Object.freeze({ ...SEEDREAM4_SIZE_RULE, minPixels: 3_686_400 })
@@ -85,7 +74,7 @@ const SEEDREAM_LITE_SIZES = [
   { value: '2K', label: '2K', ratio: 'auto' },
   { value: '3K', label: '3K', ratio: 'auto' },
   { value: '4K', label: '4K', ratio: 'auto' },
-  ...SEEDREAM4_SIZES,
+  ...SEEDREAM4_2K, ...SEEDREAM_3K, ...SEEDREAM4_4K,
 ]
 
 const IMAGE_CATALOG = [
@@ -139,7 +128,7 @@ const IMAGE_CATALOG = [
   },
   {
     id: 'doubao-seedream-4-5-251128', publicId: 'seedream-4.5', label: 'Seedream 4.5', provider: 'ark',
-    note: '支持多图和组图', sizes: SEEDREAM_LITE_SIZES.filter(size => size.value !== '3K'), customSize: true, sizeRule: SEEDREAM_LITE_SIZE_RULE,
+    note: '支持多图和组图', sizes: SEEDREAM_LITE_SIZES.filter(size => size.value !== '3K' && !SEEDREAM_3K.includes(size)), customSize: true, sizeRule: SEEDREAM_LITE_SIZE_RULE,
     quality: [], formats: ['jpeg'], maxReferences: 14, maxCount: 15, maxCombinedImages: 15,
     supportsEdit: true, supportsTransparent: false,
   },

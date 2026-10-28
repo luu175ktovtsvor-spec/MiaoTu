@@ -1,5 +1,5 @@
 <template>
-  <el-popover v-if="items.length" v-model:visible="open" :persistent="false" trigger="click" placement="top-start" :width="200" :disabled="disabled" :showArrow="false" :popperStyle="{ padding: '8px' }">
+  <el-popover v-if="items.length" v-model:visible="open" :persistent="false" trigger="click" placement="top-start" :width="240" :disabled="disabled" :showArrow="false" :popperStyle="{ padding: '8px' }">
     <template #reference>
       <el-button class="modeButton" text size="small" :disabled="disabled" :aria-label="translate('视频生成模式')">
         <component :is="current?.icon || IconTypography" :size="15" aria-hidden="true" />
@@ -16,11 +16,13 @@
         role="menuitemradio"
         class="modeItem"
         :aria-checked="item.value === mode"
-        :disabled="!item.available"
-        :title="item.available ? item.description : translate('连入对应素材后可用')"
+        :title="item.description"
         @click="choose(item.value)">
         <component :is="item.icon" :size="15" aria-hidden="true" />
-        <span>{{ item.label }}</span>
+        <span class="modeText">
+          <span>{{ item.label }}</span>
+          <small v-if="!item.available">{{ item.requirement }}</small>
+        </span>
       </button>
     </div>
   </el-popover>
@@ -32,12 +34,13 @@ import { ElButton, ElPopover } from "element-plus";
 import { IconArrowAutofitRight, IconAtom2, IconChevronUp, IconLayersIntersect, IconPencil, IconPhoto, IconPhotoPlus, IconTypography } from "@tabler/icons-vue";
 import { translate } from "@miaoimg/i18n/vue";
 import type { NodeMediaModel } from "@miaoimg/nodes-scaffold/runtime";
-import { videoModeDescription, videoModeLabel, videoReferenceTypes } from "./videoModeText";
+import { videoModeDescription, videoModeLabel, videoModeRequirement, videoReferenceTypes } from "./videoModeText";
 
-// 生成模式单独放在模型旁边（LibTV 同款）：顺序固定为文生视频、全能参考、图生视频、首尾帧、图片参考，
-// 当前连入的素材用不了的模式置灰；节点仍按素材自动切到可用模式，保存值保持原样。
+// 生成模式单独放在模型旁边（LibTV 同款）：顺序固定为文生视频、全能参考、图生视频、首尾帧、图片参考。
+// 模型支持的模式随时都能先选再连素材；当前素材不符合时在条目下写明还需要什么，节点在发送前拦下。
 const props = defineProps<{ model?: NodeMediaModel; available: string[]; disabled?: boolean }>();
 const mode = defineModel<string>({ required: true });
+const emit = defineEmits<{ choose: [value: string] }>();
 const open = ref(false);
 
 type Mode = NonNullable<NodeMediaModel["mode"]>[number];
@@ -54,11 +57,13 @@ const items = computed(() => (props.model?.mode ?? [])
   .sort((left, right) => rank(left.item) - rank(right.item) || left.index - right.index)
   .map(({ item }) => {
     const value = JSON.stringify(item);
-    return { value, label: videoModeLabel(item, props.model), description: videoModeDescription(item, props.model), icon: icon(item), available: props.available.includes(value) };
+    return { value, label: videoModeLabel(item, props.model), description: videoModeDescription(item, props.model), requirement: videoModeRequirement(item, props.model), icon: icon(item), available: props.available.includes(value) };
   }));
 const current = computed(() => items.value.find(item => item.value === mode.value));
 
 function choose(value: string) {
+  // 先告诉节点这是用户明确的选择，再写入模式；节点的自动切换监听是同步的。
+  emit("choose", value);
   mode.value = value;
   open.value = false;
 }
@@ -87,8 +92,8 @@ function choose(value: string) {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 34px;
-  padding: 0 10px;
+  min-height: 34px;
+  padding: 6px 10px;
   border: 0;
   border-radius: 8px;
   background: transparent;
@@ -103,9 +108,16 @@ function choose(value: string) {
 
   &:focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: -2px; }
 
-  &:disabled {
-    color: var(--el-text-color-placeholder);
-    cursor: not-allowed;
+  .modeText {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    small {
+      color: var(--el-text-color-secondary);
+      font-size: 11px;
+      line-height: 1.4;
+    }
   }
 }
 </style>

@@ -357,6 +357,32 @@ export function useCanvasTools(options: {
         await nextTick();
         return { nodes: args.nodeIds.map(id => nodeInfo(id).node), mode: args.mode };
       }
+      case 'estimateGroup': {
+        const { groupId } = canvasSchemas.estimateGroup.parse(request.args);
+        if (findNode(groupId).type !== 'canvasGroup') throw new Error('目标必须是 canvasGroup 分组');
+        // 组内全部节点（含嵌套分组），与「整组生成」相同的阅读顺序。
+        const ids = new Set([groupId]);
+        const members = [];
+        for (let added = true; added;) {
+          added = false;
+          for (const node of flow.getNodes.value) {
+            if (!ids.has(node.id) && node.parentNode && ids.has(node.parentNode)) { ids.add(node.id); members.push(node); added = true; }
+          }
+        }
+        members.sort((a, b) => a.computedPosition.y - b.computedPosition.y || a.computedPosition.x - b.computedPosition.x);
+        const tools = getNodeTools();
+        const targets = [...tools.list(members.map(node => node.id), ['node:generateImage', 'node:generateVideo'])];
+        const nodes = [];
+        let points = 0;
+        for (const target of targets) {
+          signal.throwIfAborted();
+          const config = await tools.call({ nodeId: target.nodeId, name: 'node:getConfig', args: {} }, signal) as { estimate?: { points?: number } | null } | null;
+          const value = typeof config?.estimate?.points === 'number' ? config.estimate.points : null;
+          if (value !== null) points += value;
+          nodes.push({ nodeId: target.nodeId, label: target.nodeLabel, generate: target.name, points: value });
+        }
+        return { groupId, nodeCount: nodes.length, totalPoints: Math.round(points * 100) / 100, unquoted: nodes.filter(node => node.points === null).length, nodes, generationStarted: false };
+      }
       case 'undoCanvas': case 'redoCanvas': {
         canvasSchemas[request.name].parse(request.args);
         const undo = request.name === 'undoCanvas';

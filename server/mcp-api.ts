@@ -501,7 +501,7 @@ export function createMcpApi({ management, workspaceFiles, showcaseRoot = '', sh
       return { ...tool, description: tool.description.replaceAll('本次对话所属', 'MCP 配置所属'), schema: fromJsonSchema(tool.parameters) }
     })
     const hostNames = new Set(hostDefinitions.map(tool => tool.name))
-    const server = new McpServer({ name: 'miaoimg-canvas', version: '1.1.0' }, { instructions: '妙图画布工具。先 getAppState 确认项目与连接，再 getCanvas 读取真实节点类型。节点能力先 getNodeTools 再 nodeTools；文件用 workspaceFiles，视频画面用 inspectVideo。连接中断或取消调用不会撤销已经保存的操作；结果待确认时先回读画布、节点或任务状态，不直接重复执行。只有用户明确要求时才执行模型生成。' })
+    const server = new McpServer({ name: 'miaoimg-canvas', version: '1.1.0' }, { instructions: '妙图画布工具。先 getAppState 确认项目与连接，再 getCanvas 读取真实节点类型。节点能力先 getNodeTools 再 nodeTools；文件用 workspaceFiles，视频画面用 inspectVideo。连接中断或取消调用不会撤销已经保存的操作；结果待确认时先回读画布、节点或任务状态，不直接重复执行。只有用户明确要求时才执行模型生成。图片/视频模型能用的模式、比例、清晰度、时长、张数和参考素材上限以节点 node:getConfig 返回为准（视频看 modeGuide：每个模式要连什么素材、当前素材是否满足）；模型没有列出的能力就是不支持，不用其他模式冒充。整组生成前先用 estimateGroup 询价并请用户确认。' })
     for (const tool of [...definitions, ...hostDefinitions]) server.registerTool(tool.name, { description: tool.description, inputSchema: tool.schema }, async (args, context) => {
       const controller = new AbortController()
       const completed = Promise.withResolvers<void>()

@@ -109,6 +109,7 @@ import { ElAlert, ElButton, ElCard, ElSelect, ElOption, ElMessage, ElMessageBox,
 import { IconEdit, IconFileText, IconPhotoAi, IconVideo, IconSparkles, IconArrowUp, IconTypography, IconChevronDown, IconCheck, IconBold, IconItalic, IconMinus, IconArrowsDiagonal, IconMinimize } from "@tabler/icons-vue";
 import { nodeSkeleton, nodeTools, useNodeGeneration, useNode, useNodeReferences, z, type NodeAiModel, type NodeHandle } from "@miaoimg/nodes-scaffold/runtime";
 import storyboardAction from "./textNode/storyboardAction.vue";
+import { STORYBOARD_MAX_SHOTS, splitShots, useStoryboard } from "./textNode/useStoryboard";
 import referenceItem from "@miaoimg/nodes-scaffold/referenceItem";
 import promptInput from "@miaoimg/nodes-scaffold/promptInput";
 import { translate } from "@miaoimg/i18n/vue";
@@ -560,6 +561,25 @@ async function generateText() {
 }
 const promptModel = computed({ get: () => data.value.promptModel ?? [], set: (value: PromptModel) => { data.value.promptModel = value; } });
 
+// 与工具栏「生成分镜」同一套拆分与建节点逻辑。
+const storyboard = useStoryboard(() => nodeProps.value.label || "");
+nodeTools.register({
+  name: "createStoryboard",
+  description: "把此文本节点的正文拆成分镜（有编号或列表项时每项一条，否则按段落），每条新建一个已填提示词的图片生成节点并放进同一分组，连入本节点的图片会连到每个分镜作参考；也可用 shots 直接给出分镜文本。ratio 只能取目录默认图片模型支持的比例，省略时优先 16:9。最多 30 条；不提交图片生成，返回分组与节点 ID，用户授权后再对各节点调用 generateImage。",
+  parameters: z.strictObject({ shots: z.array(z.string().trim().min(1).max(4000)).min(1).max(STORYBOARD_MAX_SHOTS).optional(), ratio: z.string().min(1).optional() }),
+  async execute(args, { signal }) {
+    await textLoading;
+    if (generating.value || !textReady.value || documentError.value) throw new Error("文本正在生成或尚未加载，请稍后再试");
+    const list = args.shots ?? splitShots(outputs.value.text.value).slice(0, STORYBOARD_MAX_SHOTS);
+    if (!list.length) throw new Error("正文里没有可拆分的分镜，请先写好分镜文本或直接传入 shots");
+    const ratios = (await ai.getMediaModels()).find(model => model.type === "image")?.imageRatios ?? [];
+    signal?.throwIfAborted();
+    if (args.ratio !== undefined && !ratios.includes(args.ratio)) throw new Error(`默认图片模型不支持比例 ${args.ratio}，可选：${ratios.join("、")}`);
+    const ratio = args.ratio ?? (ratios.includes("16:9") ? "16:9" : ratios[0] ?? "");
+    const result = await storyboard.createStoryboard(list, ratio);
+    return { ...result, shots: list.length, ratio: ratio || null, references: storyboard.references.value.length, generationStarted: false };
+  },
+});
 nodeTools.register({
   name: 'getText', description: '分页读取此文本节点的当前真实正文，返回项目正文文件路径和下一段偏移；不调用模型。',
   parameters: z.strictObject({ offset: z.number().int().min(0).default(0), limit: z.number().int().min(1).max(16000).default(1000) }),

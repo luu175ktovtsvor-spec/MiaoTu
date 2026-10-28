@@ -5,45 +5,43 @@
       v-model:visible="visible"
       trigger="click"
       placement="top-start"
-      :width="340"
+      :width="280"
       :offset="10"
       :showArrow="false"
       popperClass="agentModelPopover"
-      :popperStyle="{ padding: '20px', maxWidth: 'calc(100vw - 24px)' }">
+      :popperStyle="{ padding: '6px', maxWidth: 'calc(100vw - 24px)' }">
       <template #reference>
         <el-button class="modelButton" text :disabled="disabled" :aria-label="translate('模型与推理设置')">
           <modelIcon v-if="selectedModelChoice" :model="selectedModelChoice.modelId" :size="14" />
           <span class="modelName">{{ selectedModelChoice?.label || translate('选择模型') }}</span>
-          ·
-          <span class="reasoningLabel">{{ reasoningLabel }}</span>
+          <span v-if="reasoningOptions.length > 1" class="reasoningLabel">· {{ reasoningLabel }}</span>
           <icon-chevron-down :size="12" />
         </el-button>
       </template>
-      <el-form class="modelOptions" labelPosition="top">
-        <el-form-item :label="translate('模型')">
-          <el-select v-model="selectedModel" @change="reasoningEffort = ''" filterable :disabled="disabled" :placeholder="translate('选择模型')" :aria-label="translate('选择模型')" :noDataText="translate('请先在设置中添加模型')">
-            <template #prefix><modelIcon v-if="selectedModelChoice" :model="selectedModelChoice.modelId" :size="18" /></template>
-            <el-option-group v-for="group in modelGroups" :key="group.label" :label="group.label">
-              <el-option v-for="model in group.models" :key="model.value" :label="model.label || translate('选择模型')" :value="model.value">
-                <el-space :size="8">
-                  <modelIcon :model="model.modelId" :size="16" />
-                  <span>{{ model.label || translate('选择模型') }}</span>
-                </el-space>
-              </el-option>
-            </el-option-group>
-          </el-select>
-        </el-form-item>
-        <el-form-item :label="translate('推理等级')">
-          <el-segmented v-model="reasoningEffort" :options="reasoningOptions" :disabled="disabled" block :aria-label="translate('推理等级')" />
-        </el-form-item>
-      </el-form>
+      <div class="modelOptions" role="listbox" :aria-label="translate('选择模型')">
+        <p v-if="!modelOptions.length" class="modelEmpty">{{ translate('暂无可用模型，请登录或在设置中添加模型') }}</p>
+        <template v-for="group in modelGroups" :key="group.label">
+          <div class="modelGroupLabel">{{ group.label }}</div>
+          <button v-for="model in group.models" :key="model.value" type="button" role="option" class="modelOption" :aria-selected="model.value === selectedModel" :disabled="disabled" @click="chooseModel(model.value)">
+            <modelIcon :model="model.modelId" :size="16" />
+            <span class="modelOptionLabel">{{ model.label || translate('选择模型') }}</span>
+            <icon-check v-if="model.value === selectedModel" :size="15" class="modelCheck" aria-hidden="true" />
+          </button>
+        </template>
+        <template v-if="reasoningOptions.length > 1">
+          <div class="modelGroupLabel">{{ translate('推理等级') }}</div>
+          <div class="reasoningOptions" role="radiogroup" :aria-label="translate('推理等级')">
+            <button v-for="item in reasoningOptions" :key="item.value" type="button" role="radio" :aria-checked="item.value === reasoningEffort" :disabled="disabled" @click="reasoningEffort = item.value">{{ item.label }}</button>
+          </div>
+        </template>
+      </div>
     </el-popover>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { IconChevronDown } from "@tabler/icons-vue";
+import { IconCheck, IconChevronDown } from "@tabler/icons-vue";
 import { modelIcon } from "@miaoimg/model-icons";
 import { modelChoices, loadServerModelChoices } from "@/stores/settings";
 import { translate } from "@miaoimg/i18n/vue";
@@ -72,6 +70,10 @@ const reasoningOptions = computed(() => {
   return [...options, ...efforts.map((value: string) => ({ label: translate(EFFORT_LABELS[value] ?? value), value }))];
 });
 const reasoningLabel = computed(() => reasoningOptions.value.find(item => item.value === reasoningEffort.value)?.label ?? translate("默认"));
+function chooseModel(value: string) {
+  if (value !== selectedModel.value) reasoningEffort.value = "";
+  selectedModel.value = value;
+}
 watch(visible, open => { if (open) void loadServerModelChoices(true); });
 watch(modelChoices, items => {
   // Keep the session choice while the catalog loads; an unavailable model
@@ -120,26 +122,70 @@ watch(() => !props.active || props.disabled, close => { if (close) visible.value
 
 .agentModelPopover {
   .modelOptions {
-    .el-form-item {
-      margin-bottom: 24px;
+    display: flex;
+    flex-direction: column;
+    max-height: min(60vh, 420px);
+    overflow-y: auto;
+  }
 
-      &:last-child {
-        margin-bottom: 0;
-      }
-      .el-form-item__label {
-        margin-bottom: 10px;
-        font-weight: 500;
-        color: var(--el-text-color-primary);
-      }
-      .el-segmented {
-        width: 100%;
+  .modelGroupLabel {
+    padding: 8px 10px 4px;
+    color: var(--el-text-color-secondary);
+    font-size: 12px;
+  }
 
-        @media (max-width: 360px) {
-          .el-segmented__item {
-            padding-inline: 6px;
-          }
-        }
-      }
+  .modelEmpty {
+    margin: 0;
+    padding: 10px;
+    color: var(--el-text-color-secondary);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .modelOption {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 34px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--el-text-color-primary);
+    font: inherit;
+    font-size: 13px;
+    justify-content: flex-start;
+    width: 100%;
+    text-align: left;
+    cursor: pointer;
+
+    .modelIcon { flex: 0 0 auto; }
+    .modelOptionLabel { flex: 1; min-width: 0; overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+    .modelCheck { flex-shrink: 0; color: var(--el-text-color-primary); }
+    &:hover:not(:disabled), &[aria-selected="true"] { background: var(--el-fill-color); }
+    &:focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: -2px; }
+    &:disabled { cursor: not-allowed; opacity: .5; }
+  }
+
+  .reasoningOptions {
+    display: flex;
+    gap: 4px;
+    padding: 2px 6px 6px;
+
+    button {
+      flex: 1;
+      height: 28px;
+      border: 1px solid var(--el-border-color);
+      border-radius: 8px;
+      background: transparent;
+      color: var(--el-text-color-regular);
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+
+      &[aria-checked="true"] { border-color: var(--el-text-color-primary); color: var(--el-text-color-primary); background: var(--el-fill-color); }
+      &:focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: 1px; }
+      &:disabled { cursor: not-allowed; opacity: .5; }
     }
   }
 }

@@ -14,6 +14,30 @@ import zhipu from "./zhipu.svg?raw";
 import ollama from "./ollama.svg?raw";
 import mistral from "./mistral.svg?raw";
 
+// 各标识在 24×24 画布里实际占的范围（浏览器 getBBox 实测）。统一按内容居中、铺满同样大小，
+// 再按视觉密度微调：OpenAI 的结比 Grok 等线条标识显得更大更重，缩一点才看起来一样大。
+const CONTENT_BOXES = new Map<string, [number, number, number, number]>([
+  [claude, [0, 0, 24, 24]], [deepseek, [0, 3, 24, 17.66]], [doubao, [1.5, 0, 21.29, 24]], [gemini, [1, 1, 22, 22]],
+  [grok, [0, 0.5, 24, 23.04]], [kimi, [1.5, 1, 22.47, 21]], [minimax, [0, 2, 24, 20]], [mistral, [0, 3.4, 24, 17.14]],
+  [ollama, [3.5, 1, 17, 22]], [openai, [1, 1, 22, 22]], [qwen, [1, 1, 22, 22]], [zhipu, [1, 0, 22, 24]],
+]);
+const OPTICAL_SCALE = new Map<string, number>([[openai, 0.9]]);
+const normalized = new Map<string, string>();
+function normalize(svg: string) {
+  const cached = normalized.get(svg);
+  if (cached) return cached;
+  const box = CONTENT_BOXES.get(svg);
+  let result = svg;
+  if (box) {
+    const [x, y, width, height] = box;
+    const side = Math.max(width, height) / (OPTICAL_SCALE.get(svg) ?? 1);
+    const viewBox = [x + width / 2 - side / 2, y + height / 2 - side / 2, side, side].map(value => +value.toFixed(3)).join(" ");
+    result = svg.replace(/viewBox="[^"]*"/, `viewBox="${viewBox}"`);
+  }
+  normalized.set(svg, result);
+  return result;
+}
+
 const FAMILIES: Array<[RegExp, string]> = [
   [/gpt|openai|chatgpt|codex|\bo[1-9]\b|dall-?e/, openai],
   [/grok|x\.ai|xai/, grok],
@@ -35,7 +59,7 @@ export function modelLogoSvg(model: unknown, provider: unknown = ""): string {
     const value = String(source || "").toLowerCase();
     if (!value) continue;
     const found = FAMILIES.find(([pattern]) => pattern.test(value));
-    if (found) return found[1];
+    if (found) return normalize(found[1]);
   }
   return "";
 }

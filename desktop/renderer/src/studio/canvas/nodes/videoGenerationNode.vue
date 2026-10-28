@@ -70,7 +70,8 @@
             :labels="referenceRoleLabels"
             @preview="setReferencePreview"
             @remove="removeReference" />
-          <div v-if="referenceDescription" class="referenceHint">{{ referenceDescription }}</div>
+          <div v-if="modeRequirementHint" class="referenceHint">{{ modeRequirementHint }}</div>
+          <div v-else-if="referenceDescription" class="referenceHint">{{ referenceDescription }}</div>
           <promptInput
             ref="promptEditor"
             v-model="data.promptModel"
@@ -107,6 +108,7 @@
           <videoModeMenu
             v-model="data.mode"
             :model="selectedModel"
+            @choose="chooseMode"
             :available="matchingModes.map(item => JSON.stringify(item))"
             :disabled="generating || deleting || pendingTask || checkingTask || !selectedModel" />
           <generationSettings
@@ -162,7 +164,7 @@ import { nodeSkeleton, nodeTools, showNodeError, isSignInRequired, useGeneration
 import promptInput from "@miaoimg/nodes-scaffold/promptInput";
 import videoPlayer from "@miaoimg/nodes-scaffold/videoPlayer";
 import referenceItem from "@miaoimg/nodes-scaffold/referenceItem";
-import { videoModeDescription, videoModeLabel, videoReferenceTypes } from './videoModeText';
+import { videoModeDescription, videoModeLabel, videoModeRequirement, videoReferenceTypes } from './videoModeText';
 import mediaHistory from "@miaoimg/nodes-scaffold/mediaHistory";
 import generationProgress from "@miaoimg/nodes-scaffold/generationProgress";
 import videoActions from "./videoNode/videoActions.vue";
@@ -189,13 +191,15 @@ const { id, node, nodeProps, nodeEvent, outputs, files, ai, updateNodeInternals 
   label: "视频生成",
 });
 type PromptModel = NonNullable<InstanceType<typeof promptInput>["$props"]["modelValue"]>;
-const data = computed(() => node.data as { prompt: string; promptModel: PromptModel; model: string; duration?: number; resolution: string; ratio: string; mode: string; generateAudio: boolean; parameters: Record<string, unknown>; taskRequestId?: string });
+const data = computed(() => node.data as { prompt: string; promptModel: PromptModel; model: string; duration?: number; resolution: string; ratio: string; mode: string; modeChosen?: boolean; generateAudio: boolean; parameters: Record<string, unknown>; taskRequestId?: string });
 if (!data.value.parameters) data.value.parameters = {};
 data.value.prompt ??= "";
 data.value.promptModel ??= [];
 data.value.model ??= "";
 data.value.resolution ??= "";
 data.value.mode ??= "";
+// 用户或 Agent 明确选过的模式（文生视频除外）不随连入的素材自动改掉；素材不符时提示缺什么并在发送前拦下。
+data.value.modeChosen ??= false;
 data.value.generateAudio ??= true;
 data.value.ratio ??= "";
 const { refList, referenceMentions, canvasReferenceMentions, referenceKinds, connectReference, referenceHistory, preparePromptReferences, setReferencePreview, removeReference } = useNodeReferences();
@@ -277,8 +281,18 @@ const canStartGeneration = computed(() => Boolean(selectedModel.value && (genera
     || !selectedModel.value.durationResolutionMap?.some(item => item.resolution.length)
     || getResolutions(selectedModel.value, data.value.duration).includes(data.value.resolution))));
 const matchingModes = computed(() => getMatchingModes(selectedModel.value));
+const modeMatches = computed(() => matchingModes.value.some(mode => JSON.stringify(mode) === data.value.mode));
+// 选定的模式还缺素材时只做提示（发送时才拦下）；连入的素材任何模式都用不了才报错。
+const modeRequirementHint = computed(() => {
+  if (!selectedModel.value || selectedMode.value === undefined || modeMatches.value) return "";
+  const requirement = videoModeRequirement(selectedMode.value, selectedModel.value);
+  return requirement ? translate("{0}：{1}", { 0: videoModeLabel(selectedMode.value, selectedModel.value), 1: requirement }) : "";
+});
 const referenceMismatchMessage = computed(() => selectedModel.value && !matchingModes.value.length
   ? translate("当前模型没有适合这些参考素材的生成模式，请更换模型或调整引用") : "");
+function chooseMode(value: string) {
+  data.value.modeChosen = value !== JSON.stringify("text");
+}
 type VideoEstimate = { points?: number | null; billingSource?: string; breakdown?: { outputPerSecond?: number; perSecond?: number; billingSource?: string } };
 const videoEstimate = ref<VideoEstimate | null>(null);
 const videoEstimateError = ref("");
@@ -387,17 +401,11 @@ function getResolutions(choice: NodeMediaModel, duration?: number) {
   return resolutionsForMode(choice, selectedMode.value, duration, data.value.parameters || {});
 }
 // ACT: 引用改变时只替换不适用的模式；普通媒体优先作为参考，避免自动变成首尾帧。
-// A "试试" hint asks for a mode before its references exist; apply it once the
-// connected media make that mode valid, instead of the default reference mode.
-const preferredMode = ref<string | null>(null);
 watch([selectedModel, matchingModes, () => data.value.mode], ([choice, matches]) => {
-  if (choice && preferredMode.value && matches.some((item) => JSON.stringify(item) === preferredMode.value)) {
-    data.value.mode = preferredMode.value;
-    preferredMode.value = null;
-    return;
-  }
   if (!choice || matches.some((item) => JSON.stringify(item) === data.value.mode)) return;
   const modes = choice.mode ?? [];
+  if (data.value.modeChosen && modes.some((item) => JSON.stringify(item) === data.value.mode)) return;
+  data.value.modeChosen = false;
   const mode = matches.find(Array.isArray) ?? matches.find((item) => item === "singleImage")
     ?? matches.find((item) => item === "endFrameOptional") ?? matches[0]
     ?? modes.find((item) => JSON.stringify(item) === data.value.mode) ?? modes.find(Array.isArray) ?? modes[0];
@@ -689,8 +697,8 @@ async function startGeneration(signal?: AbortSignal) {
   if (!generationPrompt.value && !promptOptional.value) throw new Error(translate("请输入生成提示词，或为当前模型添加图片参考"));
   if (refList.value.some(item => item.value === undefined)) throw new Error(translate("引用节点暂无内容，请先补充引用内容"));
   const images = refList.value.flatMap((item) => item.dataType === "IMAGE" && item.value ? [{ path: item.value.url, mimeType: item.value.mimeType }] : []);
-  if (choice.mode?.length && !matchingModes.value.length) throw new Error(translate("当前模型没有适合这些参考素材的生成模式，请更换模型或调整引用"));
-  if (!canStartGeneration.value) throw new Error(translate("当前模型没有适合这些参考素材的生成模式，请更换模型或调整引用"));
+  if (choice.mode?.length && !modeMatches.value) throw new Error(modeRequirementHint.value || referenceMismatchMessage.value || translate("当前模型没有适合这些参考素材的生成模式，请更换模型或调整引用"));
+  if (!canStartGeneration.value) throw new Error(modeRequirementHint.value || referenceMismatchMessage.value || translate("当前模型没有适合这些参考素材的生成模式，请更换模型或调整引用"));
   const workspace = files.getWorkspaceFiles();
   const controller = new AbortController();
   recordGenerationStatus("queued");
@@ -807,15 +815,29 @@ function getConfig() {
       keyframes: selectedModel.value?.keyframes ?? 0,
     },
     models: models.value,
+    // 每个模型的模式边界（与界面菜单、发送前校验同一来源）：mode 是 setConfig 用的原始值，
+    // requirement 是该模式要连入的素材；fitsCurrentReferences 表示当前连入的素材能否直接生成。
+    modeGuide: models.value.map((model) => ({
+      providerId: model.providerId,
+      modelId: model.modelId,
+      modes: (model.mode ?? []).map((mode) => ({
+        mode,
+        label: videoModeLabel(mode, model),
+        requirement: videoModeRequirement(mode, model),
+        hint: model.parameterRules?.hintsByMode?.[modeName(mode)] || undefined,
+        fitsCurrentReferences: getMatchingModes(model).some((item) => JSON.stringify(item) === JSON.stringify(mode)),
+      })),
+    })),
     ratios: ratioOptions.value,
     matchingModes: matchingModes.value,
+    referenceMismatch: modeRequirementHint.value || referenceMismatchMessage.value || null,
     estimate: currentEstimate ? { points: currentEstimate.points, source: currentEstimate.breakdown?.billingSource || 'server' } : null,
   };
 }
 
 nodeTools.register({
   name: "getConfig",
-  description: "读取此视频生成节点的当前配置、可选视频模型能力、通用比例及适合当前引用的模式，等待当前参数的积分报价后返回，报价失败为 null；不含密钥；时长与分辨率须符合 durationResolutionMap",
+  description: "读取此视频生成节点的当前配置、可选视频模型能力、每个模型的模式边界 modeGuide（每种模式要连入什么素材、当前素材是否满足）、通用比例及适合当前引用的模式，等待当前参数的积分报价后返回，报价失败为 null；不含密钥；时长与分辨率须符合 durationResolutionMap。模型不支持的模式不要提供给用户，也不要用别的模式冒充",
   parameters: z.strictObject({}),
   async execute(_args, { signal }) {
     signal?.throwIfAborted();
@@ -827,7 +849,7 @@ nodeTools.register({
 
 nodeTools.register({
   name: "setConfig",
-  description: "修改此视频生成节点的模型、时长、分辨率、比例、模式或声音；先用 getConfig 查询能力，providerId 与 modelId 必须同时提供；mode 使用返回的原始字符串或数组，须匹配当前引用；不修改提示词、不启动生成",
+  description: "修改此视频生成节点的模型、时长、分辨率、比例、模式或声音；先用 getConfig 查询能力，providerId 与 modelId 必须同时提供；mode 使用 modeGuide 返回的原始字符串或数组，须是该模型支持的模式，可以先选模式再连素材，素材不满足时结果里的 referenceMismatch 会说明缺什么，补齐前不能生成；不修改提示词、不启动生成",
   parameters: z.strictObject({
     providerId: z.string().min(1).optional(),
     modelId: z.string().min(1).optional(),
@@ -853,14 +875,17 @@ nodeTools.register({
     const resolutions = getResolutions(choice, duration);
     if (args.resolution !== undefined && !resolutions.includes(args.resolution)) throw new Error(`当前时长不支持分辨率 ${args.resolution}，可选：${resolutions.join("、")}`);
     const resolution = args.resolution ?? (resolutions.includes(data.value.resolution) ? data.value.resolution : resolutions[0] ?? "");
-    if (args.mode !== undefined && !getMatchingModes(choice).some((item) => JSON.stringify(item) === JSON.stringify(args.mode))) throw new Error("所选模式不受当前模型支持或不适用于当前引用，请根据模型能力及已连接素材选择");
+    if (args.mode !== undefined && !(choice.mode ?? []).some((item) => JSON.stringify(item) === JSON.stringify(args.mode))) throw new Error(`当前模型不支持这个模式，可选：${(choice.mode ?? []).map((item) => videoModeLabel(item, choice)).join("、")}`);
     if (args.ratio !== undefined && !ratioOptions.value.includes(args.ratio)) throw new Error(`当前模型不支持比例 ${args.ratio}，可选：${ratioOptions.value.join("、")}`);
     if (args.generateAudio !== undefined && choice.audio !== "optional" && args.generateAudio !== (choice.audio === true)) throw new Error("当前模型不支持切换声音，请查看 getConfig 返回的 audio 能力");
     data.value.model = JSON.stringify([choice.providerId, choice.modelId]);
     data.value.duration = duration;
     data.value.resolution = resolution;
     if (args.ratio !== undefined) data.value.ratio = args.ratio;
-    if (args.mode !== undefined) data.value.mode = JSON.stringify(args.mode);
+    if (args.mode !== undefined) {
+      data.value.modeChosen = args.mode !== "text";
+      data.value.mode = JSON.stringify(args.mode);
+    }
     if (args.generateAudio !== undefined) data.value.generateAudio = args.generateAudio;
     return await getConfigWithEstimate(signal);
   },
@@ -909,7 +934,11 @@ const emptyHints = computed(() => {
   const modes = selectedModel.value?.mode ?? [];
   const has = (name: string) => modes.some((item) => item === name);
   const reference = modes.find(Array.isArray);
-  const prefer = (mode: unknown, accept: string[]) => () => { preferredMode.value = JSON.stringify(mode); requestReference(accept); };
+  const prefer = (mode: unknown, accept: string[]) => () => {
+    data.value.modeChosen = true;
+    data.value.mode = JSON.stringify(mode);
+    requestReference(accept);
+  };
   const hints: { key: string; label: string; icon: unknown; run: () => void }[] = [];
   if (has("text")) hints.push({ key: "text", label: videoModeLabel('text'), icon: IconWriting, run: focusPrompt });
   const first = has("singleImage") ? "singleImage" : has("endFrameOptional") ? "endFrameOptional" : null;

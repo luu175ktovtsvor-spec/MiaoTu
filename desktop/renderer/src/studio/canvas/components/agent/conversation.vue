@@ -19,7 +19,6 @@
                 <icon-arrow-up-right class="suggestionArrow" :size="15" aria-hidden="true" />
               </el-button>
             </div>
-            <p class="welcomeHint">{{ translate('点击填入提示，也可以直接输入，或粘贴图片、视频。') }}</p>
           </section>
         </div>
         <div class="messageSpace" :style="{ height: `${messageVirtualizer.getTotalSize()}px` }">
@@ -35,16 +34,18 @@
             :class="{
               userMessage: item.role === 'user',
               editingMessage: editingId === item.id,
-              toolOnlyMessage: item.role === 'assistant' && !item.content && !item.error && !item.report && !item.attachments?.length && !!item.parts?.length && item.parts.every(part => part.type === 'tool'),
+              quietMessage: !messageVisible(item),
             }">
             <div class="messageBubble">
-              <div v-if="item.streaming && !compacting && !item.parts?.some(part => part.type === 'tool' || part.content)" class="messageLoading" role="status">
-                <el-icon class="is-loading" aria-hidden="true"><icon-loader-2 :size="16" /></el-icon><span>{{ translate('思考中...') }}</span>
-              </div>
-              <div v-else class="messageContent">
+              <div class="messageContent">
+                <button v-if="processDisclosure(item)" type="button" class="processDisclosure" :aria-expanded="processOpen(item)" @click="toggleProcess(item)">
+                  <span>{{ processDisclosure(item) }}</span>
+                  <icon-chevron-right :size="13" :class="{ expanded: processOpen(item) }" aria-hidden="true" />
+                </button>
+                <div v-if="dividerBefore(item)" class="processDivider" aria-hidden="true" />
                 <div v-if="item.report" class="reportHeader"><icon-users-group :size="14" />{{ translate('{0} 上报', { 0: item.report.name }) }}</div>
                 <template v-for="part in item.parts" :key="part.id">
-                  <el-collapse v-if="part.type === 'thinking' && part.content" class="messageReasoning" :model-value="(part.collapsed ?? true) ? [] : [part.id]" @change="part.collapsed = !Array.isArray($event) || !$event.includes(part.id)">
+                  <el-collapse v-if="part.type === 'thinking' && part.content && showProcess(item)" class="messageReasoning" :model-value="(part.collapsed ?? true) ? [] : [part.id]" @change="part.collapsed = !Array.isArray($event) || !$event.includes(part.id)">
                     <el-collapse-item :name="part.id">
                       <template #title>
                         <span class="reasoningHeader">
@@ -56,15 +57,15 @@
                       <messageMarkdown v-if="!(part.collapsed ?? true)" :content="part.content" :streaming="!!item.streaming" :directory="directory" />
                     </el-collapse-item>
                   </el-collapse>
-                  <toolMessage v-else-if="part.type === 'tool'" v-model:collapsed="part.collapsed" :tool="part.tool" :directory="directory" :subAgents="currentSubAgents" @copy="copyMessage" @open-child="emit('open-sub-agent', $event)" />
-                  <messageMarkdown v-else-if="part.type === 'text' && part.content" :content="part.content" :streaming="!!item.streaming" :directory="directory" />
+                  <toolMessage v-else-if="part.type === 'tool' && (visibleTool(part.tool) || processOpen(item))" v-model:collapsed="part.collapsed" :tool="part.tool" :directory="directory" :subAgents="currentSubAgents" @copy="copyMessage" @open-child="emit('open-sub-agent', $event)" />
+                  <messageMarkdown v-else-if="part.type === 'text' && part.content && (isFinalReply(item) || showProcess(item))" :content="part.content" :streaming="!!item.streaming" :directory="directory" />
                 </template>
                 <attachmentList v-if="item.attachments?.length" :attachments="item.attachments" :directory="directory" />
                 <div v-if="item.role === 'user'" class="messageText"><mentionContent :content="item.content" :mentions="item.mentions" :directory="directory" /></div>
                 <div v-if="item.error" class="messageError" role="alert">{{ item.error }}</div>
               </div>
             </div>
-            <div v-if="!item.streaming" class="messageActions">
+            <div v-if="!item.streaming && messageVisible(item) && (item.role === 'user' || item.report || isFinalReply(item))" class="messageActions">
               <template v-if="editingId === item.id">
                 <el-button text size="small" :disabled="busy || deletingId !== undefined" @click="cancelEdit"><icon-x :size="14" />{{ translate('取消') }}</el-button>
                 <span class="editingHint">{{ translate('正在下方编辑') }}</span>
@@ -79,6 +80,23 @@
             </div>
           </div>
         </div>
+        <div v-if="queuedMessages.length" class="pendingFollowUps" role="region" :aria-label="translate('待处理的消息')">
+          <div v-for="item in queuedMessages" :key="item.id" class="pendingFollowUp" :data-status="item.status">
+            <div class="pendingBubble">{{ mentionPlainText(item.prompt, item.mentions) || item.attachments[0]?.name }}</div>
+            <div class="pendingMeta">
+              <el-icon v-if="item.status === 'sending'" class="is-loading" aria-hidden="true"><icon-loader-2 :size="12" /></el-icon>
+              <span :role="item.status === 'failed' ? 'alert' : undefined">{{ pendingStatus(item) }}</span>
+              <el-button v-if="item.status === 'failed'" text size="small" :disabled="locked || pendingInputAction === item.id" @click="nativeMode ? guidePendingInput(item) : sendSupplement(item)">{{ translate('重试') }}</el-button>
+              <el-button v-else-if="!nativeMode && item.status === 'waiting'" text size="small" :disabled="locked" @click="sendSupplement(item)">{{ translate('立即发送') }}</el-button>
+              <el-button v-if="item.status === 'cancelled'" text size="small" :disabled="locked || hasDraft || pendingInputAction === item.id" @click="updatePendingInput(item, 'edit')">{{ translate('移回输入框') }}</el-button>
+              <el-button v-if="nativeMode && ['queued', 'failed'].includes(item.status)" text size="small" :disabled="locked || pendingInputAction === item.id" @click="updatePendingInput(item, 'withdraw')">{{ translate('撤回') }}</el-button>
+            </div>
+          </div>
+        </div>
+        <div v-if="turnRunning && !compacting" class="agentWorking" role="status">
+          <span class="activityShimmer">{{ workingStatus }}</span>
+          <span v-if="workingSeconds >= 3" class="workingTime">{{ formatWorkingTime(workingSeconds) }}</span>
+        </div>
       </div>
       <el-button v-if="messages.length && !atLatestMessage" class="scrollBottom" circle :aria-label="translate('回到最新消息')" :title="translate('回到最新消息')" @click="messageVirtualizer.scrollToEnd()"><icon-arrow-down :size="18" /></el-button>
     </div>
@@ -92,25 +110,6 @@
     </div>
     <div v-if="nativeMode && lastFailure && !turnRunning" class="compactionStatus" role="alert"><span>{{ translate(lastFailure.message) }}</span></div>
     <div class="messageInput">
-      <div v-if="queuedMessages.length" class="pendingInputs" role="region" :aria-label="translate('任务补充')">
-        <div v-for="item in queuedMessages" :key="item.id" class="pendingInput">
-          <div class="pendingInputCopy"><span class="pendingInputText" :title="mentionPlainText(item.prompt, item.mentions) || item.attachments[0]?.name">{{ mentionPlainText(item.prompt, item.mentions) || item.attachments[0]?.name }}</span></div>
-          <template v-if="nativeMode">
-            <el-button text size="small" :disabled="locked || item.status === 'sending' || pendingInputAction === item.id || item.status === 'cancelled' && hasDraft" :aria-label="translate(item.status === 'cancelled' ? '移回输入框编辑' : item.status === 'failed' ? '重试' : '引导当前任务')" @click="guidePendingInput(item)"><icon-arrow-up-right :size="14" />{{ translate(item.status === 'cancelled' ? '移回输入框编辑' : item.status === 'failed' ? '重试' : '引导') }}</el-button>
-            <el-button text circle size="small" :disabled="locked || item.status === 'sending' || pendingInputAction === item.id" :aria-label="translate('撤回补充消息')" :title="translate('撤回补充消息')" @click="updatePendingInput(item, 'withdraw')"><icon-trash :size="14" /></el-button>
-            <el-dropdown trigger="click" :disabled="locked || !['queued', 'failed'].includes(item.status) || pendingInputAction === item.id" @command="action => updatePendingInput(item, action)">
-              <el-button text circle size="small" :disabled="locked || !['queued', 'failed'].includes(item.status) || pendingInputAction === item.id" :aria-label="translate('补充消息选项')"><icon-dots :size="14" /></el-button>
-              <template #dropdown><el-dropdown-menu>
-                <el-dropdown-item command="followUp" :disabled="item.status !== 'queued'">{{ translate('本轮结束后发送') }}</el-dropdown-item>
-                <el-dropdown-item command="edit" :disabled="hasDraft">{{ translate('移回输入框编辑') }}</el-dropdown-item>
-              </el-dropdown-menu></template>
-            </el-dropdown>
-          </template>
-          <el-button v-else-if="item.status === 'waiting' || item.status === 'failed'" text size="small" :disabled="locked" @click="sendSupplement(item)">{{ translate(item.status === 'failed' ? '重试发送' : '立即发送') }}</el-button>
-          <el-icon v-if="item.status === 'sending'" class="is-loading"><icon-loader-2 :size="14" /></el-icon>
-          <small class="pendingInputStatus">{{ item.error || translate(item.status === 'queued' ? item.mode === 'followUp' ? '本轮结束后发送' : '已作为引导送达，当前步骤完成后接入' : item.status === 'sending' ? '正在发送…' : '等待发送补充') }}</small>
-        </div>
-      </div>
       <div v-if="editingId" class="editingBanner"><span>{{ translate('编辑消息') }}</span><el-button text size="small" :disabled="busy" @click="cancelEdit">{{ translate('取消') }}</el-button></div>
       <div
         class="senderResizeHandle"
@@ -174,7 +173,7 @@
           </div>
         </el-popover>
         <el-button v-if="turnRunning" class="stopButton" text circle :disabled="stopping" :aria-label="translate('停止生成')" :title="translate('停止生成')" @click="stopMessage"><icon-player-stop-filled :size="14" /></el-button>
-        <el-button class="sendButton" type="primary" circle :disabled="locked || !hasDraft || !createCanvasContext?.()?.id" :aria-label="editingId ? translate('重发消息') : turnRunning ? translate('补充当前任务') : translate('发送消息')" :title="editingId ? translate('重发消息') : turnRunning ? translate('补充当前任务') : translate('发送消息')" @click="submitMessage()">
+        <el-button v-if="!turnRunning || hasDraft" class="sendButton" type="primary" circle :disabled="locked || !hasDraft || !createCanvasContext?.()?.id" :aria-label="editingId ? translate('重发消息') : turnRunning ? translate('引导当前任务') : translate('发送消息')" :title="editingId ? translate('重发消息') : turnRunning ? translate('引导当前任务') : translate('发送消息')" @click="submitMessage()">
           <icon-arrow-up :size="16" />
         </el-button>
       </div>
@@ -188,7 +187,7 @@ import { computed, inject, nextTick, onBeforeUnmount, onScopeDispose, provide, r
 import { defaultRangeExtractor, observeElementRect, useVirtualizer } from "@tanstack/vue-virtual";
 import axios from "axios";
 import {
-  IconArrowUp, IconArrowDown, IconAtom, IconCopy,
+  IconArrowUp, IconArrowDown, IconAtom, IconCopy, IconChevronRight,
   IconCircleDashed, IconPencil, IconPlayerStopFilled, IconX, IconLoader2,
   IconTrash, IconDots, IconLayoutGrid, IconMovie, IconPhoto, IconArrowUpRight, IconUsersGroup,
 } from "@tabler/icons-vue";
@@ -201,6 +200,7 @@ import mentionContent from "./mentionContent.vue";
 import mentionThumbnail from "./mentionThumbnail.vue";
 import { mentionName, mentionParts, mentionPlainText, mentionThumbnailProps } from "./mentionText";
 import toolMessage from "./toolMessage.vue";
+import { toolActionLabel } from "./toolLabels";
 import attachmentList from "./attachmentList.vue";
 import { createPastedTextFile, readTextAttachment } from "./textAttachments";
 import useWorkspaceFiles from "@/lib/workspaceFiles";
@@ -210,6 +210,7 @@ import anonymousData from "@/lib/anonymousData";
 import { modelChoices, textModelSettings, updateTextModelSettings, personalizationSettings } from "@/stores/settings";
 import { useWorkspaceStore } from "@/stores/workspace";
 import type { AgentAttachment, AgentConversation, AgentDraft, AgentMessage, AgentPendingInput } from "./types";
+import type { AgentToolCall } from "@miaoimg/server/agent/types";
 import type { AgentEvent, AgentMention, AgentCompaction } from "@miaoimg/server/agent/types";
 import { applyImmutable, type Op } from "@earendil-works/chord/delta";
 import { createConversationStream, readAgentEvents } from "./replyStream";
@@ -350,9 +351,11 @@ onBeforeUnmount(() => {
     } } : {}),
   });
 });
+const senderPlaceholder = () => translate(turnRunning.value ? "继续输入补充要求，不会打断当前任务" : "输入消息，@ 提及节点输出或工作区素材…");
+watch(turnRunning, () => sender?.updateConfig({ placeholder: senderPlaceholder() }));
 watch(locale, () => {
   if (!sender) return;
-  sender.updateConfig({ placeholder: translate("输入消息，@ 提及节点输出或工作区素材…") });
+  sender.updateConfig({ placeholder: senderPlaceholder() });
   sender.chatElement.richText.setAttribute("aria-label", translate("消息"));
   for (const line of sender.chatEditor.NODES) for (const tag of line.children) {
     if (tag.type === "Mention") tag.$el.setAttribute("aria-label", t`预览 ${tag.name}`);
@@ -396,6 +399,121 @@ watch(modelChoices, items => {
   if (!selectedModel.value && items.length) selectedModel.value = items[0]!.value;
 }, { immediate: true });
 watch(selectedModel, value => { if (value) updateTextModelSettings(value); });
+// 对话展示回复、可展开的思考、提问和子任务；读写画布、查资料等工具步骤不单独列出，
+// 运行中用一行「正在…」说明当前在做什么。
+const interactiveTools = new Set(["askUser", "subAgent"]);
+function visibleTool(tool: AgentToolCall) {
+  return interactiveTools.has(tool.name) || Boolean(tool.question?.callId);
+}
+function hasReplyText(item: AgentMessage) {
+  return Boolean(item.content?.trim() || item.parts?.some(part => part.type === "text" && part.content.trim()));
+}
+// 一轮 = 一条用户消息之后的全部助手消息。运行中显示思考与正文、隐藏工具步骤；
+// 这一轮结束后，思考、工具步骤和中间说明收进最终回复上方的「处理过程」，点开才显示。
+type TurnInfo = { turnId: string; first: boolean; final: boolean; complete: boolean; steps: number; hasProcess: boolean };
+const expandedTurns = reactive(new Set<string>());
+const turnInfo = computed(() => {
+  const info = new Map<string, TurnInfo>();
+  let turn: AgentMessage[] = [];
+  let turnId = "";
+  const flush = () => {
+    if (!turn.length) return;
+    const complete = !turn.some(item => item.streaming);
+    const final = [...turn].reverse().find(item => hasReplyText(item) || item.error) ?? turn.at(-1)!;
+    const steps = turn.reduce((count, item) => count + (item.parts?.filter(part => part.type === "tool" && !visibleTool(part.tool)).length ?? 0), 0);
+    const hasProcess = steps > 0 || turn.some(item => item !== final && hasReplyText(item))
+      || turn.some(item => item.parts?.some(part => part.type === "thinking" && part.content.trim()));
+    for (const item of turn) info.set(item.id, { turnId: turnId || turn[0]!.id, first: item === turn[0], final: item === final, complete, steps, hasProcess });
+    turn = [];
+  };
+  for (const item of messages.value) {
+    if (item.role === "user") { flush(); turnId = item.id; continue; }
+    if (item.report) continue;
+    turn.push(item);
+  }
+  flush();
+  return info;
+});
+function processOpen(item: AgentMessage) {
+  const turn = turnInfo.value.get(item.id);
+  return Boolean(turn?.complete && expandedTurns.has(turn.turnId));
+}
+// 运行中照常显示过程；结束后只有展开时显示。
+function showProcess(item: AgentMessage) {
+  const turn = turnInfo.value.get(item.id);
+  return !turn || !turn.complete || expandedTurns.has(turn.turnId);
+}
+function isFinalReply(item: AgentMessage) {
+  return turnInfo.value.get(item.id)?.final ?? true;
+}
+// 「处理过程」放在这一轮最前面，展开的步骤跟在它下面；分隔线在最终回复之前。
+function processDisclosure(item: AgentMessage) {
+  const turn = turnInfo.value.get(item.id);
+  if (!turn?.complete || !turn.first || !turn.hasProcess) return "";
+  if (expandedTurns.has(turn.turnId)) return translate("收起处理过程");
+  return turn.steps ? translate("处理过程 · {0} 步", { 0: turn.steps }) : translate("处理过程");
+}
+function dividerBefore(item: AgentMessage) {
+  const turn = turnInfo.value.get(item.id);
+  return Boolean(turn?.complete && turn.final && turn.hasProcess);
+}
+function toggleProcess(item: AgentMessage) {
+  const turn = turnInfo.value.get(item.id);
+  if (!turn) return;
+  if (expandedTurns.has(turn.turnId)) expandedTurns.delete(turn.turnId);
+  else expandedTurns.add(turn.turnId);
+}
+function messageVisible(item: AgentMessage) {
+  if (item.role === "user" || item.streaming || item.report) return true;
+  const turn = turnInfo.value.get(item.id);
+  if (turn?.complete && (turn.final || (turn.first && turn.hasProcess))) return true;
+  if (turn?.complete && !expandedTurns.has(turn.turnId)) return false;
+  // 运行中（或已展开）：思考内容保留，可以展开查看；只有纯工具步骤的消息不占位置，展开后才显示。
+  return hasReplyText(item) || Boolean(item.error || item.attachments?.length)
+    || Boolean(item.parts?.some(part => part.type === "thinking" ? part.content.trim() : part.type === "tool" && (visibleTool(part.tool) || processOpen(item))));
+}
+function messageActivity(item: AgentMessage) {
+  const parts = item.parts ?? [];
+  const running = [...parts].reverse().find(part => part.type === "tool" && part.tool.status === "running");
+  if (running?.type === "tool") return running.tool.name === "askUser" ? "" : translate("正在{0}…", { 0: translate(toolActionLabel(running.tool)) });
+  const last = parts.at(-1);
+  // 正文正在逐字出现时不再叠一行状态。
+  if (last?.type === "text" && last.content) return "";
+  return translate(last?.type === "tool" ? "正在整理结果…" : "正在思考…");
+}
+// 运行计时：从这一轮开始计，结束清零。
+const workingSeconds = ref(0);
+let workingTimer: number | undefined;
+watch(() => turnRunning.value && !compacting.value, running => {
+  window.clearInterval(workingTimer);
+  workingSeconds.value = 0;
+  if (running) workingTimer = window.setInterval(() => { workingSeconds.value++; }, 1000);
+}, { immediate: true });
+onScopeDispose(() => window.clearInterval(workingTimer));
+function formatWorkingTime(seconds: number) {
+  return seconds < 60 ? translate('{0} 秒', { 0: seconds }) : translate('{0} 分 {1} 秒', { 0: Math.floor(seconds / 60), 1: seconds % 60 });
+}
+const workingStatus = computed(() => {
+  const streaming = [...messages.value].reverse().find(item => item.streaming);
+  const activity = streaming ? messageActivity(streaming) : "";
+  return activity || translate("处理中…");
+});
+function pendingStatus(item: QueuedAgentMessage) {
+  if (item.error) return item.error;
+  switch (item.status) {
+    case "sending": return translate(turnRunning.value ? "正在交给助手…" : "发送中…");
+    case "queued": return translate(item.mode === "followUp" ? "已加入队列，本轮完成后处理" : "正在引导，当前这一步完成后接着处理");
+    case "waiting": return translate("等待发送");
+    case "failed": return translate("没有发出去，可以重试");
+    default: return translate("这条消息没有被处理，可以移回输入框重新发送");
+  }
+}
+watch(() => [queuedMessages.value.length, turnRunning.value] as const, async ([length, running], previous) => {
+  if (length <= (previous?.[0] ?? 0) && !(running && !previous?.[1])) return;
+  await nextTick();
+  messageList.value?.scrollTo({ top: messageList.value.scrollHeight });
+});
+
 // 卡片文案跟着语言切，所以是 computed；prompt 是发给模型的中文指令，保持原样。
 const welcomeSuggestions = computed(() => [
   { label: translate("搭建创作画布"), description: translate("把创意串成清晰的节点流程"), icon: IconLayoutGrid, prompt: "帮我搭建一个创作画布，先和我确认需要的节点与流程。" },
@@ -1302,7 +1420,7 @@ watch(senderElement, (element, _previous, onCleanup) => {
   if (!element) return;
   const instance = new xSender(element, {
     autoFocus: false,
-    placeholder: translate("输入消息，@ 提及节点输出或工作区素材…"),
+    placeholder: senderPlaceholder(),
     chatStyle: { minHeight: "44px", maxHeight: "50vh", fontSize: "14px", lineHeight: "24px" },
     keyboardSendFun: event => event.key === "Enter" && !event.shiftKey && !event.isComposing,
     keyboardWrapFun: event => event.key === "Enter" && event.shiftKey && !event.isComposing,
@@ -1898,5 +2016,169 @@ watch(() => !props.initialSession?.parentFile && !!workspaceStore.pendingAgentMe
       font-size: 12px;
     }
   }
+}
+
+/* 对话的常见形态：自己的消息是浅色气泡，助手的回复是正文；运行中只留一行状态。 */
+.agentConversation {
+  .messageViewport .messageRow {
+    &.quietMessage {
+      height: 0;
+      padding: 0;
+      overflow: hidden;
+    }
+
+    &.userMessage .messageBubble {
+      padding: 9px 14px;
+      border-radius: 16px 16px 4px 16px;
+      background: var(--el-fill-color);
+    }
+
+    &.userMessage .messageActions { opacity: 0; transition: opacity .15s; }
+    &.userMessage:hover .messageActions, &.userMessage:focus-within .messageActions { opacity: 1; }
+    @media (hover: none) { &.userMessage .messageActions { opacity: 1; } }
+  }
+
+  .agentActivity, .agentWorking {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    color: var(--el-text-color-secondary);
+    font-size: 13px;
+    line-height: 1.5;
+
+    > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  }
+
+  .agentActivity { padding: 2px 0; }
+
+  .agentWorking {
+    max-width: var(--agent-content-width);
+    margin: 0 auto;
+    padding: 0 20px 20px;
+    box-sizing: border-box;
+  }
+
+  .activityPulse {
+    display: inline-flex;
+    flex-shrink: 0;
+    gap: 3px;
+
+    i {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: currentColor;
+      opacity: .3;
+      animation: agentPulse 1.2s ease-in-out infinite;
+
+      &:nth-child(2) { animation-delay: .15s; }
+      &:nth-child(3) { animation-delay: .3s; }
+    }
+
+    @media (prefers-reduced-motion: reduce) { i { animation: none; opacity: .6; } }
+  }
+
+  .pendingFollowUps {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-width: var(--agent-content-width);
+    margin: 0 auto;
+    padding: 0 20px 20px;
+  }
+
+  .pendingFollowUp {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+
+    .pendingBubble {
+      max-width: 88%;
+      padding: 9px 14px;
+      border: 1px dashed var(--el-border-color);
+      border-radius: 16px 16px 4px 16px;
+      color: var(--el-text-color-regular);
+      font-size: 14px;
+      line-height: 1.6;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+    }
+
+    .pendingMeta {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 2px 6px;
+      color: var(--el-text-color-secondary);
+      font-size: 12px;
+
+      .el-button { height: 20px; margin: 0; padding: 0 4px; font-size: 12px; }
+    }
+
+    &[data-status="failed"] .pendingMeta > span { color: var(--el-color-danger); }
+    &[data-status="cancelled"] .pendingBubble { opacity: .6; }
+  }
+}
+
+.agentConversation .welcomeMessage {
+  .welcomeSuggestions { gap: 2px; }
+  .welcomeSuggestions .welcomeSuggestion.el-button {
+    padding: 10px 12px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    &:hover:not(.is-disabled), &:focus-visible { background: var(--el-fill-color); }
+  }
+}
+
+.agentConversation {
+  .activityShimmer {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    background: linear-gradient(90deg, var(--el-text-color-secondary) 0%, var(--el-text-color-secondary) 40%, var(--el-text-color-primary) 50%, var(--el-text-color-secondary) 60%, var(--el-text-color-secondary) 100%);
+    background-size: 300% 100%;
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+    animation: agentShimmer 2.2s linear infinite;
+    @media (prefers-reduced-motion: reduce) { animation: none; color: var(--el-text-color-secondary); }
+  }
+  .agentWorking .workingTime { flex-shrink: 0; color: var(--el-text-color-placeholder); font-variant-numeric: tabular-nums; }
+}
+
+.agentConversation .processDisclosure {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  margin: 0 0 2px -6px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--el-text-color-secondary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+
+  svg { transition: transform .15s; &.expanded { transform: rotate(90deg); } }
+  &:hover { background: var(--el-fill-color-light); color: var(--el-text-color-regular); }
+  &:focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: 1px; }
+}
+.agentConversation .processDivider { width: 100%; margin: 2px 0 8px; border-top: 1px solid var(--el-border-color-lighter); }
+
+@keyframes agentShimmer {
+  from { background-position: 100% 0; }
+  to { background-position: 0 0; }
+}
+
+@keyframes agentPulse {
+  0%, 80%, 100% { opacity: .25; transform: translateY(0); }
+  40% { opacity: .9; transform: translateY(-2px); }
 }
 </style>
