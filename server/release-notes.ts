@@ -9,6 +9,16 @@ export type ReleaseNotes = {
 // 更新说明面向使用软件的客户：只写具体修复和使用变化。
 // 不写部署位置、内部链路、账号架构、供应商名称或问题清单。
 export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
+  '3.1.13': {
+    title: { zh: '连接更稳定', en: 'More reliable connections' },
+    fixes: [
+      { zh: '连接暂时中断时会自动检查可用线路，减少登录、查看模型和取回结果时的连接失败。', en: 'When a connection is interrupted, available connections are checked automatically to reduce failures when signing in, viewing models and retrieving results.' },
+      { zh: '提交后连接断开时保留原任务，不会因为切换线路重复提交生成。', en: 'If a connection drops after submission, the original task is kept without submitting the generation again when the connection changes.' },
+    ],
+    improvements: [
+      { zh: '连接恢复后会自动重新选择可用线路，无需手动调整。', en: 'Available connections are selected again automatically after recovery, without manual changes.' },
+    ],
+  },
   '3.1.12': {
     title: { zh: '生成参数校验更准确', en: 'More accurate generation parameter checks' },
     fixes: [

@@ -1,3 +1,4 @@
+import { cloudWorkspaceStorageEnabled } from './cloud-storage-policy.ts'
 import { isSeedance25 } from './seedance25.ts'
 import { recordDesktopMediaOutput } from './desktop-media.ts'
 import { fetchVideoContent } from './video-content-fetch.ts'
@@ -867,6 +868,7 @@ async function persistVideoIntoWorkspace({ management, workspaceFiles, generatio
   if (!userId) return ''
   let parameters: Record<string, any> = {}
   try { parameters = JSON.parse(row.parameters || '{}') } catch { parameters = {} }
+  if (!cloudWorkspaceStorageEnabled(env) && parameters.desktopDelivery !== 1) return ''
   const directory = String(parameters.outputDirectory || 'assets').replace(/^\/+|\/+$/g, '') || 'assets'
   let target = String(video.metadata?.upstreamUrl || video.url || '').trim()
   const config = model.provider === 'metaso'

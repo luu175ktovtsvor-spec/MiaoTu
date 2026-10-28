@@ -1,3 +1,4 @@
+import { assertCloudWorkspaceWrite, cloudWorkspaceStorageEnabled } from './cloud-storage-policy.ts'
 import { createDesktopMedia } from './desktop-media.ts'
 import { proxyVideoContent } from './video-content-proxy.ts'
 import { IMAGE_PROXY_MAX_BYTES, isAllowedImageProxyUrl, proxyImage } from './image-content-proxy.ts'
@@ -481,7 +482,7 @@ async function executeGeneration(generationId, request, env, signal: AbortSignal
       let directory = request.outputDirectory || ''
       if (!directory) { try { directory = JSON.parse(row?.parameters || '{}').outputDirectory || '' } catch { directory = '' } }
       directory = String(directory).replace(/^\/+|\/+$/g, '')
-      if (userId && directory && request.desktopDelivery !== 1) {
+      if (userId && directory && request.desktopDelivery !== 1 && cloudWorkspaceStorageEnabled()) {
         finished.forEach((artifact, index) => {
           const content = artifacts[index]?.bytes
           if (!content?.length) return
@@ -1172,6 +1173,7 @@ const server = createServer(withRequestProject(async (request, response) => {
     return
   }
   if (url.pathname.startsWith('/api/imagine/workspace')) {
+    assertCloudWorkspaceWrite(request.method || 'GET')
     if (session?.role !== 'user') throw failure('请先登录', 401)
     const expectedOwner = request.headers['x-workspace-owner'] || url.searchParams.get('owner')
     if (expectedOwner && expectedOwner !== management.publicUser(session.userId).workspaceKey) throw failure('登录账号已变化，请刷新工作区', 409)
@@ -1494,7 +1496,7 @@ const server = createServer(withRequestProject(async (request, response) => {
     const video = existing ? management.videoResult(existing.id) : null
     const model = record ? modelForGeneration(record.model,{},existing.provider) : null
     if (!video || !model || !model.video) throw failure('视频内容不存在', 404)
-    if (record.parameters?.desktopDeliveredAt || record.parameters?.desktopMediaExpiredAt) throw failure('服务器临时文件已清理，请打开本机保存的结果', 410)
+    if (record.parameters?.desktopDeliveredAt || record.parameters?.desktopMediaExpiredAt || record.parameters?.cloudWorkspaceRetiredAt) throw failure('服务器临时文件已清理，请打开本机保存的结果', 410)
     if (video.metadata?.workspacePath) {
       try {
         const project = record.parameters?.workspaceProject || DEFAULT_PROJECT_ID

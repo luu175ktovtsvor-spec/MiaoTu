@@ -1,0 +1,26 @@
+[Unit]
+Description=MiaoImg desktop inspiration catalog API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=miaoimg
+Group=miaoimg
+WorkingDirectory=/opt/miaoimg/current
+Environment=OIP_DATA_DIR=/opt/miaoimg/.oip/runtime-data
+Environment=OIP_DB_PATH=/opt/miaoimg/catalog/prompts.db
+Environment=OIP_DB_ARCHIVE_PATH=/opt/miaoimg/db/prompts.db.gz
+Environment=OIP_API_HOST=127.0.0.1
+Environment=OIP_API_PORT=4176
+ExecStart=/usr/bin/python3 /opt/miaoimg/current/server/miaoimg_api.py
+Restart=on-failure
+RestartSec=3
+UMask=0027
+NoNewPrivileges=true
+ProtectSystem=strict
+PrivateTmp=true
+ReadWritePaths=/opt/miaoimg/catalog
+
+[Install]
+WantedBy=multi-user.target

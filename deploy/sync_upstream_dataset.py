@@ -19,8 +19,12 @@ from pathlib import Path
 
 SOURCE_ROOT = Path(__file__).resolve().parents[1]
 ROOT = Path(os.environ.get("OIP_REPO_ROOT", str(SOURCE_ROOT))).resolve()
+NATIVE_UNIT = os.environ.get("OIP_NATIVE_UNIT", "")
+
 def _container_name() -> str:
     """容器改名过渡：优先新名，未迁移时回落到旧名。"""
+    if NATIVE_UNIT:
+        return ""
     configured = os.environ.get("OIP_CONTAINER")
     if configured:
         return configured
@@ -149,9 +153,9 @@ def wait_for_health(expected_counts: dict) -> None:
     last_error = "not ready"
     while time.monotonic() < deadline:
         try:
-            with urllib.request.urlopen("http://127.0.0.1:4173/health", timeout=5) as response:
+            with urllib.request.urlopen(os.environ.get("OIP_SYNC_HEALTH_ORIGIN", "http://127.0.0.1:4173") + "/health", timeout=5) as response:
                 health = json.load(response)
-            with urllib.request.urlopen("http://127.0.0.1:4173/api/catalog", timeout=15) as response:
+            with urllib.request.urlopen(os.environ.get("OIP_SYNC_HEALTH_ORIGIN", "http://127.0.0.1:4173") + "/api/catalog", timeout=15) as response:
                 stats = json.load(response).get("stats", {})
         except Exception as error:
             last_error = str(error)
@@ -172,7 +176,10 @@ def wait_for_health(expected_counts: dict) -> None:
 
 
 def restart_and_verify(expected_counts: dict) -> None:
-    subprocess.run(["docker", "restart", CONTAINER], check=True, stdout=subprocess.DEVNULL)
+    if NATIVE_UNIT:
+        subprocess.run(["systemctl", "restart", NATIVE_UNIT], check=True)
+    else:
+        subprocess.run(["docker", "restart", CONTAINER], check=True, stdout=subprocess.DEVNULL)
     wait_for_health(expected_counts)
 
 
@@ -348,7 +355,10 @@ def sync() -> int:
         restore_file(previous_db, DB_ARCHIVE)
         restore_file(previous_manifest, RUNTIME_DATA / "dataset-manifest.json")
         restore_file(previous_corpus, RUNTIME_DATA / "public-corpus.json")
-        subprocess.run(["docker", "restart", CONTAINER], check=False, stdout=subprocess.DEVNULL)
+        if NATIVE_UNIT:
+            subprocess.run(["systemctl", "restart", NATIVE_UNIT], check=False)
+        else:
+            subprocess.run(["docker", "restart", CONTAINER], check=False, stdout=subprocess.DEVNULL)
         raise
     finally:
         staged_manifest.unlink(missing_ok=True)
@@ -407,6 +417,10 @@ def main() -> int:
         except BlockingIOError:
             log("another release sync is already running")
             return 0
+        if NATIVE_UNIT:
+            with open("/run/lock/miaoimg-deploy.lock", "a") as deployment_lock:
+                fcntl.flock(deployment_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return sync()
         return sync()
 
 

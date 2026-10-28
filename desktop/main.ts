@@ -1,5 +1,6 @@
 import electron from 'electron'
 import { createDesktopFetch } from './network.ts'
+import { createCloudTransport } from './cloud-transport.ts'
 import { createSaveBarrier } from './save-barrier.ts'
 import { createWindowActions } from './window-actions.ts'
 import { createSessionView } from './session-view.ts'
@@ -452,7 +453,7 @@ restore_previous
   try {
     const { startDesktopRuntime } = await import('./runtime.ts')
     const previewArchiveOrigin = !app.isPackaged && /^http:\/\/127\.0\.0\.1:\d+$/.test(process.env.MIAO_DESKTOP_PREVIEW_ARCHIVE_ORIGIN || '') ? process.env.MIAO_DESKTOP_PREVIEW_ARCHIVE_ORIGIN : ''
-    runtime = await startDesktopRuntime({ directory, credentialProtection, getSafeStorage: () => electron.safeStorage, webRoot: join(root, '../web'), origin: process.env.MIAO_CLOUD_ORIGIN || 'https://miaoimg.cn', previewArchiveOrigin, requestFetch: createDesktopFetch(session.fromPartition('miao-cloud'), electron.net.request), native: {
+    runtime = await startDesktopRuntime({ directory, credentialProtection, getSafeStorage: () => electron.safeStorage, webRoot: join(root, '../web'), origin: process.env.MIAO_CLOUD_ORIGIN || 'https://miaoimg.cn', previewArchiveOrigin, requestFetch: createCloudTransport(createDesktopFetch(session.fromPartition('miao-cloud'), electron.net.request), { primaryOrigin: process.env.MIAO_CLOUD_ORIGIN || 'https://miaoimg.cn' }), native: {
       localMediaHosts: Object.fromEntries(LOCAL_MEDIA_SITES.map(site => [site.id, new LocalMediaHost(electron, site)])),
       changeSession: async (commit: () => void) => {
         if (windowActions && sessionView) return windowActions.changeSession(commit, () => sessionView.wait())

@@ -1,0 +1,17 @@
+[Unit]
+Description=Update the desktop inspiration catalog and public reference assets
+After=network-online.target miaoimg-catalog.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/miaoimg
+Environment=OIP_REPO_ROOT=/opt/miaoimg
+Environment=OIP_NATIVE_UNIT=miaoimg-catalog.service
+Environment=OIP_SYNC_HEALTH_ORIGIN=http://127.0.0.1:4176
+ExecStart=/usr/bin/python3 /opt/miaoimg-ops/deploy/sync_upstream_dataset.py
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+UMask=0022
+TimeoutStartSec=45min
