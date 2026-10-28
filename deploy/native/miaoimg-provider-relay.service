@@ -1,0 +1,20 @@
+[Unit]
+Description=MiaoImg internal supplier relay
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=simple
+User=miaoimg
+Group=miaoimg
+WorkingDirectory=/opt/miaoimg-provider-relay
+Environment=OIP_PROVIDER_RELAY_KEY_FILE=/etc/miaoimg-provider-relay/key
+ExecStart=/opt/miaoimg/node-v22.23.4-linux-x64/bin/node /opt/miaoimg-provider-relay/provider-relay.ts
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+InaccessiblePaths=/opt/miaoimg/.oip /opt/miaoimg/secrets /opt/miaoimg/media
+[Install]
+WantedBy=multi-user.target

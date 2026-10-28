@@ -1,16 +1,13 @@
 [Unit]
-Description=MiaoImg native application services
-After=network-online.target miaoimg-egress.service
-Wants=network-online.target miaoimg-egress.service
-
+Description=MiaoImg native primary application services
+After=network-online.target miaoimg-catalog.service
+Wants=network-online.target miaoimg-catalog.service
 [Service]
 Type=simple
 User=miaoimg
 Group=miaoimg
 WorkingDirectory=/opt/miaoimg/current
 EnvironmentFile=/etc/miaoimg/main.env
-# Node's built-in fetch does not read HTTP(S)_PROXY unless this flag is enabled.
-# The mainland host reaches the US Sub2API gateway through miaoimg-egress.
 Environment=NODE_OPTIONS=--use-env-proxy
 ExecStartPre=/usr/bin/test -s /opt/miaoimg/.oip/runtime-data/management.sqlite
 ExecStartPre=/opt/miaoimg/node-v22.23.4-linux-x64/bin/node /opt/miaoimg/current/scripts/check-server-modules.ts
@@ -21,11 +18,10 @@ TimeoutStartSec=180
 TimeoutStopSec=180
 KillMode=mixed
 UMask=0027
-NoNewPrivileges=true
-PrivateTmp=true
+NoNewPrivileges=yes
+PrivateTmp=yes
 ProtectSystem=strict
 ReadWritePaths=/opt/miaoimg/.oip/runtime-data /opt/miaoimg/media /opt/miaoimg/catalog /var/lib/miaoimg
 ReadOnlyPaths=/opt/miaoimg/secrets /opt/miaoimg/images /opt/miaoimg/previews
-
 [Install]
 WantedBy=multi-user.target
