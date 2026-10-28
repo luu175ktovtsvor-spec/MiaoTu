@@ -1,3 +1,4 @@
+import { installProviderTransport } from './provider-transport.ts'
 import { assertCloudWorkspaceWrite, cloudWorkspaceStorageEnabled } from './cloud-storage-policy.ts'
 import { createDesktopMedia } from './desktop-media.ts'
 import { proxyVideoContent } from './video-content-proxy.ts'
@@ -91,6 +92,8 @@ import { qqOAuthConfig } from './qq-oauth.ts'
 import { dingTalkOAuthConfig, githubOAuthConfig, linuxDoOAuthConfig, oidcOAuthConfig, wechatOAuthConfig } from './oauth-extra.ts'
 import { enforceRequestLimit, requestOperation } from './request-guard.ts'
 import { getSuiheWhitelistAsset, listSuiheAssets, uploadSuiheAsset } from './suihe-assets.ts'
+
+installProviderTransport()
 
 const HOST = process.env.OIP_IMAGE_API_HOST || '127.0.0.1'
 const PORT = Number(process.env.OIP_IMAGE_API_PORT || 8788)

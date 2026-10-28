@@ -1,3 +1,4 @@
+import { installProviderTransport } from './provider-transport.ts'
 import { createServer } from 'node:http'
 import { ManagementStore, failure, normalizeEmail, secretMatches, validEmail } from './management-store.ts'
 import { adminModelCatalog, modelCatalog, publicModelCatalog, publicVideoCatalog, providerCatalog, providerConfigured, upstreamCostCatalog } from './image-models.ts'
@@ -12,6 +13,8 @@ import { generationDetail, probeGeneration, restoreGeneration, serveGenerationVi
 import { HttpIncomingRequests } from './http-request-lifetime.ts'
 import { createFeedbackStore } from './feedback-store.ts'
 import { refreshSuiheModels } from './suihe.ts'
+installProviderTransport()
+
 const configuredHost=process.env.OIP_ADMIN_HOST||'127.0.0.1'
 // The production image sets this guard because the admin API is meant to be
 // reached through the same-origin Vite server (or an SSH tunnel). Binding to
