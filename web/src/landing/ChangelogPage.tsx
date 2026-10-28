@@ -1,7 +1,7 @@
 import { ArrowLeft, ArrowUpRight } from '@phosphor-icons/react'
 import { useEffect } from 'react'
 import { useLang } from '../i18n'
-import { RELEASE_NOTES } from '../../../server/release-notes'
+import { RELEASE_NOTES, RELEASE_NOTE_SECTIONS } from '../../../server/release-notes'
 import { MIAO_MANUAL_URL } from '../lib/productLinks'
 import { compareVersions, usePublishedRelease } from './usePublishedRelease'
 import './landing.css'
@@ -15,7 +15,6 @@ export default function ChangelogPage() {
   const { version: publishedVersion, failed } = usePublishedRelease()
   const publishedVersions = publishedVersion ? versions.filter(version => compareVersions(version, publishedVersion) <= 0) : []
   useEffect(() => { document.title = zh ? '更新日志 · 妙图 MiaoImg' : 'Changelog · MiaoImg' }, [zh])
-  const section = (key: 'fixes' | 'improvements') => zh ? { fixes: '修复', improvements: '改进' }[key] : { fixes: 'Fixes', improvements: 'Improvements' }[key]
   return <div className="miao-site site-changelog-page">
     <header className="site-header is-scrolled">
       <div className="site-header-inner">
@@ -29,7 +28,7 @@ export default function ChangelogPage() {
     <main className="site-container site-changelog">
       <a className="site-text-link site-changelog-back" href="/"><ArrowLeft size={13} />{zh ? '返回首页' : 'Back to home'}</a>
       <h1>{zh ? '更新日志' : 'Changelog'}</h1>
-      <p className="site-changelog-intro">{zh ? '妙图桌面版每个版本修好了什么、改进了什么。已安装的妙图会自动检查更新，也可以在「设置 → 关于妙图」里查看当前版本。' : 'What each MiaoImg desktop release fixed and improved. Installed copies check for updates automatically; see Settings → About for your version.'}</p>
+      <p className="site-changelog-intro">{zh ? '妙图桌面版每个版本的新增功能、优化改进和 Bug 修复。已安装的妙图会自动检查更新，也可以在「设置 → 关于妙图」里查看当前版本。' : 'New features, improvements and bug fixes in each MiaoImg desktop release. Installed copies check for updates automatically; see Settings → About for your version.'}</p>
       {!publishedVersion && <p role="status">{failed ? (zh ? '暂时无法核对正式版本，请刷新页面重试' : 'The current release could not be verified. Please refresh to retry.') : (zh ? '正在核对正式版本…' : 'Checking the current release…')}</p>}
       {publishedVersion && !RELEASE_NOTES[publishedVersion] && <p role="status">{zh ? `当前正式版为 ${publishedVersion}，更新说明正在补齐` : `The current release is ${publishedVersion}. Its release notes will be added shortly.`}</p>}
       <ol className="site-changelog-list">
@@ -37,9 +36,9 @@ export default function ChangelogPage() {
           <div className="site-changelog-version"><a href={`#v${version}`}>v{version}</a>{version === publishedVersion && <span>{zh ? '最新' : 'Latest'}</span>}</div>
           <article>
             <h2>{zh ? notes.title.zh : notes.title.en}</h2>
-            {(['fixes', 'improvements'] as const).map(key => notes[key].length > 0 && <section key={key}>
-              <h3>{section(key)}</h3>
-              <ul>{notes[key].map((item, i) => <li key={i}>{zh ? item.zh : item.en}</li>)}</ul>
+            {RELEASE_NOTE_SECTIONS.map(section => notes[section.key].length > 0 && <section key={section.key}>
+              <h3>{zh ? section.zh : section.en}</h3>
+              <ul>{notes[section.key].map((item, i) => <li key={i}>{zh ? item.zh : item.en}</li>)}</ul>
             </section>)}
           </article>
         </li> })}

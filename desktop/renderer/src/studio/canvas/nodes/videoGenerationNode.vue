@@ -70,8 +70,7 @@
             :labels="referenceRoleLabels"
             @preview="setReferencePreview"
             @remove="removeReference" />
-          <div v-if="modeRequirementHint" class="referenceHint">{{ modeRequirementHint }}</div>
-          <div v-else-if="referenceDescription" class="referenceHint">{{ referenceDescription }}</div>
+          <div v-if="referenceDescription" class="referenceHint">{{ referenceDescription }}</div>
           <promptInput
             ref="promptEditor"
             v-model="data.promptModel"
@@ -132,7 +131,7 @@
               <strong v-if="!['doubao-local', 'dola-local'].includes(selectedModel?.providerId || '') && !videoEstimateLoading && videoEstimate?.points != null">{{ formatCredits(videoEstimate.points) }}<span class="srOnly">{{ translate('积分') }}</span></strong>
               <strong v-else-if="!['doubao-local', 'dola-local'].includes(selectedModel?.providerId || '') && !videoEstimateLoading">—</strong>
             </div>
-            <feedbackNotice :message="referenceMismatchMessage || videoEstimateError" />
+            <feedbackNotice :message="modeMismatchNotice || referenceMismatchMessage || videoEstimateError" />
             <el-button
               class="sendButton"
               :icon="generating ? IconPlayerStop : IconArrowUp"
@@ -282,7 +281,7 @@ const canStartGeneration = computed(() => Boolean(selectedModel.value && (genera
     || getResolutions(selectedModel.value, data.value.duration).includes(data.value.resolution))));
 const matchingModes = computed(() => getMatchingModes(selectedModel.value));
 const modeMatches = computed(() => matchingModes.value.some(mode => JSON.stringify(mode) === data.value.mode));
-// 选定的模式还缺素材时只做提示（发送时才拦下）；连入的素材任何模式都用不了才报错。
+// 选定的模式还缺什么素材：只交给 Agent（getConfig.referenceMismatch），界面沿用原有说明，发送时拦下。
 const modeRequirementHint = computed(() => {
   if (!selectedModel.value || selectedMode.value === undefined || modeMatches.value) return "";
   const requirement = videoModeRequirement(selectedMode.value, selectedModel.value);
@@ -290,6 +289,9 @@ const modeRequirementHint = computed(() => {
 });
 const referenceMismatchMessage = computed(() => selectedModel.value && !matchingModes.value.length
   ? translate("当前模型没有适合这些参考素材的生成模式，请更换模型或调整引用") : "");
+// 选的模式和当前素材对不上时，在上方提示一句（沿用原有文案），能不能生成仍以模型能力和发送前校验为准。
+const modeMismatchNotice = computed(() => selectedModel.value && selectedMode.value !== undefined && matchingModes.value.length && !modeMatches.value
+  ? `${videoModeLabel(selectedMode.value, selectedModel.value)} · ${translate('连入对应素材后可用')}` : "");
 function chooseMode(value: string) {
   data.value.modeChosen = value !== JSON.stringify("text");
 }
@@ -697,8 +699,8 @@ async function startGeneration(signal?: AbortSignal) {
   if (!generationPrompt.value && !promptOptional.value) throw new Error(translate("请输入生成提示词，或为当前模型添加图片参考"));
   if (refList.value.some(item => item.value === undefined)) throw new Error(translate("引用节点暂无内容，请先补充引用内容"));
   const images = refList.value.flatMap((item) => item.dataType === "IMAGE" && item.value ? [{ path: item.value.url, mimeType: item.value.mimeType }] : []);
-  if (choice.mode?.length && !modeMatches.value) throw new Error(modeRequirementHint.value || referenceMismatchMessage.value || translate("当前模型没有适合这些参考素材的生成模式，请更换模型或调整引用"));
-  if (!canStartGeneration.value) throw new Error(modeRequirementHint.value || referenceMismatchMessage.value || translate("当前模型没有适合这些参考素材的生成模式，请更换模型或调整引用"));
+  if (choice.mode?.length && !modeMatches.value) throw new Error(translate("当前模型没有适合这些参考素材的生成模式，请更换模型或调整引用"));
+  if (!canStartGeneration.value) throw new Error(translate("当前模型没有适合这些参考素材的生成模式，请更换模型或调整引用"));
   const workspace = files.getWorkspaceFiles();
   const controller = new AbortController();
   recordGenerationStatus("queued");

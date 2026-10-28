@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useLang } from '../i18n'
-import { RELEASE_NOTES, type ReleaseNotes } from '../releaseNotes'
+import { RELEASE_NOTES, RELEASE_NOTE_SECTIONS, type ReleaseNotes } from '../releaseNotes'
 import './releaseNotes.css'
 
 type DesktopUpdateStatus = { currentVersion?: string }
@@ -9,16 +9,13 @@ type DesktopBridge = { updateStatus?: () => Promise<DesktopUpdateStatus> }
 function ReleaseNotesModal({ version, notes, onClose }: { version: string; notes: ReleaseNotes; onClose: () => void }) {
   const { lang } = useLang()
   const text = (value: { zh: string; en: string }) => value[lang === 'en' ? 'en' : 'zh']
-  const sections = [
-    ['修复', 'Fixes', notes.fixes],
-    ['优化', 'Improvements', notes.improvements],
-  ] as const
+  const sections = RELEASE_NOTE_SECTIONS.map(section => [section.zh, section.en, notes[section.key]] as const)
   return <div className="release-notes-mask" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
     <section className="release-notes-modal" role="dialog" aria-modal="true" aria-labelledby="release-notes-title">
       <button className="release-notes-close" type="button" aria-label={lang === 'en' ? 'Close release notes' : '关闭更新说明'} onClick={onClose}>×</button>
       <div className="release-notes-kicker">MiaoImg · v{version}</div>
       <h2 id="release-notes-title">{text(notes.title)}</h2>
-      <p className="release-notes-intro">{lang === 'en' ? 'Here is what changed in this version.' : '这次更新，我们修复了问题，也把使用体验做得更顺手。'}</p>
+      <p className="release-notes-intro">{lang === 'en' ? 'New features, improvements and bug fixes in this version.' : '这次更新的新增功能、优化改进和问题修复。'}</p>
       <div className="release-notes-sections">
         {sections.filter(([, , items]) => items.length > 0).map(([zh, en, items]) => <section key={zh} className="release-notes-section">
           <h3>{lang === 'en' ? en : zh}</h3>

@@ -11,6 +11,7 @@
     :style="{ width: previewUrl && videoWidth ? `${videoWidth}px` : undefined }"
     @fullscreen="player?.enterFullscreen()">
     <template #topActions>
+      <el-button v-for="entry in modelEntries" :key="entry.mode" :icon="entry.icon" text :disabled="!outputFile || uploading || uploadingDrag || exporting || actions?.processing || creatingEntry" :title="translate(entry.label)" :aria-label="translate(entry.label)" @click.stop="createModeNode(entry)">{{ translate(entry.label) }}</el-button>
       <el-button v-if="outputFile" :icon="IconMusic" text :disabled="!outputFile || uploading || uploadingDrag || exporting || actions?.processing" :title="translate('提取音轨')" :aria-label="translate('提取音轨')" @click.stop="actions?.open('extractAudio')">{{ translate('提取音轨') }}</el-button>
       <el-button v-if="outputFile" :icon="IconLayersSubtract" text :disabled="!outputFile || uploading || uploadingDrag || exporting || actions?.processing" :title="translate('分离音视频')" :aria-label="translate('分离音视频')" @click.stop="actions?.open('separate')">{{ translate('分离音视频') }}</el-button>
       <el-button v-if="outputFile" :icon="IconScissors" text :disabled="!outputFile || uploading || uploadingDrag || exporting || actions?.processing" :title="translate('片段截取')" :aria-label="translate('片段截取')" @click.stop="actions?.open('trim')">{{ translate('片段截取') }}</el-button>
@@ -44,7 +45,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue";
-import { IconVideo, IconClipboard, IconUpload, IconTransfer, IconMusic, IconLayersSubtract, IconScissors } from "@tabler/icons-vue";
+import { IconVideo, IconClipboard, IconUpload, IconTransfer, IconMusic, IconLayersSubtract, IconScissors, IconPencil, IconArrowAutofitRight } from "@tabler/icons-vue";
 import { ElButton, ElMessage, ElProgress } from "element-plus";
 import { nodeSkeleton, nodeTools, useNode, useNodeUpload, z, type NodeHandle } from "@miaoimg/nodes-scaffold/runtime";
 import { translate } from "@miaoimg/i18n/vue";
@@ -58,13 +59,14 @@ import videoActions from "./videoNode/videoActions.vue";
 import { useMediaPublication } from "../scaffold/mediaPublication";
 import { mediaExportProgress } from "../scaffold/mediaExport";
 import { videoSizeLabel } from "../../../../../../server/media-size-label";
+import { useLinkedNode } from "../linkedNode";
 
 defineOptions({
   inheritAttrs: false,
   icon: IconVideo,
   handles: [{ id: "video", type: "source", dataType: "VIDEO", label: "视频输出" }] satisfies NodeHandle[],
 });
-const { id, node, nodeProps, outputs, nodeEvent, files, updateNodeInternals } = useNode({
+const { id, node, nodeProps, outputs, nodeEvent, files, ai, updateNodeInternals } = useNode({
   label: "视频",
 });
 const captureMediaPublication = useMediaPublication(() => outputs.value);
@@ -127,6 +129,39 @@ nodeTools.register({
     }
   },
 });
+
+// 模型能编辑或延长已有视频时，在视频节点上直接给入口（和图片的打光、多角度一样）：
+// 新建一个连好这段视频、已选好模式和支持该模式的模型的视频生成节点，不自动生成。
+// 只有当前目录里确实有模型支持该模式时才显示。
+type ModeEntry = { mode: "edit" | "extend"; label: string; icon: typeof IconScissors; model: string };
+const videoModels = ref<Array<{ providerId: string; modelId: string; mode?: unknown[] }>>([]);
+const creatingEntry = ref(false);
+const { createLinked } = useLinkedNode();
+watch(() => Boolean(outputFile.value), async (hasVideo) => {
+  if (!hasVideo || videoModels.value.length) return;
+  videoModels.value = (await ai.getMediaModels().catch(() => [])).filter(item => item.type === "video");
+}, { immediate: true });
+const modelEntries = computed<ModeEntry[]>(() => ([["edit", "编辑视频", IconPencil], ["extend", "延长视频", IconArrowAutofitRight]] as const).flatMap(([mode, label, icon]) => {
+  const model = videoModels.value.find(item => item.mode?.includes(mode));
+  return model ? [{ mode, label, icon, model: JSON.stringify([model.providerId, model.modelId]) }] : [];
+}));
+async function createModeNode(entry: ModeEntry) {
+  if (creatingEntry.value) return;
+  creatingEntry.value = true;
+  try {
+    const created = await createLinked(node, "remote-videoGenerationNode", translate(entry.label));
+    if (!created) return;
+    await nextTick();
+    // 顺序要和节点里的同步监听对上：先模型，再标记为明确选择，最后写模式。
+    created.data.model = entry.model;
+    created.data.modeChosen = true;
+    created.data.mode = JSON.stringify(entry.mode);
+  } catch (error) {
+    showError(error, translate("新建节点失败"));
+  } finally {
+    creatingEntry.value = false;
+  }
+}
 
 async function resizeVideo({ width, height }: { width: number; height: number }) {
   if (!width || !height) return;

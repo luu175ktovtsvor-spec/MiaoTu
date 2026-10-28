@@ -14,7 +14,6 @@
     <feedbackNotice :message="error" @close="error = ''" />
     <textarea v-if="sourceMode" class="sourceEditor" :value="modelValue" :readonly="readonly" :disabled="disabled" :aria-label="ariaLabel || translate('编辑 Markdown 原文')" spellcheck="false" @input="updateSource" />
     <editor-content v-if="editor && !sourceMode" :editor="editor" class="richHost" />
-    <p v-if="!inline" class="editorHint">{{ translate('富文本会规范化 Markdown；保留原始 HTML 写法请使用原文。') }}</p>
   </section>
 </template>
 
@@ -158,7 +157,6 @@ async function copyText() {
     :deep(.ProseMirror) { box-sizing: border-box; max-width: 820px; min-height: 100%; margin-inline: auto; padding: 20px; outline: none; white-space: pre-wrap; word-break: break-word; font-size: 15px; line-height: 1.8; }
     :deep(.ProseMirror-selectednode) { outline: 2px solid var(--el-color-primary); }
   }
-  .editorHint { flex-shrink: 0; margin: 6px 0 0; color: var(--el-text-color-secondary); font-size: 11px; }
   &.inline .richHost { border: 0; background: transparent;
     :deep(.ProseMirror) { max-width: none; min-height: 94px; padding: 4px 6px; font-size: inherit; line-height: inherit; cursor: text; user-select: text; }
   }
