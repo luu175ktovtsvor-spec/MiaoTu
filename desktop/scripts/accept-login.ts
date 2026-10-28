@@ -192,7 +192,10 @@ async function canvasReview() {
       completed.add(name); return JSON.parse(text);
     };
     // The application has to reconnect its real browser control channel after the switch.
-    const until = Date.now() + 180000;
+    // A cold packaged run can take several minutes to mount the canvas,
+    // hydrate the workspace control and open the browser control stream.
+    // Keep the acceptance window below the step's 10-minute CDP timeout.
+    const until = Date.now() + 300000;
     let connection, lastApp;
     do {
       const app = await call('getAppState');
