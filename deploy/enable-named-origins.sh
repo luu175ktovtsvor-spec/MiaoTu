@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 if [[ ${ALLOW_LEGACY_NAMED_ORIGINS:-0} != 1 ]]; then
-  echo '此脚本仅适用于旧 Docker 命名域名入口；现行妙图大陆原生部署不使用它。请改用 deploy/native 流程；如确需维护旧环境，请显式设置 ALLOW_LEGACY_NAMED_ORIGINS=1。' >&2
+  echo '此脚本仅适用于旧 Docker 命名域名入口；现行妙图美国原生部署不使用它。请改用 deploy/native 流程；如确需维护旧环境，请显式设置 ALLOW_LEGACY_NAMED_ORIGINS=1。' >&2
   exit 2
 fi
 
@@ -19,10 +19,9 @@ fi
 #
 # 详细背景见 docs/部署与域名.md 与 AGENTS.md。
 
-# Mainland production is native. Require an explicit target so this legacy
-# helper can never silently mutate the retired US host.
-REMOTE_HOST=${REMOTE_HOST:?请显式指定大陆 SSH 目标（例如 miaoimg-cn）}
-REMOTE_IP=${REMOTE_IP:-114.215.210.134}
+# Production is native. Require explicit host and address for this legacy helper.
+REMOTE_HOST=${REMOTE_HOST:?请显式指定旧 Docker 环境的 SSH 目标}
+REMOTE_IP=${REMOTE_IP:?请显式指定旧 Docker 环境的公网 IP}
 LEGACY=prompts.zzyppz.cn
 SUBDOMAINS=(canvas.miaoimg.cn admin.miaoimg.cn)
 SITE=/etc/nginx/sites-available/miaoimg.conf
