@@ -235,7 +235,7 @@ def dry_run(scratch_root: Path, assets_dir: Path | None = None) -> int:
     # Compare the DB key set without retaining prompt text or media bytes.
     previous_db = ROOT / "db" / "prompts.db"
     previous_db_gz = ROOT / "db" / "prompts.db.gz"
-    previous_path = previous_db if previous_db.is_file() else previous_db_gz
+    previous_path = previous_db_gz if previous_db_gz.is_file() else previous_db
     added_images = None
     if previous_path.is_file():
         expanded = SYNC_ROOT / f"dry-run-previous-{os.getpid()}.db"
