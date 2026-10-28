@@ -28,6 +28,7 @@
 </template>
 
 <script setup lang="ts">
+import { mediaSizeLabel, sizeTier } from "../../../../../../../../server/media-size-label";
 import feedbackNotice from '../../../components/feedbackNotice.vue';
 import { t, translate } from "@miaoimg/i18n/vue";
 import { computed, onMounted, onUnmounted, ref } from "vue";
@@ -72,7 +73,6 @@ const videoModels = computed(() => models.value.filter(model => model.type === '
 
 // 每一项单独成块，换行只发生在项与项之间。
 type Spec = { label: string; items: string[]; hint?: string; credit?: boolean };
-const pixels = (value: string) => value.replace(/^(\d+)x(\d+)$/, "$1×$2");
 const ratioLabel = (ratio: string) => (ratio === "adaptive" ? translate("自适应") : ratio === "auto" ? translate("自动") : ratio);
 // 尺寸很多的模型只列前几个，其余写成数量，避免一张卡片被尺寸撑满。
 function listItems(values: string[], limit = 6) {
@@ -87,7 +87,7 @@ function videoSpecs(model: any): Spec[] {
   }
   if (Number(model.maxDurationByMode?.image) < model.maxDuration) hints.push(t`参考图模式最长 ${model.maxDurationByMode.image} 秒`);
   if (model.durationItems.length) specs.push({ label: translate("时长"), items: model.durationItems, hint: hints.join("，") });
-  if (model.sizes.length) specs.push({ label: translate("分辨率"), items: model.sizes });
+  if (model.sizes.length) specs.push({ label: translate("清晰度"), items: model.sizes.map((size: string) => sizeTier(size) || size) });
   if (model.ratios.length) specs.push({ label: translate("比例"), items: model.ratios.map(ratioLabel) });
   if (model.referenceItems.length) specs.push({ label: translate("参考素材"), items: model.referenceItems });
   const priceHints: string[] = model.pricingNotice ? [translate(model.pricingNotice)] : [];
@@ -100,7 +100,8 @@ function videoSpecs(model: any): Spec[] {
 
 function imageSpecs(model: any): Spec[] {
   const specs: Spec[] = [];
-  if (model.sizes.length) specs.push({ label: translate("尺寸"), items: listItems(model.sizes.map(size => pixels(ratioLabel(size)))) });
+  // 与画布设置一致，只列“比例 · 清晰度”，不展示像素宽高。
+  if (model.sizes.length) specs.push({ label: translate("尺寸"), items: listItems([...new Set<string>(model.sizes.map((size: string) => mediaSizeLabel(size, "", translate("自动"))))]) });
   if (model.capabilities.length) specs.push({ label: translate("能力"), items: model.capabilities });
   if (model.creditItems.length) specs.push({ label: translate("积分"), items: model.creditItems, credit: true });
   return specs;
@@ -144,7 +145,7 @@ function imageRates(model: NodeMediaModel): string[] {
   const tiers = Object.entries(model.creditsPerImageBySize || {}).filter(([size, price]) => sizes.includes(size) && Number.isFinite(price) && price >= 0);
   const prices = [...new Set(tiers.map(([, price]) => price))];
   if (prices.length > 1) return prices.map(price => {
-    const labels = tiers.filter(([, value]) => value === price).map(([size]) => pixels(size));
+    const labels = tiers.filter(([, value]) => value === price).map(([size]) => mediaSizeLabel(size, "", translate("自动")));
     return `${listItems(labels, 3).join('、')} ${points(price)} ${translate('积分/张')}`;
   });
   if (tiers.length && tiers.length === sizes.length) return [t`${points(prices[0])} 积分/张`];

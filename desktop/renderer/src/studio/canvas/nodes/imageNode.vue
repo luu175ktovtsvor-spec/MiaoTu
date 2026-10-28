@@ -1,6 +1,8 @@
 <template>
   <nodeSkeleton
     v-bind="nodeProps"
+    :mediaMeta="mediaMeta"
+    :mediaMetaTitle="mediaMetaTitle"
     :topVisible="node.selected"
     :bottomVisible="node.selected && (!!variationMode || editor?.mode === 'inpaint')"
     topWidth="max-content"
@@ -30,6 +32,7 @@
         :title="translate('宫格切分')"
         :aria-label="translate('宫格切分')"
         @click.stop="gridSplit?.open($event)" />
+      <imagePresetMenu v-if="previewUrl" :disabled="imageBusy || !previewUrl" :loadModels="() => ai.getMediaModels()" />
       <el-button v-if="previewUrl"
         :icon="IconPencil"
         :disabled="imageBusy || !previewUrl || gridSplit?.splitting"
@@ -102,11 +105,13 @@ import { useImageTools } from "./imageTools/useImageTools";
 import imageLighting from './imageTools/components/imageLighting.vue';
 import imageMultiAngle from './imageTools/components/imageMultiAngle.vue';
 import imagePanorama from './imageTools/components/imagePanorama.vue';
+import imagePresetMenu from './imageTools/components/imagePresetMenu.vue';
 import uploadProgress from "../components/uploadProgress.vue";
 import nodeEmptyState, { type EmptyHint } from "../components/nodeEmptyState.vue";
 import { useLinkedNode } from "../linkedNode";
 import { readClipboardFiles } from "@/lib/clipboard";
 import { beginUpload } from "../uploadStatus";
+import { mediaSizeLabel } from "../../../../../../server/media-size-label";
 import { assetFileType, ASSET_MAX_BYTES } from "../assetFile";
 import { useMediaTaskDelivery } from "../scaffold/useMediaTaskDelivery";
 import { useMediaPublication } from "../scaffold/mediaPublication";
@@ -134,6 +139,9 @@ const uploading = ref(false);
 const previewVisible = ref(false);
 useImagePreviewTools(previewVisible, () => !!previewUrl.value);
 const imageWidth = ref(0);
+const imageDimensions = ref<{ width: number; height: number }>();
+const mediaMeta = computed(() => imageDimensions.value ? mediaSizeLabel(`${imageDimensions.value.width}x${imageDimensions.value.height}`) : "");
+const mediaMetaTitle = computed(() => imageDimensions.value ? `${imageDimensions.value.width} × ${imageDimensions.value.height}` : "");
 
 // 画布拖入的文件先建出这个节点，上传由节点自己跑：环形进度就画在本节点的预览框里。
 const { entry: dragUploadEntry, uploading: uploadingDrag, retry: retryDragUpload, dismiss: dismissDragUpload } = useNodeUpload(id, (path, mimeType) => {
@@ -158,6 +166,17 @@ const previewUrl = files.useFileUrl(
 );
 
 const displayPreviewUrl = files.useFileUrl(outputFile, () => {}, true);
+// Preview dimensions only control layout; the quality label belongs to the original.
+watch([() => outputFile.value?.url, previewUrl, () => node.selected], async ([path, source, selected], previous, onCleanup) => {
+  if (path !== previous?.[0] || source !== previous?.[1]) imageDimensions.value = undefined;
+  if (!path || !source || !selected || imageDimensions.value) return;
+  const controller = new AbortController();
+  onCleanup(() => controller.abort());
+  try {
+    const size = await files.getWorkspaceFiles().readImageSize?.(path, controller.signal);
+    if (!controller.signal.aborted && size) imageDimensions.value = size;
+  } catch { /* Keep the preview usable if the original is unavailable. */ }
+}, { immediate: true });
 
 useImageTools(() => !!outputFile.value && !imageBusy.value);
 
@@ -248,6 +267,7 @@ nodeTools.register({
 async function resizeImage(event: Event) {
   const image = event.currentTarget as HTMLImageElement;
   if (!image.naturalWidth || !image.naturalHeight) return;
+  if (image.src === previewUrl.value) imageDimensions.value = { width: image.naturalWidth, height: image.naturalHeight };
   // 预览高度放大到 360：文件本身按原图保存（不做压缩），但 240px 的缩小预览
   // 会让人以为画质被压了，这里让节点里的画面更接近原图观感。
   imageWidth.value = 360 * image.naturalWidth / image.naturalHeight;
@@ -260,7 +280,7 @@ const emptyHints = computed<EmptyHint[]>(() => [
   { key: "upload", label: "上传本地图片", icon: IconUpload },
   { key: "paste", label: "粘贴剪贴板里的图片", icon: IconClipboard },
   ...(canLink(node, "remote-imageGenerationNode") ? [{ key: "image", label: "图生图", icon: IconPhotoAi }] : []),
-  ...(canLink(node, "remote-videoGenerationNode") ? [{ key: "video", label: "首帧生成视频", icon: IconVideo }] : []),
+  ...(canLink(node, "remote-videoGenerationNode") ? [{ key: "video", label: "图生视频", icon: IconVideo }] : []),
 ]);
 async function pickHint(key: string) {
   if (key === "upload") return fileInput.value?.click();

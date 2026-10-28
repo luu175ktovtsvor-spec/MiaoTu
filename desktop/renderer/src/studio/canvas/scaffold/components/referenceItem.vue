@@ -6,13 +6,14 @@
     :animation="180"
     direction="horizontal"
     ghostClass="referenceGhost"
-    filter=".removeButton"
+    filter=".removeButton, .previewButton"
     :preventOnFilter="false">
     <referenceCard
       v-for="(item, index) in items"
       :key="JSON.stringify([item.source, item.sourceHandle])"
       :item="item"
       :index="index + 1"
+      :label="labels?.[JSON.stringify([item.source, item.sourceHandle])]"
       tabindex="0"
       aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight"
       @keydown.alt.left.stop.prevent="moveReference(index, index - 1)"
@@ -29,6 +30,7 @@ import type { NodeInputValue } from "../values";
 import referenceCard from "./referenceCard.vue";
 
 const items = defineModel<NodeInputValue[]>({ required: true });
+defineProps<{ labels?: Record<string, string> }>();
 const emit = defineEmits<{ remove: [item: NodeInputValue]; preview: [item: NodeInputValue, url: string] }>();
 
 function moveReference(from: number, index: number) {

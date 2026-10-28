@@ -28,11 +28,11 @@
         <p>{{ translate('描述模型动作和运镜要求') }}</p>
       </template>
     </div>
-    <p class="instructionHint">{{ referenceCount ? translate('使用 {0} 个关键帧生成运镜', { 0: referenceCount }) : result ? translate('参考：{0}', { 0: result.name }) : translate('模型动画与运镜同步生成') }}</p>
+    <p class="instructionHint">{{ referenceCount ? translate('使用 {0} 个机位关键帧生成运镜', { 0: referenceCount }) : result ? translate('参考：{0}', { 0: result.name }) : translate('模型动画与运镜同步生成') }}</p>
     <footer class="chatFooter">
       <div class="inputContent"><slot name="input" /></div>
       <div class="inputActions">
-        <el-select v-model="model" class="modelSelect" size="small" :loading="modelsLoading" filterable :placeholder="translate('选择模型')" :aria-label="translate('生成模型')" @visibleChange="$event && emit('loadModels')">
+        <el-select v-model="model" class="modelSelect" popper-class="modelSelectPopper" size="small" :loading="modelsLoading" filterable :placeholder="translate('选择模型')" :aria-label="translate('生成模型')" @visibleChange="$event && emit('loadModels')">
           <el-option-group v-for="provider in modelGroups" :key="provider.id" :label="provider.label">
             <el-option
               v-for="item in provider.models"

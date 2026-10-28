@@ -9,6 +9,22 @@ export type ReleaseNotes = {
 // 更新说明面向使用软件的客户：只写具体修复和使用变化。
 // 不写部署位置、内部链路、账号架构、供应商名称或问题清单。
 export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
+  '3.1.14': {
+    title: { zh: '画布引用、分组与分镜更顺手', en: 'Smoother canvas references, groups and storyboards' },
+    fixes: [
+      { zh: '修复 @ 引用菜单背景透明、文字穿透的问题，菜单改为实色面板，并支持搜索和按图片、视频、音频、文本分类选择画布素材。', en: 'Fixed the @ reference menu showing through to the canvas. It now uses a solid panel with search and image, video, audio and text categories.' },
+      { zh: '参数菜单改用“比例 · 清晰度”的说法（如 16:9 · 2K），只列出当前模型实际可选的值；参考图较多时，生成数量会自动收回到模型允许的范围。', en: 'Parameter menus now use ratio and resolution tiers (such as 16:9 · 2K) and only list values the selected model accepts. With many reference images, the image count stays within the allowed range.' },
+      { zh: '修复按节点定位时放得过大、编辑卡片被底部工具栏遮住的问题。', en: 'Fixed jumping to a node zooming in too far and hiding its edit panel behind the bottom toolbar.' },
+    ],
+    improvements: [
+      { zh: '编辑卡片新增“画布参考”，可直接从画布选择素材并自动连线；参考音频可在缩略图上直接播放并显示时长，首尾帧图片会标出角色。', en: 'Added Canvas reference to the edit panel to pick canvas media and connect it automatically. Reference audio plays right on its thumbnail with its duration, and first/last frame images are labelled.' },
+      { zh: '图片节点新增快捷预设：角色三视图、剧情推演四宫格、25宫格连贯分镜、电影级光影校正、画面推演前后，一键新建已填好提示词的生成节点。', en: 'Added image quick presets, including character turnaround, story four-panel, 25-panel storyboard, cinematic lighting and frames before or after, each creating a ready-to-edit generation node.' },
+      { zh: '分组新增“整组生成”和“批量下载”：先显示整组预计积分再确认生成，下载时把组内图片、视频、音频和文本打包成一个文件。', en: 'Groups can now generate all nodes after showing the total estimated credits, and download all images, videos, audio and text as one archive.' },
+      { zh: '文本节点新增“生成分镜”，按段落或编号拆成多个图片生成节点并放进同一分组。', en: 'Text nodes can now create a storyboard, splitting the text by paragraph or number into image generation nodes in one group.' },
+      { zh: '导演台新增场景列表和属性面板，可直接修改物体的名称、位置、旋转、缩放和颜色。', en: 'The director now has a scene list and a property panel for editing object names, position, rotation, scale and color.' },
+      { zh: '画布节点搜索支持按类型筛选，提示、确认弹窗和菜单的样式更清晰。', en: 'Canvas node search can filter by type, and messages, confirmations and menus are easier to read.' },
+    ],
+  },
   '3.1.12': {
     title: { zh: '生成参数校验更准确', en: 'More accurate generation parameter checks' },
     fixes: [

@@ -1,3 +1,4 @@
+import { mediaSizeLabel, sizeTier } from "../../../server/media-size-label";
 import {
   sectionEnglish,
   sectionDescriptionEnglish,
@@ -49,7 +50,7 @@ import "./console.css";
 import AdminFeedback from "./AdminFeedback";
 import AdminModelsSection from "./AdminModelsSection";
 import AdminPricingEditor from "./AdminPricingEditor";
-import { buildPricingDraft, type AdminModelRow } from "./modelPricing";
+import { buildPricingDraft, withSizeKey, type AdminModelRow } from "./modelPricing";
 const sections = [
   ["overview", "运营概览", ChartBar],
   ["operations", "系统运维", Database],
@@ -824,7 +825,8 @@ export default function AdminPage() {
       id: m.id,
       label: m.label,
       kind: m.video ? "video" : "image",
-      tiers: list.map((v) => ({ key: v, label: v })),
+      // 档位名按“比例 · 清晰度”显示（如 9:16 · 4K），保存键仍是原始尺寸值。
+      tiers: list.map((v) => ({ key: v, label: v === "default" ? v : withSizeKey(m.video ? sizeTier(v) || v : mediaSizeLabel(v, m.sizes?.find((x) => x.value === v)?.ratio, lang === "en" ? "Auto" : "自动"), v) })),
     };
   });
   function buildPriceForm() {
@@ -2507,7 +2509,9 @@ export default function AdminPage() {
                                           ? lang === "en"
                                             ? "Other sizes"
                                             : "其他尺寸"
-                                          : tier}
+                                          : withSizeKey(m.video
+                                            ? sizeTier(tier) || tier
+                                            : mediaSizeLabel(tier, "", lang === "en" ? "Auto" : "自动"), tier)}
                                       </span>
                                       <strong>
                                         {value == null

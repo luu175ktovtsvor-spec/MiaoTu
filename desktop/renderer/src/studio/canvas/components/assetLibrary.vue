@@ -347,7 +347,7 @@ async function loadEntries() {
       const existing = directories.get(path);
       if (existing) return existing;
       const parts = path.split("/");
-      const directory: AssetEntry = { name: parts.at(-1) || path, path, type: "directory", children: [] };
+      const directory: AssetEntry = { name: path === "assets" ? translate("节点素材") : parts.at(-1) || path, path, type: "directory", children: [] };
       directories.set(path, directory);
       const parentPath = parts.slice(0, -1).join("/");
       if (parentPath) ensureDirectory(parentPath).children!.push(directory);

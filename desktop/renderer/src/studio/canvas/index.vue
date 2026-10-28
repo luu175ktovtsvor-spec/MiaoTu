@@ -81,6 +81,7 @@
         @tool="selectedTool = $event"
         @undo="changeHistory('undo')"
         @redo="changeHistory('redo')"
+        @search="nodeSearchRef?.open()"
         @update:showEdges="edgeDisconnect = undefined" />
       <nodeMenu
         :key="JSON.stringify(['menu', project?.directory, canvasId])"
@@ -102,7 +103,7 @@
         :batchHistory="canvasHistory.batch"
         :getSignal="() => canvasController.signal"
         :disabled="!canvasId || !project?.directory" />
-      <nodeSearch ref="nodeSearchRef" :disabled="!active || settingsVisible || !canvasId || !project?.directory" />
+      <nodeSearch ref="nodeSearchRef" :types="nodeOptions" :disabled="!active || settingsVisible || !canvasId || !project?.directory" />
     </vue-flow>
     <div v-if="showEmptyHint" class="emptyCanvasHint">
       <p><IconPointer :size="18" aria-hidden="true" />{{ translate('双击画布，自由生成节点') }}</p>
@@ -341,6 +342,7 @@ provide("retainNodeFiles", true);
 provide("canvasUiActive", computed(() => props.active && !props.settingsVisible));
 provide("selectionConnection", shallowRef<NodeConnectionFeedback>());
 provide("saveNodeToAssets", (label: string, outputs: import('./saveCanvasAsset').AssetOutput[]) => assetLibraryRef.value?.openSave(label, outputs));
+provide("openCanvasAssets", () => { if (props.active && !props.settingsVisible) assetsVisible.value = true; });
 const canvasController = shallowRef(new AbortController());
 provide("canvasOperationSignal", () => canvasController.value.signal);
 provide("persistCanvasTaskBinding", async () => {

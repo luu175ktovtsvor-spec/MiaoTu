@@ -422,8 +422,6 @@ async function deleteSelection(selection = selectedNodes.value) {
 
 <style lang="scss" scoped>
 .shortcutHint { margin-left: auto; padding-left: 24px; color: var(--el-text-color-placeholder); font-size: 12px; }
-// 分组小标题（添加节点 / 添加资源），和 LibTV 菜单里的灰色小字一样。
-.menuSection.is-disabled { min-height: 0; padding-top: 4px; padding-bottom: 2px; color: var(--el-text-color-placeholder); font-size: 12px; cursor: default; }
 .nodeMenu {
   min-width: 180px;
 
@@ -435,4 +433,9 @@ async function deleteSelection(selection = selectedNodes.value) {
     margin-left: auto;
   }
 }
+</style>
+
+<style lang="scss">
+// 分组小标题（添加节点 / 添加资源），和 LibTV 菜单里的灰色小字一样。下拉项渲染在弹层里拿不到 scoped 属性，所以单独放全局样式。
+.el-dropdown-menu__item.menuSection.is-disabled { min-height: 0; padding-top: 6px; padding-bottom: 2px; color: var(--el-text-color-placeholder); font-size: 12px; cursor: default; }
 </style>

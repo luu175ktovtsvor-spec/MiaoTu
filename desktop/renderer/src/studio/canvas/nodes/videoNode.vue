@@ -2,6 +2,8 @@
   <nodeSkeleton
     class="videoNodeShell"
     v-bind="nodeProps"
+    :mediaMeta="mediaMeta"
+    :mediaMetaTitle="mediaMetaTitle"
     :topVisible="node.selected"
     topWidth="max-content"
     :downloadUrl="exporting ? '' : previewUrl"
@@ -41,7 +43,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import { IconVideo, IconClipboard, IconUpload, IconTransfer, IconMusic, IconLayersSubtract, IconScissors } from "@tabler/icons-vue";
 import { ElButton, ElMessage, ElProgress } from "element-plus";
 import { nodeSkeleton, nodeTools, useNode, useNodeUpload, z, type NodeHandle } from "@miaoimg/nodes-scaffold/runtime";
@@ -55,6 +57,7 @@ import videoPlayer from "@miaoimg/nodes-scaffold/videoPlayer";
 import videoActions from "./videoNode/videoActions.vue";
 import { useMediaPublication } from "../scaffold/mediaPublication";
 import { mediaExportProgress } from "../scaffold/mediaExport";
+import { videoSizeLabel } from "../../../../../../server/media-size-label";
 
 defineOptions({
   inheritAttrs: false,
@@ -72,12 +75,16 @@ const actions = ref<InstanceType<typeof videoActions>>();
 const exportProgress = computed(() => mediaExportProgress(node));
 const exporting = computed(() => typeof exportProgress.value === "number");
 const videoWidth = ref(0);
+const videoDimensions = ref<{ width: number; height: number }>();
+const mediaMeta = computed(() => videoDimensions.value ? videoSizeLabel(videoDimensions.value.width, videoDimensions.value.height) : "");
+const mediaMetaTitle = computed(() => videoDimensions.value ? `${videoDimensions.value.width} × ${videoDimensions.value.height}` : "");
 
 // 画布拖入的文件先建出这个节点，上传由节点自己跑：环形进度就画在本节点的预览框里。
 const { entry: dragUploadEntry, uploading: uploadingDrag, retry: retryDragUpload, dismiss: dismissDragUpload } = useNodeUpload(id, (path, mimeType) => {
   outputs.value.video = { dataType: "VIDEO", value: { url: path, mimeType } };
 }, () => outputs.value);
 const outputFile = computed(() => outputs.value.video?.dataType === "VIDEO" ? outputs.value.video.value : undefined);
+watch(() => outputFile.value?.url, () => { videoDimensions.value = undefined; });
 const previewUrl = files.useFileUrl(
   outputFile,
   (error) => showError(error, translate("视频读取失败"))
@@ -123,6 +130,7 @@ nodeTools.register({
 
 async function resizeVideo({ width, height }: { width: number; height: number }) {
   if (!width || !height) return;
+  videoDimensions.value = { width, height };
   videoWidth.value = Math.min(640, Math.max(240, (240 * width) / height));
   await nextTick();
   updateNodeInternals();

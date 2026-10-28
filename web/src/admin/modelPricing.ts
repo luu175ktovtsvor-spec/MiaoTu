@@ -1,3 +1,8 @@
+import { mediaSizeLabel, sizeTier } from "../../../server/media-size-label.ts";
+// 价格按原始尺寸键保存；不同像素可能显示成同一“比例 · 清晰度”，后台标签附上原始值，避免改错行。
+export function withSizeKey(label: string, key: string) {
+  return label && label !== key && /\d\s*[x×*]\s*\d/i.test(key) ? `${label}（${key}）` : label || key;
+}
 export type AdminModelKind = "image" | "video" | "text";
 
 export type AdminModelRow = {
@@ -67,7 +72,7 @@ export function buildMediaPriceSections(
         tiers: tiers.map((key) => ({
           key,
           label:
-            key === "default" ? "其他尺寸" : key === "auto" ? "自动" : key,
+            key === "default" ? "其他尺寸" : key === "auto" ? "自动" : withSizeKey(kind === "video" ? sizeTier(key) || key : mediaSizeLabel(key), key),
         })),
         pricingMode:
           costPolicy?.models?.[model.id]?.pricingMode === "cost_plus"

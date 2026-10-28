@@ -543,6 +543,8 @@ function saveDocumentNode(directory: string, canvasPath: string, nodeId: string,
       left: 15px;
       transform: none;
     }
+    :deep(.vue-flow__panel.bottom.left.canvasViewPanel) { bottom: 60px; }
+    :deep(.vue-flow__minimap) { bottom: 120px !important; }
   }
 
   @media (max-width: 900px) {
@@ -728,7 +730,7 @@ function saveDocumentNode(directory: string, canvasPath: string, nodeId: string,
 
 // Agent 浮层会 teleport 到 body，不能靠 workspacePage 的局部选择器收起；设置对话框存在时让它也让位。
 :global(body:has(.workspacePage.settingsOpen) .canvasMenu),
-:global(body:has(.workspacePage.settingsOpen) .canvasControlsCard),
+:global(body:has(.workspacePage.settingsOpen) .canvasToolbarCard),
 :global(body:has(.workspacePage.settingsOpen) .assetLibraryPanel),
 :global(body:has(.workspacePage.settingsOpen) .floatingAgent),
 :global(body:has(.workspacePage.settingsOpen) .workspaceMenu),
@@ -738,7 +740,7 @@ function saveDocumentNode(directory: string, canvasPath: string, nodeId: string,
 }
 
 :global(body:has(.workspacePage.settingsOpen) .canvasMenu),
-:global(body:has(.workspacePage.settingsOpen) .canvasControlsCard),
+:global(body:has(.workspacePage.settingsOpen) .canvasToolbarCard),
 :global(body:has(.workspacePage.settingsOpen) .workspaceMenu),
 :global(body:has(.workspacePage.settingsOpen) .panelSwitcher),
 :global(body:has(.workspacePage.settingsOpen) .assetLibraryPanel),

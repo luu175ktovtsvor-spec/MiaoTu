@@ -17,6 +17,9 @@
     </template>
     <div v-else ref="senderElement" class="promptInput nodrag nopan nowheel" :class="{ expandedInput: expanded }" @keydown.capture="handleMentionKey" @click.capture="previewReference" />
   </div>
+  <teleport v-if="mentionTarget" :to="mentionTarget">
+    <referenceMenu ref="referenceMenuRef" v-model:query="mentionQuery" :connected="references" :candidates="canvasReferences || []" :available-kinds="referenceKinds" :open="mentionVisible" :assets-available="Boolean(openCanvasAssets && connectReference)" @select="selectMenuReference" @close="closeMentionMenu" @assets="openAssets" />
+  </teleport>
   <el-dialog v-if="expandable && expandMode === 'dialog'" v-model="expanded" class="promptEditorDialog" width="min(800px, calc(100vw - 24px))" alignCenter appendToBody :show-close="false" :modal="false" :closeOnClickModal="false" @opened="sender?.focus('mark')" @close="expanded = false" @closed="sender?.focus('mark')" @keydown.esc.prevent="expanded = false">
     <div ref="expandedTarget" class="promptExpandedTarget nodrag nopan nowheel" @pointerdown.stop @mousedown.stop @dblclick.stop>
       <el-button class="promptCollapseButton" :icon="IconMinimize" text :title="translate('收起编辑提示词')" :aria-label="translate('收起编辑提示词')" @click="expanded = false" />
@@ -26,16 +29,21 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
-import { ElButton, ElDialog, ElImageViewer, useZIndex } from "element-plus";
+import { computed, inject, nextTick, ref, shallowRef, watch } from "vue";
+import { ElButton, ElDialog, ElImageViewer, ElMessage, useZIndex } from "element-plus";
 import { IconMaximize, IconMinimize } from "@tabler/icons-vue";
 import { locale, translate } from "@miaoimg/i18n/vue";
 import xSender, { type AnyTagProps, type MentionItem } from "x-sender";
 import "x-sender/lib/XSender.css";
 import { referenceHtml, normalizePromptModel, getPromptText } from "../promptModel";
+import type { ReferenceKind, ReferenceMenuItem } from "../referenceMenu";
+import referenceMenu from "./referenceMenu.vue";
 
 const props = defineProps<{
-  references: (MentionItem & { value: string })[];
+  references: (ReferenceMenuItem & { value: string })[];
+  canvasReferences?: ReferenceMenuItem[];
+  referenceKinds?: ReferenceKind[];
+  connectReference?: (id: string) => MentionItem & { value: string };
   // Source string for translate(); text nodes describe writing, media nodes describe a picture.
   placeholder?: string;
   expandable?: boolean;
@@ -51,6 +59,24 @@ const previewReferenceId = ref<string>();
 const previewUrl = computed(() => String(props.references.find(item => item.id === previewReferenceId.value)?.avatar ?? ""));
 let sender: xSender | undefined;
 let resetTask: Promise<void> | undefined;
+const mentionTarget = shallowRef<HTMLElement>();
+const mentionVisible = ref(false), mentionQuery = ref("");
+const referenceMenuRef = ref<InstanceType<typeof referenceMenu>>();
+const openCanvasAssets = inject<(() => void) | undefined>("openCanvasAssets", undefined);
+const referenceMenuEnabled = computed(() => Boolean(props.connectReference || props.references.length || props.canvasReferences?.length || props.referenceKinds?.length));
+
+function closeMentionMenu() {
+  sender?.bus.emit(xSender.EventSet.EVENT_COMMON_DIALOG_CLOSE);
+  sender?.focus("mark");
+}
+function selectMenuReference(reference: ReferenceMenuItem) {
+  chipTrigger = false;
+  void insertReference(reference).catch(error => ElMessage.error(error instanceof Error ? error.message : translate("读取引用文件失败")));
+}
+function openAssets() {
+  closeMentionMenu();
+  openCanvasAssets?.();
+}
 
 async function toggleExpanded() {
   expanded.value = !expanded.value;
@@ -68,6 +94,16 @@ function previewReference(event: MouseEvent) {
   previewReferenceId.value = reference.id;
 }
 
+
+// 沿用编辑器的 @ 检测与光标定位；菜单由 Vue 渲染，空分类也能打开。
+// 占位候选只维持库的定位生命周期，绝不插入提示词或用作真实参考。
+function mentionConfig() {
+  if (!referenceMenuEnabled.value) return { dialogTitle: "", callEvery: false, options: [] };
+  return { dialogTitle: "", callEvery: false, asyncMatch: async (query: string) => {
+    mentionQuery.value = query;
+    return [{ id: "miao-reference-menu-anchor", name: "" }];
+  } };
+}
 
 const normalizeModel = (value: AnyTagProps[][]) => normalizePromptModel(value, props.references);
 
@@ -129,12 +165,14 @@ function syncModel(value = sender?.getModel() ?? model.value) {
 watch(model, (value) => {
   if (sender && JSON.stringify(value) !== JSON.stringify(sender.getModel())) syncModel(value);
 }, { deep: true });
+watch(referenceMenuEnabled, () => {
+  sender?.bus.emit(xSender.EventSet.EVENT_COMMON_DIALOG_CLOSE);
+  sender?.updateConfig({ mentionConfig: mentionConfig() });
+});
 
-watch(() => props.references, async (options) => {
+watch(() => props.references, async () => {
   const instance = sender;
   if (!instance) return;
-  instance.bus.emit(xSender.EventSet.EVENT_COMMON_DIALOG_CLOSE);
-  instance.updateConfig({ mentionConfig: { dialogTitle: translate("选择参考"), callEvery: false, options } });
   // 等库将本帧的输入 DOM 写回模型后再更新参考，避免用旧文本重建输入框。
   await instance.nextTick();
   if (sender === instance) syncModel();
@@ -152,11 +190,19 @@ watch(senderElement, (element, _previous, onCleanup) => {
     placeholder: translate(props.placeholder ?? "描述你想要生成的画面内容，@引用素材"),
     chatStyle: { minHeight: "70px", maxHeight: "180px", fontSize: "14px", lineHeight: "1.6" },
     getPopupContainer: () => popup,
-    mentionConfig: { dialogTitle: translate("选择参考"), callEvery: false, options: props.references },
+    mentionConfig: mentionConfig(),
     keyboardSendFun: () => false,
     keyboardWrapFun: event => event.key === "Enter" && !event.isComposing,
   });
   sender = instance;
+  const mentionDialog = instance.chatElement.dialogRoot.querySelector<HTMLElement>(".chat-mention-dialog-wrap")!;
+  mentionDialog.classList.add("hasReferenceMenu");
+  const customMenu = document.createElement("div");
+  customMenu.className = "referenceMenuHost";
+  mentionDialog.appendChild(customMenu);
+  mentionTarget.value = customMenu;
+  const menuObserver = new MutationObserver(() => { mentionVisible.value = mentionDialog.getClientRects().length > 0; });
+  menuObserver.observe(mentionDialog, { attributes: true, attributeFilter: ["class", "style"] });
   // ACT: 弹窗只移动现有编辑器，保留参考标签、光标与撤销记录。
   const syncExpandedEditor = async (visible: boolean) => {
     instance.bus.emit(xSender.EventSet.EVENT_COMMON_DIALOG_CLOSE);
@@ -209,7 +255,7 @@ watch(senderElement, (element, _previous, onCleanup) => {
     if (sender !== instance) return;
     instance.updateConfig({
       placeholder: translate(props.placeholder ?? "描述你想要生成的画面内容，@引用素材"),
-      mentionConfig: { dialogTitle: translate("选择参考"), callEvery: false, options: props.references },
+      mentionConfig: mentionConfig(),
     });
     editor.setAttribute("aria-label", translate("生成提示词"));
   });
@@ -222,21 +268,11 @@ watch(senderElement, (element, _previous, onCleanup) => {
   };
   editor.addEventListener("copy", copyText);
   editor.addEventListener("cut", copyText);
-  const selectReference = (event: MouseEvent) => {
-    const item = (event.target as Element).closest<HTMLElement>(".chat-mention-dialog-item");
-    if (!item) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const reference = props.references.find(reference => reference.id === item.dataset.id);
-    if (reference) void insertReference(reference);
-  };
   const closeOutside = (event: PointerEvent) => {
     if (!element.contains(event.target as Node) && !popup.contains(event.target as Node)) {
       instance.bus.emit(xSender.EventSet.EVENT_COMMON_DIALOG_CLOSE);
     }
   };
-  // ACT: XSender 1.4.6 的候选默认插入 Mention；捕获选择事件改用公开 setHtml，库支持自定义渲染后可替换。
-  popup.addEventListener("click", selectReference, true);
   document.addEventListener("pointerdown", closeOutside, true);
   onCleanup(() => {
     stopExpandedWatch();
@@ -244,14 +280,17 @@ watch(senderElement, (element, _previous, onCleanup) => {
     model.value = instance.getModel();
     releaseNodeFocus(instance);
     sender = undefined;
+    menuObserver.disconnect();
+    mentionVisible.value = false;
+    mentionTarget.value = undefined;
     editor.removeEventListener("copy", copyText);
     editor.removeEventListener("cut", copyText);
     document.removeEventListener("pointerdown", closeOutside, true);
-    popup.removeEventListener("click", selectReference, true);
     // ACT: 1.4.6 的 destroy 会删除排队回调仍需用到的字段；先走公开清理事件，库修复后可直接 destroy。
     instance.bus.offKeyEvent("textPrompt");
     instance.bus.emit(xSender.EventSet.EVENT_COMMON_DIALOG_CLOSE);
-    instance.updateConfig({ mentionConfig: { dialogTitle: translate("选择参考"), callEvery: false, options: [] } });
+    // 清空 asyncMatch，让库中尚未执行的防抖回调只能关闭旧菜单。
+    instance.updateConfig({ mentionConfig: { dialogTitle: "", callEvery: false, options: [] } });
     instance.bus.emit(xSender.EventSet.EVENT_COMMON_DESTROY);
     popup.remove();
   });
@@ -265,33 +304,38 @@ async function insertReference(reference: MentionItem) {
   const start = before.lastIndexOf("@");
   if (start < 0) return;
   instance.bus.emit(xSender.EventSet.EVENT_COMMON_DIALOG_CLOSE);
+  const resolved = props.connectReference?.(reference.id) || props.references.find(item => item.id === reference.id);
+  if (!resolved) return;
+  // 新连线先更新父组件的参考列表，标签再使用真实的序号；不把画布候选当已连接参考。
+  await nextTick();
+  if (sender !== instance) return;
   await instance.backspace(start - before.length);
   const current = props.references.find(item => item.id === reference.id);
   if (sender === instance && current) await instance.setHtml(referenceHtml(current));
 }
 
 function handleMentionKey(event: KeyboardEvent) {
-  if (!sender || event.isComposing || !["ArrowUp", "ArrowDown", "Enter", "Escape"].includes(event.key)) return;
-  const dialog = sender.chatElement.dialogRoot.querySelector<HTMLElement>(".chat-mention-dialog-wrap");
-  if (!dialog?.getClientRects().length) return;
-  event.preventDefault();
-  event.stopPropagation();
-  if (event.key === "Escape") {
-    sender.bus.emit(xSender.EventSet.EVENT_COMMON_DIALOG_CLOSE);
-    return;
-  }
-  // ACT: 1.4.6 的候选键盘监听在 window，会被骨架截断；只适配当前实例，库支持局部键盘 API 后可替换。
-  const items = Array.from(dialog.querySelectorAll<HTMLElement>(".chat-mention-dialog-item")).filter(item => item.getClientRects().length);
-  if (!items.length) return;
-  const active = Math.max(0, items.findIndex(item => item.classList.contains("active")));
-  if (event.key === "Enter") {
-    items[active]?.click();
-    return;
-  }
-  const next = (active + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
-  items.forEach((item, index) => item.classList.toggle("active", index === next));
-  items[next]?.scrollIntoView({ block: "nearest" });
+  if (mentionVisible.value) referenceMenuRef.value?.handleKey(event);
 }
+
+// 「画布参考」按钮：在光标处插入 @，复用编辑器自身的 @ 检测打开引用菜单，选中后照常补连线。
+// 没选素材就关闭时，删掉按钮插入的 @，不在提示词里留下多余字符。
+let chipTrigger = false;
+async function openReferenceMenu() {
+  const instance = sender;
+  if (!instance || !referenceMenuEnabled.value) return;
+  instance.focus("mark");
+  await instance.setText("@");
+  chipTrigger = true;
+}
+watch(mentionVisible, async visible => {
+  if (visible || !chipTrigger) return;
+  chipTrigger = false;
+  const instance = sender;
+  const cursor = instance?.getCurrentNode();
+  if (instance && cursor?.node.textContent?.slice(0, cursor.offset).endsWith("@")) await instance.backspace(-1);
+});
+defineExpose({ openReferenceMenu });
 </script>
 
 <style scoped lang="scss">
@@ -354,7 +398,7 @@ function handleMentionKey(event: KeyboardEvent) {
   --chat-text-secondary: var(--el-text-color-regular);
   --chat-text-placeholder: var(--el-text-color-placeholder);
   --chat-box: transparent;
-  --chat-card: var(--miaoimg-glass-inset);
+  --chat-card: var(--el-fill-color);
   --chat-highlight: var(--el-color-primary-light-3);
   --chat-highlight-card: var(--el-fill-color);
   --chat-box-shadow: none;
@@ -362,8 +406,15 @@ function handleMentionKey(event: KeyboardEvent) {
 }
 
 :global(.textNodeMentions) {
+  // 编辑器可以透明，挂到 body 的候选菜单必须独立使用实色表面。
+  // 同时覆盖库本身读取的变量，避免某个状态回落到透明的 --chat-box。
+  --chat-box: var(--canvas-surface, #262626);
+  --chat-card: var(--el-fill-color, #363636);
+  --chat-box-shadow: var(--canvas-shadow, 0 4px 12px rgb(0 0 0 / .28));
   position: fixed;
   inset: 0;
+  color: var(--canvas-text, #f7f7f7);
+  font: 13px/1.5 "PingFang SC", Inter, sans-serif;
   pointer-events: none;
 }
 
@@ -371,14 +422,22 @@ function handleMentionKey(event: KeyboardEvent) {
   animation: none;
 }
 
-:global(.textNodeMentions .chat-mention-dialog-item),
-:global(.textNodeMentions .chat-mention-dialog-item-name) {
-  color: var(--el-text-color-primary);
+:global(.textNodeMentions .chat-dialog-wrap .chat-mention-dialog-wrap) {
+  min-width: 200px;
+  max-width: calc(100vw - 24px);
+  box-sizing: border-box;
+  padding: 6px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 12px;
+  background: var(--chat-box);
   opacity: 1;
+  backdrop-filter: none;
+  box-shadow: var(--chat-box-shadow);
+  pointer-events: auto;
 }
 
-:global(.textNodeMentions .chat-mention-dialog-item:hover) {
-  opacity: 1;
+:global(.textNodeMentions .hasReferenceMenu > :not(.referenceMenuHost)) {
+  display: none !important;
 }
 
 .promptInput {

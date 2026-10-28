@@ -1,14 +1,14 @@
 <template>
   <footer class="variationFooter">
-    <el-select v-model="settings.model" class="modelSelect" filterable :loading="modelsLoading" :disabled="busy" :placeholder="translate('选择图片模型')" :aria-label="`${label}模型`" :noDataText="translate('请先在设置中添加图片模型')" placement="top-start" @visible-change="visible => visible && refreshModels()">
+    <el-select v-model="settings.model" class="modelSelect" popper-class="modelSelectPopper" filterable :loading="modelsLoading" :disabled="busy" :placeholder="translate('选择图片模型')" :aria-label="`${label}模型`" :noDataText="translate('请先在设置中添加图片模型')" placement="top-start" @visible-change="visible => visible && refreshModels()">
       <el-option-group v-for="provider in modelGroups" :key="provider.id" :label="provider.label">
         <el-option v-for="model in provider.models" :key="model.modelId" :label="model.label" :value="JSON.stringify([model.providerId, model.modelId])" />
       </el-option-group>
     </el-select>
     <el-popover trigger="click" placement="top" :width="220" :disabled="busy || !selectedModel" :showArrow="false">
-      <template #reference><el-button class="sizeButton" text :disabled="busy || !selectedModel" :aria-label="`${label}输出设置`">{{ settings.ratio || translate('比例') }} · {{ settings.size || translate('分辨率') }}</el-button></template>
+      <template #reference><el-button class="sizeButton" text :disabled="busy || !selectedModel" :aria-label="`${label}输出设置`">{{ settings.ratio || translate('比例') }} · {{ settings.size ? sizeTier(settings.size) || translate('自动') : translate('清晰度') }}</el-button></template>
       <div class="variationSettings nodrag nopan nowheel" @pointerdown.stop @mousedown.stop @wheel.stop @keydown.stop>
-        <label>{{ translate('分辨率') }}<el-select v-model="settings.size" :disabled="busy" :aria-label="`${label}分辨率`"><el-option v-for="size in sizeOptions" :key="size" :label="size" :value="size" /></el-select></label>
+        <label>{{ translate('清晰度') }}<el-select v-model="settings.size" :disabled="busy" :aria-label="`${label}清晰度`"><el-option v-for="size in sizeOptions" :key="size" :label="mediaSizeLabel(size, '', translate('自动'))" :value="size" /></el-select></label>
         <label>{{ translate('比例') }}<el-select v-model="settings.ratio" :disabled="busy" :aria-label="`${label}比例`" @change="ratioFromSource = false"><el-option v-for="ratio in ratioOptions" :key="ratio" :label="ratio" :value="ratio" /></el-select></label>
       </div>
     </el-popover>
@@ -26,6 +26,7 @@ import { useNodeAi, useNodeToolsContext, type NodeMediaModel, type NodeMediaValu
 import { groupNodeModels } from "../../../scaffold/nodeAi";
 import { showNodeError } from "../../../scaffold/showNodeError";
 import { useImageVariationNode } from "../useImageVariationNode";
+import { mediaSizeLabel, sizeTier } from "../../../../../../../../server/media-size-label";
 
 const props = defineProps<{
   settings: { model?: string; size?: string; ratio?: string };

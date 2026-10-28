@@ -1,77 +1,70 @@
 <template>
-  <el-popover :persistent="false" :popper-options="{ modifiers: [{ name: 'preventOverflow', options: { padding: 12, altAxis: true } }] }" trigger="click" placement="top-start" width="min(340px, calc(100vw - 24px))" :disabled="disabled" :showArrow="false" :popperStyle="{ padding: '14px' }">
+  <el-popover :persistent="false" :popper-options="{ modifiers: [{ name: 'preventOverflow', options: { padding: 12, altAxis: true } }] }" trigger="click" placement="top-start" width="min(380px, calc(100vw - 24px))" :disabled="disabled" :showArrow="false" :popperStyle="{ padding: '14px 16px' }">
     <template #reference>
       <el-button class="settingsButton" text size="small" :disabled="disabled" :aria-label="translate('视频生成设置')">
         <span class="ratioShape" :style="ratioStyle(ratio)" aria-hidden="true" />
-        <span v-if="currentModeLabel">{{ currentModeLabel }}</span>
-        <span>{{ inheritsSourceDuration ? translate('编辑 · 跟随输入') : inheritsSourceFormat ? translate('延长 {0}秒 · 跟随输入', { 0: duration }) : [ratioLabel(ratio), resolution || (localPlatform ? translate('清晰度跟随平台') : ''), durationLabel(duration)].filter(Boolean).join(' · ') }}</span>
+        <span>{{ summary }}</span>
+        <component :is="generateAudio ? IconVolume : IconVolumeOff" v-if="audioOptional || model?.audio === true" :size="15" :aria-label="translate(generateAudio || model?.audio === true ? '生成音频' : '不生成音频')" />
         <icon-chevron-up :size="14" aria-hidden="true" />
       </el-button>
     </template>
     <div class="generationSettings nodrag nopan nowheel" @pointerdown.stop @mousedown.stop @dblclick.stop @keydown.stop @wheel.stop>
-      <div v-if="modes.length" class="sectionLabel">{{ translate('视频生成模式') }}</div>
-      <el-select v-if="modes.length" v-model="mode" :teleported="false" :disabled="disabled" :aria-label="translate('视频生成模式')">
-        <el-option v-for="item in modes" :key="item.value" :value="item.value" :label="item.label" />
-      </el-select>
-      <p v-if="modeDescription" class="inputHint">{{ modeDescription }}</p>
       <p v-if="localPlatform && !durations.length && !inheritsSourceDuration" class="inputHint">{{ translate('正在读取当前账号的时长和比例') }}</p>
-      <div v-if="!inheritsSourceDuration" class="outputOptions">
-        <div v-if="durations.length" class="outputField">
-          <div class="sectionLabel">{{ translate('时长') }}</div>
-          <el-select v-model="duration" :teleported="false" :disabled="disabled || inheritsSourceDuration" :aria-label="translate('视频时长')">
-            <el-option v-for="item in durations" :key="item" :value="item" :label="item === -1 ? translate('自动') : translate('{0}秒', { 0: item })" />
-          </el-select>
-        </div>
-        <div v-if="resolutions.length && !inheritsSourceFormat" class="outputField">
-          <div class="sectionLabel">{{ translate('分辨率') }}</div>
-          <el-select v-model="resolution" :teleported="false" :disabled="disabled || inheritsSourceFormat" :aria-label="translate('视频分辨率')">
-            <el-option v-for="item in resolutions" :key="item" :value="item" :label="item" />
-          </el-select>
-        </div>
-        <div v-else-if="localPlatform && !inheritsSourceFormat" class="outputField">
-          <div class="sectionLabel">{{ translate('分辨率') }}</div>
-          <span>{{ translate('跟随平台') }}</span>
-        </div>
-      </div>
-      <p v-if="inputHint" class="inputHint">{{ inputHint }}</p>
-      <div v-if="!inheritsSourceRatio && ratios.length" class="sectionLabel">{{ translate('比例') }}</div>
-      <div v-if="!inheritsSourceRatio && ratios.length" class="ratioOptions" role="group" :aria-label="translate('视频比例')">
-        <el-button v-for="item in ratios" :key="item" class="ratioButton" :disabled="disabled || inheritsSourceFormat" :aria-label="translate('比例 {0}', { 0: item })" :aria-pressed="ratio === item" @click="ratio = item">
-          <span class="ratioContent">
-            <span class="ratioShape" :style="ratioStyle(item)" aria-hidden="true" />
-            <span>{{ ratioLabel(item) }}</span>
-          </span>
-        </el-button>
-      </div>
+      <template v-if="!inheritsSourceRatio && ratios.length">
+        <div class="sectionLabel">{{ translate('比例') }}</div>
+        <settingOptions v-model="ratio" :options="ratios.map(item => ({ value: item, label: ratioLabel(item) }))" :columns="5" ratio :disabled="disabled || inheritsSourceFormat" :label="translate('视频比例')" />
+      </template>
       <p v-else-if="localPlatform && !inheritsSourceRatio" class="inputHint">{{ translate('比例跟随平台页面') }}</p>
-      <el-button class="advancedToggle" text :aria-expanded="showAdvanced" @click="showAdvanced = !showAdvanced">
-        {{ translate(showAdvanced ? '收起高级设置' : '高级设置') }}
-      </el-button>
-      <div v-if="showAdvanced" class="advancedSettings">
-        <div v-if="audioOptional" class="audioOption">
-          <span class="sectionLabel">{{ translate('生成音频') }}</span>
-          <el-switch v-model="generateAudio" :disabled="disabled" :aria-label="translate('生成音频')" />
+      <template v-if="resolutions.length && !inheritsSourceFormat">
+        <div class="sectionLabel">{{ translate('清晰度') }}</div>
+        <settingOptions v-model="resolution" :options="resolutions.map(item => ({ value: item, label: sizeTier(item) || item }))" :columns="resolutions.length > 3 ? 2 : resolutions.length" :disabled="disabled" :label="translate('视频清晰度')" />
+      </template>
+      <p v-else-if="localPlatform && !inheritsSourceFormat" class="inputHint">{{ translate('清晰度跟随平台') }}</p>
+      <template v-if="durations.length && !inheritsSourceDuration">
+        <div class="sectionLabel">{{ translate('视频时长') }}</div>
+        <div v-if="durationRange" class="durationSlider">
+          <el-slider v-model="durationValue" :min="durationRange[0]" :max="durationRange[1]" :step="1" :show-tooltip="false" :disabled="disabled" :aria-label="translate('视频时长')" />
+          <el-input-number v-model="durationValue" :min="durationRange[0]" :max="durationRange[1]" :step="1" :controls="false" :disabled="disabled" :aria-label="translate('视频时长（秒）')" />
+          <span>s</span>
         </div>
-        <template v-for="control in controls" :key="control.key">
-          <div class="sectionLabel">{{ controlLabel(control.key, control.label) }}</div>
-          <el-switch v-if="control.type === 'boolean'" :model-value="Boolean(parameters[control.key])" :disabled="disabled" :aria-label="controlLabel(control.key, control.label)" @update:model-value="parameters = { ...parameters, [control.key]: $event }" />
-          <el-select v-else-if="control.type === 'select'" :model-value="String(parameters[control.key] || control.default || '')" :disabled="disabled" :aria-label="controlLabel(control.key, control.label)" @update:model-value="parameters = { ...parameters, [control.key]: $event }">
-            <el-option v-for="option in control.options || []" :key="option" :value="option" :label="controlOptionLabel(control.key, option)" />
-          </el-select>
-        </template>
-      </div>
+        <settingOptions v-else v-model="durationValue" :options="durations.map(item => ({ value: item, label: durationLabel(item) }))" :columns="Math.min(4, durations.length)" :disabled="disabled" :label="translate('视频时长')" />
+      </template>
+      <p v-if="inputHint" class="inputHint">{{ inputHint }}</p>
+      <template v-if="audioOptional">
+        <div class="sectionLabel">{{ translate('生成音频') }}</div>
+        <settingOptions v-model="generateAudio" :options="[{ value: true, label: translate('开启') }, { value: false, label: translate('关闭') }]" :columns="2" :disabled="disabled" :label="translate('生成音频')" />
+      </template>
+      <template v-if="controls.length">
+        <el-button class="advancedToggle" text :aria-expanded="showAdvanced" @click="showAdvanced = !showAdvanced">
+          {{ translate(showAdvanced ? '收起高级设置' : '高级设置') }}
+          <icon-chevron-down :size="14" :class="{ flipped: showAdvanced }" aria-hidden="true" />
+        </el-button>
+        <div v-if="showAdvanced" class="advancedSettings">
+          <template v-for="control in controls" :key="control.key">
+            <div v-if="control.type === 'boolean'" class="controlRow">
+              <span class="sectionLabel">{{ controlLabel(control.key, control.label) }}</span>
+              <el-switch :model-value="Boolean(parameters[control.key])" :disabled="disabled" :aria-label="controlLabel(control.key, control.label)" @update:model-value="parameters = { ...parameters, [control.key]: $event }" />
+            </div>
+            <template v-else-if="control.type === 'select'">
+              <div class="sectionLabel">{{ controlLabel(control.key, control.label) }}</div>
+              <settingOptions :model-value="String(parameters[control.key] || control.default || '')" :options="(control.options || []).map(option => ({ value: option, label: controlOptionLabel(control.key, option) }))" :columns="Math.min(3, (control.options || []).length)" :disabled="disabled" :label="controlLabel(control.key, control.label)" @update:model-value="parameters = { ...parameters, [control.key]: $event }" />
+            </template>
+          </template>
+        </div>
+      </template>
     </div>
   </el-popover>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { ElButton, ElPopover, ElSelect, ElOption, ElSwitch } from "element-plus";
-import { IconChevronUp } from "@tabler/icons-vue";
+import { ElButton, ElInputNumber, ElPopover, ElSlider, ElSwitch } from "element-plus";
+import { IconChevronDown, IconChevronUp, IconVolume, IconVolumeOff } from "@tabler/icons-vue";
 import type { NodeMediaModel } from "@miaoimg/nodes-scaffold/runtime";
 import { translate } from "@miaoimg/i18n/vue";
 import { durationsForMode, inheritedFields, resolutionsForMode, visibleControls } from "../scaffold/mediaParameters";
-import { videoModeDescription, videoModeLabel } from './videoModeText';
+import { sizeTier } from "../../../../../../server/media-size-label";
+import settingOptions from "./settingOptions.vue";
 import { getLocale } from "../i18n";
 
 const props = defineProps<{ model?: NodeMediaModel; disabled?: boolean; ratios: string[]; videoReferences?: number; imageReferences?: number }>();
@@ -89,7 +82,7 @@ function ratioLabel(value: string) {
 }
 function durationLabel(value: number | undefined) {
   if (value === -1) return translate('自动');
-  return value ? translate('{0}秒', { 0: value }) : '';
+  return value ? `${value}s` : '';
 }
 const selectedModeName = computed(() => {
   // 节点使用 JSON.stringify 保存模式，多素材参考模式保存为数组。
@@ -114,20 +107,28 @@ function controlOptionLabel(key: string, option: string) {
 function controlLabel(key: string, label: string) {
   return key === "creativeMode" ? translate("生成模式") : translate(label);
 }
-const modes = computed(() => [...(props.model?.mode ?? [])]
-  // Seedance 的全能参考是多素材入口，优先放在展开菜单顶部，保存值仍保持原样。
-  .sort((left, right) => Number(Array.isArray(right)) - Number(Array.isArray(left)))
-  .map(item => ({
-  value: JSON.stringify(item),
-  label: videoModeLabel(item, props.model),
-  })));
-const currentMode = computed(() => props.model?.mode?.find(item => JSON.stringify(item) === mode.value));
-const currentModeLabel = computed(() => videoModeLabel(currentMode.value, props.model));
-const modeDescription = computed(() => videoModeDescription(currentMode.value, props.model));
 const durations = computed(() => durationsForMode(props.model, selectedModeName.value)
   // 清晰度跟随平台（没有分辨率可选）时不按分辨率筛时长。
   .filter(value => value < 0 || !resolution.value || resolutionsFor(value).includes(resolution.value)));
 const resolutions = computed(() => resolutionsFor(duration.value));
+// 连续整数时长（如 4–15 秒）用滑杆加输入框，零散档位（含自动）用按钮。
+const durationRange = computed<[number, number] | null>(() => {
+  const values = durations.value;
+  if (values.length < 5 || values.some(value => value < 0)) return null;
+  const sorted = [...values].sort((left, right) => left - right);
+  return sorted.every((value, index) => !index || value === sorted[index - 1]! + 1) ? [sorted[0]!, sorted.at(-1)!] : null;
+});
+const durationValue = computed({
+  get: () => duration.value ?? durations.value[0] ?? 0,
+  set: (value: number) => { if (durations.value.includes(value)) duration.value = value; },
+});
+// 和 LibTV 一样：比例 · 清晰度 · 时长，音频状态用图标表示。
+const summary = computed(() => {
+  if (inheritsSourceDuration.value) return translate('编辑 · 跟随输入');
+  if (inheritsSourceFormat.value) return translate('延长 {0} · 跟随输入', { 0: durationLabel(duration.value) });
+  const resolutionText = resolution.value ? sizeTier(resolution.value) || resolution.value : localPlatform.value ? translate('清晰度跟随平台') : '';
+  return [ratioLabel(ratio.value), resolutionText, durationLabel(duration.value)].filter(Boolean).join(' · ');
+});
 
 // 输入素材另计：参考视频按输入时长、图片素材超出免费张数按张计费（结算时合并预扣）。
 const inputHint = computed(() => {
@@ -165,88 +166,62 @@ function ratioStyle(value: string) {
 
 .settingsButton {
   flex-shrink: 0;
-  border-radius: 12px;
+  border-radius: 8px;
   :deep(> span) { gap: 6px; }
 }
 
-.advancedToggle {
-  justify-content: flex-start;
-  width: 100%;
-  margin-top: 4px;
-  padding-inline: 0;
-}
-
 .generationSettings {
+  display: flex;
+  flex-direction: column;
   text-align: left;
+  max-height: min(70vh, 600px);
+  overflow-y: auto;
 
   .sectionLabel {
-    margin-bottom: 8px;
-    color: var(--el-text-color-secondary);
-    font-size: 12px;
+    margin: 14px 0 8px;
+    color: var(--el-text-color-regular);
+    font-size: 13px;
     font-weight: 500;
-  }
-
-  > .el-select { margin-bottom: 14px; }
-
-  .outputOptions {
-    display: flex;
-    gap: 12px;
-    margin-bottom: 14px;
-    .outputField { flex: 1; min-width: 0; }
+    &:first-child { margin-top: 0; }
   }
 
   .inputHint {
-    margin: -7px 0 10px;
+    margin: 8px 0 0;
     font-size: 11px;
     line-height: 1.5;
     color: var(--el-text-color-secondary);
   }
 
-  .ratioOptions {
-    display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 8px;
-
-    .ratioButton {
-      height: 50px;
-      margin: 0;
-      padding: 6px 3px;
-      border-radius: 12px;
-      color: var(--el-text-color-secondary);
-      --el-button-bg-color: var(--el-fill-color-light);
-      --el-button-hover-bg-color: var(--el-fill-color);
-      --el-button-hover-text-color: var(--el-text-color-primary);
-      --el-button-hover-border-color: var(--el-border-color-darker);
-
-      &[aria-pressed="true"] {
-        color: var(--el-text-color-primary);
-        border-color: var(--el-color-primary);
-        background: color-mix(in srgb, var(--el-color-primary) 12%, var(--canvas-surface, #1e1e24));
-      }
-
-      .ratioContent {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 5px;
-        font-size: 11px;
-      }
-    }
-  }
-
-  .audioOption {
+  .durationSlider {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    .sectionLabel { margin: 0; }
+    gap: 12px;
+    color: var(--el-text-color-secondary);
+
+    .el-slider { flex: 1; margin-left: 6px; }
+    :deep(.el-input-number) { width: 56px; }
+    :deep(.el-input__inner) { text-align: center; }
+  }
+
+  .advancedToggle {
+    align-self: flex-start;
+    margin-top: 12px;
+    padding-inline: 0;
+    color: var(--el-text-color-secondary);
+    :deep(> span) { gap: 4px; }
+    .flipped { transform: rotate(180deg); }
   }
 
   .advancedSettings {
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    margin-top: 4px;
-    padding-top: 4px;
+  }
+
+  .controlRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    .sectionLabel { margin: 14px 0 8px; }
   }
 }
 </style>

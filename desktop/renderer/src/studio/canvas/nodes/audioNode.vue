@@ -1,6 +1,7 @@
 <template>
   <nodeSkeleton
     v-bind="nodeProps"
+    :mediaMeta="durationLabel"
     :topVisible="node.selected"
     :bottomVisible="node.selected && actions?.mode === 'speed'"
     :bottomWidth="440"
@@ -16,9 +17,9 @@
         <el-button v-if="previewUrl" :icon="IconFileMusic" :disabled="!previewUrl || uploading || uploadingDrag || actions?.processing" text :title="translate('转换音频格式')" :aria-label="translate('转换音频格式')" @click.stop>{{ translate('格式') }}</el-button>
         <template #dropdown>
           <el-dropdown-menu>
-            <el-dropdown-item command="mp3">MP3 · 320k</el-dropdown-item>
-            <el-dropdown-item command="m4a">M4A · AAC 256k</el-dropdown-item>
-            <el-dropdown-item command="wav">WAV · {{ translate('无损') }}</el-dropdown-item>
+            <el-dropdown-item command="mp3">MP3 · 320 kbps</el-dropdown-item>
+            <el-dropdown-item command="m4a">M4A · AAC 256 kbps</el-dropdown-item>
+            <el-dropdown-item command="wav">WAV · {{ translate('未压缩') }}</el-dropdown-item>
             <el-dropdown-item command="flac">FLAC · {{ translate('无损压缩') }}</el-dropdown-item>
           </el-dropdown-menu>
         </template>
@@ -78,6 +79,12 @@ const fileInput = ref<HTMLInputElement>();
 const uploading = ref(false);
 const audioContent = ref<HTMLDivElement>();
 const player = ref<InstanceType<typeof audioPlayer>>();
+const durationLabel = computed(() => {
+  const duration = player.value?.duration;
+  if (!duration || !Number.isFinite(duration)) return "";
+  const seconds = Math.floor(duration);
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+});
 const actions = ref<InstanceType<typeof audioActions>>();
 const speedTarget = ref<HTMLElement>();
 

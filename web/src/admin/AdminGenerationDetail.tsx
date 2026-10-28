@@ -2,6 +2,7 @@ import { ADMIN_API_BASE } from './api-base'
 // @ts-nocheck
 import { useEffect, useRef, useState } from 'react'
 import { isDiscardedAdminRequest } from './useAdminSession'
+import { mediaSizeLabel, sizeTier, videoSizeLabel } from '../../../server/media-size-label'
 export default function AdminGenerationDetail({record:r,api,onRecord,lang}) {
  const [probe,setProbe]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState('')
  const t=(zh,en)=>lang==='en'?en:zh
@@ -26,20 +27,21 @@ export default function AdminGenerationDetail({record:r,api,onRecord,lang}) {
  const p=r.parameters||{},u=r.usage||{},d=r.upstreamCost?.detail||{}
  const modes={text:t('文生视频','Text to video'),image:t('混合参考','Mixed references'),singleImage:t('单图生视频','Image to video'),startFrameOptional:t('首帧','First frame'),endFrameOptional:t('首尾帧','First / last frame'),edit:t('编辑','Edit'),extend:t('延长','Extend')}
  const creativeModes={native:t('标准','Standard'),super_economy:t('节省模式','Economy mode')}
+ const qualities={low:t('低画质','Low'),medium:t('标准画质','Medium'),high:t('高画质','High'),xhigh:t('超高画质','Extra high'),max:t('极致画质','Max'),auto:t('自动','Auto')}
  const isVideo=p.duration!=null||Boolean(p.resolution)
  const unknown=t('未留存','Not retained')
  const bool=value=>typeof value==='boolean'?(value?t('开启','On'):t('关闭','Off')):unknown
  const parameters=isVideo?[
   [t('生成模式','Mode'),modes[p.mode]||p.mode||unknown],
   ...(p.creativeMode?[[t('创作模式','Creative mode'),creativeModes[p.creativeMode]||p.creativeMode]]:[]),
-  [t('分辨率 / 比例','Resolution / aspect ratio'),(p.resolution||unknown)+' / '+(p.ratio||unknown)],
+  [t('清晰度 / 比例','Resolution / aspect ratio'),(p.resolution?sizeTier(p.resolution)||p.resolution:unknown)+' / '+(p.ratio||unknown)],
   [t('请求 / 计费时长','Requested / billable duration'),(p.duration??unknown)+' / '+(p.billableDuration??unknown)+' s'],
   [t('参考图片 / 视频 / 音频数量','Reference image / video / audio count'),(p.referenceImages??unknown)+' / '+(p.videos?.length??unknown)+' / '+(p.audios?.length??unknown)],
   [t('参考视频 / 音频时长','Reference video / audio duration'),(p.videoSeconds??unknown)+' / '+(p.audioSeconds??unknown)+' s'],
   [t('生成声音 / 返回尾帧 / 联网搜索','Audio / last frame / web search'),bool(p.generateAudio)+' / '+bool(p.returnLastFrame)+' / '+bool(p.webSearch)],
   [t('实际计费用量','Reported billing usage'),u.completion_tokens!=null?u.completion_tokens+' tokens':u.output_seconds!=null?u.output_seconds+' s':unknown],
  ]:[
-  [t('尺寸 / 画质','Size / quality'),(p.size||unknown)+' / '+(p.quality||t('不分档','No tier'))],
+  [t('尺寸 / 画质','Size / quality'),(p.size?mediaSizeLabel(p.size,'',t('自动','Auto')):unknown)+' / '+(p.quality?qualities[p.quality]||p.quality:t('不分档','No tier'))],
   [t('请求 / 返回张数','Requested / returned images'),(p.count??unknown)+' / '+(r.images?.length??unknown)],
   [t('参考图片数量','Reference images'),p.referenceCount??unknown],
   [t('格式 / 背景 / 输入保真度','Format / background / input fidelity'),(p.format||unknown)+' / '+(p.background||unknown)+' / '+(p.inputFidelity||t('不分档','No tier'))],
@@ -63,7 +65,7 @@ export default function AdminGenerationDetail({record:r,api,onRecord,lang}) {
    <p>{r.persisted?.exists?t('留存文件存在','Stored file exists'):t('留存文件未找到','Stored file missing')} · {r.persisted?.path||'—'} · {r.persisted?.size==null?'—':`${(r.persisted.size/1048576).toFixed(2)} MiB`}</p>
    {r.persisted?.exists&&<><video controls preload="metadata" src={media}/><a href={`${media}?download=1`}>{t('下载留存视频','Download stored video')}</a></>}
    {r.persisted?.reason&&<p className="admin-error">{r.persisted.reason}</p>}
-   <p>{t('上游报告尺寸 / 时长','Provider dimensions / duration')}：{r.video.width??'—'} × {r.video.height??'—'} / {r.video.duration??'—'} s</p>
+   <p>{t('上游报告尺寸 / 时长','Provider dimensions / duration')}：{r.video.width&&r.video.height?`${videoSizeLabel(r.video.width,r.video.height)}（${r.video.width} × ${r.video.height}）`:'—'} / {r.video.duration??'—'} s</p>
    <div className="table-actions"><button disabled={busy||!r.persisted?.exists} onClick={()=>action('probe')}>{t('读取实际视频参数','Probe actual video parameters')}</button>{r.status==='succeeded'&&<button disabled={busy} onClick={()=>action('restore')}>{t('核对留存 / 按原请求取回','Check persistence / restore original result')}</button>}</div>
    {probe&&<p role="status">{t('实际留存视频','Actual stored video')}：{probe.width} × {probe.height} · {probe.duration} s · {probe.codec} · {probe.audio?t('含音轨','Audio track present'):t('无音轨','No audio track')}</p>}
    <h4>{t('画布读取观察','Canvas observations')}</h4>{r.canvas?.length?r.canvas.map(item=><p key={item.path}>{item.path} · {t('节点','Node')} {item.nodeId} · {item.containsVideoPath?t('节点包含视频路径','Node contains video path'):t('节点未包含该视频路径','Node does not contain this video path')} · {item.latestRequestMatches?t('记录关联原请求','Original request linked'):t('未找到原请求标识','Original request ID not found')}</p>):<p>{t('未在该项目根目录的可读取画布中找到对应节点；不能据此判定视频丢失。','No matching node was found in readable root canvases of this project; this does not establish media loss.')}</p>}

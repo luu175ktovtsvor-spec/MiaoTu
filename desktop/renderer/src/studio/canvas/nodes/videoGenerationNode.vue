@@ -5,6 +5,7 @@
     v-bind="nodeProps"
     :modelLabel="nodeLocalModelLabel(data.model)"
     :mediaMeta="mediaMeta"
+    :mediaMetaTitle="mediaMetaTitle"
     v-model:bottomVisible="composerVisible"
     :topVisible="node.selected"
     topWidth="max-content"
@@ -59,18 +60,26 @@
             <button type="button" class="composerChip nodrag" :disabled="generating || deleting" :aria-label="translate('添加参考素材')" @click.stop="requestReference()">
               <icon-upload :size="14" aria-hidden="true" />{{ translate('上传') }}
             </button>
+            <button v-if="canvasReferenceMentions.length || refList.length" type="button" class="composerChip nodrag" :disabled="generating || deleting" :aria-label="translate('画布参考')" @mousedown.prevent @click.stop="promptEditor?.openReferenceMenu()">
+              <icon-layers-linked :size="14" aria-hidden="true" />{{ translate('画布参考') }}
+            </button>
           </div>
           <referenceItem
             v-if="refList.length"
             v-model="refList"
+            :labels="referenceRoleLabels"
             @preview="setReferencePreview"
             @remove="removeReference" />
           <div v-if="referenceDescription" class="referenceHint">{{ referenceDescription }}</div>
           <promptInput
+            ref="promptEditor"
             v-model="data.promptModel"
             v-model:text="data.prompt"
             v-model:expanded="composerExpanded"
             :references="referenceMentions"
+            :canvas-references="canvasReferenceMentions"
+            :reference-kinds="referenceKinds"
+            :connect-reference="connectReference"
             expandable
             expand-mode="external" />
           <div v-if="promptOptional && !generationPrompt" class="referenceHint">{{ translate('当前模型可只使用图片参考，不填写提示词') }}</div>
@@ -95,6 +104,11 @@
                 :label="nodeModelOptionLabel(item)" :value="JSON.stringify([item.providerId, item.modelId])" />
             </el-option-group>
           </el-select>
+          <videoModeMenu
+            v-model="data.mode"
+            :model="selectedModel"
+            :available="matchingModes.map(item => JSON.stringify(item))"
+            :disabled="generating || deleting || pendingTask || checkingTask || !selectedModel" />
           <generationSettings
             v-model:duration="data.duration"
             v-model:resolution="data.resolution"
@@ -108,12 +122,12 @@
             :imageReferences="mediaCounts.image"
             :disabled="generating || deleting || pendingTask || checkingTask || !selectedModel" />
           <div class="sendActions">
-            <div class="estimateLine" aria-live="polite" :data-estimate-source="videoEstimate?.breakdown?.billingSource || 'unavailable'">
-              <icon-coins :size="14" aria-hidden="true" />
+            <div class="estimateLine" aria-live="polite" :title="videoEstimate?.points != null ? translate('预计 {0} 积分', { 0: formatCredits(videoEstimate.points) }) : translate('预计积分')" :data-estimate-source="videoEstimate?.breakdown?.billingSource || 'unavailable'">
+              <icon-bolt :size="13" aria-hidden="true" />
               <strong v-if="['doubao-local', 'dola-local'].includes(selectedModel?.providerId || '')">{{ translate(selectedModel?.providerId === 'dola-local' ? '使用 Dola 额度' : '使用豆包额度') }}</strong>
               <strong v-else-if="videoEstimateLoading">{{ translate('正在更新报价') }}</strong>
-              <span v-else>{{ translate('预计') }}</span>
-              <strong v-if="!['doubao-local', 'dola-local'].includes(selectedModel?.providerId || '') && !videoEstimateLoading && videoEstimate?.points != null">{{ translate('{0} 积分', { 0: formatCredits(videoEstimate.points) }) }}</strong>
+              <span v-else class="srOnly">{{ translate('预计') }}</span>
+              <strong v-if="!['doubao-local', 'dola-local'].includes(selectedModel?.providerId || '') && !videoEstimateLoading && videoEstimate?.points != null">{{ formatCredits(videoEstimate.points) }}<span class="srOnly">{{ translate('积分') }}</span></strong>
               <strong v-else-if="!['doubao-local', 'dola-local'].includes(selectedModel?.providerId || '') && !videoEstimateLoading">—</strong>
             </div>
             <feedbackNotice :message="referenceMismatchMessage || videoEstimateError" />
@@ -137,11 +151,13 @@
 
 <script setup lang="ts">
 import feedbackNotice from '../components/feedbackNotice.vue';
+import videoModeMenu from "./videoModeMenu.vue";
+import { videoSizeLabel } from "../../../../../../server/media-size-label";
 import { groupNodeModels } from "../scaffold/nodeAi";
 import { nodeLocalModelLabel, nodeModelOptionLabel, nodeModelValueLabel } from '../scaffold/localModelLabel';
 import { computed, inject, nextTick, onMounted, onScopeDispose, ref, watch, watchEffect } from "vue";
 import { ElButton, ElCard, ElSelect, ElOption, ElOptionGroup, ElLoading, ElMessage } from "element-plus";
-import { IconCameraAi, IconCoins, IconSparkles, IconArrowUp, IconPlayerStop, IconTransfer, IconUpload, IconWriting, IconPhoto, IconLayersLinked, IconStack2, IconMusic, IconLayersSubtract, IconScissors } from "@tabler/icons-vue";
+import { IconBolt, IconCameraAi, IconSparkles, IconArrowUp, IconPlayerStop, IconTransfer, IconUpload, IconWriting, IconPhoto, IconLayersLinked, IconStack2, IconMusic, IconLayersSubtract, IconScissors } from "@tabler/icons-vue";
 import { nodeSkeleton, nodeTools, showNodeError, isSignInRequired, useGenerationProgress, useNode, useNodeGeneration, useNodeReferences, useNodeUpload, z, type NodeMediaModel, type NodeVideoRequest, type NodeHandle } from "@miaoimg/nodes-scaffold/runtime";
 import promptInput from "@miaoimg/nodes-scaffold/promptInput";
 import videoPlayer from "@miaoimg/nodes-scaffold/videoPlayer";
@@ -182,7 +198,8 @@ data.value.resolution ??= "";
 data.value.mode ??= "";
 data.value.generateAudio ??= true;
 data.value.ratio ??= "";
-const { refList, referenceMentions, referenceHistory, preparePromptReferences, setReferencePreview, removeReference } = useNodeReferences();
+const { refList, referenceMentions, canvasReferenceMentions, referenceKinds, connectReference, referenceHistory, preparePromptReferences, setReferencePreview, removeReference } = useNodeReferences();
+const promptEditor = ref<InstanceType<typeof promptInput>>();
 const models = ref<NodeMediaModel[]>([]);
 const modelsLoading = ref(false);
 const modelsNeedSignIn = ref(false);
@@ -195,7 +212,9 @@ const player = ref<InstanceType<typeof videoPlayer>>();
 const actions = ref<InstanceType<typeof videoActions>>();
 const videoWidth = ref(0);
 const videoDimensions = ref<{ width: number; height: number }>();
-const mediaMeta = computed(() => videoDimensions.value ? `${videoDimensions.value.width} × ${videoDimensions.value.height}` : "");
+// 节点头部按 LibTV 的叫法显示“比例 · 1080P”，精确像素放在悬停提示里。
+const mediaMeta = computed(() => videoDimensions.value ? videoSizeLabel(videoDimensions.value.width, videoDimensions.value.height) : "");
+const mediaMetaTitle = computed(() => videoDimensions.value ? `${videoDimensions.value.width} × ${videoDimensions.value.height}` : "");
 let generationController: AbortController | undefined;
 // 进度条要的上游状态：queued / running / saving（nodeAi 在写回画布前会补发一次 saving）。
 const generationStatus = ref("");
@@ -319,6 +338,19 @@ function frameInputs(mode: NodeVideoRequest["mode"], images: Array<{ path: strin
     lastFrame: images[mode === "startFrameOptional" && images.length === 1 ? 0 : 1],
   };
 }
+
+// Use the same frame mapping as the request. Roles follow reference reordering,
+// including models where a single image is the optional start frame's tail.
+const referenceRoleLabels = computed(() => {
+  const images = refList.value.filter(item => item.dataType === "IMAGE" && item.value !== undefined)
+    .map(item => ({ path: JSON.stringify([item.source, item.sourceHandle]), mimeType: "image/unknown" }));
+  const { firstFrame, lastFrame } = frameInputs(selectedMode.value, images);
+  const labels: Record<string, string> = {};
+  if (firstFrame) labels[firstFrame.path] = translate("首帧");
+  if (lastFrame) labels[lastFrame.path] = translate("尾帧");
+  if (selectedMode.value === "singleImage" && images[0]) labels[images[0].path] = translate("首帧");
+  return labels;
+});
 
 function requestImages(choice: NodeMediaModel, mode: NodeVideoRequest["mode"], images: Array<{ path: string; mimeType: string }>) {
   if (!["startEndRequired", "endFrameOptional", "startFrameOptional"].includes(String(mode))) return images;
@@ -926,10 +958,11 @@ const emptyHints = computed(() => {
     align-items: center;
     justify-content: flex-start;
     flex-wrap: wrap;
-    gap: 12px;
+    gap: 4px;
 
     .modelSelect {
-      width: 190px;
+      width: 172px;
+      margin-right: 4px;
       min-width: 0;
 
       &:deep(.el-select__wrapper) {
@@ -979,9 +1012,19 @@ const emptyHints = computed(() => {
     text-overflow: ellipsis;
 
     strong {
-      color: var(--el-text-color-primary);
-      font-weight: 600;
+      color: var(--el-text-color-secondary);
+      font-weight: 500;
+      font-variant-numeric: tabular-nums;
     }
+  }
+
+  .srOnly {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
   }
 }
 </style>

@@ -5,7 +5,7 @@
     <div class="promptFooter">
       <el-select
         v-model="model"
-        class="modelSelect"
+        class="modelSelect" popper-class="modelSelectPopper"
         filterable
         :loading="modelsLoading"
         :disabled="disabled || generating"
@@ -15,20 +15,20 @@
         placement="top-start"
         @visible-change="visible => visible && loadModels().catch(error => showNodeError(error, translate('模型读取失败')))">
         <template #prefix><icon-sparkles :size="17" /></template>
-        <el-option v-for="item in models" :key="item.modelId" :label="item.modelId" :value="JSON.stringify([item.providerId, item.modelId])" />
+        <el-option v-for="item in models" :key="JSON.stringify([item.providerId, item.modelId])" :label="item.label || item.modelId" :value="JSON.stringify([item.providerId, item.modelId])" />
       </el-select>
       <el-popover trigger="click" placement="top-start" :width="260" :disabled="disabled || generating || !selectedModel" :showArrow="false">
         <template #reference>
           <el-button class="settingsButton" text size="small" :disabled="disabled || generating || !selectedModel" :aria-label="translate('局部重绘设置')">
-            <span>{{ ratio || translate('比例') }} · {{ size || translate('分辨率') }} · {{ translate('1 张') }}</span>
+            <span>{{ ratio || translate('比例') }} · {{ size ? sizeTier(size) || translate('自动') : translate('清晰度') }} · {{ translate('1 张') }}</span>
             <icon-chevron-up :size="14" aria-hidden="true" />
           </el-button>
         </template>
         <div class="inpaintSettings nodrag nopan nowheel" @pointerdown.stop @mousedown.stop @dblclick.stop @keydown.stop @wheel.stop>
           <label>
-            <span>{{ translate('分辨率') }}</span>
-            <el-select v-model="size" :disabled="disabled || generating" :aria-label="translate('局部重绘分辨率')">
-              <el-option v-for="item in sizeOptions" :key="item" :label="item" :value="item" />
+            <span>{{ translate('清晰度') }}</span>
+            <el-select v-model="size" :disabled="disabled || generating" :aria-label="translate('局部重绘清晰度')">
+              <el-option v-for="item in sizeOptions" :key="item" :label="mediaSizeLabel(item, '', translate('自动'))" :value="item" />
             </el-select>
           </label>
           <label>
@@ -60,6 +60,7 @@ import { nodeTools, z } from "../nodeTools";
 import { useNodeAi, type NodeInpaintInput, type NodeMediaModel } from "../nodeAi";
 import { isSignInRequired, showNodeError } from "../showNodeError";
 import promptInput from "./promptInput.vue";
+import { mediaSizeLabel, sizeTier } from "../../../../../../../server/media-size-label";
 
 const props = defineProps<{
   generate: (input?: NodeInpaintInput, signal?: AbortSignal) => Promise<void>;

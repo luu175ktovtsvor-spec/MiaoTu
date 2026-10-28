@@ -5,6 +5,7 @@
     v-bind="nodeProps"
     :modelLabel="nodeLocalModelLabel(data.model)"
     :mediaMeta="mediaMeta"
+    :mediaMetaTitle="mediaMetaTitle"
     v-model:bottomVisible="composerVisible"
     :topVisible="node.selected"
     topWidth="max-content"
@@ -20,6 +21,7 @@
       <el-button :icon="IconSun" :disabled="imageBusy || !previewUrl" text :title="translate('打光')" :aria-label="translate('打光')" @click.stop="openLighting" />
       <el-button :icon="IconCameraRotate" :disabled="imageBusy || !previewUrl" text :title="translate('多角度')" :aria-label="translate('多角度')" @click.stop="openMultiAngle" />
       <el-button :icon="IconLayoutGrid" :disabled="generating || deleting || uploading || !previewUrl" :loading="gridSplit?.splitting" text :title="translate('宫格切分')" :aria-label="translate('宫格切分')" @click.stop="gridSplit?.open($event)" />
+      <imagePresetMenu v-if="previewUrl" :disabled="imageBusy || !previewUrl" :loadModels="() => ai.getMediaModels()" />
       <span ref="historyTarget" />
       <el-button :icon="IconTransfer" :loading="uploading || uploadingDrag" :disabled="generating || deleting" text :title="translate('替换图片')" :aria-label="translate('替换图片')" @click.stop="fileInput?.click()" />
       <input ref="fileInput" type="file" accept="image/*" hidden :aria-label="translate('选择替换图片')" :disabled="generating || deleting || uploading || uploadingDrag" @change="replaceOutput" />
@@ -71,6 +73,9 @@
             <button type="button" class="composerChip nodrag" :disabled="generating || deleting" :aria-label="translate('添加参考素材')" @click.stop="requestReference()">
               <icon-upload :size="14" aria-hidden="true" />{{ translate('上传') }}
             </button>
+            <button v-if="canvasReferenceMentions.length || refList.length" type="button" class="composerChip nodrag" :disabled="generating || deleting" :aria-label="translate('画布参考')" @mousedown.prevent @click.stop="promptEditor?.openReferenceMenu()">
+              <icon-layers-linked :size="14" aria-hidden="true" />{{ translate('画布参考') }}
+            </button>
           </div>
           <referenceItem
             v-if="refList.length && editor?.mode !== 'inpaint'"
@@ -86,11 +91,15 @@
             expandable
             expand-mode="external" />
           <promptInput
+            ref="promptEditor"
             v-else
             v-model="data.promptModel"
             v-model:text="data.prompt"
             v-model:expanded="composerExpanded"
             :references="referenceMentions"
+            :canvas-references="canvasReferenceMentions"
+            :reference-kinds="referenceKinds"
+            :connect-reference="connectReference"
             placeholder="可直接文字生图，或上传图片输入文字指令对图片进行编辑，如：将背景改为雪夜"
             expandable
             expand-mode="external" />
@@ -143,11 +152,11 @@
             :disabled="generating || deleting || !selectedModel" />
           <div class="sendActions">
             <feedbackNotice :message="imageEstimateError" />
-            <div class="estimateLine" aria-live="polite" :data-estimate-source="imageEstimate?.source || 'unavailable'">
-              <icon-coins :size="14" aria-hidden="true" />
+            <div class="estimateLine" aria-live="polite" :title="imageEstimate?.points != null ? translate('预计 {0} 积分', { 0: formatCredits(imageEstimate.points) }) : translate('预计积分')" :data-estimate-source="imageEstimate?.source || 'unavailable'">
+              <icon-bolt :size="13" aria-hidden="true" />
               <strong v-if="['doubao-local', 'dola-local'].includes(selectedModel?.providerId || '')">{{ translate(selectedModel?.providerId === 'dola-local' ? '使用 Dola 额度' : '使用豆包额度') }}</strong>
-              <span v-else>{{ translate('预计') }}</span>
-              <strong v-if="!['doubao-local', 'dola-local'].includes(selectedModel?.providerId || '') && imageEstimate?.points != null">{{ translate('{0} 积分', { 0: formatCredits(imageEstimate.points) }) }}</strong>
+              <span v-else class="srOnly">{{ translate('预计') }}</span>
+              <strong v-if="!['doubao-local', 'dola-local'].includes(selectedModel?.providerId || '') && imageEstimate?.points != null">{{ formatCredits(imageEstimate.points) }}<span class="srOnly">{{ translate('积分') }}</span></strong>
               <strong v-else-if="!['doubao-local', 'dola-local'].includes(selectedModel?.providerId || '')">—</strong>
             </div>
             <el-button
@@ -184,7 +193,7 @@ import { nodeLocalModelLabel, nodeModelOptionLabel, nodeModelValueLabel } from '
 import { useImagePreviewTools } from '../scaffold/useImagePreviewTools';
 import { computed, inject, nextTick, onMounted, onScopeDispose, ref, watch, watchEffect } from "vue";
 import { ElButton, ElCard, ElSelect, ElOption, ElOptionGroup, ElLoading, ElImageViewer, ElMessage } from "element-plus";
-import { IconCoins, IconPhotoAi, IconSparkles, IconArrowUp, IconPlayerStop, IconTransfer, IconLayoutGrid, IconBrush, IconPencil, IconUpload, IconWriting, IconPhotoPlus, IconSun, IconCameraRotate, IconPanoramaHorizontal } from "@tabler/icons-vue";
+import { IconBolt, IconPhotoAi, IconSparkles, IconArrowUp, IconPlayerStop, IconTransfer, IconLayoutGrid, IconBrush, IconPencil, IconUpload, IconWriting, IconPhotoPlus, IconLayersLinked, IconSun, IconCameraRotate, IconPanoramaHorizontal } from "@tabler/icons-vue";
 import { nodeSkeleton, nodeTools, showNodeError, isSignInRequired, useGenerationProgress, useNode, useNodeGeneration, useNodeReferences, useNodeUpload, z, type NodeMediaModel, type NodeHandle } from "@miaoimg/nodes-scaffold/runtime";
 import { assertPromptReferencesConnected, isPromptModel } from "../scaffold/promptModel";
 import promptInput from "@miaoimg/nodes-scaffold/promptInput";
@@ -205,6 +214,8 @@ import { useImageTools } from "./imageTools/useImageTools";
 import imageLighting from "./imageTools/components/imageLighting.vue";
 import imageMultiAngle from "./imageTools/components/imageMultiAngle.vue";
 import imagePanorama from "./imageTools/components/imagePanorama.vue";
+import imagePresetMenu from "./imageTools/components/imagePresetMenu.vue";
+import { mediaSizeLabel } from "../../../../../../server/media-size-label";
 
 defineOptions({
   inheritAttrs: false,
@@ -236,7 +247,8 @@ data.value.inputFidelity ??= "";
 data.value.count ??= 1;
 data.value.layerDecomposition ??= false;
 data.value.optimizePrompt ??= "";
-const { refList, referenceMentions, referenceHistory, preparePromptReferences, setReferencePreview, removeReference } = useNodeReferences();
+const { refList, referenceMentions, canvasReferenceMentions, referenceKinds, connectReference, referenceHistory, preparePromptReferences, setReferencePreview, removeReference } = useNodeReferences();
+const promptEditor = ref<InstanceType<typeof promptInput>>();
 const models = ref<NodeMediaModel[]>([]);
 const modelsLoading = ref(false);
 const modelsNeedSignIn = ref(false);
@@ -257,7 +269,9 @@ const previewVisible = ref(false);
 useImagePreviewTools(previewVisible, () => !!previewUrl.value);
 const imageWidth = ref(0);
 const imageDimensions = ref<{ width: number; height: number }>();
-const mediaMeta = computed(() => imageDimensions.value ? `${imageDimensions.value.width} × ${imageDimensions.value.height}` : "");
+// 节点头部按 LibTV 的叫法显示“比例 · 清晰度”，精确像素放在悬停提示里。
+const mediaMeta = computed(() => imageDimensions.value ? mediaSizeLabel(`${imageDimensions.value.width}x${imageDimensions.value.height}`) : "");
+const mediaMetaTitle = computed(() => imageDimensions.value ? `${imageDimensions.value.width} × ${imageDimensions.value.height}` : "");
 let generationController: AbortController | undefined;
 // 进度条要的上游状态：queued / running / saving（nodeAi 在写回画布前会补发一次 saving）。
 const generationStatus = ref("");
@@ -320,9 +334,13 @@ watch(
     if (['doubao-local', 'dola-local'].includes(choice.providerId)) { data.value.quality = ''; data.value.inputFidelity = ''; data.value.format = ''; data.value.background = ''; }
     // ACT: 现有分辨率使用 K 单位；出现其他单位时再统一换算，未知名称排在数值选项之后。
     const keepCustom = Boolean(choice.customSize) && fitsCustomSize(choice.sizeRule, data.value.size);
-    if (sizeOptions.value.length && !sizeOptions.value.includes(data.value.size) && !keepCustom) data.value.size = sizeOptions.value.toSorted((left, right) =>
-      (Number.parseFloat(left) || Infinity) - (Number.parseFloat(right) || Infinity)
-    )[0]!;
+    if (sizeOptions.value.length && !sizeOptions.value.includes(data.value.size) && !keepCustom) {
+      const sorted = sizeOptions.value.toSorted((left, right) =>
+        (Number.parseFloat(left) || Infinity) - (Number.parseFloat(right) || Infinity)
+      );
+      // 已有比例（如快捷预设预填的 16:9）时，优先选同比例的最小尺寸，避免尺寸自带的比例把它改掉。
+      data.value.size = sorted.find(value => choice.sizes?.find(item => item.value === value)?.ratio === data.value.ratio) ?? sorted[0]!;
+    }
     const listedRatios = ratioOptions.value;
     const waitingForMenu = ['doubao-local', 'dola-local'].includes(choice.providerId) && (!listedRatios.length || listedRatios.every(item => item === "auto"));
     if (!waitingForMenu && listedRatios.length && !listedRatios.includes(data.value.ratio)) data.value.ratio = listedRatios[0]!;
@@ -923,10 +941,11 @@ function focusPrompt() {
     align-items: center;
     justify-content: flex-start;
     flex-wrap: wrap;
-    gap: 12px;
+    gap: 4px;
 
     .modelSelect {
-      width: 190px;
+      width: 172px;
+      margin-right: 4px;
       min-width: 0;
 
       &:deep(.el-select__wrapper) {
@@ -976,9 +995,19 @@ function focusPrompt() {
     text-overflow: ellipsis;
 
     strong {
-      color: var(--el-text-color-primary);
-      font-weight: 600;
+      color: var(--el-text-color-secondary);
+      font-weight: 500;
+      font-variant-numeric: tabular-nums;
     }
+  }
+
+  .srOnly {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
   }
 }
 </style>

@@ -112,7 +112,7 @@ onBeforeUnmount(() => {
 
 function formatTime(value: number) {
   const seconds = Math.floor(Number.isFinite(value) ? Math.max(0, value) : 0);
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
 function readDuration() {
@@ -206,14 +206,14 @@ function mediaError() {
 
   audio { display: none; }
   .waveformPanel {
-    padding: 10px 14px;
-    border-radius: var(--el-border-radius-base);
-    background: var(--miaoimg-glass-inset);
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: var(--el-fill-color-light);
     &.unavailable { opacity: 0.65; }
 
     .waveformTrack {
       position: relative;
-      height: 96px;
+      height: 64px;
       .waveform { position: absolute; inset: 0; width: 100%; height: 100%; fill: var(--el-text-color-placeholder); &.played { fill: var(--el-color-primary); } }
       .waveformStatus { position: absolute; inset: 0; display: grid; place-items: center; font-size: 12px; color: var(--el-text-color-secondary); }
       .playhead {
@@ -222,7 +222,7 @@ function mediaError() {
         bottom: 0;
         width: 2px;
         transform: translateX(-50%);
-        background: var(--el-color-primary);
+        background: var(--el-color-danger);
         pointer-events: none;
         &::before { content: ""; position: absolute; top: 0; left: 50%; width: 8px; height: 8px; border-radius: 3px; background: inherit; transform: translate(-50%, -2px); }
       }
@@ -237,8 +237,8 @@ function mediaError() {
         // ACT: 只让位置线附近的滑块接收拖动，波形其余区域交给节点拖拽。
         pointer-events: none;
         touch-action: none;
-        &::-webkit-slider-thumb { appearance: none; width: 12px; height: 96px; pointer-events: auto; cursor: ew-resize; }
-        &::-moz-range-thumb { width: 12px; height: 96px; border: 0; pointer-events: auto; cursor: ew-resize; }
+        &::-webkit-slider-thumb { appearance: none; width: 12px; height: 64px; pointer-events: auto; cursor: ew-resize; }
+        &::-moz-range-thumb { width: 12px; height: 64px; border: 0; pointer-events: auto; cursor: ew-resize; }
         &:disabled::-webkit-slider-thumb { pointer-events: none; }
         &:disabled::-moz-range-thumb { pointer-events: none; }
       }
@@ -246,17 +246,20 @@ function mediaError() {
     }
   }
   .playerControls {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 30px minmax(0, 1fr);
     align-items: center;
     gap: 10px;
-    padding: 10px 2px 0;
-    .playButton { width: 30px; height: 30px; color: var(--el-color-primary); border-color: var(--el-color-primary-light-8); background: var(--el-color-primary-light-9); }
-    .timeLabel { display: flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--el-text-color-secondary); > span:first-child { color: var(--el-text-color-primary); } .timeSeparator { opacity: 0.5; } }
+    padding: 8px 2px 0;
+    .playButton { grid-column: 2; grid-row: 1; width: 30px; height: 30px; margin: 0; color: var(--el-text-color-primary); border: 0; background: transparent; &:hover { background: var(--el-fill-color); } }
+    .timeLabel { grid-column: 1; grid-row: 1; display: flex; align-items: center; gap: 4px; white-space: nowrap; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--el-text-color-secondary); > span:first-child { color: var(--el-text-color-primary); } .timeSeparator { opacity: 0.5; } }
     .volumeControl {
       display: flex;
       align-items: center;
       gap: 4px;
-      margin-left: auto;
+      grid-column: 3;
+      grid-row: 1;
+      justify-self: end;
       .volumeButton { width: 26px; height: 26px; padding: 4px; }
       .volumeInput { width: 56px; height: 16px; margin: 0; cursor: pointer; accent-color: var(--el-color-primary); }
     }

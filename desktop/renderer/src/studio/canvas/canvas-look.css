@@ -29,6 +29,8 @@ body[data-miaoimg-settings-ui] {
   --canvas-faint:#737373;
   --canvas-soft:rgba(255,255,255,.035);
   --canvas-hover:rgba(255,255,255,.06);
+  --canvas-group-fill:rgba(255,255,255,.10);
+  --canvas-group-border:rgba(255,255,255,.10);
   --canvas-shadow:0 4px 10px rgba(0,0,0,.28);
   --canvas-backdrop:rgba(0,0,0,.52);
   --canvas-panel-paint:var(--canvas-surface);
@@ -51,6 +53,8 @@ body[data-miaoimg-settings-ui] {
   --el-text-color-secondary:var(--canvas-muted);
   --el-text-color-placeholder:var(--canvas-faint);
   --el-border-color:var(--canvas-line);
+  --el-border-color-dark:#404040;
+  --el-border-color-darker:#505050;
   --el-border-color-light:var(--canvas-line);
   --el-border-color-lighter:#303030;
   --el-border-color-extra-light:#292929;
@@ -103,6 +107,8 @@ html[data-client-scheme="light"] body[data-miaoimg-settings-ui] {
   --canvas-faint:#8b8b8b;
   --canvas-soft:rgba(0,0,0,.03);
   --canvas-hover:rgba(0,0,0,.055);
+  --canvas-group-fill:rgba(0,0,0,.035);
+  --canvas-group-border:rgba(0,0,0,.10);
   --canvas-shadow:0 4px 10px rgba(0,0,0,.12);
   --canvas-backdrop:rgba(0,0,0,.34);
   --canvas-panel-paint:#ffffff;
@@ -118,6 +124,8 @@ html[data-client-scheme="light"] body[data-miaoimg-settings-ui] {
   --el-fill-color-dark:#e7e7e7;
   --el-fill-color-darker:#dddddd;
   --el-border-color-lighter:#e9e9e9;
+  --el-border-color-dark:#d3d3d3;
+  --el-border-color-darker:#c7c7c7;
   --el-border-color-extra-light:#efefef;
   --el-color-primary:#252525;
   --el-color-primary-light-3:#5a5a5a;
@@ -226,10 +234,10 @@ body[data-miaoimg-canvas-ui] .nodeSkeleton .nodeHandle::after {
 }
 body[data-miaoimg-canvas-ui] .nodeSkeleton .nodeHandle:hover { border-color: var(--canvas-node-border-selected); color: var(--canvas-text); }
 body[data-miaoimg-canvas-ui] .nodeSkeleton .nodeHandle[data-connection-status="invalid"] { color: var(--el-color-danger); border-color: var(--el-color-danger); }
-body[data-miaoimg-canvas-ui] .miaoimgApp .groupNode { border: 1px solid var(--canvas-hover-line); border-radius: 12px; background: var(--canvas-soft); box-shadow: none; }
+body[data-miaoimg-canvas-ui] .miaoimgApp .groupNode { border: 1px solid var(--canvas-group-border); border-radius: 12px; background: var(--canvas-group-fill); box-shadow: none; }
 
 /* Menus, generation composers, asset library and all body-mounted panels. */
-body[data-miaoimg-canvas-ui] :is(.canvasMenu,.canvasControlsCard,.nodeMenu,.nodeSearch,.assetLibrary,.floatingAgent,.settingsDialog,.settingsSubdialog,.directorDialog,.el-message-box,.el-popper.is-light,.el-dialog,.vue-flow__minimap),
+body[data-miaoimg-canvas-ui] :is(.canvasMenu,.canvasToolbarCard,.nodeMenu,.nodeSearch,.assetLibrary,.floatingAgent,.settingsDialog,.settingsSubdialog,.directorDialog,.el-message-box,.el-popper.is-light,.el-dialog,.vue-flow__minimap),
 body[data-miaoimg-canvas-ui] .workspaceMenu>.el-card,
 body[data-miaoimg-canvas-ui] .floatingSlot .el-card {
   border: .5px solid color-mix(in srgb,var(--canvas-line) 70%,var(--canvas-muted) 30%);
@@ -244,18 +252,18 @@ body[data-miaoimg-canvas-ui] .floatingSlot .el-card {
 /* Shadow only the outer rounded surface. Inner dropdown lists are clipped by
    Element Plus' scrollbar and otherwise leave a straight shadow below rounded
    corners. */
-body[data-miaoimg-canvas-ui] :is(.canvasMenu,.canvasControlsCard,.assetLibrary,.floatingAgent,.settingsDialog,.settingsSubdialog,.directorDialog,.el-message-box,.el-popper.is-light,.el-dialog,.vue-flow__minimap),
+body[data-miaoimg-canvas-ui] :is(.canvasMenu,.canvasToolbarCard,.assetLibrary,.floatingAgent,.settingsDialog,.settingsSubdialog,.directorDialog,.el-message-box,.el-popper.is-light,.el-dialog,.vue-flow__minimap),
 body[data-miaoimg-canvas-ui] .workspaceMenu>.el-card,
 body[data-miaoimg-canvas-ui] .floatingSlot .el-card {
   box-shadow: var(--canvas-shadow) !important;
   filter: none !important;
 }
-body[data-miaoimg-canvas-ui] :is(.canvasMenu,.canvasControlsCard,.nodeMenu,.floatingSlot) .el-card__body { border: 0; background: transparent; box-shadow: none; }
+body[data-miaoimg-canvas-ui] :is(.canvasMenu,.canvasToolbarCard,.nodeMenu,.floatingSlot) .el-card__body { border: 0; background: transparent; box-shadow: none; }
 body[data-miaoimg-canvas-ui] .floatingSlot .promptCard:not(.expandedPromptCard) {
   box-shadow: var(--canvas-shadow) !important;
   filter: none !important;
 }
-body[data-miaoimg-canvas-ui] .canvasControlsCard { border-radius: 12px !important; box-shadow: none !important; }
+body[data-miaoimg-canvas-ui] .canvasToolbarCard { border-radius: 12px !important; box-shadow: none !important; }
 /* Selected generation composers must not cover the fixed canvas controls. */
 body[data-miaoimg-canvas-ui] .vue-flow__panel { z-index: 1500; }
 body[data-miaoimg-canvas-ui] .canvasControls { background: transparent; border: 0; box-shadow: none; }
@@ -406,26 +414,30 @@ body[data-miaoimg-canvas-ui] :is(.el-input__wrapper.is-focus,.el-select__wrapper
 body[data-miaoimg-canvas-ui] .el-select-dropdown__item { margin: 2px 6px; border-radius: 8px; }
 body[data-miaoimg-canvas-ui] .el-select-dropdown__item.is-selected { color: var(--el-color-primary); background: color-mix(in srgb,var(--el-color-primary) 10%,var(--canvas-surface)); }
 body[data-miaoimg-canvas-ui] .modelSelectPopper {
-  width:min(420px,calc(100vw - 24px))!important;
+  width:min(260px,calc(100vw - 24px))!important;
+  min-width:0!important;
 }
 body[data-miaoimg-canvas-ui] .modelSelectPopper .el-select-dropdown__wrap {
-  max-height:min(420px,calc(100dvh - 140px));
-  padding-right:8px;
+  max-height:min(340px,calc(100dvh - 100px));
+  padding-right:4px;
 }
-body[data-miaoimg-canvas-ui] .modelSelectPopper .el-select-dropdown__list { padding:6px 10px 6px 6px; }
+body[data-miaoimg-canvas-ui] .modelSelectPopper .el-select-dropdown__list { padding:4px 6px 4px 4px; }
+body[data-miaoimg-canvas-ui] .modelSelectPopper .el-select-group__title { height:26px; padding:0 10px; line-height:26px; font-size:11px; }
 /* 当前列表里没有的已存模型只用来显示名称，不出现在下拉里。 */
 body[data-miaoimg-canvas-ui] .modelSelectPopper .savedModelOption { display:none; }
 body[data-miaoimg-canvas-ui] .modelSelectPopper .el-select-dropdown__item {
   height:auto;
-  min-height:34px;
-  padding:7px 18px 7px 12px;
-  line-height:1.45;
+  min-height:30px;
+  margin:1px 4px;
+  padding:5px 10px;
+  font-size:13px;
+  line-height:20px;
   white-space:normal;
   overflow-wrap:anywhere;
 }
 body[data-miaoimg-canvas-ui] .modelSelectPopper .el-scrollbar__bar { right:2px!important; width:4px!important; opacity:.45; }
 body[data-miaoimg-canvas-ui] :is(.el-dropdown-menu,.el-select-dropdown,.el-select-dropdown__list,.el-tree) { background: transparent; }
-body[data-miaoimg-canvas-ui] .el-dropdown-menu__item { margin: 2px 6px; border-radius: 8px; color: var(--canvas-body); }
+body[data-miaoimg-canvas-ui] .el-dropdown-menu__item { min-height:30px; margin:1px 4px; padding:5px 10px; border-radius:8px; color:var(--canvas-body); font-size:13px; line-height:20px; }
 body[data-miaoimg-canvas-ui] .el-dropdown-menu__item:not(.is-disabled):hover { color: var(--el-color-primary); background: var(--canvas-hover); }
 :is(body[data-miaoimg-canvas-ui], .settingsDialog, .settingsSubdialog) .el-radio-button__inner { background: var(--canvas-field); border-color: var(--canvas-line); box-shadow: none; }
 :is(body[data-miaoimg-canvas-ui], .settingsDialog, .settingsSubdialog) .el-radio-button.is-active .el-radio-button__inner { color: var(--el-color-primary); background: color-mix(in srgb,var(--el-color-primary) 12%,var(--canvas-surface)); border-color: var(--el-color-primary); box-shadow: none; }
@@ -494,7 +506,7 @@ body[data-miaoimg-canvas-ui] ::-webkit-scrollbar-track { background: transparent
 
 @media (max-width:760px) {
   body[data-miaoimg-canvas-ui] .nodeSkeleton .titleBar .nodeActions { visibility: visible; }
-  body[data-miaoimg-canvas-ui] .canvasControlsCard { border-radius: 12px; }
+  body[data-miaoimg-canvas-ui] .canvasToolbarCard { border-radius: 12px; }
   body[data-miaoimg-canvas-ui] .canvasMenu { border-radius: 12px; }
   body[data-miaoimg-canvas-ui] .floatingAgent { border-radius: 16px; }
   body[data-miaoimg-canvas-ui] .settingsDialog .sidebar { border-right: 0; border-bottom: 1px solid var(--color-hover); }

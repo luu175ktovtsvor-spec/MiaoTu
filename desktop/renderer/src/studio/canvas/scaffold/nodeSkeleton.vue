@@ -111,7 +111,7 @@
         {{ nodeLabel }}
       </span>
       <span v-if="modelLabel" class="modelLabel" :title="`${translate('生成模型')}：${modelLabel}`">{{ modelLabel }}</span>
-      <span v-if="mediaMeta" class="mediaMeta">{{ mediaMeta }}</span>
+      <span v-if="mediaMeta" class="mediaMeta" :title="mediaMetaTitle">{{ mediaMeta }}</span>
       <span v-if="playerDownload" class="playerDownload" :title="translate('已保存平台播放器文件，未确认去水印。')">{{ translate('水印未确认') }}</span>
       <div class="nodeActions nodrag nopan" @pointerdown.stop @mousedown.stop @dblclick.stop>
         <el-button
@@ -209,6 +209,7 @@ type SkeletonProps = {
   label?: string;
   modelLabel?: string;
   mediaMeta?: string;
+  mediaMetaTitle?: string;
   handles?: SkeletonHandle[];
   outputs?: Record<string, SkeletonOutput | undefined>;
   icon?: Component;

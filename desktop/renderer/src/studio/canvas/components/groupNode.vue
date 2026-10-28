@@ -17,6 +17,7 @@
     <span v-else class="groupLabel" tabindex="0" :title="translate('{0}（双击编辑名称）', { 0: data.label || translate('分组') })" @dblclick.stop="editLabel" @keydown.enter.stop.prevent="editLabel">
       {{ data.label || translate("分组") }}
     </span>
+    <groupActions v-if="!editingLabel" class="groupActionBar" :groupId="id" :label="data.label || translate('分组')" />
     <button
       v-for="corner in resizeCorners"
       :key="corner.name"
@@ -41,6 +42,7 @@ import { useVueFlow, type GraphNode } from "@vue-flow/core";
 import { ElMessage } from "element-plus";
 import { resizeGroup } from "../canvasSelectionOperations";
 import { translate } from "@miaoimg/i18n/vue";
+import groupActions from "./groupActions.vue";
 
 const props = defineProps<{ id: string; data: Record<string, any>; width?: number; height?: number; selected?: boolean }>();
 const flow = useVueFlow();
@@ -160,6 +162,14 @@ watch(
   &.selected,
   &.resizing {
     .resizeCorner { opacity: 1; }
+    .groupActionBar { opacity: 1; pointer-events: auto; }
+  }
+
+  .groupActionBar {
+    opacity: 0;
+    pointer-events: none;
+
+    &:focus-within { opacity: 1; pointer-events: auto; }
   }
 
   .groupLabel,

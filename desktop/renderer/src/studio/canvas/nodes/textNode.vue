@@ -41,6 +41,9 @@
         <button type="button" class="formatButton" :title="translate('展开编辑')" :aria-label="translate('展开编辑')" @click="expandEditor"><icon-arrows-diagonal :size="17" /></button>
       </el-card>
     </template>
+    <template #topActions>
+      <storyboardAction :text="outputs.text.value" :label="nodeProps.label || ''" :disabled="generating || !textReady || !!documentError" :loadModels="() => ai.getMediaModels()" />
+    </template>
     <div class="textContent" :class="{ empty: !outputs.text.value.trim() && !inlineEditing, tinted: !!backgroundColor }" :style="backgroundColor ? { '--textNodeTint': backgroundColor } : undefined" @dblclick.stop="startInlineEdit">
       <el-alert v-if="documentError" :title="documentError" type="error" :closable="false" showIcon>
         <el-button text size="small" :disabled="generating || textReloading" @click="editing = true">{{ translate('查看并复制当前正文') }}</el-button>
@@ -64,9 +67,9 @@
             @preview="setReferencePreview"
             @remove="removeReference" />
         </div>
-        <promptInput v-model="promptModel" v-model:text="prompt" :references="referenceMentions" placeholder="写下你想讲的故事、场景或角色设定。例如：一个来自未来的机器人，在城市屋顶看星星。" />
+        <promptInput v-model="promptModel" v-model:text="prompt" :references="referenceMentions" :canvas-references="canvasReferenceMentions" :reference-kinds="referenceKinds" :connect-reference="connectReference" placeholder="写下你想讲的故事、场景或角色设定。例如：一个来自未来的机器人，在城市屋顶看星星。" />
         <div class="promptFooter">
-          <el-select v-model="model" class="modelSelect" filterable :loading="modelsLoading" :disabled="generating" :placeholder="translate('选择模型')" :aria-label="translate('生成模型')" :noDataText="translate('暂无可用模型')" placement="top-start" @visible-change="visible => visible && loadModels()">
+          <el-select v-model="model" class="modelSelect" popper-class="modelSelectPopper" filterable :loading="modelsLoading" :disabled="generating" :placeholder="translate('选择模型')" :aria-label="translate('生成模型')" :noDataText="translate('暂无可用模型')" placement="top-start" @visible-change="visible => visible && loadModels()">
             <template #prefix><icon-sparkles :size="17" /></template>
             <el-option-group v-for="group in groupNodeModels(models)" :key="group.id" :label="group.label">
               <el-option v-for="item in group.models" :key="JSON.stringify([item.providerId, item.modelId])" :label="nodeModelOptionLabel(item)" :value="JSON.stringify([item.providerId, item.modelId])" />
@@ -105,6 +108,7 @@ import { useVueFlow } from '@vue-flow/core';
 import { ElAlert, ElButton, ElCard, ElSelect, ElOption, ElMessage, ElMessageBox, ElPopover, ElDropdown, ElDropdownMenu, ElDropdownItem } from "element-plus";
 import { IconEdit, IconFileText, IconPhotoAi, IconVideo, IconSparkles, IconArrowUp, IconTypography, IconChevronDown, IconCheck, IconBold, IconItalic, IconMinus, IconArrowsDiagonal, IconMinimize } from "@tabler/icons-vue";
 import { nodeSkeleton, nodeTools, useNodeGeneration, useNode, useNodeReferences, z, type NodeAiModel, type NodeHandle } from "@miaoimg/nodes-scaffold/runtime";
+import storyboardAction from "./textNode/storyboardAction.vue";
 import referenceItem from "@miaoimg/nodes-scaffold/referenceItem";
 import promptInput from "@miaoimg/nodes-scaffold/promptInput";
 import { translate } from "@miaoimg/i18n/vue";
@@ -132,7 +136,7 @@ const { node, nodeProps, outputs, ai, files, nodeEvent, previewReady } = useNode
   label: "文本",
   outputs: { text: { dataType: "STRING", value: "" } },
 });
-const { refList, referenceMentions, preparePromptReferences, setReferencePreview, removeReference } = useNodeReferences();
+const { refList, referenceMentions, canvasReferenceMentions, referenceKinds, connectReference, preparePromptReferences, setReferencePreview, removeReference } = useNodeReferences();
 const flow = useVueFlow();
 const persistTaskBinding = inject<(() => Promise<void>) | undefined>('persistCanvasTaskBinding', undefined);
 const getCanvasSignal = inject<(() => AbortSignal) | undefined>('canvasOperationSignal', undefined);

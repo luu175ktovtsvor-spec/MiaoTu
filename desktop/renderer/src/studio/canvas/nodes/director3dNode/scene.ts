@@ -37,6 +37,14 @@ export const sceneSchema = z.strictObject({
   }).refine(object => object.objType === "mannequin" || (!object.pose && !object.hiddenParts), "仅人偶支持关节姿态和部位隐藏")).max(200).refine(objects => new Set(objects.map(object => object.threeJsonId)).size === objects.length, "物体 ID 不能重复"),
 });
 export type SceneDocument = z.infer<typeof sceneSchema>;
+// 导演台属性面板可改的物体字段：名称、位置、旋转（弧度）、缩放和材质颜色。
+export interface ObjectPatch {
+  name: string;
+  position: { x: number; y: number; z: number };
+  rotation: { rotationX: number; rotationY: number; rotationZ: number };
+  scale: { scaleX: number; scaleY: number; scaleZ: number };
+  color: string;
+}
 export const cameraViewSchema = sceneSchema.shape.sceneConfig.pick({ camera: true, controls: true });
 export type CameraView = z.infer<typeof cameraViewSchema>;
 

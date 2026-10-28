@@ -7,6 +7,10 @@ import { useNodeInputs } from "./nodeInputs";
 import type { NodeInputValue } from "./values";
 import { referenceKey, orderNodeReferences, nodeReferenceMentions } from "./nodeReferences";
 import { isPromptModel, normalizePromptModel, getPromptText, assertPromptReferencesConnected } from "./promptModel";
+import { isNodeOutput } from "./values";
+import { isTypeCompatible, validateConnection } from "./connection";
+import { translate } from "@miaoimg/i18n/vue";
+import { REFERENCE_KINDS, type ReferenceKind } from "./referenceMenu";
 
 export function useNodeReferences(handleId = "in") {
   const { id, node } = useNode<NodeData & { referenceOrder?: Record<string, string[]>; prompt?: string; promptModel?: unknown }>();
@@ -23,7 +27,56 @@ export function useNodeReferences(handleId = "in") {
       node.data.referenceOrder = { ...node.data.referenceOrder, [handleId]: values.map(referenceKey) };
     },
   });
-  const referenceMentions = computed(() => nodeReferenceMentions(refList.value, key => previews.value.get(key) || undefined));
+  const referenceMentions = computed(() => {
+    const sources = new Map(refList.value.map(item => [referenceKey(item), item.source]));
+    return nodeReferenceMentions(refList.value, key => previews.value.get(key) || undefined)
+      .map(item => ({ ...item, label: findNode(sources.get(item.id)!)?.data?.label || item.name }));
+  });
+  const referenceKinds = computed(() => {
+    const target = node.data.handles?.find(handle => handle.id === handleId && handle.type === "target");
+    return target ? REFERENCE_KINDS.filter(kind => isTypeCompatible(kind, target.dataType)) : [];
+  });
+  // 当前画布中有真实输出、且接收端口支持的素材，也可以由 @ 选入。
+  // 候选没有 {{ref N}}，只有完成连线后才分配提交序号。
+  const canvasReferenceMentions = computed(() => {
+    const target = node.data.handles?.find(handle => handle.id === handleId && handle.type === "target");
+    if (!target || !canvas.nodesConnectable.value) return [];
+    const connected = new Set(refList.value.map(referenceKey));
+    return canvas.getNodes.value.flatMap(source => {
+      if (source.id === id || source.connectable === false) return [];
+      return (source.data.handles || []).flatMap(handle => {
+        if (handle.type !== "source") return [];
+        const output = source.data.outputs?.[handle.id];
+        if (!isNodeOutput(output) || !["IMAGE", "VIDEO", "AUDIO", "STRING"].includes(output.dataType)
+          || !isTypeCompatible(output.dataType, target.dataType) || output.value === "") return [];
+        const key = referenceKey({ source: source.id, sourceHandle: handle.id });
+        if (connected.has(key)) return [];
+        const type = translate(({ IMAGE: "图片", VIDEO: "视频", AUDIO: "音频", STRING: "文本" } as Record<string, string>)[output.dataType]);
+        return [{ id: key, name: `${type} · ${source.data.label || type}`, label: source.data.label || type,
+          kind: output.dataType as ReferenceKind, media: typeof output.value === "object" ? output.value : undefined }];
+      });
+    });
+  });
+
+  function connectReference(key: string) {
+    inputValues.value = getTargetValues(id, handleId);
+    const existing = referenceMentions.value.find(item => item.id === key);
+    if (existing) return existing;
+    if (!canvasReferenceMentions.value.some(item => item.id === key)) throw new Error(translate("素材已变化，请重新选择"));
+    const [source, sourceHandle] = JSON.parse(decodeURIComponent(key)) as [string, string];
+    const sourceNode = findNode(source), targetNode = findNode(id);
+    const connection = { source, sourceHandle, target: id, targetHandle: handleId };
+    if (!sourceNode || !targetNode || targetNode.connectable === false
+      || !validateConnection(connection, { sourceNode, targetNode, nodes: canvas.getNodes.value, edges: canvas.getEdges.value })) {
+      throw new Error(translate("当前节点不支持引用这个素材"));
+    }
+    // 与手动拖线共用校验及 addEdges，不重复添加，也不绕开模型的接收规则。
+    canvas.addEdges({ id: crypto.randomUUID(), ...connection });
+    inputValues.value = getTargetValues(id, handleId);
+    const reference = referenceMentions.value.find(item => item.id === key);
+    if (!reference) throw new Error(translate("素材已变化，请重新选择"));
+    return reference;
+  }
 
   function preparePromptReferences() {
     inputValues.value = getTargetValues(id, handleId);
@@ -97,5 +150,5 @@ export function useNodeReferences(handleId = "in") {
       return { handleId, references };
     },
   });
-  return { refList, referenceMentions, referenceHistory, preparePromptReferences, setReferencePreview, removeReference };
+  return { refList, referenceMentions, canvasReferenceMentions, referenceKinds, connectReference, referenceHistory, preparePromptReferences, setReferencePreview, removeReference };
 }

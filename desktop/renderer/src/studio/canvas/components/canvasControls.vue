@@ -11,7 +11,7 @@
     :mask-stroke-width="2" />
   <!-- 左下是视图组（素材、整理、地图、连线、吸附、缩放），正下方是创作工具组；Agent 圆球贴在工具组右侧。 -->
   <panel position="bottom-left" class="canvasViewPanel">
-    <elCard class="canvasViewCard" shadow="never" :body-style="{ padding: '4px' }">
+    <elCard class="canvasViewCard canvasToolbarCard" shadow="never" :body-style="{ padding: '6px' }">
       <div class="canvasControls">
         <el-tooltip :showArrow="false" :content="assetsVisible ? translate('关闭素材库') : translate('打开素材库')" placement="top" :hideAfter="0" :enterable="false" :triggerKeys="[]">
           <el-button
@@ -23,6 +23,11 @@
             @click="assetsVisible = !assetsVisible">
             <icon-folders :size="16" />
             <span class="toolLabel">{{ translate('素材库') }}</span>
+          </el-button>
+        </el-tooltip>
+        <el-tooltip :showArrow="false" :content="translate('搜索画布节点')" placement="top" :hideAfter="0" :enterable="false" :triggerKeys="[]">
+          <el-button class="toolButton" text :disabled="!canvasId || !directory" :aria-label="translate('搜索画布节点')" @click="emit('search')">
+            <icon-search :size="17" />
           </el-button>
         </el-tooltip>
         <!-- trigger 用 contextmenu 是为了让整理按钮只由 arrangeNodes 控制显隐，同时仍保留点击外部自动关闭 -->
@@ -127,7 +132,7 @@
     </elCard>
   </panel>
   <panel position="bottom-center">
-    <elCard class="canvasControlsCard" shadow="never" :body-style="{ padding: '6px' }">
+    <elCard class="canvasControlsCard canvasToolbarCard" shadow="never" :body-style="{ padding: '6px' }">
       <div class="canvasControls">
         <el-tooltip :showArrow="false" :content="translate('添加节点')" placement="top" :hideAfter="0" :enterable="false" :triggerKeys="[]">
           <el-button class="toolButton addNodeButton" :aria-label="translate('添加节点')" @click="emit('addNode', $event)">
@@ -176,7 +181,7 @@
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from "vue";
 import { Panel, useVueFlow, type GraphNode, type XYPosition } from "@vue-flow/core";
 import { MiniMap } from "@vue-flow/minimap";
-import { IconMap, IconMagnet, IconFocusCentered, IconSettings, IconPlus, IconPointer, IconHandStop, IconArrowBackUp, IconArrowForwardUp } from "@tabler/icons-vue";
+import { IconMap, IconMagnet, IconSearch, IconFocusCentered, IconSettings, IconPlus, IconPointer, IconHandStop, IconArrowBackUp, IconArrowForwardUp } from "@tabler/icons-vue";
 import { ElMessage } from "element-plus";
 import { arrangeCanvas } from "../arrangeCanvas";
 import shortcutPanel from "./shortcutPanel.vue";
@@ -192,7 +197,7 @@ const props = defineProps<{
   canUndo?: boolean;
   canRedo?: boolean;
 }>();
-const emit = defineEmits<{ addNode: [event: MouseEvent]; tool: [tool: "move" | "hand"]; undo: []; redo: [] }>();
+const emit = defineEmits<{ addNode: [event: MouseEvent]; tool: [tool: "move" | "hand"]; undo: []; redo: []; search: [] }>();
 const snapEnabled = defineModel<boolean>("snapEnabled", { required: true });
 const showEdges = defineModel<boolean>("showEdges", { required: true });
 const assetsVisible = defineModel<boolean>("assetsVisible", { default: false });

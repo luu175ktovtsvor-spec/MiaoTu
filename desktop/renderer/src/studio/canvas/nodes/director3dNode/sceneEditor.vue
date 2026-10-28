@@ -18,6 +18,13 @@
       </div>
     </template>
     <div ref="workspace" class="directorWorkspace">
+      <sceneOutline
+        v-model:selectedId="selectedObjectId"
+        :objects="scene.objectList"
+        :animatedIds="result?.tracks.map(track => track.objectId)"
+        :disabled="!ready || playing || exportingVideo || addingMannequin || tasks.some(task => !task.error)"
+        @preview="previewObject"
+        @commit="(id, patch) => emit('updateObject', id, patch)" />
       <section class="stagePanel" :aria-label="translate('场景与镜头')">
         <div class="viewport" :style="{ '--sceneAspect': sceneAspect }">
           <canvas
@@ -112,7 +119,7 @@
               </template>
             </div>
           </el-popover>
-          <el-button :icon="IconPlus" :disabled="!ready" :aria-label="translate('添加关键帧')" @click="addAnchor">{{ translate('添加关键帧') }}</el-button>
+          <el-button :icon="IconPlus" :disabled="!ready" :aria-label="translate('记录机位')" @click="addAnchor">{{ translate('记录机位') }}</el-button>
           <el-button :icon="IconMovie" :disabled="!ready || !result || exportingVideo" :loading="exportingVideo" :aria-label="translate('导出视频节点')" @click="emit('exportVideo', sceneAspect)">
             {{ exportingVideo ? translate('导出视频 {0}%', { 0: exportProgress ?? 0 }) : translate('导出视频节点') }}
           </el-button>
@@ -120,20 +127,20 @@
         <div class="controlHint">{{ translate('WASD 移动 · 空格上升 · Shift 下降 · 滚轮调焦 · 右键记录 · 左键 / Esc 退出取景') }}</div>
         <div class="referenceHeader">
           <span>
-            {{ translate('关键帧') }}
+            {{ translate('机位关键帧') }}
             <small>{{ anchors.length }}</small>
           </span>
           <small>{{ translate('拖动调整顺序') }}</small>
         </div>
         <vue-draggable v-model="anchors" class="referenceList" direction="horizontal" handle=".referenceImage" :animation="150">
           <div v-for="(anchor, index) in anchors" :key="anchor.id" class="referenceItem" :class="{ selected: activeAnchorId === anchor.id }">
-            <button class="referenceImage" type="button" :disabled="!ready" :aria-label="translate('查看关键帧 {0}', { 0: index + 1 })" @click="restoreAnchor(anchor)">
+            <button class="referenceImage" type="button" :disabled="!ready" :aria-label="translate('查看机位 {0}', { 0: index + 1 })" @click="restoreAnchor(anchor)">
               <img v-if="anchorPreviews[anchor.id]" :src="anchorPreviews[anchor.id]" alt="" draggable="false" />
               <icon-camera v-else :size="22" />
               <span>{{ String(index + 1).padStart(2, "0") }}</span>
             </button>
-            <el-button class="removeReference" :icon="IconX" text circle :aria-label="translate('删除关键帧 {0}', { 0: index + 1 })" @click="removeAnchor(anchor.id)" />
-            <el-button class="exportReference" :icon="IconPhotoPlus" text circle size="small" :title="translate('导出画布')" :disabled="!ready || !!exportingImage" :loading="exportingImage === anchor.id" :aria-label="translate('导出关键帧 {0} 到画布', { 0: index + 1 })" @click="emit('exportImage', anchor, sceneAspect, anchor.time ?? currentTime)" />
+            <el-button class="removeReference" :icon="IconX" text circle :aria-label="translate('删除机位 {0}', { 0: index + 1 })" @click="removeAnchor(anchor.id)" />
+            <el-button class="exportReference" :icon="IconPhotoPlus" text circle size="small" :title="translate('发送到画布')" :disabled="!ready || !!exportingImage" :loading="exportingImage === anchor.id" :aria-label="translate('发送机位 {0} 截图到画布', { 0: index + 1 })" @click="emit('exportImage', anchor, sceneAspect, anchor.time ?? currentTime)" />
           </div>
         </vue-draggable>
       </section>
@@ -164,14 +171,15 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { ElButton, ElDialog, ElMessage, ElSlider, ElSelect, ElOption, ElPopover, ElSwitch, ElColorPicker, ElInputNumber } from "element-plus";
 import { IconCube3dSphere, IconCamera, IconLoader2, IconPlayerPause, IconPlayerPlay, IconPlus, IconX, IconMovie, IconPhotoPlus, IconSun, IconSettings, IconUserPlus } from "@tabler/icons-vue";
 import directorPanel from "./directorPanel.vue";
+import sceneOutline from "./sceneOutline.vue";
 import directorTour from "./directorTour.vue";
 import lightDirection from "./lightDirection.vue";
 import { VueDraggable } from "vue-draggable-plus";
-import { Vector3 } from "three";
+import { Mesh, Vector3 } from "three";
 import { PointerLockControls } from "three/examples/jsm/controls/PointerLockControls.js";
-import type { SceneRuntime } from "threejson/core";
+import { getObjectByThreeJsonId, type SceneRuntime } from "threejson/core";
 import { nodeTools, z, type NodeAiModel } from "@miaoimg/nodes-scaffold/runtime";
-import { applyLighting, applySceneSettings, cameraViewSchema, captureCamera, createStage, disposeStage, type LightingSettings, type SceneDocument, type SceneSettings } from "./scene";
+import { applyLighting, applySceneSettings, cameraViewSchema, type ObjectPatch, captureCamera, createStage, disposeStage, type LightingSettings, type SceneDocument, type SceneSettings } from "./scene";
 import { anchorSchema, applyCamera, prepareMotion, sampleMotion, type CameraAnchor } from "./motion";
 import { prepareSceneAnimation, type DirectorPlan, type DirectorPlanItem, type DirectorGeneration } from "./sceneAnimation";
 import { translate } from "@miaoimg/i18n/vue";
@@ -189,7 +197,7 @@ const props = defineProps<{
   exportingImage: string;
   exportProgress?: number;
 }>();
-const emit = defineEmits<{ editInstruction: [value: string]; selectPlan: [id: string]; generate: []; loadModels: []; close: []; addMannequin: []; exportVideo: [aspect: number]; exportImage: [anchor: CameraAnchor, aspect: number, time: number] }>();
+const emit = defineEmits<{ editInstruction: [value: string]; selectPlan: [id: string]; generate: []; loadModels: []; close: []; addMannequin: []; updateObject: [id: string, patch: ObjectPatch]; exportVideo: [aspect: number]; exportImage: [anchor: CameraAnchor, aspect: number, time: number] }>();
 const anchors = defineModel<CameraAnchor[]>("anchors", { default: () => [] });
 const lighting = defineModel<LightingSettings>("lighting", { required: true });
 const sceneSettings = defineModel<SceneSettings>("sceneSettings", { required: true });
@@ -213,6 +221,7 @@ const sceneAspect = computed(() => {
   return width! / height!;
 });
 const currentTime = ref(0);
+const selectedObjectId = ref("");
 const focalLength = ref(0);
 const activeAnchorId = ref("");
 const captureFlash = ref(0);
@@ -296,6 +305,23 @@ async function loadScene() {
 // The dialog lazily mounts its canvas. Watch that mount directly: open can fire
 // before the ref exists, while opened may wait forever in an occluded window.
 watch(canvas, value => { if (value && canvasKey.value === 0) void loadScene(); }, { flush: 'post' });
+
+// 属性面板的修改直接作用到三维物体上预览，保存后不重建整个舞台，保留当前取景。
+function previewObject(id: string, patch: ObjectPatch) {
+  const target = runtime && getObjectByThreeJsonId(id, runtime.scene);
+  if (!runtime || !target) return;
+  target.position.set(patch.position.x, patch.position.y, patch.position.z);
+  target.rotation.set(patch.rotation.rotationX, patch.rotation.rotationY, patch.rotation.rotationZ);
+  target.scale.set(patch.scale.scaleX, patch.scale.scaleY, patch.scale.scaleZ);
+  target.traverse(part => {
+    if (part instanceof Mesh && !Array.isArray(part.material) && "color" in part.material) (part.material as { color: { set(value: string): void } }).color.set(patch.color);
+  });
+  runtime.invalidate();
+}
+// 只差物体名称、位置、旋转、缩放、颜色的两份场景视为同一结构，可原地更新。
+function sceneStructure(value: SceneDocument) {
+  return JSON.stringify({ ...value, objectList: value.objectList.map(({ name: _name, position: _position, rotation: _rotation, scale: _scale, material, ...rest }) => ({ ...rest, material: { ...material, color: "" } })) });
+}
 
 function setAnimation() {
   if (!runtime) return;
@@ -485,7 +511,7 @@ watch(() => [lightingDraft.value.azimuth, lightingDraft.value.elevation], ([azim
 });
 function addAnchor() {
   if (!ready.value || !runtime) return;
-  if (anchors.value.length >= 100) return void ElMessage.warning(translate("最多记录 100 个关键帧"));
+  if (anchors.value.length >= 100) return void ElMessage.warning(translate("最多记录 100 个机位"));
   pausePlayback();
   const anchor = anchorSchema.parse({ ...captureCamera(runtime), time: currentTime.value });
   anchorPreviews.value[anchor.id] = captureThumbnail();
@@ -539,7 +565,7 @@ nodeTools.register({
       if (!anchor) throw new Error('关键帧不存在');
       restoreAnchor(anchor);
     } else {
-      if (anchors.value.length >= 100) throw new Error('最多记录 100 个关键帧');
+      if (anchors.value.length >= 100) throw new Error('最多记录 100 个机位');
       const anchor = addAnchor();
       return { ...status(), anchor };
     }
@@ -571,6 +597,18 @@ watch([currentTime, playing, controlling, sceneAspect, focalLength, activeAnchor
 watch(
   () => [props.scene, props.result],
   () => {
+    if (ready.value && runtime && loadedScene && props.scene !== loadedScene && sceneStructure(props.scene) === sceneStructure(loadedScene)) {
+      for (const object of props.scene.objectList) {
+        previewObject(object.threeJsonId, {
+          name: object.name ?? "", position: object.position,
+          rotation: object.rotation ?? { rotationX: 0, rotationY: 0, rotationZ: 0 },
+          scale: object.scale ?? { scaleX: 1, scaleY: 1, scaleZ: 1 }, color: object.material.color,
+        });
+      }
+      loadedScene = props.scene;
+      if (props.result) setAnimation();
+      return;
+    }
     if (!ready.value || props.scene !== loadedScene) return void loadScene();
     try {
       setAnimation();
@@ -659,7 +697,7 @@ onBeforeUnmount(() => {
 }
 .directorWorkspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
+  grid-template-columns: 220px minmax(0, 1fr) 360px;
   gap: 24px;
   height: min(760px, calc(100dvh - 148px));
   min-height: 0;
@@ -868,14 +906,14 @@ onBeforeUnmount(() => {
 }
 @media (max-width: 1000px) {
   .directorWorkspace {
-    grid-template-columns: minmax(0, 1fr) 300px;
+    grid-template-columns: 180px minmax(0, 1fr) 300px;
     gap: 16px;
   }
 }
 @media (max-width: 760px) {
   .directorWorkspace {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(250px, 1fr) minmax(260px, 1fr);
+    grid-template-rows: auto minmax(250px, 1fr) minmax(260px, 1fr);
     overflow-y: auto;
   }
 }

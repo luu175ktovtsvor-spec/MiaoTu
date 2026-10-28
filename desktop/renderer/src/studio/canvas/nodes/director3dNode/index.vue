@@ -11,11 +11,11 @@
     :scene="scene" :result="selectedPlan" :models="models" :modelsLoading="modelsLoading" :addingMannequin="addingMannequin"
     :plans="plans" :selectedPlanId="data.selectedPlanId ?? ''" :tasks="tasks"
     :exportingVideo="exportingVideo" :exportingImage="exportingImage" :exportProgress="exportProgress"
-    @exportVideo="exportVideo" @exportImage="exportImage" @addMannequin="addMannequin().catch(() => {})"
+    @exportVideo="exportVideo" @exportImage="exportImage" @addMannequin="addMannequin().catch(() => {})" @updateObject="updateObject"
     @selectPlan="data.selectedPlanId = $event" @loadModels="loadModels" @generate="generate" @editInstruction="setPrompt" @close="editing = false">
     <template #input>
       <referenceItem v-if="refList.length" v-model="refList" @preview="setReferencePreview" @remove="removeReference" />
-      <promptInput v-model="promptModel" v-model:text="prompt" :references="referenceMentions" />
+      <promptInput v-model="promptModel" v-model:text="prompt" :references="referenceMentions" :canvas-references="canvasReferenceMentions" :reference-kinds="referenceKinds" :connect-reference="connectReference" />
     </template>
   </sceneEditor>
 </template>
@@ -31,7 +31,7 @@ import { nodeSkeleton, nodeTools, useNode, uploadNodeFile, useNodeReferences, z,
 import promptInput from "@miaoimg/nodes-scaffold/promptInput";
 import referenceItem from "@miaoimg/nodes-scaffold/referenceItem";
 import sceneEditor from "./sceneEditor.vue";
-import { capturePreview, cameraViewSchema, sceneSchema, createEmptyScene, createMannequinObject, createStage, disposeStage, getSceneLighting, type LightingSettings, type SceneDocument, type SceneSettings } from "./scene";
+import { capturePreview, cameraViewSchema, sceneSchema, createEmptyScene, createMannequinObject, createStage, disposeStage, getSceneLighting, type LightingSettings, type ObjectPatch, type SceneDocument, type SceneSettings } from "./scene";
 import { createDirectorDraft, operationSchema } from "./agentTools";
 import { directorPrompt } from "./agentPrompt";
 import { anchorSchema, prepareMotion, sampleMotion, type CameraAnchor } from "./motion";
@@ -73,7 +73,7 @@ const data = computed(() => node.data as typeof node.data & {
   selectedPlanId?: string;
   aspectRatio?: string;
 });
-const { refList, referenceMentions, preparePromptReferences, setReferencePreview, removeReference } = useNodeReferences();
+const { refList, referenceMentions, canvasReferenceMentions, referenceKinds, connectReference, preparePromptReferences, setReferencePreview, removeReference } = useNodeReferences();
 const promptModel = computed({ get: () => data.value.promptModel ?? [], set: (value: PromptModel) => { data.value.promptModel = value; } });
 const anchors = computed({ get: () => data.value.anchors ?? [], set: (value: CameraAnchor[]) => { data.value.anchors = value; } });
 const prompt = computed({ get: () => data.value.prompt ?? "", set: (value: string) => { data.value.prompt = value; } });
@@ -179,6 +179,35 @@ function assertDirectorIdle(signal?: AbortSignal) {
   if (disposed || modelLoading.value || modelError.value) throw new Error(modelError.value || '导演台尚未就绪');
   if (addingMannequin.value || exportingVideo.value || exportingImage.value || tasks.value.some(task => !task.error)) throw new Error('导演台正在生成或导出，请等待完成');
 }
+// 导演台左侧属性面板：只改名称、位置、旋转、缩放、颜色，按场景校验后落盘。
+async function updateObject(id: string, patch: ObjectPatch) {
+  try {
+    await modelReady;
+    assertDirectorIdle();
+    const workspaceFiles = files.getWorkspaceFiles();
+    const saving = modelSaving.then(async () => {
+      if (disposed) throw new Error('导演节点已关闭');
+      const current = scene.value;
+      if (!current.objectList.some(item => item.threeJsonId === id)) throw new Error(translate('物体已不存在，请重新选择'));
+      const nextScene: SceneDocument = {
+        ...current,
+        objectList: current.objectList.map(item => item.threeJsonId !== id ? item : {
+          ...item, name: patch.name || item.name, position: patch.position, rotation: patch.rotation, scale: patch.scale,
+          material: { ...item.material, color: patch.color },
+        }),
+      };
+      const value: ModelDocument = { ...modelDocument.value, scene: sceneSchema.parse(nextScene) };
+      const path = await writeModel(workspaceFiles, value);
+      if (disposed) throw new Error('导演节点已关闭');
+      modelDocument.value = value;
+      data.value.modelPath = path;
+    });
+    modelSaving = saving.catch(() => {});
+    await saving;
+  } catch (error) {
+    if (!disposed) ElMessage.error(error instanceof Error ? error.message : translate('物体修改失败'));
+  }
+}
 async function addMannequin(signal?: AbortSignal) {
   await modelReady;
   assertDirectorIdle(signal);
@@ -192,6 +221,12 @@ async function addMannequin(signal?: AbortSignal) {
       const current = scene.value;
       const mannequins = current.objectList.filter(item => item.objType === "mannequin");
       object.position.x = mannequins.length ? Math.max(...mannequins.map(item => item.position.x)) + 1 : 0;
+      // 按添加顺序命名为角色A、角色B…，场景列表里能区分每个人偶。
+      const names = new Set(current.objectList.map(item => item.name));
+      for (let index = mannequins.length; ; index++) {
+        const name = `${translate('角色')}${index < 26 ? String.fromCharCode(65 + index) : index + 1}`;
+        if (!names.has(name)) { object.name = name; break; }
+      }
       const nextScene: SceneDocument = { ...current, objectList: [...current.objectList, object] };
       if (!current.objectList.length) {
         nextScene.sceneConfig = {

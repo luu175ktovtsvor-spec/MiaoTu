@@ -7,9 +7,9 @@
         <el-slider v-model="speed" class="speedSlider" :min="0.1" :max="4" :step="0.1" :disabled="processing" :formatTooltip="value => `${value.toFixed(2)}×`" :aria-label="translate('音频变速滑块')" />
         <span class="speedLimit">4×</span>
         <el-input-number :key="String(processing)" v-model="speed" class="speedInput" :min="0.1" :max="4" :step="0.1" :precision="2" :disabled="processing" controlsPosition="right" :aria-label="translate('音频变速倍数')" />
-        <el-button class="generateButton" :icon="IconArrowUp" type="primary" :loading="processing" :disabled="disabled || !validSpeed" :title="translate('生成变速音频')" :aria-label="translate('生成变速音频')" @click="run" />
+        <el-button class="exportButton" :icon="IconDownload" type="primary" :loading="processing" :disabled="disabled || !validSpeed" :title="translate('导出变速音频')" :aria-label="translate('导出变速音频')" @click="run" />
       </div>
-      <div v-if="processing" class="processingStatus" role="status">{{ cancelling ? translate('正在取消并清理…') : translate('正在生成变速音频…') }}</div>
+      <div v-if="processing" class="processingStatus" role="status">{{ cancelling ? translate('正在取消并清理…') : translate('正在导出变速音频…') }}</div>
     </el-card>
   </teleport>
   <el-dialog class="clipDialog" :modelValue="mode === 'clip'" width="900px" alignCenter appendToBody destroyOnClose :showClose="false" :closeOnClickModal="!processing" :closeOnPressEscape="!processing" :style="{ maxWidth: 'calc(100vw - 24px)', maxHeight: '84vh', display: 'flex', flexDirection: 'column' }" @update:modelValue="value => !value && close()">
@@ -34,7 +34,7 @@
 import { computed, inject, onBeforeUnmount, ref, watch } from "vue";
 import { useNode, useVueFlow } from "@vue-flow/core";
 import { ElButton, ElCard, ElDialog, ElInputNumber, ElMessage, ElSlider } from "element-plus";
-import { IconArrowUp, IconX } from "@tabler/icons-vue";
+import { IconDownload, IconX } from "@tabler/icons-vue";
 import { nodeTools, z, showNodeError, useNodeFfmpeg, useNodeFiles, type NodeMediaValue, type WorkspaceFiles } from "@miaoimg/nodes-scaffold/runtime";
 import { translate } from "@miaoimg/i18n/vue";
 import { processAudio, AUDIO_FORMATS, type AudioFormat, type AudioSegment, type AudioProcessingOptions } from "./audioProcessing";
@@ -198,7 +198,7 @@ nodeTools.register({
     .speedLimit { font-size: 11px; color: var(--el-text-color-secondary); }
     .speedSlider { flex: 1; min-width: 70px; }
     .speedInput { width: 96px; flex-shrink: 0; }
-    .generateButton { width: 32px; height: 32px; padding: 0; margin: 0; flex-shrink: 0; }
+    .exportButton { width: 32px; height: 32px; padding: 0; margin: 0; flex-shrink: 0; }
   }
   .processingStatus { margin: 6px 4px 0; }
 }

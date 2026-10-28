@@ -38,8 +38,8 @@ const steps = computed(() => [
   },
   {
     target: ".stagePanel .referenceList",
-    title: translate("记录关键帧"),
-    description: translate("取景时按右键，或点击“添加关键帧”记录当前镜头。这里的关键帧可以拖动排序、点击回看或删除。再次生成方案时，AI 会参考这些取景及其顺序设计运镜。点击导出按钮可以导出关键帧图片。"),
+    title: translate("记录机位"),
+    description: translate("取景时按右键，或点击“记录机位”保存当前镜头。机位关键帧支持拖动排序、回看和删除，AI 会参考这些机位及其顺序设计运镜。点击图片按钮可将机位截图发送到画布。"),
   },
   {
     target: ".playbackBar",
