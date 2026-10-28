@@ -86,11 +86,14 @@ async function signout() {
   while (Date.now() < until) {
     diagnostic = await evaluate(`({
       signout: !!document.querySelector('.desktop-account-signout'),
+      panel: !!document.querySelector('.desktop-account-panel'),
       busy: document.querySelector('.desktop-account-signout')?.disabled || false,
-      error: document.querySelector('.desktop-account-error')?.textContent || '',
+      error: document.querySelector('.desktop-account-panel [role="alert"]')?.textContent || '',
       login: !!document.querySelector('#desktop-account-email')
     })`)
-    if (!diagnostic.signout) return await openAccountPanel()
+    // The local account can retire before the asynchronous action closes its
+    // dialog. Reopening during that transition races the action's setOpen(false).
+    if (!diagnostic.signout && !diagnostic.panel) return await openAccountPanel()
     if (diagnostic.error) throw new Error('Sign out failed: ' + diagnostic.error)
     await delay(250)
   }
@@ -114,9 +117,8 @@ async function assertLoginForm() {
   await wait(() => exists('#desktop-account-email'), 'email field')
   const selectMode = async (mode: 'code' | 'password') => {
     const button = mode === 'code' ? '.desktop-login-methods button:first-of-type' : '.desktop-login-methods button:last-of-type'
-    await wait(() => exists(button), mode === 'code' ? 'email-code sign-in mode' : 'password sign-in mode')
-    await evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(button)});if(b instanceof HTMLElement&&!b.disabled&&b.getAttribute('aria-pressed') !== 'true')b.click()})()`)
-    await wait(() => mode === 'code' ? exists('#desktop-account-code') : exists('#desktop-account-password'), mode === 'code' ? 'code field' : 'password field')
+    const field = mode === 'code' ? '#desktop-account-code' : '#desktop-account-password'
+    await wait(() => evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(button)});if(!(b instanceof HTMLButtonElement)||b.disabled)return false;if(b.getAttribute('aria-pressed')!=='true')b.click();return !!document.querySelector(${JSON.stringify(field)})})()`), mode === 'code' ? 'email-code sign-in mode and code field' : 'password sign-in mode and password field')
   }
   await selectMode('code')
   await wait(() => exists('.desktop-account-send'), 'code request button')
