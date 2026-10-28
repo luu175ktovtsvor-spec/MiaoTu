@@ -84,7 +84,7 @@ function allowedFormats(limit) {
   return [...new Set((values || []).map(formatName).filter(Boolean))].join('、')
 }
 
-export function unsupportedReferenceFormat(model, kind, metadata = {}, mode = '') {
+export function unsupportedReferenceFormat(model, kind, metadata: Record<string, any> = {}, mode = '') {
   const limit = referenceInputPolicy(model, kind, mode)
   const title = kind === 'image' ? '参考图片' : kind === 'video' ? '参考视频' : '参考音频'
   const actual = formatName(kind === 'image' ? metadata.mime : metadata.format || metadata.mime)

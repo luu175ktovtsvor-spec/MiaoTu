@@ -101,7 +101,13 @@ function isFrameMode(mode) {
 export function safeOutputDirectory(value) {
   const text = String(value || '').trim().replace(/^\/+|\/+$/g, '')
   if (!text || text.length > 300) return ''
-  return /^[A-Za-z0-9._\-\/]+$/.test(text) ? text : ''
+  const segments = text.split('/')
+  if (segments.some((segment) => !segment || segment === '.' || segment === '..')) return ''
+  return segments.every((segment) => /^[A-Za-z0-9_-]+$/.test(segment)) ? text : ''
+}
+
+export function parseVideoFrames(value) {
+  return value === undefined || value === '' ? undefined : Number(value)
 }
 
 export function validateVideoRequest(payload: Record<string, any> = {}, env = process.env): Record<string, any> {
@@ -143,7 +149,7 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
   }
   // 视频参数按模型能力校验：时长（秒）、分辨率、比例、生成模式与参考素材上限
   // 全部来自模型目录，前端控件与这里保持同一份数据。
-  const rawFrames = payload.frames === undefined || payload.frames === '' ? undefined : Math.floor(Number(payload.frames))
+  const rawFrames = parseVideoFrames(payload.frames)
   // 方舟 API Explorer 明确标注 Seedance 2.0 / 2.0 fast 暂不支持 frames；
   // 这些模型只能传 duration。不要因为旧画布保存过 frames 就把无效字段发给上游。
   const framesSupported = model.provider === 'ark' && !isSeedance20(model) && !isSeedance25(model)

@@ -16,7 +16,7 @@ function subKey(userId) {
 }
 
 async function readJson(response) {
-  let data = {}
+  let data: Record<string, any> = {}
   try { data = await response.json() } catch { throw Object.assign(new Error('穗禾素材库响应格式异常'), { status: 502 }) }
   if (!response.ok || data?.error) {
     const message = String(data?.error?.message || data?.message || `穗禾素材库请求失败（${response.status}）`).slice(0, 500)

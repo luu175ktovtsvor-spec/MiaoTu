@@ -6,9 +6,17 @@ export type ReleaseNotes = {
   improvements: ReleaseNoteItem[]
 }
 
-// 更新说明直接写软件修好了什么：哪一个界面、哪一项操作，以前错在哪里，现在怎样。
-// 不写「上游」「部分问题」「体验优化」这类看不出具体改动的话。
+// 更新说明面向使用软件的客户：只写具体修复和使用变化。
+// 不写部署位置、内部链路、账号架构、供应商名称或问题清单。
 export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
+  '3.1.12': {
+    title: { zh: '生成参数校验更准确', en: 'More accurate generation parameter checks' },
+    fixes: [
+      { zh: '修复视频参数校验问题，输入不符合当前模型要求的帧数时会直接提示，不会被静默改成另一个数值。', en: 'Fixed video parameter validation so frame counts that do not meet the selected model requirements are reported instead of being silently changed.' },
+      { zh: '修复特殊项目路径导致生成结果保存异常的问题，生成后的图片和视频可以正常写回当前项目。', en: 'Fixed an issue where unusual project paths could prevent generated images and videos from being saved back to the current project.' },
+    ],
+    improvements: [],
+  },
   '3.1.11': {
     title: { zh: '创作精选与模型选项更准确', en: 'More accurate showcase and model options' },
     fixes: [
