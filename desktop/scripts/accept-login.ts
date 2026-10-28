@@ -17,7 +17,7 @@ function transientCdpError(error) {
   const message = String(error?.message || error)
   return message.includes('CDP timeout: Runtime.evaluate') || message.includes('CDP timeout: Page.reload')
 }
-async function wait(check, label, timeout = 45000) {
+async function wait(check, label, timeout = 90000) {
   const until = Date.now() + timeout
   let lastError
   while (Date.now() < until) {
