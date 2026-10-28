@@ -41,7 +41,7 @@ with sqlite3.connect(args.db.resolve().as_uri() + ('?mode=rw' if args.apply else
         db.execute('DELETE FROM workspace_state')
         at = datetime.now(timezone.utc).isoformat()
         db.execute("UPDATE generations SET parameters=json_set(json_remove(parameters,'$.outputDirectory'),'$.cloudWorkspaceRetiredAt',?) WHERE COALESCE(json_extract(parameters,'$.desktopDelivery'),0)<>1", (at,))
-        db.execute("UPDATE video_results SET video_url='',thumbnail_url='',metadata=json_remove(metadata,'$.workspacePath','$.upstreamUrl','$.raw') WHERE generation_id IN (SELECT id FROM generations WHERE COALESCE(json_extract(parameters,'$.desktopDelivery'),0)<>1)")
+        db.execute("UPDATE video_results SET video_url='',thumbnail_url='',metadata=json_remove(metadata,'$.workspacePath','$.upstreamUrl') WHERE generation_id IN (SELECT id FROM generations WHERE COALESCE(json_extract(parameters,'$.desktopDelivery'),0)<>1)")
         if before != financial_state():
             raise RuntimeError('Financial/history invariant changed; transaction rolled back')
         if db.execute('PRAGMA quick_check').fetchone()[0] != 'ok':

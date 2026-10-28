@@ -960,6 +960,7 @@ async function restoreVideoResultOnce({ requestId }: Record<string, any>, sessio
   const existing = management.existingGeneration({ session, requestId })
   if (!existing) throw failure('生成记录不存在', 404)
   const record = management.generationForViewer(requestId, session)
+  if (record.parameters?.cloudWorkspaceRetiredAt) throw failure('旧云端项目文件已停用，请使用桌面版中保存的文件', 410)
   if (record?.parameters?.desktopDeliveredAt || record?.parameters?.desktopMediaExpiredAt) throw failure('服务器临时文件已清理，请打开本机保存的结果', 410)
   if (record?.status !== GENERATION_STATES.SUCCEEDED) throw failure('这次生成还没有成功，无法取回', 409)
   const video = management.videoResult(existing.id)
