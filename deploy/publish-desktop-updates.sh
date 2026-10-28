@@ -23,7 +23,9 @@ for file in "${installers[@]}"; do
   [ -s "$file" ] || { echo "缺少安装包：$file" >&2; exit 2; }
   [ -s "$file.blockmap" ] && uploads+=("$file.blockmap")
 done
-uploads+=(latest-mac.yml latest.yml)
+sh -n "$SCRIPT_DIR/install-mac.sh"
+cp "$SCRIPT_DIR/install-mac.sh" install-mac.sh
+uploads+=(install-mac.sh latest-mac.yml latest.yml)
 
 # 元数据里的每个文件都必须存在、版本一致、sha512 与实际字节一致；不一致宁可不发。
 VERIFY=$SCRIPT_DIR/verify-update-metadata.py
@@ -36,19 +38,38 @@ ssh "$REMOTE_HOST" "mkdir -p '$staging'"
 rsync -a --partial --checksum --progress "${uploads[@]}" "$REMOTE_HOST:$staging/"
 ssh "$REMOTE_HOST" "cd '$staging' && python3 - '$VERSION' latest-mac.yml latest.yml" < "$VERIFY"
 
-ssh "$REMOTE_HOST" "set -e; cd '$staging'
-for file in ${uploads[*]}; do case \"\$file\" in latest*.yml) ;; *) mv -f \"\$file\" '$REMOTE_DIR/' ;; esac; done
-cd '$REMOTE_DIR'
-ln -f '妙图-$VERSION-arm64.dmg' 'miaoimg-desktop-mac-arm64-$VERSION.dmg'
-ln -f '妙图-$VERSION-x64.dmg' 'miaoimg-desktop-mac-x64-$VERSION.dmg'
-ln -f '妙图-$VERSION-Windows-x64.exe' 'miaoimg-desktop-windows-$VERSION.exe'
-# 兼容已经发出去的固定下载地址；新文档和新安装脚本使用上面的版本化地址。
-ln -f '妙图-$VERSION-arm64.dmg' miaoimg-desktop-mac-arm64.dmg
-ln -f '妙图-$VERSION-x64.dmg' miaoimg-desktop-mac-x64.dmg
-ln -f '妙图-$VERSION-Windows-x64.exe' miaoimg-desktop-windows.exe
-mv -f '$staging/latest-mac.yml' latest-mac.yml
-mv -f '$staging/latest.yml' latest.yml
-rmdir '$staging'"
+printf -v activate_command 'bash -s -- %q %q %q' "$staging" "$REMOTE_DIR" "$VERSION"
+for file in "${uploads[@]}"; do
+  printf -v quoted_file ' %q' "$file"
+  activate_command+=$quoted_file
+done
+ssh "$REMOTE_HOST" "$activate_command" <<'REMOTE'
+set -Eeuo pipefail
+staging=$1; remote_dir=$2; version=$3; shift 3
+uploads=("$@")
+cd "$staging"
+# Existing versioned package bytes are immutable, including blockmaps.
+for file in "${uploads[@]}"; do
+  case "$file" in latest*.yml|install-mac.sh) continue ;; esac
+  if [ -e "$remote_dir/$file" ]; then
+    cmp -s "$file" "$remote_dir/$file" || { echo "拒绝覆盖已发布文件：$file" >&2; exit 1; }
+  fi
+done
+for file in "${uploads[@]}"; do
+  case "$file" in latest*.yml) ;; *) mv -f "$file" "$remote_dir/" ;; esac
+done
+cd "$remote_dir"
+ln -f "妙图-$version-arm64.dmg" "miaoimg-desktop-mac-arm64-$version.dmg"
+ln -f "妙图-$version-x64.dmg" "miaoimg-desktop-mac-x64-$version.dmg"
+ln -f "妙图-$version-Windows-x64.exe" "miaoimg-desktop-windows-$version.exe"
+# Stable names only support existing download links; archives retain the version.
+ln -f "妙图-$version-arm64.dmg" miaoimg-desktop-mac-arm64.dmg
+ln -f "妙图-$version-x64.dmg" miaoimg-desktop-mac-x64.dmg
+ln -f "妙图-$version-Windows-x64.exe" miaoimg-desktop-windows.exe
+mv -f "$staging/latest-mac.yml" latest-mac.yml
+mv -f "$staging/latest.yml" latest.yml
+rmdir "$staging"
+REMOTE
 
 for meta in latest-mac.yml latest.yml; do
   published=$(curl -fsS --max-time 30 "$PUBLIC_BASE/$meta?ts=$(date +%s)" | sed -n 's/^version: //p' | tr -d "'\"")
