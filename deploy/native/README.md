@@ -56,3 +56,11 @@ Vite 预览仍需要生成短期配置缓存：`web/node_modules/.vite-temp` 指
 日志使用 systemd journal，设定容量；维护脚本必须适配原生运行方式后才能启用。旧的 Docker 清理/同步 timer 不能原样复制到大陆。版本发布与维护共用锁；正式下载包、用户原片、账本、唯一恢复点和其他任务 WIP 不属于垃圾。
 
 验收完成清理本轮临时下载、解压包、迁移密钥、临时代理、隧道和候选进程；保留必要迁移记录。美国妙图仅在大陆生产和域名链路验收后停止，Sub2API 及所属桥接、数据库、缓存始终保持原运行方式。
+
+## 原生官网独立发布
+
+官网修复按 [macOS安装与发布规范](../../docs/macOS安装与发布规范.md) 核对正式版本、更新日志和下载/安装说明。仅官网或外置脚本变化无需重打客户端。
+
+在独立干净工作树完成 `npm --prefix web run build` 与页面验收后，将 `web/dist/index.html`、`web/dist/assets` 上传到服务器本轮私有 staging，执行 `python3 /opt/miaoimg-ops/native/publish-site.py --dist <staging/dist> --revision <完整提交SHA> --install-script <staging/install-mac.sh>`。该脚本适用于当前原生拓扑，持有发布锁，保留旧哈希资源、备份旧 HTML/安装脚本，原子切换官网并 reload Nginx，核对四个端口和主服务 PID 未变；失败恢复旧静态入口。旧 `deploy/publish-site.py --image` 只适用于历史 Docker 交付。
+
+发布后从公网实际读取脚本、版本化下载和更新日志，使用浏览器核对最新标签。保留上一份官网/脚本回滚点，清理本轮 staging 和本机预览进程。
