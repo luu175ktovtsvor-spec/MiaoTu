@@ -23,8 +23,11 @@ const datasetSql = truth.datasetSql
 const datasetPromptsSql = Number(datasetSql.prompts.rows[0]?.n || 0)
 const datasetImagesSql = Number(datasetSql.images.rows[0]?.n || 0)
 
-const email = execFileSync('ssh', ['root@96.9.225.212', 'cat', '/opt/miaoimg/secrets/admin-email'], { encoding: 'utf8' }).trim()
-const password = execFileSync('ssh', ['root@96.9.225.212', 'cat', '/opt/miaoimg/secrets/admin-password'], { encoding: 'utf8' }).trim()
+// The retired US host no longer runs MiaoImg; the operator names the target.
+const remoteHost = process.env.MIAO_REMOTE_HOST || ''
+if (!remoteHost) throw new Error('请显式设置 MIAO_REMOTE_HOST（例如 miaoimg-cn）后再读取管理员验收凭据')
+const email = execFileSync('ssh', [remoteHost, 'cat', '/opt/miaoimg/secrets/admin-email'], { encoding: 'utf8' }).trim()
+const password = execFileSync('ssh', [remoteHost, 'cat', '/opt/miaoimg/secrets/admin-password'], { encoding: 'utf8' }).trim()
 const browser = await chromium.launch({ channel: 'chrome', headless: true })
 const page = await browser.newPage({ viewport: { width: 1680, height: 1100 }, locale: 'zh-CN' })
 const results = []

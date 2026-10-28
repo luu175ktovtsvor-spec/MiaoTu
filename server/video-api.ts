@@ -22,8 +22,9 @@ import { createMediaProviderFetch, ProviderRedirectError } from './provider-fetc
 import { createMetasoVideoTask, metasoCreditsBalance, metasoVideoSettings, pollMetasoVideoTask } from './metaso-video.ts'
 import { createMediaProbe, REFERENCE_RETRY_DELAYS_MS, redactReferencePayload, summarizeReferenceValue } from './reference-assets.ts'
 import { acceptedVideoSubmissionError } from './video-submission.ts'
-import { createSuiheTask, pollSuiheTask, suiheSettings, estimateSuiheVideo } from './suihe.ts'
+import { createSuiheTask, pollSuiheTask, suiheSettings, estimateSuiheVideo, referenceBlob } from './suihe.ts'
 import { suihePricingSnapshot } from './suihe-pricing.ts'
+import { assertSuiheLibraryReferences, suiheAssetSubKey, whitelistReferenceImages } from './suihe-assets.ts'
 
 const probeVideoFile = createMediaProbe()
 
@@ -67,6 +68,10 @@ function uniqueUrls(values) {
 
 function isSuiheLibraryReference(value) {
   return /^(?:asset|whitelist):\/\/[^\s]+$/i.test(String(value || '').trim())
+}
+
+function suiheLibraryReferences(source) {
+  return [source?.image, ...(Array.isArray(source?.images) ? source.images : [])].filter(isSuiheLibraryReference)
 }
 
 function modelModes(model) {
@@ -195,11 +200,12 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
   const creativeMode = model.provider === 'suihe' && creativeModes.length
     ? (requestedCreativeMode || model.defaultCreativeMode || creativeModes[0])
     : requestedCreativeMode
-  if (creativeMode && creativeModes.length && !creativeModes.includes(creativeMode)) throw failure(`当前模型不支持创作档 ${creativeMode}`, 422)
+  const creativeModeName = value => ({ native: '标准', super_economy: '节省模式' })[value] || value
+  if (creativeMode && creativeModes.length && !creativeModes.includes(creativeMode)) throw failure(`当前模型不支持“${creativeModeName(creativeMode)}”生成模式`, 422)
   if (model.provider === 'suihe' && creativeMode && resolution) {
     const allowedCreativeResolutions = model.resolutionsByCreativeMode?.[creativeMode]
     if (Array.isArray(allowedCreativeResolutions) && !allowedCreativeResolutions.map(String).map(value => value.toLowerCase()).includes(resolution.toLowerCase())) {
-      throw failure(`${creativeMode} 创作档不支持 ${resolution}`, 422)
+      throw failure(`“${creativeModeName(creativeMode)}”生成模式不支持 ${resolution}${allowedCreativeResolutions.length ? `，可选：${allowedCreativeResolutions.join('、')}` : ''}`, 422)
     }
   }
   const resolutionDurationCap = model.maxDurationByResolution?.[resolution]
@@ -624,6 +630,11 @@ export async function prepareVideoRequest(payload, session, { env = process.env,
       throw failure(`当前普通 Grok 单图通道会沿用参考图比例（${source.width}×${source.height}），与所选 ${request.ratio} 不一致；请切换“混合参考”，或使用同比例参考图`, 422)
     }
   }
+  const libraryReferences = request.model.provider === 'suihe' ? suiheLibraryReferences(request) : []
+  if (libraryReferences.length) {
+    await assertSuiheLibraryReferences({ userId: session?.userId, references: libraryReferences, env, signal })
+    signal?.throwIfAborted()
+  }
   const imageUrls = uniqueUrls([request.image, ...request.images, request.firstFrame, request.lastFrame, ...request.keyframes.map(item => item.image.url)]).filter(url => !isSuiheLibraryReference(url))
   const needsImageValidation = Object.keys(referenceInputPolicy(request.model, 'image')).length > 0
   if ((needsImageValidation && imageUrls.length || request.videos.length || request.audios.length) && !probeReferenceMedia) throw failure('参考素材校验服务不可用，已阻止生成', 503)
@@ -761,11 +772,18 @@ export async function submitQueuedVideo(job, { management, env = process.env, fe
       // Re-read the signed workspace reference on every attempt.  This both
       // refreshes its TTL and ensures a transient provider fetch timeout never
       // reuses the URL that just failed.
-      const upstreamRequest = await referenceProviderRequest(request, job.user_id, materializeReference, { inlineArkImages: attempt > 0 })
+      let upstreamRequest = await referenceProviderRequest(request, job.user_id, materializeReference, { inlineArkImages: attempt > 0 })
+      // Suihe fails omni-reference images that may show a person unless they
+      // come from the account's whitelist; prepare that library server-side.
+      // Library calls use the plain fetch: they are not the paid submission.
+      if (request.model.provider === 'suihe' && request.mode === 'image') {
+        upstreamRequest = await whitelistReferenceImages(upstreamRequest, { userId: job.user_id, store: management, env, fetchImpl, signal,
+          readBytes: value => referenceBlob(value, 'image', { fetchImpl, signal }) })
+      }
       lastUpstreamRequest = upstreamRequest
       signal?.throwIfAborted()
       task = request.model.provider === 'suihe'
-        ? await createSuiheTask(upstreamRequest, { env, fetchImpl: dispatchFetch, signal })
+        ? await createSuiheTask(upstreamRequest, { env, fetchImpl: dispatchFetch, signal, subKey: suiheLibraryReferences(upstreamRequest).length ? suiheAssetSubKey(job.user_id) : '' })
         : request.model.provider === 'ark'
         ? await createArkVideoTask(upstreamRequest, { env, fetchImpl: dispatchFetch, signal })
         : request.model.provider === 'metaso'

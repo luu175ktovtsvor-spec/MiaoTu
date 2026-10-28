@@ -109,7 +109,7 @@ export async function estimateSuiheVideo(request, {env=process.env,fetchImpl=fet
   return current.pending
 }
 
-async function referenceBlob(source:string,kind:string,{fetchImpl,signal,bytes:providedBytes,mime:providedMime}: Record<string,any> = {}) {
+export async function referenceBlob(source:string,kind:string,{fetchImpl,signal,bytes:providedBytes,mime:providedMime}: Record<string,any> = {}) {
   const max=({image:30,video:200,audio:15})[kind]*1024*1024
   const data=/^data:([^;,]+);base64,([\s\S]+)$/.exec(source)
   let mime:string,bytes:Buffer
@@ -133,7 +133,7 @@ async function referenceBlob(source:string,kind:string,{fetchImpl,signal,bytes:p
   return new Blob([new Uint8Array(bytes)],{type:mime})
 }
 
-export async function createSuiheTask(request, {env=process.env,fetchImpl=fetch,discoveryFetch=fetchImpl,signal}: Record<string,any> = {}) {
+export async function createSuiheTask(request, {env=process.env,fetchImpl=fetch,discoveryFetch=fetchImpl,signal,subKey=''}: Record<string,any> = {}) {
   const config=suiheSettings(env)
   if(!config.enabled||!config.apiKey) throw fail('穗禾通道尚未配置',{status:503,submissionNotStarted:true})
   const rows=await refreshSuiheModels({env,fetchImpl:discoveryFetch})
@@ -214,6 +214,9 @@ export async function createSuiheTask(request, {env=process.env,fetchImpl=fetch,
     throw fail('参考素材没有完整进入穗禾上传队列，请重新连接素材后重试',{status:422,submissionNotStarted:true})
   }
   let payload:BodyInit,headers:Record<string,string>={authorization:`Bearer ${config.apiKey}`}
+  // Library materials live in the uploader's sub-key namespace; resolve
+  // them, and the resulting task, in that same namespace.
+  if(body.materials && subKey) headers['x-integrator-sub-key']=String(subKey)
   let sentFields = body
   const sentFiles:Array<Record<string,any>>=[]
   if(files.length) {

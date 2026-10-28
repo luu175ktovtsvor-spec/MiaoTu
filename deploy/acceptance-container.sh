@@ -4,7 +4,12 @@
 # a temporary directory, and media is hard-linked there and mounted read-only.
 set -Eeuo pipefail
 
-REMOTE_HOST=${REMOTE_HOST:-root@96.9.225.212}
+# Docker-era entry for the retired US MiaoImg host. The mainland service runs
+# natively (deploy/native/README.md); never fall back to an implicit host.
+if [[ -z ${REMOTE_HOST:-} ]]; then
+  echo '旧 Docker 候选入口：妙图已迁往大陆原生服务，请按 deploy/native/README.md 操作；确需使用时显式设置 REMOTE_HOST。' >&2
+  exit 2
+fi
 IMAGE_REF=${IMAGE_REF:-}
 ACC_NAME=${ACC_NAME:-}
 WEB_PORT=${ACC_WEB_PORT:-4383}

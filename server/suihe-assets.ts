@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { createMediaProviderFetch } from './provider-fetch.ts'
 import { runtimeSecret } from './runtime-secrets.ts'
 import { assertProviderRequestAllowed } from './provider-safety.ts'
@@ -56,6 +57,44 @@ export async function listSuiheAssets({ userId, library = 'whitelist', page = 1,
   return readJson(response)
 }
 
+export async function getSuiheCloudAsset({ userId, id, env = process.env, fetchImpl = fetch, signal }: Record<string, any> = {}) {
+  const config = settings(env)
+  if (!config.apiKey) throw Object.assign(new Error('穗禾素材库尚未配置'), { status: 503 })
+  const safeId = encodeURIComponent(String(id || '').trim())
+  if (!safeId) throw Object.assign(new Error('穗禾素材 ID 无效'), { status: 422 })
+  const response = await createMediaProviderFetch({ env, fetchImpl })(`${config.baseUrl}/v1/asset-library/assets/${safeId}`, {
+    headers: { authorization: `Bearer ${config.apiKey}`, 'x-integrator-sub-key': subKey(userId) }, signal,
+  })
+  return readJson(response)
+}
+
+// Users may only cite library items that exist in their own sub-key
+// namespace. Suihe does not authorize end users for the integrator, so the
+// lookup under the caller's namespace is the ownership check; whitelist
+// items must also be Active before a paid generation may reference them.
+export async function assertSuiheLibraryReferences({ userId, references = [], env = process.env, fetchImpl = fetch, signal }: Record<string, any> = {}) {
+  if (!userId) throw Object.assign(new Error('请先登录后使用素材库'), { status: 401 })
+  for (const reference of new Set<string>(references.map(value => String(value || '').trim()))) {
+    const match = /^(asset|whitelist):\/\/(.+)$/i.exec(reference)
+    if (!match) throw Object.assign(new Error('素材库引用格式无效'), { status: 422 })
+    const whitelist = match[1].toLowerCase() === 'whitelist'
+    let item
+    try {
+      item = whitelist
+        ? await getSuiheWhitelistAsset({ userId, id: match[2], env, fetchImpl, signal })
+        : await getSuiheCloudAsset({ userId, id: match[2], env, fetchImpl, signal })
+    } catch (error) {
+      if (error?.status === 422) throw Object.assign(new Error(whitelist ? '人物白名单中找不到这个角色，请重新选择' : '云端素材库中找不到这个素材，请重新选择'), { status: 422 })
+      throw error
+    }
+    if (whitelist) {
+      const status = String(item?.status || item?.data?.status || '').trim().toLowerCase()
+      if (status === 'processing') throw Object.assign(new Error('人物仍在入库处理中，请稍后再生成'), { status: 422 })
+      if (status !== 'active') throw Object.assign(new Error('人物入库未完成或失败，不能用于生成'), { status: 422 })
+    }
+  }
+}
+
 export async function getSuiheWhitelistAsset({ userId, id, env = process.env, fetchImpl = fetch, signal }: Record<string, any> = {}) {
   const config = settings(env)
   if (!config.apiKey) throw Object.assign(new Error('穗禾素材库尚未配置'), { status: 503 })
@@ -65,4 +104,60 @@ export async function getSuiheWhitelistAsset({ userId, id, env = process.env, fe
     headers: { authorization: `Bearer ${config.apiKey}`, 'x-integrator-sub-key': subKey(userId) }, signal,
   })
   return readJson(response)
+}
+
+const WHITELIST_READY_TIMEOUT_MS = 120_000
+const WHITELIST_POLL_MS = 2_000
+const isLibraryReference = value => /^(?:asset|whitelist):\/\/\S+$/i.test(String(value || '').trim())
+const sleep = (ms, signal) => new Promise<void>((resolve, reject) => {
+  const timer = setTimeout(resolve, ms)
+  signal?.addEventListener('abort', () => { clearTimeout(timer); reject(signal.reason) }, { once: true })
+})
+
+// Suihe rejects omni-reference images that may show a person unless they are
+// cited from the caller's whitelist library. Users never manage that library:
+// each reference image is uploaded once per account (keyed by its bytes),
+// awaited until Active and cited as whitelist://id. Uploads are free and work
+// for non-person images too; any image that cannot be prepared keeps the
+// ordinary multipart upload so a library hiccup never blocks other content.
+export async function whitelistReferenceImages(request, { userId, store, readBytes, env = process.env, fetchImpl = fetch, signal }: Record<string, any> = {}) {
+  if (!userId || !store || !readBytes) return request
+  const prepared = new Map<string, Promise<string>>()
+  const prepare = (value) => {
+    if (!value || isLibraryReference(value)) return Promise.resolve(value)
+    if (!prepared.has(value)) prepared.set(value, (async () => {
+      try {
+        const blob = await readBytes(value)
+        const bytes = Buffer.from(await blob.arrayBuffer())
+        const sha256 = createHash('sha256').update(bytes).digest('hex')
+        const cached = store.suiheLibraryAsset(userId, 'whitelist', sha256)
+        if (cached?.status === 'active') {
+          try {
+            const item = await getSuiheWhitelistAsset({ userId, id: cached.referenceId, env, fetchImpl, signal })
+            if (String(item?.status || '').toLowerCase() === 'active') return `whitelist://${cached.referenceId}`
+          } catch (error) { if (signal?.aborted) throw error }
+          store.forgetSuiheLibraryAsset(userId, 'whitelist', sha256)
+        }
+        const uploaded = await uploadSuiheAsset({ userId, bytes, mime: blob.type, name: `妙图参考-${sha256.slice(0, 12)}`, library: 'whitelist', env, fetchImpl, signal })
+        const id = String(uploaded?.id || uploaded?.reference_id || '').trim()
+        if (!id) return value
+        let status = String(uploaded?.status || '').toLowerCase()
+        const deadline = Date.now() + WHITELIST_READY_TIMEOUT_MS
+        while (status !== 'active' && status !== 'failed' && Date.now() < deadline) {
+          await sleep(WHITELIST_POLL_MS, signal)
+          status = String((await getSuiheWhitelistAsset({ userId, id, env, fetchImpl, signal }))?.status || '').toLowerCase()
+        }
+        if (status !== 'active') return value
+        store.saveSuiheLibraryAsset(userId, 'whitelist', sha256, id, 'active')
+        return `whitelist://${id}`
+      } catch (error) {
+        if (signal?.aborted) throw error
+        console.warn('[suihe] reference whitelist preparation failed; using direct upload', String(error?.message || error).slice(0, 200))
+        return value
+      }
+    })())
+    return prepared.get(value)
+  }
+  const [image, images] = await Promise.all([prepare(request.image), Promise.all((request.images || []).map(prepare))])
+  return { ...request, image, images }
 }

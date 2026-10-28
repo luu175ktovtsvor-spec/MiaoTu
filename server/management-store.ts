@@ -343,6 +343,17 @@ export class ManagementStore {
       CREATE INDEX IF NOT EXISTS upstream_calls_generation ON upstream_calls(generation_id);
       CREATE INDEX IF NOT EXISTS upstream_balance_time ON upstream_balance_snapshots(provider,observed_at DESC);
       CREATE INDEX IF NOT EXISTS upstream_reconciliation_time ON upstream_reconciliations(provider,to_at DESC);
+      -- Supplier library items the server created for a user's reference
+      -- image, keyed by content so each image is uploaded once and reused.
+      CREATE TABLE IF NOT EXISTS suihe_library_assets(
+        user_id TEXT NOT NULL,
+        library TEXT NOT NULL,
+        sha256 TEXT NOT NULL,
+        reference_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY(user_id,library,sha256));
       CREATE INDEX IF NOT EXISTS gen_time ON generations(created_at DESC);
       CREATE INDEX IF NOT EXISTS audit_time ON audit(created_at DESC);`)
     for (const statement of [
@@ -1648,6 +1659,18 @@ export class ManagementStore {
         return this.loadGeneration(candidate.id)
       }
     })
+  }
+  suiheLibraryAsset(userId, library, sha256) {
+    return this.get('SELECT reference_id AS referenceId,status FROM suihe_library_assets WHERE user_id=? AND library=? AND sha256=?', userId, library, sha256) || null
+  }
+  saveSuiheLibraryAsset(userId, library, sha256, referenceId, status) {
+    const now = new Date().toISOString()
+    this.run(`INSERT INTO suihe_library_assets(user_id,library,sha256,reference_id,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)
+      ON CONFLICT(user_id,library,sha256) DO UPDATE SET reference_id=excluded.reference_id,status=excluded.status,updated_at=excluded.updated_at`,
+    userId, library, sha256, referenceId, status, now, now)
+  }
+  forgetSuiheLibraryAsset(userId, library, sha256) {
+    this.run('DELETE FROM suihe_library_assets WHERE user_id=? AND library=? AND sha256=?', userId, library, sha256)
   }
   heartbeat(id, workerId) {
     return this.run("UPDATE generations SET lease_at=? WHERE id=? AND lease_id=? AND status='running'", new Date().toISOString(), id, workerId).changes === 1

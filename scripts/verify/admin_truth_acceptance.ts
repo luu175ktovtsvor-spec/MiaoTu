@@ -141,7 +141,12 @@ db.close()
 console.log(JSON.stringify({ collectedAt: new Date().toISOString(), loginStatus: loginResponse.status, sql, datasetSql, api, env }, null, 2))
 `
 
-const child = spawn('ssh', ['root@96.9.225.212', 'docker', 'exec', '-i', 'miaoimg', 'node', '--input-type=module'], { stdio: ['pipe', 'pipe', 'pipe'] })
+// Docker-era collector: it targets a `miaoimg` container, which the native
+// mainland host does not have. Refuse an implicit host instead of probing the
+// retired US server.
+const remoteHost = process.env.MIAO_REMOTE_HOST || ''
+if (!remoteHost) throw new Error('旧 Docker 采集脚本：请显式设置 MIAO_REMOTE_HOST，并确认目标机仍运行 miaoimg 容器')
+const child = spawn('ssh', [remoteHost, 'docker', 'exec', '-i', 'miaoimg', 'node', '--input-type=module'], { stdio: ['pipe', 'pipe', 'pipe'] })
 let stdout = ''
 let stderr = ''
 child.stdout.on('data', chunk => { stdout += chunk })
