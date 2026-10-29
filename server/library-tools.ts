@@ -405,7 +405,7 @@ async function saveOneReference({ workspaceFiles, userId, candidate, fetchImpl, 
     .digest('hex').slice(0, 12)
   const path = `${directory}/reference-${digest}-${randomUUID()}${safeExtension('', reference.mime)}`
   signal?.throwIfAborted()
-  const { revision } = workspaceFiles.writeBytes(userId, { path, mime: reference.mime, bytes: reference.bytes, revision: null })
+  const { revision } = await workspaceFiles.writeBytes(userId, { path, mime: reference.mime, bytes: reference.bytes, revision: null })
   return {
     index: selectionIndex,
     itemId: candidate.item.id,
@@ -532,7 +532,7 @@ const LIBRARY_TOOLS = [{
         for (const reference of saved.reverse()) {
           try {
             // 精确删除本次新文件；revision 冲突时保留之后发生的用户修改。
-            workspaceFiles.mutate(userId, { path: reference.path, revision: reference.revision, operation: 'remove', discard: true })
+            await workspaceFiles.mutate(userId, { path: reference.path, revision: reference.revision, operation: 'remove', discard: true })
           } catch (cleanupError) {
             if (cleanupError?.status !== 404) remaining.push(reference.path)
           }

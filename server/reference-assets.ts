@@ -110,7 +110,7 @@ export function redactReferencePayload(value) {
 
 export function createReferenceMaterializer({ workspaceFiles, secret, publicOrigin, inlineMaxBytes = REFERENCE_DATA_URI_MAX_BYTES }: Record<string, any> = {}) {
   if (!workspaceFiles) throw new Error('参考资源物化器缺少工作区')
-  return function materializeReference(value, userId, { kind = 'image', inline = false }: Record<string, any> = {}) {
+  return async function materializeReference(value, userId, { kind = 'image', inline = false }: Record<string, any> = {}) {
     const original = String(value || '').trim()
     const parsedData = dataUriInfo(original)
     if (parsedData) return { value: original, mime: parsedData.mime, bytes: parsedData.size, inline: true, source: 'data-uri' }
@@ -118,15 +118,15 @@ export function createReferenceMaterializer({ workspaceFiles, secret, publicOrig
     try { target = new URL(original) } catch { return { value: original, inline: false, source: 'external-url' } }
     const origin = String(publicOrigin || '').replace(/\/$/, '')
     if (!origin || target.origin !== origin || target.pathname !== '/api/imagine/reference') return { value: original, inline: false, source: 'external-url' }
-    const token = verifyReferenceToken(typeof secret === 'function' ? secret() : secret, target.searchParams.get('t'))
+    const token = verifyReferenceToken(typeof secret === 'function' ? (await secret()) : secret, target.searchParams.get('t'))
     if (!token || token.userId !== String(userId || '')) throw Object.assign(new Error('参考素材不属于当前账号，或链接已过期，请重新连接参考图后重试'), { status: 403 })
-    const file = workspaceFiles.locate(token.userId, token.path, token.project)
+    const file = (await workspaceFiles.locate(token.userId, token.path, token.project))
     if (token.revision && token.revision !== file.revision) throw Object.assign(new Error('参考素材已更新，请重新获取链接'), { status: 409 })
     if (!isReferenceMediaMime(file.mime) || !String(file.mime).startsWith(`${kind}/`)) throw Object.assign(new Error('参考素材类型不受支持'), { status: 422 })
-    const freshUrl = createReferenceUrl(typeof secret === 'function' ? secret() : secret, { userId: token.userId, path: file.path, revision: file.revision, project: file.project || token.project, publicOrigin })
+    const freshUrl = createReferenceUrl(typeof secret === 'function' ? (await secret()) : secret, { userId: token.userId, path: file.path, revision: file.revision, project: file.project || token.project, publicOrigin })
     const indexedSize = Number(file.size) || 0
     if (inline && kind === 'image' && indexedSize <= inlineMaxBytes) {
-      const content = workspaceFiles.read(token.userId, token.path, token.project)
+      const content = (await workspaceFiles.read(token.userId, token.path, token.project))
       const bytes = Buffer.from(content.bytes || [])
       if (bytes.length > inlineMaxBytes) return { value: freshUrl, mime: file.mime, bytes: bytes.length, inline: false, source: 'workspace' }
       return { value: `data:${file.mime};base64,${bytes.toString('base64')}`, mime: file.mime, bytes: bytes.length, inline: true, source: 'workspace' }
@@ -238,9 +238,9 @@ export function createReferenceMediaProbe({ workspaceFiles, secret, publicOrigin
     if (!origin || target.origin !== origin || target.pathname !== '/api/imagine/reference') {
       throw Object.assign(new Error('请先将参考图片、视频或音频上传到画布，再连接到生成节点'), { status: 422 })
     }
-    const token = verifyReferenceToken(typeof secret === 'function' ? secret() : secret, target.searchParams.get('t'))
+    const token = verifyReferenceToken(typeof secret === 'function' ? (await secret()) : secret, target.searchParams.get('t'))
     if (!token || token.userId !== userId) throw Object.assign(new Error('参考素材不属于当前账号，或链接已过期'), { status: 403 })
-    const file = workspaceFiles.stat(userId, token.path, token.project)
+    const file = (await workspaceFiles.stat(userId, token.path, token.project))
     if (token.revision && token.revision !== file.revision) throw Object.assign(new Error('参考素材已更新，请重新连接后生成'), { status: 409 })
     if (!String(file.mime || '').startsWith(kind + '/')) throw Object.assign(new Error('参考素材类型不匹配'), { status: 422 })
     const key = JSON.stringify([userId, token.project || '', file.path, file.revision, kind])
@@ -249,7 +249,7 @@ export function createReferenceMediaProbe({ workspaceFiles, secret, publicOrigin
     // lifetime instead of aborting another request's shared child process.
     if (!signal && pendingProbes.has(key)) return pendingProbes.get(key)
     const pending = (async () => {
-      const content = workspaceFiles.read(userId, token.path, token.project)
+      const content = (await workspaceFiles.read(userId, token.path, token.project))
       if (content.revision !== file.revision) throw Object.assign(new Error('参考素材已更新，请重新连接后生成'), { status: 409 })
       const metadata = { ...await probeBytes(content.bytes, kind, { signal }), mime: file.mime }
       signal?.throwIfAborted()

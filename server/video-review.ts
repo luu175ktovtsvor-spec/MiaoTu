@@ -70,7 +70,7 @@ export function createVideoReviewTool({ workspaceFiles, userId, signal, maxFrame
       if (args.timestamps !== undefined && (!Array.isArray(args.timestamps) || !args.timestamps.length || args.timestamps.length > maxFrames || args.timestamps.some(t => !Number.isFinite(t) || t < 0) || new Set(args.timestamps).size !== args.timestamps.length)) throw failure('采样时间点无效', 422)
       activeSignal?.throwIfAborted()
       // locate enforces account/project ownership before any subprocess sees the path.
-      const located = workspaceFiles.locate(userId, args.path)
+      const located = (await workspaceFiles.locate(userId, args.path))
       let temporary
       try {
         let input = located.diskPath

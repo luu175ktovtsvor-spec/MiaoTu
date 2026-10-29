@@ -113,9 +113,9 @@ export function createWebTools({ fetchImpl = fetch, beforeRequest }: Record<stri
 // The caller supplies an identity already authenticated by its HTTP/MCP host.
 // Eligibility is independent of the Agent's selected model or BYOK provider.
 export function createCloudWebTools({ management, userId, fetchImpl = fetch, beforeRequest }: Record<string, any>) {
-  return createWebTools({ fetchImpl, beforeRequest: signal => {
+  return createWebTools({ fetchImpl, beforeRequest: async signal => {
     beforeRequest?.(signal)
-    assertTextAccess({ management, session: { role: 'user', userId }, service: '联网工具' })
+    await assertTextAccess({ management, session: { role: 'user', userId }, service: '联网工具' })
   } })
 }
 

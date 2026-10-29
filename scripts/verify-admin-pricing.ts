@@ -75,8 +75,8 @@ for (const section of sections) {
   );
 }
 
-const store = new ManagementStore(":memory:");
-const source = store.costPolicy();
+const store = (await ManagementStore.open(":memory:"));
+const source = (await store.costPolicy());
 const videoId = modelCatalog()
   .filter((model: any) => model.video)
   .map((model: any) => model.publicId || model.id)
@@ -84,12 +84,12 @@ const videoId = modelCatalog()
 assert.ok(videoId, "at least one cost-plus video model must be present");
 const video = modelById(videoId);
 const tier = source.models[videoId].sizes[0];
-store.saveSettings(
+await store.saveSettings(
   { prices: { [videoId]: { video: { [tier]: 1.23 } } } },
   "pricing-verification",
 );
 
-let refreshed = store.costPolicy();
+let refreshed = (await store.costPolicy());
 assert.equal(refreshed.models[videoId].pricingMode, "cost_plus");
 assert.equal(
   refreshed.models[videoId].creditsPerSecond[tier],
@@ -97,7 +97,7 @@ assert.equal(
   "a manual price must override the cost-plus quote",
 );
 
-store.saveSettings(
+await store.saveSettings(
   {
     textPrices: {
       [ownTextModelIds()[0]]: {
@@ -109,7 +109,7 @@ store.saveSettings(
   },
   "pricing-verification",
 );
-refreshed = store.costPolicy();
+refreshed = (await store.costPolicy());
 assert.equal(
   refreshed.textModels[ownTextModelIds()[0]].inputCreditsPerMillionTokens,
   2,
@@ -126,27 +126,27 @@ console.log(
 
 // Default image/video surcharges must survive quotation, reservation and refunds. Run
 // against an isolated in-memory ledger without submitting an upstream task.
-const billing = new ManagementStore(":memory:");
-billing.saveSettings({ modelChannels: { 'doubao-seedream-4-0': { suihe: true, ark: false } } }, 'verification');
-const { user } = billing.createUser({ name: "pricing-check", email: "pricing-check@example.invalid", password: "isolated-pricing-check", points: 10 }, "verification");
+const billing = (await ManagementStore.open(":memory:"));
+await billing.saveSettings({ modelChannels: { 'doubao-seedream-4-0': { suihe: true, ark: false } } }, 'verification');
+const { user } = (await billing.createUser({ name: "pricing-check", email: "pricing-check@example.invalid", password: "isolated-pricing-check", points: 10 }, "verification"));
 const session = { role: "user", userId: user.id };
 const image = modelById("doubao-seedream-4-0");
 const imageQuote = estimateGenerationCost({ model: image, generation: { size: "2K", count: 1 } });
 assert.equal(imageQuote.points, 0.405);
-const imageReservation = billing.reserve({ session, model: image, points: imageQuote.points, prompt: "pricing only", parameters: { size: "2K", count: 1 }, status: "queued" });
-assert.equal(billing.user(user.id).points, 9.595);
-billing.cancel(imageReservation.requestId, session);
-assert.equal(billing.user(user.id).points, 10);
+const imageReservation = (await billing.reserve({ session, model: image, points: imageQuote.points, prompt: "pricing only", parameters: { size: "2K", count: 1 }, status: "queued" }));
+assert.equal((await billing.user(user.id)).points, 9.595);
+await billing.cancel(imageReservation.requestId, session);
+assert.equal((await billing.user(user.id)).points, 10);
 
 const suiheVideo = modelById("seedance-2.0");
 const parameters = { duration: 4, resolution: "480p", ratio: "16:9", suiheCost: suihePricingSnapshot(suiheVideo, { resolution: "480p" }) };
 const quote = estimateGenerationCost({ model: suiheVideo, generation: parameters });
 assert.equal(quote.breakdown.customerMarkupRmb, 0.4);
-const reservation = billing.reserve({ session, model: suiheVideo, points: quote.points, prompt: "pricing only", parameters, status: "running" });
-billing.completeVideo(reservation.id, { id: "isolated-result", url: "https://example.invalid/never-fetched.mp4", duration: 4, usage: { completion_tokens: 10000 } });
-assert.equal(billing.get("SELECT charged_points FROM generations WHERE id=?", reservation.id).charged_points, 0.7726);
-assert.equal(billing.user(user.id).points, 9.2274);
-assert.equal(Math.round(billing.get("SELECT SUM(delta) AS balance FROM ledger WHERE user_id=?", user.id).balance * 10000) / 10000, 9.2274);
+const reservation = (await billing.reserve({ session, model: suiheVideo, points: quote.points, prompt: "pricing only", parameters, status: "running" }));
+await billing.completeVideo(reservation.id, { id: "isolated-result", url: "https://example.invalid/never-fetched.mp4", duration: 4, usage: { completion_tokens: 10000 } });
+assert.equal((await billing.get("SELECT charged_points FROM generations WHERE id=?", reservation.id)).charged_points, 0.7726);
+assert.equal((await billing.user(user.id)).points, 9.2274);
+assert.equal(Math.round((await billing.get("SELECT SUM(delta) AS balance FROM ledger WHERE user_id=?", user.id)).balance * 10000) / 10000, 9.2274);
 assert.equal(estimateGenerationCost({ model: suiheVideo, generation: { ...parameters, submissionState: "started", suiheCost: { ...parameters.suiheCost, customerMarkupRmbPerUnit: 0.5 } } }).breakdown.customerMarkupRmb, 2);
 assert.equal(estimateGenerationCost({ model: suiheVideo, generation: { ...parameters, submissionState: "started", suiheCost: { ...parameters.suiheCost, customerMarkupRmbPerUnit: 0.005 } } }).breakdown.customerMarkupRmb, 0.02);
 assert.equal(estimateGenerationCost({ model: suiheVideo, generation: { ...parameters, submissionState: "started", suiheCost: undefined } }).breakdown.customerMarkupRmb, 0.2);

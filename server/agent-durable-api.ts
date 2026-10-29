@@ -83,14 +83,16 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
         assertRealmClosed(key)
         if (closing || identity() !== account || accountRevision !== revision) throw failure('会话已切换，请重试', 409)
       }
-      const scope = (operation, metadata?: any) => {
+      const scope = async (operation, metadata?: any) => {
         if (closing || identity() !== account || accountRevision !== revision) throw failure('账号已切换，原任务已停止', 403)
         if (removingProjects.has(JSON.stringify([userId,project]))) throw failure('项目正在关闭', 409)
-        assertProject(project)
+        await assertProject(project)
+        if (closing || identity() !== account || accountRevision !== revision) throw failure('账号已切换，原任务已停止',403)
+        if (removingProjects.has(JSON.stringify([userId,project]))) throw failure('项目正在关闭',409)
         return withWorkspaceProject(project, () => runWithLocale(metadata?.locale || 'zh-CN', () => executionScope(operation, metadata)))
       }
       const models = await ModelRuntime.create({ credentials: new InMemoryCredentialStore(), modelsPath: null, refreshOnCreate: false })
-      const catalog: any = scope(() => createTools(userId, { catalogOnly: true }))
+      const catalog: any = (await scope(() => createTools(userId, { catalogOnly: true })))
       const definitions = [...canvasTools, ...catalog].map(tool => ({ ...tool, ...(safeReads.has(tool.name) ? { replay: 'safe' } : {}) }))
       let host, state
       host = await DurableAgentRuntime.open({
@@ -100,7 +102,7 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
         }),
         prepareConversation: async (metadata, id, taskContext = context) => {
           const agent = await host.harness.snapshot(AgentDoc, id, taskContext)
-          return scope(async () => {
+          return (await scope(async () => {
             const registered = await model(state, metadata, { userId }, agent?.model?.provider)
             // An archived child has history but no native model configuration.
             // Bind only a still-empty slot: a concurrent direct user submission
@@ -114,10 +116,10 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
               }
             }, taskContext)
             return registered
-          }, metadata)
+          }, metadata))
         },
-        resolveChildren: (parentId, files, taskContext) => scope(() => resolveChildren(state, parentId, files, taskContext)),
-        delegation: delegation ? (task, metadata, ctx) => scope(() => delegation(task, metadata, host, ctx), metadata) : undefined,
+        resolveChildren: async (parentId, files, taskContext) => (await scope(() => resolveChildren(state, parentId, files, taskContext))),
+        delegation: delegation ? async (task, metadata, ctx) => (await scope(() => delegation(task, metadata, host, ctx), metadata)) : undefined,
         normalizeResult: value => ({ output: value?.[VIDEO_REVIEW_CONTENT] || [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value ?? null) }], ...(value?.[AGENT_TOOL_USAGE] ? { usage: value[AGENT_TOOL_USAGE] } : {}), ...(value?.summary ? { details: { publicSummary: typeof value.summary === 'string' ? value.summary : JSON.stringify(value.summary) } } : {}) }),
         executeTool: async (name, args, execution) => {
           if (canvasTools.some(tool => tool.name === name)) {
@@ -159,7 +161,7 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
             if (ancestors.has(item.id)) throw failure('原对话父子关系存在循环，请保留记录并另建对话', 409)
             const parent = byId.get(item.metadata.parentId)
             if (parent) await bindDefaults(parent, new Set([...ancestors, item.id]))
-            const defaults = scope(() => conversationDefaults(parent?.metadata))
+            const defaults = (await scope(() => conversationDefaults(parent?.metadata)))
             const missing = Object.fromEntries(Object.entries(defaults).filter(([key]) => item.metadata[key] === undefined))
             if (Object.keys(missing).length) {
               await host.configure(item.id, {}, missing)
@@ -257,7 +259,7 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
   async function locate(state, file, create = false, lineage = new Set(), expectedParentId?: number) {
     if (lineage.has(file)) throw failure('原对话父子关系存在循环，请保留记录并另建对话', 409)
     await refresh(state)
-    const item = state.files.get(file)
+    const item = (await state.files.get(file))
     if (item?.metadata.deleted) throw failure('对话已删除', 404)
     if (item && expectedParentId && item.metadata.parentId !== expectedParentId) throw failure('子任务不属于当前对话', 403)
     if (item) return item
@@ -517,16 +519,16 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
     }
     if (path.startsWith('/api/agent/control/')) {
       const account = identity(), generation = accountRevision, project = currentProject() || 'default'
-      const owner = workspaceFiles?.referenceOwner?.(session.userId) || String(session.userId)
+      const owner = (await workspaceFiles?.referenceOwner?.(session.userId)) || String(session.userId)
       const key = realmKey(session.userId, account, project)
-      const assertCurrent = () => {
+      const assertCurrent = async () => {
         if (closing) throw failure('应用正在退出', 503)
         if (!account || identity() !== account || accountRevision !== generation) throw failure('账号已切换，原任务已停止', 403)
-        if ((currentProject() || 'default') !== project || (workspaceFiles?.referenceOwner?.(session.userId) || String(session.userId)) !== owner) throw failure('工作区已切换，请重新连接', 409)
+        if ((currentProject() || 'default') !== project || ((await workspaceFiles?.referenceOwner?.(session.userId)) || String(session.userId)) !== owner) throw failure('工作区已切换，请重新连接', 409)
         if (removingProjects.has(JSON.stringify([session.userId, project]))) throw failure('项目正在关闭', 409)
-        assertProject(project)
+        await assertProject(project)
       }
-      assertCurrent()
+      await assertCurrent()
       if (path.endsWith('/events') && method === 'GET') {
         const connectionId = url.searchParams.get('connectionId') || randomUUID(), viewId = url.searchParams.get('viewId') || connectionId
         const documentId = String(request.headers['x-miaoimg-document'] || '')
@@ -543,7 +545,7 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
       }
       if (['/api/agent/control/state','/api/agent/control/result'].includes(path) && method === 'POST') {
         const payload = await readJson(request)
-        assertCurrent()
+        await assertCurrent()
         if (path.endsWith('/state')) control.updateState(key, payload, generation)
         else control.result(key, payload, generation)
         json(response, 200, { ok: true }); return true
@@ -552,29 +554,29 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
     }
     const answerScope = path === '/api/agent/native/answer' && method === 'POST' ? {
       account: identity(), revision: accountRevision, project: currentProject() || 'default',
-      owner: workspaceFiles?.referenceOwner?.(session.userId) || String(session.userId),
+      owner: (await workspaceFiles?.referenceOwner?.(session.userId)) || String(session.userId),
     } : undefined
-    const assertAnswerScope = (state?: { account: unknown; revision: number; project: string }) => {
+    const assertAnswerScope = async (state?: { account: unknown; revision: number; project: string }) => {
       if (!answerScope) return
       if (closing) throw failure('应用正在退出', 503)
       if (!answerScope.account || identity() !== answerScope.account || accountRevision !== answerScope.revision) throw failure('账号已切换，原任务已停止', 403)
       if (request.headers['x-workspace-owner'] !== answerScope.owner) throw failure('工作区账号已切换，请刷新页面', 403)
-      if ((currentProject() || 'default') !== answerScope.project || (workspaceFiles?.referenceOwner?.(session.userId) || String(session.userId)) !== answerScope.owner) throw failure('工作区已切换，请重试', 409)
+      if ((currentProject() || 'default') !== answerScope.project || ((await workspaceFiles?.referenceOwner?.(session.userId)) || String(session.userId)) !== answerScope.owner) throw failure('工作区已切换，请重试', 409)
       if (state && (state.account !== answerScope.account || state.revision !== answerScope.revision || state.project !== answerScope.project)) throw failure('会话已切换，请重试', 409)
       if (removingProjects.has(JSON.stringify([session.userId, answerScope.project]))) throw failure('项目正在关闭', 409)
-      assertProject(answerScope.project)
+      await assertProject(answerScope.project)
     }
-    assertAnswerScope()
+    await assertAnswerScope()
     const state = await realm(session.userId, answerScope)
-    assertAnswerScope(state)
+    await assertAnswerScope(state)
     await refresh(state)
-    assertAnswerScope(state)
+    await assertAnswerScope(state)
     if (path === '/api/agent/list' && method === 'GET') {
       const history = legacy.list(session.userId, new Set(state.files.keys())).filter(item => !state.files.has(item.file))
       for (const [file, item] of state.files) if (!item.metadata.parentFile && !item.metadata.deleted) history.push({ file, name: item.metadata.name, modified: item.metadata.updatedAt || item.metadata.createdAt, messageCount: 0 })
       history.sort((left, right) => String(right.modified).localeCompare(String(left.modified)))
       let latest = null
-      if (url.searchParams.get('includeLatest') === '1' && history[0]) { const item = state.files.get(history[0].file); latest = item ? await snapshot(state, item) : recentConversation({ ...legacy.get(session.userId, history[0].file), engine: 'pi-durable', historyRevision: 0 }) }
+      if (url.searchParams.get('includeLatest') === '1' && history[0]) { const item = (await state.files.get(history[0].file)); latest = item ? await snapshot(state, item) : recentConversation({ ...legacy.get(session.userId, history[0].file), engine: 'pi-durable', historyRevision: 0 }) }
       json(response, 200, { code: 200, data: history, session: latest, engine: 'pi-durable' }); return true
     }
     if (path === '/api/agent/create' && method === 'POST') {
@@ -609,7 +611,7 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
       json(response, 200, { code: 200, data: { file, ...(submissionId === undefined ? { inputId } : { submissionId }), ...receipt } }); return true
     }
     const payload = await readJson(request, 4 * 1024 * 1024)
-    assertAnswerScope(state)
+    await assertAnswerScope(state)
     const file = payload.sessionFile ? legacy.path(payload.sessionFile) : ''
     if (path === '/api/agent/submit' && method === 'POST') {
       if (payload.memoryEnabled !== undefined && typeof payload.memoryEnabled !== 'boolean') throw failure('记忆开关必须为布尔值')
@@ -668,7 +670,7 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
     }
     const questionId = /^q:(\d+):(\d+)$/.exec(String(payload.callId || ''))
     const item = file ? await locked(state, file, () => locate(state, file, true)) : questionId ? state.filesById.get(Number(questionId[1])) : null
-    assertAnswerScope(state)
+    await assertAnswerScope(state)
     if (item?.metadata.deleted) throw failure('对话已删除', 404)
     if (!item) return false // legacy mutation keeps its original semantics
     if (path === '/api/agent/native/input' && method === 'POST') {
@@ -682,8 +684,8 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
       const match = /^q:(\d+):(\d+)$/.exec(String(payload.callId || ''))
       if (!match || idOf(match[1]) !== item.id) throw failure('提问不属于当前对话', 403)
       const answer = payload.skipped || payload.cancelled ? { skipped: true } : payload.values && typeof payload.values === 'object' ? { values: payload.values } : { answer: String(payload.answer || '') }
-      const data = await state.scope(() => {
-        assertAnswerScope(state)
+      const data = await state.scope(async () => {
+        await assertAnswerScope(state)
         return state.host.answer(idOf(match[2]), answer, item.id)
       }, item.metadata)
       json(response, 200, { code: 200, data }); return true
@@ -694,7 +696,7 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
     }
     if (path === '/api/agent/delete' && method === 'DELETE') {
       const removed = await locked(state, file, () => state.host.remove(item.id))
-      for (const target of removed) { const cached = state.files.get(target.file); if (cached) cached.metadata.deleted = true }
+      for (const target of removed) { const cached = (await state.files.get(target.file)); if (cached) cached.metadata.deleted = true }
       await state.archive.flush()
       json(response, 200, { code: 200, data: { file, files: removed.map(target => target.file), removed: removed.length } }); return true
     }

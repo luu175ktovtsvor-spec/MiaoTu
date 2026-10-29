@@ -1,3 +1,6 @@
+import { forEachAsync, mapAsync } from './async-collections.ts'
+import { CloudDatabase } from './cloud-database.ts'
+import { redisRuntime } from './redis-runtime.ts'
 import { TextBilling, normalizeTextBilling } from './text-billing.ts'
 import { finiteCost, costEvidence } from './cost-evidence.ts'
 import { mergeOperatingSettings } from './operating-settings.ts'
@@ -54,14 +57,14 @@ function googleNameSeed(name, email) {
   const candidate = String(name || '').trim() || normalizeEmail(email).split('@')[0] || 'Google 用户'
   return candidate.slice(0, 60)
 }
-function uniqueGoogleName(store, name, email, subject) {
+async function uniqueGoogleName(store, name, email, subject) {
   const base = googleNameSeed(name, email)
-  if (!store.get('SELECT id FROM users WHERE name=?', base)) return base
+  if (!(await store.get('SELECT id FROM users WHERE name=?', base))) return base
   const suffix = `-${String(subject).replace(/[^A-Za-z0-9]/g, '').slice(-8) || randomBytes(4).toString('hex')}`
   const truncated = base.slice(0, Math.max(1, 60 - suffix.length))
   let candidate = `${truncated}${suffix}`
   let index = 2
-  while (store.get('SELECT id FROM users WHERE name=?', candidate)) {
+  while ((await store.get('SELECT id FROM users WHERE name=?', candidate))) {
     const extra = `-${index++}`
     candidate = `${base.slice(0, Math.max(1, 60 - suffix.length - extra.length))}${suffix}${extra}`
   }
@@ -70,13 +73,13 @@ function uniqueGoogleName(store, name, email, subject) {
 function qqNameSeed(name) {
   return String(name || '').trim().slice(0, 60) || 'QQ 用户'
 }
-function uniqueQQName(store, name, subject) {
+async function uniqueQQName(store, name, subject) {
   const base = qqNameSeed(name)
-  if (!store.get('SELECT id FROM users WHERE name=?', base)) return base
+  if (!(await store.get('SELECT id FROM users WHERE name=?', base))) return base
   const suffix = `-${digest(subject).slice(0, 8)}`
   let candidate = `${base.slice(0, Math.max(1, 60 - suffix.length))}${suffix}`
   let index = 2
-  while (store.get('SELECT id FROM users WHERE name=?', candidate)) {
+  while ((await store.get('SELECT id FROM users WHERE name=?', candidate))) {
     const extra = `-${index++}`
     candidate = `${base.slice(0, Math.max(1, 60 - suffix.length - extra.length))}${suffix}${extra}`
   }
@@ -85,13 +88,13 @@ function uniqueQQName(store, name, subject) {
 function externalNameSeed(name, label) {
   return String(name || '').trim().slice(0, 60) || `${String(label || 'OAuth').trim().slice(0, 52)} 用户`
 }
-function uniqueExternalName(store, name, subject, label) {
+async function uniqueExternalName(store, name, subject, label) {
   const base = externalNameSeed(name, label)
-  if (!store.get('SELECT id FROM users WHERE name=?', base)) return base
+  if (!(await store.get('SELECT id FROM users WHERE name=?', base))) return base
   const suffix = `-${digest(subject).slice(0, 8)}`
   let candidate = `${base.slice(0, Math.max(1, 60 - suffix.length))}${suffix}`
   let index = 2
-  while (store.get('SELECT id FROM users WHERE name=?', candidate)) {
+  while ((await store.get('SELECT id FROM users WHERE name=?', candidate))) {
     const extra = `-${index++}`
     candidate = `${base.slice(0, Math.max(1, 60 - suffix.length - extra.length))}${suffix}${extra}`
   }
@@ -153,7 +156,7 @@ function isoStartOfDay(offsetDays = 0) {
   return date.toISOString()
 }
 
-async function readDatasetStats({ signal }: { signal?: AbortSignal } = {}) {
+async function readDatasetStatsUncached({ signal }: { signal?: AbortSignal } = {}) {
   const path = resolve(process.env.OIP_DB_PATH || join(process.cwd(), '.oip', 'runtime', 'prompts.db'))
   const previewRoot = process.env.OIP_PREVIEWS_ROOT ? resolve(process.env.OIP_PREVIEWS_ROOT) : null
   const previews = previewRoot && existsSync(previewRoot) ? countFilesUnder(previewRoot).files : null
@@ -201,22 +204,27 @@ async function readDatasetStats({ signal }: { signal?: AbortSignal } = {}) {
   let db
   try {
     db = new DatabaseSync(path, { readOnly: true })
-    const table = name => Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name))
-    const prompts = table('prompts') ? db.prepare('SELECT COUNT(*) AS n FROM prompts').get().n : null
-    const images = table('images') ? db.prepare('SELECT COUNT(*) AS n FROM images').get().n : null
-    const videos = table('videos') ? db.prepare('SELECT COUNT(*) AS n FROM videos').get().n : null
+    const table = async name => Boolean((await (await db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?")).get(name)))
+    const prompts = (await table('prompts')) ? (await (await db.prepare('SELECT COUNT(*) AS n FROM prompts')).get()).n : null
+    const images = (await table('images')) ? (await (await db.prepare('SELECT COUNT(*) AS n FROM images')).get()).n : null
+    const videos = (await table('videos')) ? (await (await db.prepare('SELECT COUNT(*) AS n FROM videos')).get()).n : null
     const latestValues = []
     for (const tableName of ['prompts', 'images']) {
-      if (!table(tableName)) continue
-      const columns = new Set(db.prepare(`PRAGMA table_info(${tableName})`).all().map(column => column.name))
+      if (!(await table(tableName))) continue
+      const columns = new Set((await (await db.prepare(`PRAGMA table_info(${tableName})`)).all()).map(column => column.name))
       const timestampColumn = ['updated_at', 'collected_at', 'created_at'].find(column => columns.has(column))
-      if (timestampColumn) latestValues.push(db.prepare(`SELECT MAX(${timestampColumn}) AS value FROM ${tableName}`).get().value)
+      if (timestampColumn) latestValues.push((await (await db.prepare(`SELECT MAX(${timestampColumn}) AS value FROM ${tableName}`)).get()).value)
     }
     const latestAt = latestValues.filter(Boolean).sort().at(-1) || null
     return { ...local, observedAt: new Date().toISOString(), prompts: prompts == null ? null : Number(prompts), images: images == null ? null : Number(images), videos: videos == null ? null : Number(videos), latestAt }
   } catch (error) {
     return { ...local, error: '数据集数据库读取失败' }
-  } finally { try { db?.close() } catch {} }
+  } finally { try { await db?.close() } catch {} }
+}
+
+async function readDatasetStats(options: { signal?: AbortSignal } = {}) {
+  const key = `dataset-stats:${process.env.OIP_ARCHIVE_API_URL || process.env.OIP_DB_PATH || 'local'}`
+  return redisRuntime.cacheJson(key, 5, () => readDatasetStatsUncached(options))
 }
 
 function safeJsonFile(path) {
@@ -244,22 +252,14 @@ function statusExpired(value, maxAgeMs) {
   return timestamp == null || Date.now() - timestamp > maxAgeMs
 }
 
-// 同步退让：这是启动路径，用 Atomics.wait 阻塞几十毫秒比把整个构造函数改成异步简单得多。
-const sleepSync = ms => { try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms) } catch { /* 环境不支持就直接重试 */ } }
-
-// 建表/改结构的语句全部是 IF NOT EXISTS 或可空 ADD COLUMN，重试是幂等的。
-//
-// 为什么要显式重试：容器里 image API、admin、档案 API 是**同时**起来的（web/scripts/with_api.ts
-// 连着 spawn 三个），都会走到这里建表。WAL 下「已经持有读快照、再想升级为写」冲突时 SQLite 直接
-// 返回 database is locked，**busy_timeout 对这种情况不生效**（它不是普通锁等待）。
-// 实测：5 个进程同时启动，新旧代码都有约 1/3 的轮次出现一个进程建表失败——
-// 这个进程会当场崩在构造函数里，对外就是 502。容器启动本来就是并发的，这个坑必须在这里堵掉。
-function execRetry(db, sql, attempts = 8) {
+// SQLite DDL can briefly contend at startup; retry without blocking the HTTP
+// event loop. PostgreSQL schema changes use a transaction advisory lock.
+async function execRetry(db, sql, attempts = 8) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    try { db.exec(sql); return } catch (error) {
+    try { await db.exec(sql); return } catch (error) {
       const message = String(error?.message || '')
       if (!/locked|busy/i.test(message) || attempt === attempts - 1) throw error
-      sleepSync(30 * (attempt + 1))
+      await new Promise(resolve => setTimeout(resolve, 30 * (attempt + 1)))
     }
   }
 }
@@ -272,10 +272,12 @@ export class ManagementStore {
   declare _blobStore: any
   declare textBilling: TextBilling
 
-  constructor(path = process.env.OIP_MANAGEMENT_DB || join(process.env.OIP_DATA_DIR || 'data', 'management.sqlite')) {
+  async initialize(path = process.env.OIP_MANAGEMENT_DB || join(process.env.OIP_DATA_DIR || 'data', 'management.sqlite')) {
+    if (process.env.NODE_ENV === 'production' && process.env.MIAO_DATABASE_URL && !redisRuntime.configured) throw new Error('Cloud production requires an independent MIAO_REDIS_URL')
     if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true })
-    this.db = new DatabaseSync(path)
-    execRetry(this.db, `PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
+    this.db = await CloudDatabase.open(path, process.env.MIAO_DATABASE_URL || '', process.env.NODE_ENV === 'production')
+    const initializeSchema = async () => {
+    await execRetry(this.db, `PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
       CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,name TEXT NOT NULL UNIQUE,email TEXT UNIQUE,password_hash TEXT,secret_hash TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'active',points REAL NOT NULL CHECK(points>=0),models TEXT NOT NULL DEFAULT '[]',email_verified INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS sessions(hash TEXT PRIMARY KEY,role TEXT NOT NULL,user_id TEXT,csrf TEXT NOT NULL,expires INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS auth_identities(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,provider TEXT NOT NULL,subject TEXT NOT NULL,email TEXT,created_at TEXT NOT NULL,UNIQUE(provider,subject),UNIQUE(user_id,provider));
@@ -390,63 +392,71 @@ export class ManagementStore {
       'ALTER TABLE upstream_calls ADD COLUMN cost_detail TEXT',
       'ALTER TABLE upstream_calls ADD COLUMN updated_at TEXT',
       'ALTER TABLE upstream_reconciliations ADD COLUMN details TEXT',
-    ]) { try { this.db.exec(statement) } catch {} }
+    ]) { try { await this.db.exec(statement) } catch {} }
     // 多项目维度的结构：能自己修的（workspace_state 的形状）在这里修完，修不了的（字节布局、
     // 半迁移结构）留给 scripts/migrate-projects.ts 显式执行。老库一列都不动，按单项目语义照常跑。
     // 发布代码和跑迁移是两件事，中间可能有时间差，这段时间服务必须照常工作。
-    const dimension: any = ensureProjectDimension(this)
+    const dimension: any = (await ensureProjectDimension(this))
     this.projectScoped = dimension.filesScoped
     this.stateScoped = dimension.stateScoped
     if (dimension.stateUpgraded) console.log(`[workspace] workspace_state 表已升级到项目维度：${dimension.stateRows ?? 0} 行原样保留、全部归入默认项目（只改结构，字节一个没动）`)
     else if (dimension.stateCreated) console.log('[workspace] workspace_state 表缺失，已按项目维度建好（只改结构，字节一个没动）')
     // 提醒文案和 scripts/migrate-projects.ts --report 的「判断」是同一个函数，两边不会打架。
     try {
-      const advice = layoutAdvice(projectLayoutReport(this))
+      const advice = layoutAdvice((await projectLayoutReport(this)))
       if (advice) console.warn(`[workspace] ${advice}`)
     } catch (error) {
       console.warn(`[workspace] 检查工作区布局失败：${error?.message || error}`)
     }
-    execRetry(this.db, 'CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique ON users(email) WHERE email IS NOT NULL')
-    execRetry(this.db, 'CREATE INDEX IF NOT EXISTS auth_identity_user ON auth_identities(user_id,provider)')
-    execRetry(this.db, 'CREATE INDEX IF NOT EXISTS oauth_state_expiry ON oauth_states(expires_at)')
-    this.normalizeStoredModelPermissions()
-    this.migrateGenerationIdentity()
-    this.migrateGenerationAccounting()
-    execRetry(this.db, 'CREATE UNIQUE INDEX IF NOT EXISTS generation_request_unique ON generations(request_id) WHERE request_id IS NOT NULL')
-    execRetry(this.db, 'CREATE UNIQUE INDEX IF NOT EXISTS generation_idempotency_unique ON generations(owner_scope,idempotency_key) WHERE idempotency_key IS NOT NULL')
-    execRetry(this.db, 'CREATE INDEX IF NOT EXISTS generation_queue ON generations(status,created_at)')
-    execRetry(this.db, 'CREATE INDEX IF NOT EXISTS generation_user_time ON generations(user_id,created_at DESC,id DESC)')
-    execRetry(this.db, 'CREATE INDEX IF NOT EXISTS artifact_request ON artifacts(request_id)')
-    execRetry(this.db, "CREATE INDEX IF NOT EXISTS generation_node_scope ON generations(user_id,json_extract(parameters,'$.outputDirectory'),COALESCE(json_extract(parameters,'$.workspaceProject'),'default'),created_at DESC,id DESC)")
+    await execRetry(this.db, 'CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique ON users(email) WHERE email IS NOT NULL')
+    await execRetry(this.db, 'CREATE INDEX IF NOT EXISTS auth_identity_user ON auth_identities(user_id,provider)')
+    await execRetry(this.db, 'CREATE INDEX IF NOT EXISTS oauth_state_expiry ON oauth_states(expires_at)')
+    if (process.env.MIAO_CANDIDATE_MODE !== 'true') await this.normalizeStoredModelPermissions()
+    if (process.env.MIAO_CANDIDATE_MODE !== 'true') await this.migrateGenerationIdentity()
+    if (process.env.MIAO_CANDIDATE_MODE !== 'true') await this.migrateGenerationAccounting()
+    await execRetry(this.db, 'CREATE UNIQUE INDEX IF NOT EXISTS generation_request_unique ON generations(request_id) WHERE request_id IS NOT NULL')
+    await execRetry(this.db, 'CREATE UNIQUE INDEX IF NOT EXISTS generation_idempotency_unique ON generations(owner_scope,idempotency_key) WHERE idempotency_key IS NOT NULL')
+    await execRetry(this.db, 'CREATE INDEX IF NOT EXISTS generation_queue ON generations(status,created_at)')
+    await execRetry(this.db, 'CREATE INDEX IF NOT EXISTS generation_user_time ON generations(user_id,created_at DESC,id DESC)')
+    await execRetry(this.db, "CREATE INDEX IF NOT EXISTS generation_user_active ON generations(user_id,status) WHERE status IN ('queued','running')")
+    await execRetry(this.db, 'CREATE INDEX IF NOT EXISTS artifact_request ON artifacts(request_id)')
+    await execRetry(this.db, "CREATE INDEX IF NOT EXISTS generation_node_scope ON generations(user_id,json_extract(parameters,'$.outputDirectory'),COALESCE(json_extract(parameters,'$.workspaceProject'),'default'),created_at DESC,id DESC)")
 
-    execRetry(this.db, 'CREATE INDEX IF NOT EXISTS payment_order_user_time ON payment_orders(user_id,created_at DESC)')
-    execRetry(this.db, 'CREATE INDEX IF NOT EXISTS payment_order_status_time ON payment_orders(status,created_at DESC)')
-    execRetry(this.db, 'CREATE UNIQUE INDEX IF NOT EXISTS payment_idempotency_unique ON payment_orders(owner_scope,idempotency_key) WHERE idempotency_key IS NOT NULL')
-    execRetry(this.db, 'CREATE UNIQUE INDEX IF NOT EXISTS ledger_payment_unique ON ledger(payment_order_id) WHERE payment_order_id IS NOT NULL')
-    execRetry(this.db, 'CREATE INDEX IF NOT EXISTS ledger_user_created ON ledger(user_id,created_at)')
-    execRetry(this.db, 'CREATE INDEX IF NOT EXISTS ledger_user_request ON ledger(user_id,request_id)')
-    execRetry(this.db, 'CREATE INDEX IF NOT EXISTS text_charges_user_time ON text_charges(user_id,created_at DESC)')
-    execRetry(this.db, "CREATE UNIQUE INDEX IF NOT EXISTS payment_paid_trade_unique ON payment_orders(provider,merchant_pid,upstream_trade_no) WHERE status='paid' AND upstream_trade_no IS NOT NULL")
-    execRetry(this.db, 'CREATE INDEX IF NOT EXISTS payment_qr_cache_expiry ON payment_qr_cache(expires_at)')
-    execRetry(this.db, 'CREATE INDEX IF NOT EXISTS artifact_expiry_time ON artifact_expiry(expires_at)')
-    execRetry(this.db, 'CREATE INDEX IF NOT EXISTS email_otp_lookup ON email_otps(email_hash,created_at DESC)')
+    await execRetry(this.db, 'CREATE INDEX IF NOT EXISTS payment_order_user_time ON payment_orders(user_id,created_at DESC)')
+    await execRetry(this.db, 'CREATE INDEX IF NOT EXISTS payment_order_status_time ON payment_orders(status,created_at DESC)')
+    await execRetry(this.db, 'CREATE UNIQUE INDEX IF NOT EXISTS payment_idempotency_unique ON payment_orders(owner_scope,idempotency_key) WHERE idempotency_key IS NOT NULL')
+    await execRetry(this.db, 'CREATE UNIQUE INDEX IF NOT EXISTS ledger_payment_unique ON ledger(payment_order_id) WHERE payment_order_id IS NOT NULL')
+    await execRetry(this.db, 'CREATE INDEX IF NOT EXISTS ledger_user_created ON ledger(user_id,created_at)')
+    await execRetry(this.db, 'CREATE INDEX IF NOT EXISTS ledger_user_request ON ledger(user_id,request_id)')
+    await execRetry(this.db, 'CREATE INDEX IF NOT EXISTS text_charges_user_time ON text_charges(user_id,created_at DESC)')
+    await execRetry(this.db, "CREATE UNIQUE INDEX IF NOT EXISTS payment_paid_trade_unique ON payment_orders(provider,merchant_pid,upstream_trade_no) WHERE status='paid' AND upstream_trade_no IS NOT NULL")
+    await execRetry(this.db, 'CREATE INDEX IF NOT EXISTS payment_qr_cache_expiry ON payment_qr_cache(expires_at)')
+    await execRetry(this.db, 'CREATE INDEX IF NOT EXISTS artifact_expiry_time ON artifact_expiry(expires_at)')
+    await execRetry(this.db, 'CREATE INDEX IF NOT EXISTS email_otp_lookup ON email_otps(email_hash,created_at DESC)')
     // 生成结果的字节也落磁盘。这里只保证表结构（老库要改成 bytes 可空 + storage/size），
     // 真正搬字节的迁移由 image API 启动时显式调用 migrateToDisk()，不让每个进程都跑一遍。
-    this.textBilling = new TextBilling(this, sql => execRetry(this.db, sql))
-    this.artifactFiles()
-    this.migrateVideoPricingRules()
-    this.recoverStale()
+    this.textBilling = (await TextBilling.open(this, async sql => (await execRetry(this.db, sql))))
+    await this.artifactFiles()
+    }
+    if (this.db.dialect === 'postgres') await this.db.transaction(async () => {
+      await this.db.lock('miaoimg:schema:management-v1')
+      await initializeSchema()
+    })
+    else await initializeSchema()
+    if (process.env.MIAO_CANDIDATE_MODE !== 'true') await this.migrateVideoPricingRules()
+    if (process.env.MIAO_CANDIDATE_MODE !== 'true') await this.recoverStale()
     // 启动时先读一次后台调价，避免开局几笔请求按内置价预扣。
-    try { setPricingOverrides(this.settings().prices) } catch { /* 首次建库时忽略 */ }
+    try { setPricingOverrides((await this.settings()).prices) } catch { /* 首次建库时忽略 */ }
   }
   // Apply the new default formula without overwriting administrator prices.
   // One transaction and a separate marker preserve later administrator edits.
   // Old task snapshots and historical ledger rows are never rewritten.
-  migrateVideoPricingRules() {
-    this.transaction(() => {
+  async migrateVideoPricingRules() {
+    await this.transaction(async () => {
+      await this.db.lock('settings:operating')
       const marker='video-pricing-rules-20261026-simple'
-      if(this.get('SELECT value FROM settings WHERE key=?',marker)) return
-      const row=this.get("SELECT value FROM settings WHERE key='operating'")
+      if((await this.get('SELECT value FROM settings WHERE key=?',marker))) return
+      const row=(await this.get("SELECT value FROM settings WHERE key='operating'"))
       const previous=row ? parse(row.value) : {}
       const next=structuredClone(previous)
       next.prices ||= {}
@@ -454,16 +464,16 @@ export class ManagementStore {
       // Existing manual prices remain authoritative, as do accepted task snapshots.
       next.videoPricing={...normalizeVideoPricing(previous.videoPricing),markupPerSecond:0.1,
         serverAllocationMode:'none'}
-      this.run('INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)','video-pricing-before-20261026-simple',JSON.stringify(previous))
-      this.run("INSERT INTO settings(key,value) VALUES('operating',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",JSON.stringify(next))
-      this.run('INSERT INTO settings(key,value) VALUES(?,?)',marker,JSON.stringify({version:VIDEO_PRICING_VERSION,preservedManualPrices:true}))
-      this.audit('system','pricing.rules.migrate','video',{version:VIDEO_PRICING_VERSION,preservedManualPrices:true})
+      await this.run('INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)','video-pricing-before-20261026-simple',JSON.stringify(previous))
+      await this.run("INSERT INTO settings(key,value) VALUES('operating',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",JSON.stringify(next))
+      await this.run('INSERT INTO settings(key,value) VALUES(?,?)',marker,JSON.stringify({version:VIDEO_PRICING_VERSION,preservedManualPrices:true}))
+      await this.audit('system','pricing.rules.migrate','video',{version:VIDEO_PRICING_VERSION,preservedManualPrices:true})
     })
   }
   // 懒建、全局一份：过期清理和结果回读都要用它删/读磁盘文件，
   // admin 进程（overview → recoverStale）也会走到，所以不能只在 image API 里建。
-  artifactFiles() {
-    if (!this._artifactFiles) this._artifactFiles = new ArtifactFiles(this)
+  async artifactFiles() {
+    if (!this._artifactFiles) this._artifactFiles = (await ArtifactFiles.open(this))
     return this._artifactFiles
   }
   // 内容寻址的字节存储，同样是懒建、全局一份：工作区、生成结果、对账三处共用一个实例，
@@ -472,16 +482,16 @@ export class ManagementStore {
     if (!this._blobStore) this._blobStore = new BlobStore(this)
     return this._blobStore
   }
-  all(sql, ...args) { return this.db.prepare(sql).all(...args) }
-  get(sql, ...args) { return this.db.prepare(sql).get(...args) }
-  run(sql, ...args) { return this.db.prepare(sql).run(...args) }
-  transaction(fn) { this.db.exec('BEGIN IMMEDIATE'); try { const result = fn(); this.db.exec('COMMIT'); return result } catch (e) { this.db.exec('ROLLBACK'); throw e } }
-  close() { this.db.close() }
-  workspaceForUser(userId, project = DEFAULT_PROJECT_ID) {
+  async all(sql, ...args): Promise<any[]> { return (await this.db.all(sql, ...args)) }
+  async get(sql, ...args) { return (await this.db.get(sql, ...args)) }
+  async run(sql, ...args) { return (await this.db.run(sql, ...args)) }
+  async transaction(fn) { return (await this.db.transaction(fn)) }
+  async close() { await this.db.close() }
+  async workspaceForUser(userId, project = DEFAULT_PROJECT_ID) {
     // 老库的 workspace_state 还是 user_id 单键，整个库就是默认项目。
     const row = this.stateScoped
-      ? this.get('SELECT workspace,assets,canvas_files,updated_at FROM workspace_state WHERE user_id=? AND project_id=?', userId, project)
-      : this.get('SELECT workspace,assets,canvas_files,updated_at FROM workspace_state WHERE user_id=?', userId)
+      ? (await this.get('SELECT workspace,assets,canvas_files,updated_at FROM workspace_state WHERE user_id=? AND project_id=?', userId, project))
+      : (await this.get('SELECT workspace,assets,canvas_files,updated_at FROM workspace_state WHERE user_id=?', userId))
     if (!row) return { workspace: null, assets: [], canvasFiles: {}, updatedAt: null, workspaceRevision: digest('null') }
     let workspace = null
     let assets = []
@@ -491,17 +501,17 @@ export class ManagementStore {
     try { canvasFiles = parse(row.canvas_files) } catch {}
     return { workspace, workspaceRevision: digest(JSON.stringify(workspace)), assets: Array.isArray(assets) ? assets : [], canvasFiles: canvasFiles && typeof canvasFiles === 'object' && !Array.isArray(canvasFiles) ? canvasFiles : {}, updatedAt: row.updated_at }
   }
-  saveWorkspaceForUser(userId, { workspace, assets, canvasFiles, project = DEFAULT_PROJECT_ID }: Record<string, any> = {}) {
-    const current = this.workspaceForUser(userId, project)
+  async saveWorkspaceForUser(userId, { workspace, assets, canvasFiles, project = DEFAULT_PROJECT_ID }: Record<string, any> = {}) {
+    const current = (await this.workspaceForUser(userId, project))
     const nextWorkspace = workspace === undefined ? current.workspace : workspace
     const nextAssets = assets === undefined ? current.assets : assets
     const nextCanvasFiles = canvasFiles === undefined ? current.canvasFiles : canvasFiles
     const updatedAt = new Date().toISOString()
     if (this.stateScoped) {
-      this.run(`INSERT INTO workspace_state(user_id,project_id,workspace,assets,canvas_files,updated_at) VALUES(?,?,?,?,?,?)
+      await this.run(`INSERT INTO workspace_state(user_id,project_id,workspace,assets,canvas_files,updated_at) VALUES(?,?,?,?,?,?)
         ON CONFLICT(user_id,project_id) DO UPDATE SET workspace=excluded.workspace,assets=excluded.assets,canvas_files=excluded.canvas_files,updated_at=excluded.updated_at`, userId, project, JSON.stringify(nextWorkspace ?? {}), JSON.stringify(Array.isArray(nextAssets) ? nextAssets : []), JSON.stringify(nextCanvasFiles && typeof nextCanvasFiles === 'object' && !Array.isArray(nextCanvasFiles) ? nextCanvasFiles : {}), updatedAt)
     } else {
-      this.run(`INSERT INTO workspace_state(user_id,workspace,assets,canvas_files,updated_at) VALUES(?,?,?,?,?)
+      await this.run(`INSERT INTO workspace_state(user_id,workspace,assets,canvas_files,updated_at) VALUES(?,?,?,?,?)
         ON CONFLICT(user_id) DO UPDATE SET workspace=excluded.workspace,assets=excluded.assets,canvas_files=excluded.canvas_files,updated_at=excluded.updated_at`, userId, JSON.stringify(nextWorkspace ?? {}), JSON.stringify(Array.isArray(nextAssets) ? nextAssets : []), JSON.stringify(nextCanvasFiles && typeof nextCanvasFiles === 'object' && !Array.isArray(nextCanvasFiles) ? nextCanvasFiles : {}), updatedAt)
     }
     return { workspace: nextWorkspace, workspaceRevision: digest(JSON.stringify(nextWorkspace ?? {})), assets: nextAssets, canvasFiles: nextCanvasFiles, updatedAt }
@@ -510,60 +520,60 @@ export class ManagementStore {
   // 项目的字节和文件索引在 workspace-files.ts，这里只管 projects 这张表本身。
   // 老库没有这张表：这些方法只应该在 projectScoped 为 true 时被调用，HTTP 层会先判断。
   projectRow(row) { return row ? { id: row.id, name: row.name, createdAt: row.created_at, lastOpenedAt: row.last_opened_at } : null }
-  projectForUser(userId, id) {
+  async projectForUser(userId, id) {
     if (!this.projectScoped) return null
-    return this.projectRow(this.get('SELECT id,name,created_at,last_opened_at FROM projects WHERE user_id=? AND id=?', userId, String(id || '')))
+    return this.projectRow((await this.get('SELECT id,name,created_at,last_opened_at FROM projects WHERE user_id=? AND id=?', userId, String(id || ''))))
   }
   // 每个账号都有默认项目：老账号由迁移脚本建好，新账号第一次打开工作区时在这里补上。
   // 老库（还没迁移到多项目）没有 projects 表，返回 null，调用方按单项目语义处理。
-  ensureDefaultProject(userId) {
+  async ensureDefaultProject(userId) {
     if (!this.projectScoped) return null
-    const existing = this.projectForUser(userId, DEFAULT_PROJECT_ID)
+    const existing = (await this.projectForUser(userId, DEFAULT_PROJECT_ID))
     if (existing) return existing
-    this.run('INSERT OR IGNORE INTO projects(id,user_id,name,created_at,last_opened_at) VALUES(?,?,?,?,NULL)', DEFAULT_PROJECT_ID, userId, DEFAULT_PROJECT_NAME, new Date().toISOString())
-    return this.projectForUser(userId, DEFAULT_PROJECT_ID)
+    await this.run('INSERT OR IGNORE INTO projects(id,user_id,name,created_at,last_opened_at) VALUES(?,?,?,?,NULL)', DEFAULT_PROJECT_ID, userId, DEFAULT_PROJECT_NAME, new Date().toISOString())
+    return (await this.projectForUser(userId, DEFAULT_PROJECT_ID))
   }
-  projectsForUser(userId) {
+  async projectsForUser(userId) {
     if (!this.projectScoped) return []
-    this.ensureDefaultProject(userId)
-    return this.all('SELECT id,name,created_at,last_opened_at FROM projects WHERE user_id=? ORDER BY created_at, id', userId).map(row => this.projectRow(row))
+    await this.ensureDefaultProject(userId)
+    return (await this.all('SELECT id,name,created_at,last_opened_at FROM projects WHERE user_id=? ORDER BY created_at, id', userId)).map(row => this.projectRow(row))
   }
-  createProject(userId, rawName) {
+  async createProject(userId, rawName) {
     if (!this.projectScoped) throw failure('工作区还没有迁移到多项目，请先运行 node scripts/migrate-projects.ts --apply', 409)
     const name = cleanProjectName(rawName)
-    this.ensureDefaultProject(userId)
-    if (this.get('SELECT id FROM projects WHERE user_id=? AND name=?', userId, name)) throw failure('已有同名项目')
+    await this.ensureDefaultProject(userId)
+    if ((await this.get('SELECT id FROM projects WHERE user_id=? AND name=?', userId, name))) throw failure('已有同名项目')
     const id = newProjectId()
     try {
-      this.run('INSERT INTO projects(id,user_id,name,created_at,last_opened_at) VALUES(?,?,?,?,NULL)', id, userId, name, new Date().toISOString())
+      await this.run('INSERT INTO projects(id,user_id,name,created_at,last_opened_at) VALUES(?,?,?,?,NULL)', id, userId, name, new Date().toISOString())
     } catch (error) {
       // 并发下同名项目可能同时插入，UNIQUE(user_id,name) 会拦住后到的那一个。
       if (String(error?.message || '').includes('UNIQUE')) throw failure('已有同名项目')
       throw error
     }
-    return this.projectForUser(userId, id)
+    return (await this.projectForUser(userId, id))
   }
-  renameProject(userId, rawId, rawName) {
+  async renameProject(userId, rawId, rawName) {
     if (!this.projectScoped) throw failure('工作区还没有迁移到多项目，请先运行 node scripts/migrate-projects.ts --apply', 409)
     const id = String(rawId || '').trim()
     const name = cleanProjectName(rawName)
-    if (!this.projectForUser(userId, id)) throw failure('项目不存在', 404)
-    if (this.get('SELECT id FROM projects WHERE user_id=? AND name=? AND id<>?', userId, name, id)) throw failure('已有同名项目')
-    this.run('UPDATE projects SET name=? WHERE user_id=? AND id=?', name, userId, id)
-    return this.projectForUser(userId, id)
+    if (!(await this.projectForUser(userId, id))) throw failure('项目不存在', 404)
+    if ((await this.get('SELECT id FROM projects WHERE user_id=? AND name=? AND id<>?', userId, name, id))) throw failure('已有同名项目')
+    await this.run('UPDATE projects SET name=? WHERE user_id=? AND id=?', name, userId, id)
+    return (await this.projectForUser(userId, id))
   }
   // 打开项目时刷新 last_opened_at，列表按它做「最近打开」。
-  touchProject(userId, rawId) {
+  async touchProject(userId, rawId) {
     if (!this.projectScoped) return null
     const id = String(rawId || '').trim()
-    if (!this.projectForUser(userId, id)) throw failure('项目不存在', 404)
-    this.run('UPDATE projects SET last_opened_at=? WHERE user_id=? AND id=?', new Date().toISOString(), userId, id)
-    return this.projectForUser(userId, id)
+    if (!(await this.projectForUser(userId, id))) throw failure('项目不存在', 404)
+    await this.run('UPDATE projects SET last_opened_at=? WHERE user_id=? AND id=?', new Date().toISOString(), userId, id)
+    return (await this.projectForUser(userId, id))
   }
-  audit(actor, action, target, details: Record<string, any> = {}) { this.run('INSERT INTO audit VALUES(?,?,?,?,?,?)', randomUUID(), actor, action, target, JSON.stringify(details), new Date().toISOString()) }
-  settings() {
+  async audit(actor, action, target, details: Record<string, any> = {}) { await this.run('INSERT INTO audit VALUES(?,?,?,?,?,?)', randomUUID(), actor, action, target, JSON.stringify(details), new Date().toISOString()) }
+  async settings() {
     const defaults = { enabled: true, videoEnabled: true, requireLogin: true, registrationEnabled: true, defaultModel: modelById(defaultModel())?.publicId || defaultModel(), defaultTextModel: ownTextModelById('gpt-6.1-sol')?.id || 'gpt-6.1-sol', models: {}, modelChannels: {}, prices: {}, textPrices: {} }
-    const row = this.get("SELECT value FROM settings WHERE key='operating'")
+    const row = (await this.get("SELECT value FROM settings WHERE key='operating'"))
     const stored = row ? parse(row.value) : {}
     const merged = { ...defaults, ...stored }
     const prices = normalizeModelSettings(merged.prices)
@@ -589,19 +599,20 @@ export class ManagementStore {
     }
   }
   // 参考素材签名密钥：首次使用时生成并写进设置表，持久化在数据卷里，重启不丢。
-  referenceSecret() {
-    const existing = this.get("SELECT value FROM settings WHERE key='referenceSecret'")
+  async referenceSecret() {
+    const existing = (await this.get("SELECT value FROM settings WHERE key='referenceSecret'"))
     if (existing?.value) return String(existing.value)
     const secret = randomBytes(32).toString('hex')
-    this.run("INSERT INTO settings(key,value) VALUES('referenceSecret',?) ON CONFLICT(key) DO NOTHING", secret)
-    const row = this.get("SELECT value FROM settings WHERE key='referenceSecret'")
+    await this.run("INSERT INTO settings(key,value) VALUES('referenceSecret',?) ON CONFLICT(key) DO NOTHING", secret)
+    const row = (await this.get("SELECT value FROM settings WHERE key='referenceSecret'"))
     if (!row?.value) throw failure('参考素材签名密钥初始化失败', 500)
     return String(row.value)
   }
-  saveSettings(patch, actor) {
+  async saveSettings(patch, actor) {
     if (!patch || typeof patch !== 'object' || Array.isArray(patch)) throw failure('设置字段无效')
-    return this.transaction(() => {
-      const current = this.settings()
+    return (await this.transaction(async () => {
+      await this.db.lock('settings:operating')
+      const current = (await this.settings())
       for (const key of Object.keys(patch)) if (!['enabled','videoEnabled','requireLogin','registrationEnabled','defaultModel','defaultTextModel','maxConcurrent','models','modelChannels','prices','videoPricing','textPrices','textBilling'].includes(key)) throw failure('设置字段无效')
       // Normalize aliases before merging so a legacy model id updates the
       // existing public id instead of becoming a conflicting second entry.
@@ -657,83 +668,83 @@ export class ManagementStore {
           }
         }
       }
-      this.run("INSERT INTO settings VALUES('operating',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", JSON.stringify(next))
+      await this.run("INSERT INTO settings VALUES('operating',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", JSON.stringify(next))
       // 保存后立刻在当前进程生效；其它进程下次读 settings() 时刷新。
       setPricingOverrides(next.prices)
       setVideoPricing(next.videoPricing)
-      this.audit(actor,'settings.update','operating',patch)
+      await this.audit(actor,'settings.update','operating',patch)
       return next
-    })
+    }))
   }
-  costPolicy() {
+  async costPolicy() {
     // 管理端与图片服务是独立进程；询价时读生效设置，不能等队列轮询刷新价格。
-    const settings = this.settings()
+    const settings = (await this.settings())
     const catalog = modelCatalog().map(model => activeModelForSettings(model.publicId || model.id, settings)).filter(Boolean)
     return { ...publicCostPolicy(catalog), textModels: publicTextCostPolicy(settings.textPrices) }
   }
-  normalizeStoredModelPermissions() {
-    for (const row of this.all('SELECT id,models FROM users')) {
+  async normalizeStoredModelPermissions() {
+    for (const row of (await this.all('SELECT id,models FROM users'))) {
       let models = []
       try { models = normalizeModelList(parse(row.models)) } catch { models = [] }
-      if (JSON.stringify(models) !== row.models) this.run('UPDATE users SET models=? WHERE id=?', JSON.stringify(models), row.id)
+      if (JSON.stringify(models) !== row.models) await this.run('UPDATE users SET models=? WHERE id=?', JSON.stringify(models), row.id)
     }
   }
-  migrateGenerationIdentity() {
-    this.transaction(() => {
-      const rows = this.all("SELECT id,user_id,actor FROM generations WHERE request_id IS NULL OR request_id='' ORDER BY created_at,id")
+  async migrateGenerationIdentity() {
+    await this.transaction(async () => {
+      const rows = (await this.all("SELECT id,user_id,actor FROM generations WHERE request_id IS NULL OR request_id='' ORDER BY created_at,id"))
       for (const row of rows) {
         const scope = row.user_id ? `user:${row.user_id}` : row.actor === '管理员' ? 'admin' : 'guest'
         const legacyKey = row.id.includes(':') ? row.id.slice(row.id.indexOf(':') + 1) : ''
-        const publicId = validRequestId(legacyKey) && !this.get('SELECT id FROM generations WHERE request_id=?', legacyKey) ? legacyKey : newRequestId()
-        this.run('UPDATE generations SET request_id=?,idempotency_key=?,owner_scope=? WHERE id=?', publicId, validIdempotencyKey(legacyKey) ? legacyKey : null, scope, row.id)
+        const publicId = validRequestId(legacyKey) && !(await this.get('SELECT id FROM generations WHERE request_id=?', legacyKey)) ? legacyKey : newRequestId()
+        await this.run('UPDATE generations SET request_id=?,idempotency_key=?,owner_scope=? WHERE id=?', publicId, validIdempotencyKey(legacyKey) ? legacyKey : null, scope, row.id)
       }
     })
   }
-  migrateGenerationAccounting() {
-    this.run("UPDATE generations SET reserved_points=CASE WHEN reserved_points=0 THEN points ELSE reserved_points END,charged_points=CASE WHEN charged_points=0 AND status='succeeded' THEN points ELSE charged_points END WHERE reserved_points=0 OR (status='succeeded' AND charged_points=0)")
+  async migrateGenerationAccounting() {
+    await this.run("UPDATE generations SET reserved_points=CASE WHEN reserved_points=0 THEN points ELSE reserved_points END,charged_points=CASE WHEN charged_points=0 AND status='succeeded' THEN points ELSE charged_points END WHERE reserved_points=0 OR (status='succeeded' AND charged_points=0)")
   }
-  users({ search = '', page = 1, limit = 20 }: Record<string, any> = {}) {
+  async users({ search = '', page = 1, limit = 20 }: Record<string, any> = {}) {
     page = integer(page, 1, 100000); limit = integer(limit, 1, 100)
     const term = String(search || '').trim().slice(0, 100)
     const clauses = ['1=1']; const args = []
     if (term) { clauses.push('(name LIKE ? OR email LIKE ?)'); args.push(`%${term}%`, `%${term}%`) }
     const where = clauses.join(' AND ')
-    const total = this.get(`SELECT COUNT(*) n FROM users WHERE ${where}`, ...args).n
-    const filesTable = tableColumns(this, 'workspace_files')
+    const total = (await this.get(`SELECT COUNT(*) n FROM users WHERE ${where}`, ...args)).n
+    const filesTable = (await tableColumns(this, 'workspace_files'))
     const hasFiles = filesTable.length > 0
-    const projectTable = Boolean(this.get("SELECT 1 FROM sqlite_master WHERE type='table' AND name='projects'"))
-    const items = this.all(`SELECT u.id,u.name,u.email,u.status,u.points AS stored_points,u.models,u.email_verified,u.created_at,
+    const projectTable = Boolean((await this.get("SELECT 1 FROM sqlite_master WHERE type='table' AND name='projects'")))
+    const items = (await mapAsync((await this.all(`SELECT u.id,u.name,u.email,u.status,u.points AS stored_points,u.models,u.email_verified,u.created_at,
       COALESCE((SELECT SUM(l.delta) FROM ledger l WHERE l.user_id=u.id),0) AS ledger_points,
       (SELECT COUNT(*) FROM text_charges t WHERE t.user_id=u.id AND t.status='billing_review') AS text_review_requests,
       (SELECT COUNT(*) FROM text_charges t WHERE t.user_id=u.id AND t.status='reserved') AS text_reserved_requests
-      FROM users u WHERE ${where.replaceAll('name','u.name').replaceAll('email','u.email')} ORDER BY u.created_at DESC LIMIT ? OFFSET ?`, ...args, limit, (page - 1) * limit).map((u) => {
+      FROM users u WHERE ${where.replaceAll('name','u.name').replaceAll('email','u.email')} ORDER BY u.created_at DESC LIMIT ? OFFSET ?`, ...args, limit, (page - 1) * limit)), async (u) => {
       const fileWhere = hasFiles ? ` AND mime<>'inode/directory'` : ''
-      const files = hasFiles ? this.get(`SELECT COUNT(*) AS n FROM workspace_files WHERE user_id=?${fileWhere}`, u.id)?.n || 0 : 0
-      const canvases = hasFiles ? this.get(`SELECT COUNT(*) AS n FROM workspace_files WHERE user_id=? AND mime<>'inode/directory' AND lower(path) LIKE '%.json' AND path NOT LIKE 'agent/%' AND path NOT LIKE 'nodes/%'`, u.id)?.n || 0 : 0
-      const projects = projectTable ? this.get('SELECT COUNT(*) AS n FROM projects WHERE user_id=?', u.id)?.n || 0 : (files ? 1 : 0)
-      const mcpIssued = Boolean(this.get('SELECT mcp_token_hash FROM users WHERE id=?', u.id)?.mcp_token_hash)
+      const files = hasFiles ? (await this.get(`SELECT COUNT(*) AS n FROM workspace_files WHERE user_id=?${fileWhere}`, u.id))?.n || 0 : 0
+      const canvases = hasFiles ? (await this.get(`SELECT COUNT(*) AS n FROM workspace_files WHERE user_id=? AND mime<>'inode/directory' AND lower(path) LIKE '%.json' AND path NOT LIKE 'agent/%' AND path NOT LIKE 'nodes/%'`, u.id))?.n || 0 : 0
+      const projects = projectTable ? (await this.get('SELECT COUNT(*) AS n FROM projects WHERE user_id=?', u.id))?.n || 0 : (files ? 1 : 0)
+      const mcpIssued = Boolean((await this.get('SELECT mcp_token_hash FROM users WHERE id=?', u.id))?.mcp_token_hash)
       const storedPoints = Math.round(Number(u.stored_points || 0) * 10000) / 10000
       const ledgerPoints = Math.round(Number(u.ledger_points || 0) * 10000) / 10000
       return { id: u.id, name: u.name, email: u.email, status: u.status, points: ledgerPoints, storedPoints, ledgerPoints, balanceDifference: Math.round((storedPoints - ledgerPoints) * 10000) / 10000, balanceMismatch: Math.abs(storedPoints - ledgerPoints) > 0.0001, emailVerified: Boolean(u.email_verified), models: normalizeModelList(parse(u.models)), created_at: u.created_at, canvasCount: Number(canvases), fileCount: Number(files), projectCount: Number(projects), mcpIssued, textReviewRequests: Number(u.text_review_requests), textReservedRequests: Number(u.text_reserved_requests) }
-    })
+    }))
     return { items, total, page, limit }
   }
-  balanceAudit() {
-    const rows = this.all(`SELECT u.id,u.name,u.points AS stored_points,COALESCE(SUM(l.delta),0) AS ledger_points
-      FROM users u LEFT JOIN ledger l ON l.user_id=u.id GROUP BY u.id,u.name,u.points ORDER BY u.created_at,u.id`)
+  async balanceAudit() {
+    const rows = (await this.all(`SELECT u.id,u.name,u.points AS stored_points,COALESCE(SUM(l.delta),0) AS ledger_points
+      FROM users u LEFT JOIN ledger l ON l.user_id=u.id GROUP BY u.id,u.name,u.points ORDER BY u.created_at,u.id`))
     const mismatches = rows.map(row => ({ id: row.id, name: row.name, storedPoints: Number(row.stored_points || 0), ledgerPoints: Number(row.ledger_points || 0), difference: Math.round((Number(row.stored_points || 0) - Number(row.ledger_points || 0)) * 10000) / 10000 })).filter(row => Math.abs(row.difference) > 0.0001)
     const storedTotal = rows.reduce((sum, row) => sum + Number(row.stored_points || 0), 0)
     const ledgerTotal = rows.reduce((sum, row) => sum + Number(row.ledger_points || 0), 0)
     return { checked: rows.length, matching: rows.length - mismatches.length, mismatches, storedTotal: Math.round(storedTotal * 100) / 100, ledgerTotal: Math.round(ledgerTotal * 100) / 100 }
   }
-  user(id) {
-    const row = this.get("SELECT id,name,email,status,points,models,email_verified,created_at,CASE WHEN password_hash IS NOT NULL AND password_hash<>'' THEN 1 ELSE 0 END AS has_password FROM users WHERE id=?", id)
+  async user(id) {
+    const row = (await this.get("SELECT id,name,email,status,points,models,email_verified,created_at,CASE WHEN password_hash IS NOT NULL AND password_hash<>'' THEN 1 ELSE 0 END AS has_password FROM users WHERE id=?", id))
     if (!row) return null
     const { has_password, ...user } = row
     return { ...user, hasPassword: Boolean(has_password), emailVerified: Boolean(user.email_verified), models: normalizeModelList(parse(user.models)) }
   }
-  publicUser(id) {
-    const user = this.user(id)
+  async publicUser(id) {
+    const user = (await this.user(id))
     if (!user) return null
     const { id: _internalId, ...safe } = user
     // The browser only needs a stable namespace for its local workspace. Keep
@@ -741,7 +752,7 @@ export class ManagementStore {
     // value for IndexedDB partitioning instead.
     return { ...safe, workspaceKey: `user:${digest(`workspace:${_internalId}`).slice(0, 32)}` }
   }
-  createUser({ name, email = '', password = '', points = 0, models = [] }: Record<string, any>, actor) {
+  async createUser({ name, email = '', password = '', points = 0, models = [] }: Record<string, any>, actor) {
     email = normalizeEmail(email)
     name = String(name || '').trim()
     if (!name && validEmail(email)) name = email.split('@')[0].slice(0, 60)
@@ -751,347 +762,364 @@ export class ManagementStore {
     if (!Array.isArray(models) || models.some((id) => !publicModelId(id))) throw failure('模型权限无效')
     models = normalizeModelList(models)
     points = credits(points)
-    return this.transaction(() => {
-      if (this.get('SELECT id FROM users WHERE name=?',name)) throw failure('用户名已存在',409)
-      if (email && this.get('SELECT id FROM users WHERE lower(email)=?',email)) throw failure('这个邮箱已经注册，请直接登录',409)
+    return (await this.transaction(async () => {
+      await this.db.lock('auth:account-registration')
+      if ((await this.get('SELECT id FROM users WHERE name=?',name))) throw failure('用户名已存在',409)
+      if (email && (await this.get('SELECT id FROM users WHERE lower(email)=?',email))) throw failure('这个邮箱已经注册，请直接登录',409)
       const id = randomUUID(), code = randomBytes(24).toString('base64url')
-      this.run('INSERT INTO users(id,name,email,password_hash,secret_hash,status,points,models,email_verified,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)',id,name,email || null,email ? passwordHash(password) : null,digest(code),'active',points,JSON.stringify(models),0,new Date().toISOString())
-      if (points) this.ledger(id,points,'初始额度')
-      this.audit(actor,'user.create',id,{ name, points, models })
-      return email ? { user: this.user(id) } : { user: this.user(id), accessCode: code }
-    })
+      await this.run('INSERT INTO users(id,name,email,password_hash,secret_hash,status,points,models,email_verified,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)',id,name,email || null,email ? passwordHash(password) : null,digest(code),'active',points,JSON.stringify(models),0,new Date().toISOString())
+      if (points) await this.ledger(id,points,'初始额度')
+      await this.audit(actor,'user.create',id,{ name, points, models })
+      return email ? { user: (await this.user(id)) } : { user: (await this.user(id)), accessCode: code }
+    }))
   }
-  registerUser({ email, password, name = '' }: Record<string, any>) {
+  async registerUser({ email, password, name = '' }: Record<string, any>) {
     email=normalizeEmail(email); name=String(name||'').trim()
     if(!validEmail(email)) throw failure('请输入有效的邮箱地址')
     if(!validPassword(password)) throw failure('密码长度需要为 8 到 128 位')
     if(name.length>60) throw failure('昵称不能超过 60 个字')
-    if (!this.settings().registrationEnabled) throw failure('当前暂未开放注册', 403)
-    return this.transaction(() => {
-      if(this.get('SELECT id FROM users WHERE lower(email)=?',email)) throw failure('这个邮箱已经注册，请直接登录',409)
+    if (!(await this.settings()).registrationEnabled) throw failure('当前暂未开放注册', 403)
+    return (await this.transaction(async () => {
+      await this.db.lock('auth:account-registration')
+      if((await this.get('SELECT id FROM users WHERE lower(email)=?',email))) throw failure('这个邮箱已经注册，请直接登录',409)
       const id=randomUUID(), display=name || email.split('@')[0].slice(0,60)
-      if (this.get('SELECT id FROM users WHERE name=?', display)) throw failure('这个昵称已经被使用，请换一个',409)
+      if ((await this.get('SELECT id FROM users WHERE name=?', display))) throw failure('这个昵称已经被使用，请换一个',409)
       const registrationPoints = 0
       const registrationModels = []
-      this.run('INSERT INTO users(id,name,email,password_hash,secret_hash,status,points,models,email_verified,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)',id,display,email,passwordHash(password),digest(randomBytes(32).toString('hex')),'active',registrationPoints,JSON.stringify(registrationModels),0,new Date().toISOString())
-      this.ledger(id,registrationPoints,'注册初始额度')
-      this.audit(email,'user.register',id,{email,points:registrationPoints,models:registrationModels})
-      return this.createSession('user',id)
-    })
+      await this.run('INSERT INTO users(id,name,email,password_hash,secret_hash,status,points,models,email_verified,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)',id,display,email,passwordHash(password),digest(randomBytes(32).toString('hex')),'active',registrationPoints,JSON.stringify(registrationModels),0,new Date().toISOString())
+      await this.ledger(id,registrationPoints,'注册初始额度')
+      await this.audit(email,'user.register',id,{email,points:registrationPoints,models:registrationModels})
+      return (await this.createSession('user',id))
+    }))
   }
-  loginPassword(email,password) {
+  async loginPassword(email,password) {
     email=normalizeEmail(email)
-    const row=this.get('SELECT id,password_hash,status FROM users WHERE lower(email)=?',email)
-    if(!row || row.status!=='active' || !passwordMatches(password,row.password_hash)) throw failure('邮箱或密码不正确',401)
-    this.audit(email,'user.login',row.id,{email})
-    return this.createSession('user',row.id)
+    return (await this.transaction(async () => {
+      const row=await this.get('SELECT id,password_hash,status FROM users WHERE lower(email)=?'+(this.db.dialect==='postgres'?' FOR UPDATE':''),email)
+      if(!row || row.status!=='active' || !passwordMatches(password,row.password_hash)) throw failure('邮箱或密码不正确',401)
+      await this.audit(email,'user.login',row.id,{email})
+      return (await this.createSession('user',row.id))
+    }))
   }
-  issueEmailOtp({ email, codeHash, now = Date.now(), expiresAt, cooldownMs = 60000 }: Record<string, any>) {
+  async issueEmailOtp({ email, codeHash, now = Date.now(), expiresAt, cooldownMs = 60000 }: Record<string, any>) {
     const emailHash = digest(normalizeEmail(email))
-    return this.transaction(() => {
-      const latest = this.get('SELECT created_at FROM email_otps WHERE email_hash=? ORDER BY created_at DESC LIMIT 1', emailHash)
+    await this.run('DELETE FROM email_otps WHERE expires_at<?',now)
+    return (await this.transaction(async () => {
+      await this.db.lock(`email-otp:${emailHash}`)
+      const latest = (await this.get('SELECT created_at FROM email_otps WHERE email_hash=? ORDER BY created_at DESC LIMIT 1', emailHash))
       if (latest && now - Number(latest.created_at) < cooldownMs) throw failure('验证码发送过于频繁，请稍后再试', 429)
-      this.run('DELETE FROM email_otps WHERE email_hash=? OR expires_at<?', emailHash, now)
-      this.run('INSERT INTO email_otps(id,email_hash,code_hash,created_at,expires_at,attempts,consumed_at) VALUES(?,?,?,?,?,0,NULL)', randomUUID(), emailHash, codeHash, now, expiresAt)
+      await this.run('DELETE FROM email_otps WHERE email_hash=?', emailHash)
+      await this.run('INSERT INTO email_otps(id,email_hash,code_hash,created_at,expires_at,attempts,consumed_at) VALUES(?,?,?,?,?,0,NULL)', randomUUID(), emailHash, codeHash, now, expiresAt)
       return { nextAllowedAt: now + cooldownMs }
-    })
+    }))
   }
-  consumeEmailOtp({ email, codeHash, now = Date.now(), maxAttempts = 5 }: Record<string, any>) {
+  async consumeEmailOtp({ email, codeHash, now = Date.now(), maxAttempts = 5 }: Record<string, any>) {
     const emailHash = digest(normalizeEmail(email))
     let result = false
-    this.transaction(() => {
-      const row = this.get('SELECT id,code_hash,expires_at,attempts,consumed_at FROM email_otps WHERE email_hash=? ORDER BY created_at DESC LIMIT 1', emailHash)
+    let rejected: Error | undefined
+    await this.transaction(async () => {
+      await this.db.lock(`email-otp:${emailHash}`)
+      const row = (await this.get('SELECT id,code_hash,expires_at,attempts,consumed_at FROM email_otps WHERE email_hash=? ORDER BY created_at DESC LIMIT 1', emailHash))
       if (!row || row.consumed_at || Number(row.expires_at) <= now) throw failure('验证码错误或已过期', 401)
       if (Number(row.attempts) >= maxAttempts) throw failure('验证码尝试次数过多，请重新获取', 429)
       if (!secretMatches(codeHash, row.code_hash)) {
-        this.run('UPDATE email_otps SET attempts=attempts+1 WHERE id=?', row.id)
-        throw failure('验证码错误或已过期', 401)
+        await this.run('UPDATE email_otps SET attempts=attempts+1 WHERE id=?', row.id)
+        rejected = failure('验证码错误或已过期',401)
+        return
       }
-      this.run('UPDATE email_otps SET consumed_at=? WHERE id=? AND consumed_at IS NULL', now, row.id)
+      await this.run('UPDATE email_otps SET consumed_at=? WHERE id=? AND consumed_at IS NULL', now, row.id)
       result = true
     })
+    if (rejected) throw rejected
     return result
   }
-  assertEmailPassword(email, password) {
+  async assertEmailPassword(email, password) {
     email = normalizeEmail(email)
     if (!validEmail(email)) throw failure('请输入有效的邮箱地址')
     if (!validPassword(password)) throw failure('密码长度需要为 8 到 128 位')
-    const row = this.get('SELECT password_hash,status FROM users WHERE lower(email)=?', email)
+    const row = (await this.get('SELECT password_hash,status FROM users WHERE lower(email)=?', email))
     if (row && row.status !== 'active') throw failure('账号已停用', 403)
     if (row?.password_hash && !passwordMatches(password, row.password_hash)) throw failure('邮箱或密码不正确', 401)
-    if (!row && !this.settings().registrationEnabled) throw failure('当前暂未开放注册', 403)
+    if (!row && !(await this.settings()).registrationEnabled) throw failure('当前暂未开放注册', 403)
   }
   // 验证码本身就证明了邮箱归属：只填验证码即可登录或注册。旧客户端会连同密码一起提交，
   // 这时仍按原规则校验密码，新账号把它设为登录密码。
-  loginEmailOtp(email, name = '', password = '') {
+  async loginEmailOtp(email, name = '', password = '') {
     email = normalizeEmail(email)
     if (!validEmail(email)) throw failure('请输入有效的邮箱地址')
     const withPassword = Boolean(password)
     if (withPassword && !validPassword(password)) throw failure('密码长度需要为 8 到 128 位')
-    return this.transaction(() => {
-      const existing = this.get('SELECT id,password_hash,status FROM users WHERE lower(email)=?', email)
+    return (await this.transaction(async () => {
+      await this.db.lock('auth:account-registration')
+      const existing = (await this.get('SELECT id,password_hash,status FROM users WHERE lower(email)=?', email))
       if (existing && existing.status !== 'active') throw failure('账号已停用', 403)
       if (withPassword && existing?.password_hash && !passwordMatches(password, existing.password_hash)) throw failure('邮箱或密码不正确', 401)
-      let user = existing ? this.user(existing.id) : null
+      let user = existing ? (await this.user(existing.id)) : null
       if (!user) {
-        if (!this.settings().registrationEnabled) throw failure('当前暂未开放注册', 403)
+        if (!(await this.settings()).registrationEnabled) throw failure('当前暂未开放注册', 403)
         const id = randomUUID()
-        const display = uniqueExternalName(this, String(name || '').trim() || email.split('@')[0], email, '邮箱')
+        const display = (await uniqueExternalName(this, String(name || '').trim() || email.split('@')[0], email, '邮箱'))
         // 只用验证码注册时先放一个谁也不知道的随机密码，用户之后可在「忘记密码」里设置。
-        this.run('INSERT INTO users(id,name,email,password_hash,secret_hash,status,points,models,email_verified,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)', id, display, email, passwordHash(withPassword ? password : randomBytes(32).toString('base64url')), digest(randomBytes(32).toString('base64url')), 'active', 0, '[]', 1, new Date().toISOString())
-        this.ledger(id, 0, '邮箱验证码注册初始额度')
-        this.audit(email, 'user.email_otp.create', id, { email })
-        user = this.user(id)
+        await this.run('INSERT INTO users(id,name,email,password_hash,secret_hash,status,points,models,email_verified,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)', id, display, email, passwordHash(withPassword ? password : randomBytes(32).toString('base64url')), digest(randomBytes(32).toString('base64url')), 'active', 0, '[]', 1, new Date().toISOString())
+        await this.ledger(id, 0, '邮箱验证码注册初始额度')
+        await this.audit(email, 'user.email_otp.create', id, { email })
+        user = (await this.user(id))
       } else {
-        if (!existing.password_hash && withPassword) this.run('UPDATE users SET password_hash=?, email_verified=1 WHERE id=?', passwordHash(password), user.id)
-        else this.run('UPDATE users SET email_verified=1 WHERE id=?', user.id)
-        this.audit(email, 'user.email_otp.login', user.id, { email })
+        if (!existing.password_hash && withPassword) await this.run('UPDATE users SET password_hash=?, email_verified=1 WHERE id=?', passwordHash(password), user.id)
+        else await this.run('UPDATE users SET email_verified=1 WHERE id=?', user.id)
+        await this.audit(email, 'user.email_otp.login', user.id, { email })
       }
-      return this.createSession('user', user.id)
-    })
+      return (await this.createSession('user', user.id))
+    }))
   }
   // 忘记密码：验证码已在调用前核销，这里只换密码并登录。
-  resetPasswordWithEmailOtp(email, password) {
+  async resetPasswordWithEmailOtp(email, password) {
     email = normalizeEmail(email)
     if (!validPassword(password)) throw failure('密码长度需要为 8 到 128 位')
-    return this.transaction(() => {
-      const row = this.get('SELECT id,status FROM users WHERE lower(email)=?', email)
+    return (await this.transaction(async () => {
+      const row = (await this.get('SELECT id,status FROM users WHERE lower(email)=?', email))
       if (!row) throw failure('这个邮箱还没有注册，请用验证码登录', 404)
       if (row.status !== 'active') throw failure('账号已停用', 403)
-      this.run('UPDATE users SET password_hash=?, email_verified=1 WHERE id=?', passwordHash(password), row.id)
+      await this.run('UPDATE users SET password_hash=?, email_verified=1 WHERE id=?', passwordHash(password), row.id)
       // A password reset is also a credential-recovery event. Revoke every
       // older session before issuing the one returned to the user, otherwise a
       // previously copied desktop cookie would remain usable after the reset.
-      const revoked = this.run('DELETE FROM sessions WHERE user_id=?', row.id).changes
-      this.audit(email, 'user.password.reset', row.id, { email, revokeOtherSessions: true, revokedSessions: revoked })
-      return this.createSession('user', row.id)
-    })
+      const revoked = (await this.run('DELETE FROM sessions WHERE user_id=?', row.id)).changes
+      await this.audit(email, 'user.password.reset', row.id, { email, revokeOtherSessions: true, revokedSessions: revoked })
+      return (await this.createSession('user', row.id))
+    }))
   }
-  saveOAuthState({ provider, state, nonce, redirectUri, expiresAt }: Record<string, any>) {
+  async saveOAuthState({ provider, state, nonce, redirectUri, expiresAt }: Record<string, any>) {
     if (!provider || !state || !nonce || !redirectUri || !expiresAt || Date.parse(expiresAt) <= Date.now()) throw failure('OAuth 状态无效', 500)
-    return this.transaction(() => {
-      this.run('DELETE FROM oauth_states WHERE expires_at<? OR used_at IS NOT NULL', new Date().toISOString())
-      this.run('INSERT INTO oauth_states(state_hash,provider,nonce_hash,redirect_uri,created_at,expires_at,used_at) VALUES(?,?,?,?,?,?,NULL)', digest(state), String(provider), digest(nonce), String(redirectUri), new Date().toISOString(), String(expiresAt))
+    return (await this.transaction(async () => {
+      await this.run('DELETE FROM oauth_states WHERE expires_at<? OR used_at IS NOT NULL', new Date().toISOString())
+      await this.run('INSERT INTO oauth_states(state_hash,provider,nonce_hash,redirect_uri,created_at,expires_at,used_at) VALUES(?,?,?,?,?,?,NULL)', digest(state), String(provider), digest(nonce), String(redirectUri), new Date().toISOString(), String(expiresAt))
       return true
-    })
+    }))
   }
-  consumeOAuthState({ provider, state, stateCookie }: Record<string, any>) {
-    return this.transaction(() => {
+  async consumeOAuthState({ provider, state, stateCookie }: Record<string, any>) {
+    return (await this.transaction(async () => {
       const stateHash = digest(state)
-      const row = this.get('SELECT state_hash,nonce_hash,redirect_uri,expires_at,used_at FROM oauth_states WHERE state_hash=? AND provider=?', stateHash, String(provider))
+      const row = (await this.get('SELECT state_hash,nonce_hash,redirect_uri,expires_at,used_at FROM oauth_states WHERE state_hash=? AND provider=?', stateHash, String(provider)))
       if (!row || row.used_at || Date.parse(row.expires_at) <= Date.now() || digest(stateCookie) !== row.state_hash) return null
-      const changed = this.run('UPDATE oauth_states SET used_at=? WHERE state_hash=? AND used_at IS NULL', new Date().toISOString(), row.state_hash).changes
+      const changed = (await this.run('UPDATE oauth_states SET used_at=? WHERE state_hash=? AND used_at IS NULL', new Date().toISOString(), row.state_hash)).changes
       return changed === 1 ? { nonceHash: row.nonce_hash, redirectUri: row.redirect_uri } : null
-    })
+    }))
   }
-  loginExternal({ provider, subject, name = '', email = '', emailVerified = false, label = provider, appId = '' }: Record<string, any>) {
+  async loginExternal({ provider, subject, name = '', email = '', emailVerified = false, label = provider, appId = '' }: Record<string, any>) {
     provider = String(provider || '').trim().toLowerCase()
     subject = String(subject || '').trim()
     email = normalizeEmail(email)
     appId = String(appId || '').trim()
     if (!provider || !/^[a-z0-9:_-]{2,64}$/.test(provider) || !subject || subject.length > 255) throw failure('第三方账号信息无效', 422)
     if (email && (!validEmail(email) || !emailVerified)) throw failure('第三方邮箱尚未验证', 422)
-    return this.transaction(() => {
-      const identity = this.get('SELECT i.user_id,u.status FROM auth_identities i JOIN users u ON u.id=i.user_id WHERE i.provider=? AND i.subject=?', provider, subject)
-      const emailUser = identity || !email ? null : this.get('SELECT id FROM users WHERE lower(email)=?', email)
-      let user = identity ? this.user(identity.user_id) : emailUser ? this.user(emailUser.id) : null
+    return (await this.transaction(async () => {
+      const identity = (await this.get('SELECT i.user_id,u.status FROM auth_identities i JOIN users u ON u.id=i.user_id WHERE i.provider=? AND i.subject=?', provider, subject))
+      const emailUser = identity || !email ? null : (await this.get('SELECT id FROM users WHERE lower(email)=?', email))
+      let user = identity ? (await this.user(identity.user_id)) : emailUser ? (await this.user(emailUser.id)) : null
       if (user && user.status !== 'active') throw failure('账号已停用', 403)
       if (identity && !user) throw failure('第三方账号绑定已失效', 409)
       const actor = email || `${provider}:${appId || subject}`
       if (user) {
-        const linked = this.get('SELECT subject FROM auth_identities WHERE user_id=? AND provider=?', user.id, provider)
+        const linked = (await this.get('SELECT subject FROM auth_identities WHERE user_id=? AND provider=?', user.id, provider))
         if (linked && linked.subject !== subject) throw failure('这个账号已绑定其他同类第三方账号', 409)
         if (!linked) {
-          this.run('INSERT INTO auth_identities(id,user_id,provider,subject,email,created_at) VALUES(?,?,?,?,?,?)', randomUUID(), user.id, provider, subject, email || null, new Date().toISOString())
-          if (emailVerified) this.run('UPDATE users SET email_verified=1 WHERE id=?', user.id)
-          this.audit(actor, 'user.oauth.link', user.id, { provider, ...(appId ? { appId } : {}) })
+          await this.run('INSERT INTO auth_identities(id,user_id,provider,subject,email,created_at) VALUES(?,?,?,?,?,?)', randomUUID(), user.id, provider, subject, email || null, new Date().toISOString())
+          if (emailVerified) await this.run('UPDATE users SET email_verified=1 WHERE id=?', user.id)
+          await this.audit(actor, 'user.oauth.link', user.id, { provider, ...(appId ? { appId } : {}) })
         } else if (email) {
-          this.run('UPDATE auth_identities SET email=? WHERE user_id=? AND provider=?', email, user.id, provider)
+          await this.run('UPDATE auth_identities SET email=? WHERE user_id=? AND provider=?', email, user.id, provider)
         }
       } else {
         const id = randomUUID()
-        const display = uniqueExternalName(this, name, subject, label)
-        this.run('INSERT INTO users(id,name,email,password_hash,secret_hash,status,points,models,email_verified,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)', id, display, email || null, null, digest(randomBytes(32).toString('base64url')), 'active', 0, '[]', emailVerified ? 1 : 0, new Date().toISOString())
-        this.run('INSERT INTO auth_identities(id,user_id,provider,subject,email,created_at) VALUES(?,?,?,?,?,?)', randomUUID(), id, provider, subject, email || null, new Date().toISOString())
-        this.ledger(id, 0, `${label} 注册初始额度`)
-        this.audit(actor, 'user.oauth.create', id, { provider, ...(appId ? { appId } : {}) })
-        user = this.user(id)
+        const display = (await uniqueExternalName(this, name, subject, label))
+        await this.run('INSERT INTO users(id,name,email,password_hash,secret_hash,status,points,models,email_verified,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)', id, display, email || null, null, digest(randomBytes(32).toString('base64url')), 'active', 0, '[]', emailVerified ? 1 : 0, new Date().toISOString())
+        await this.run('INSERT INTO auth_identities(id,user_id,provider,subject,email,created_at) VALUES(?,?,?,?,?,?)', randomUUID(), id, provider, subject, email || null, new Date().toISOString())
+        await this.ledger(id, 0, `${label} 注册初始额度`)
+        await this.audit(actor, 'user.oauth.create', id, { provider, ...(appId ? { appId } : {}) })
+        user = (await this.user(id))
       }
-      this.audit(actor, `user.login.${provider}`, user.id, { provider, ...(appId ? { appId } : {}) })
-      return this.createSession('user', user.id)
-    })
+      await this.audit(actor, `user.login.${provider}`, user.id, { provider, ...(appId ? { appId } : {}) })
+      return (await this.createSession('user', user.id))
+    }))
   }
-  loginGitHub(payload) { return this.loginExternal({ ...payload, provider: 'github', label: 'GitHub' }) }
-  loginWeChat(payload) { return this.loginExternal({ ...payload, provider: 'wechat', label: '微信' }) }
-  loginDingTalk(payload) { return this.loginExternal({ ...payload, provider: 'dingtalk', label: '钉钉' }) }
-  loginLinuxDo(payload) { return this.loginExternal({ ...payload, provider: 'linuxdo', label: 'Linux.do' }) }
-  loginOIDC(payload) { return this.loginExternal({ ...payload, provider: 'oidc', label: payload.label || 'OIDC' }) }
-  loginGoogle({ subject, email, name = '' }: Record<string, any>) {
+  async loginGitHub(payload) { return (await this.loginExternal({ ...payload, provider: 'github', label: 'GitHub' })) }
+  async loginWeChat(payload) { return (await this.loginExternal({ ...payload, provider: 'wechat', label: '微信' })) }
+  async loginDingTalk(payload) { return (await this.loginExternal({ ...payload, provider: 'dingtalk', label: '钉钉' })) }
+  async loginLinuxDo(payload) { return (await this.loginExternal({ ...payload, provider: 'linuxdo', label: 'Linux.do' })) }
+  async loginOIDC(payload) { return (await this.loginExternal({ ...payload, provider: 'oidc', label: payload.label || 'OIDC' })) }
+  async loginGoogle({ subject, email, name = '' }: Record<string, any>) {
     subject = String(subject || '').trim()
     email = normalizeEmail(email)
     if (!subject || subject.length > 255 || !validEmail(email)) throw failure('Google 账号信息无效', 422)
-    return this.transaction(() => {
-      const identity = this.get('SELECT i.user_id,u.status FROM auth_identities i JOIN users u ON u.id=i.user_id WHERE i.provider=? AND i.subject=?', 'google', subject)
-      const emailUser = identity ? null : this.get('SELECT id FROM users WHERE lower(email)=?', email)
-      let user = identity ? this.user(identity.user_id) : emailUser ? this.user(emailUser.id) : null
+    return (await this.transaction(async () => {
+      const identity = (await this.get('SELECT i.user_id,u.status FROM auth_identities i JOIN users u ON u.id=i.user_id WHERE i.provider=? AND i.subject=?', 'google', subject))
+      const emailUser = identity ? null : (await this.get('SELECT id FROM users WHERE lower(email)=?', email))
+      let user = identity ? (await this.user(identity.user_id)) : emailUser ? (await this.user(emailUser.id)) : null
       if (user && user.status !== 'active') throw failure('账号已停用', 403)
       if (identity && !user) throw failure('Google 账号绑定已失效', 409)
       if (user) {
-        const linked = this.get('SELECT subject FROM auth_identities WHERE user_id=? AND provider=?', user.id, 'google')
+        const linked = (await this.get('SELECT subject FROM auth_identities WHERE user_id=? AND provider=?', user.id, 'google'))
         if (linked && linked.subject !== subject) throw failure('这个账号已绑定其他 Google 账号', 409)
         if (!linked) {
-          this.run('INSERT INTO auth_identities(id,user_id,provider,subject,email,created_at) VALUES(?,?,?,?,?,?)', randomUUID(), user.id, 'google', subject, email, new Date().toISOString())
-          this.run('UPDATE users SET email_verified=1 WHERE id=?', user.id)
-          this.audit(email, 'user.oauth.link', user.id, { provider: 'google' })
+          await this.run('INSERT INTO auth_identities(id,user_id,provider,subject,email,created_at) VALUES(?,?,?,?,?,?)', randomUUID(), user.id, 'google', subject, email, new Date().toISOString())
+          await this.run('UPDATE users SET email_verified=1 WHERE id=?', user.id)
+          await this.audit(email, 'user.oauth.link', user.id, { provider: 'google' })
         } else {
-          this.run('UPDATE auth_identities SET email=? WHERE user_id=? AND provider=?', email, user.id, 'google')
+          await this.run('UPDATE auth_identities SET email=? WHERE user_id=? AND provider=?', email, user.id, 'google')
         }
       } else {
         const id = randomUUID()
-        const display = uniqueGoogleName(this, name, email, subject)
-        this.run('INSERT INTO users(id,name,email,password_hash,secret_hash,status,points,models,email_verified,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)', id, display, email, null, digest(randomBytes(32).toString('base64url')), 'active', 0, '[]', 1, new Date().toISOString())
-        this.run('INSERT INTO auth_identities(id,user_id,provider,subject,email,created_at) VALUES(?,?,?,?,?,?)', randomUUID(), id, 'google', subject, email, new Date().toISOString())
-        this.ledger(id, 0, 'Google 注册初始额度')
-        this.audit(email, 'user.oauth.create', id, { provider: 'google', email })
-        user = this.user(id)
+        const display = (await uniqueGoogleName(this, name, email, subject))
+        await this.run('INSERT INTO users(id,name,email,password_hash,secret_hash,status,points,models,email_verified,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)', id, display, email, null, digest(randomBytes(32).toString('base64url')), 'active', 0, '[]', 1, new Date().toISOString())
+        await this.run('INSERT INTO auth_identities(id,user_id,provider,subject,email,created_at) VALUES(?,?,?,?,?,?)', randomUUID(), id, 'google', subject, email, new Date().toISOString())
+        await this.ledger(id, 0, 'Google 注册初始额度')
+        await this.audit(email, 'user.oauth.create', id, { provider: 'google', email })
+        user = (await this.user(id))
       }
-      this.audit(email, 'user.login.google', user.id, { provider: 'google', subject })
-      return this.createSession('user', user.id)
-    })
+      await this.audit(email, 'user.login.google', user.id, { provider: 'google', subject })
+      return (await this.createSession('user', user.id))
+    }))
   }
-  loginQQ({ subject, name = '', appId = '' }: Record<string, any>) {
+  async loginQQ({ subject, name = '', appId = '' }: Record<string, any>) {
     subject = String(subject || '').trim()
     appId = String(appId || '').trim()
     if (!subject || subject.length > 255 || !appId || appId.length > 128) throw failure('QQ 账号信息无效', 422)
-    return this.transaction(() => {
-      const identity = this.get('SELECT i.user_id,u.status FROM auth_identities i JOIN users u ON u.id=i.user_id WHERE i.provider=? AND i.subject=?', 'qq', subject)
-      let user = identity ? this.user(identity.user_id) : null
+    return (await this.transaction(async () => {
+      const identity = (await this.get('SELECT i.user_id,u.status FROM auth_identities i JOIN users u ON u.id=i.user_id WHERE i.provider=? AND i.subject=?', 'qq', subject))
+      let user = identity ? (await this.user(identity.user_id)) : null
       if (user && user.status !== 'active') throw failure('账号已停用', 403)
       if (identity && !user) throw failure('QQ 账号绑定已失效', 409)
       if (!user) {
         const id = randomUUID()
-        const display = uniqueQQName(this, name, subject)
-        this.run('INSERT INTO users(id,name,email,password_hash,secret_hash,status,points,models,email_verified,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)', id, display, null, null, digest(randomBytes(32).toString('base64url')), 'active', 0, '[]', 0, new Date().toISOString())
-        this.run('INSERT INTO auth_identities(id,user_id,provider,subject,email,created_at) VALUES(?,?,?,?,?,?)', randomUUID(), id, 'qq', subject, null, new Date().toISOString())
-        this.ledger(id, 0, 'QQ 注册初始额度')
-        this.audit(`qq:${appId}`, 'user.oauth.create', id, { provider: 'qq', appId })
-        user = this.user(id)
+        const display = (await uniqueQQName(this, name, subject))
+        await this.run('INSERT INTO users(id,name,email,password_hash,secret_hash,status,points,models,email_verified,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)', id, display, null, null, digest(randomBytes(32).toString('base64url')), 'active', 0, '[]', 0, new Date().toISOString())
+        await this.run('INSERT INTO auth_identities(id,user_id,provider,subject,email,created_at) VALUES(?,?,?,?,?,?)', randomUUID(), id, 'qq', subject, null, new Date().toISOString())
+        await this.ledger(id, 0, 'QQ 注册初始额度')
+        await this.audit(`qq:${appId}`, 'user.oauth.create', id, { provider: 'qq', appId })
+        user = (await this.user(id))
       }
-      this.audit(`qq:${appId}`, 'user.login.qq', user.id, { provider: 'qq', appId })
-      return this.createSession('user', user.id)
-    })
+      await this.audit(`qq:${appId}`, 'user.login.qq', user.id, { provider: 'qq', appId })
+      return (await this.createSession('user', user.id))
+    }))
   }
-  passwordAttemptGate(scope) {
-    const row = this.get('SELECT count,first_at FROM auth_attempts WHERE scope=?', scope)
+  async passwordAttemptGate(scope) {
+    const row = (await this.get('SELECT count,first_at FROM auth_attempts WHERE scope=?', scope))
     if (!row) return
-    if (Date.now() - row.first_at >= 15 * 60 * 1000) { this.run('DELETE FROM auth_attempts WHERE scope=?', scope); return }
+    if (Date.now() - row.first_at >= 15 * 60 * 1000) { await this.run('DELETE FROM auth_attempts WHERE scope=?', scope); return }
     if (row.count >= 5) throw failure('修改密码尝试过多，请 15 分钟后重试', 429)
   }
-  notePasswordAttempt(scope) {
-    const now = Date.now(); const row = this.get('SELECT count,first_at FROM auth_attempts WHERE scope=?', scope)
-    if (!row || now - row.first_at >= 15 * 60 * 1000) this.run('INSERT INTO auth_attempts(scope,count,first_at) VALUES(?,?,?) ON CONFLICT(scope) DO UPDATE SET count=excluded.count,first_at=excluded.first_at', scope, 1, now)
-    else this.run('UPDATE auth_attempts SET count=count+1 WHERE scope=?', scope)
+  async notePasswordAttempt(scope) {
+    const now = Date.now(); const row = (await this.get('SELECT count,first_at FROM auth_attempts WHERE scope=?', scope))
+    if (!row || now - row.first_at >= 15 * 60 * 1000) await this.run('INSERT INTO auth_attempts(scope,count,first_at) VALUES(?,?,?) ON CONFLICT(scope) DO UPDATE SET count=excluded.count,first_at=excluded.first_at', scope, 1, now)
+    else await this.run('UPDATE auth_attempts SET count=count+1 WHERE scope=?', scope)
   }
-  clearPasswordAttempts(scope) { this.run('DELETE FROM auth_attempts WHERE scope=?', scope) }
-  changePassword(id, currentPassword, nextPassword, actor) {
+  async clearPasswordAttempts(scope) { await this.run('DELETE FROM auth_attempts WHERE scope=?', scope) }
+  async changePassword(id, currentPassword, nextPassword, actor) {
     if (!validPassword(nextPassword)) throw failure('密码长度需要为 8 到 128 位')
     const scope = `password:${id}`
     let invalid = false
     let next
-    this.transaction(() => {
-      this.passwordAttemptGate(scope)
-      const row = this.get('SELECT id,password_hash,status,email FROM users WHERE id=?', id)
+    await this.transaction(async () => {
+      await this.db.lockRow('users','id',id)
+      await this.passwordAttemptGate(scope)
+      const row = (await this.get('SELECT id,password_hash,status,email FROM users WHERE id=?', id))
       if (!row || row.status !== 'active' || !passwordMatches(currentPassword, row.password_hash)) {
-        this.notePasswordAttempt(scope)
+        await this.notePasswordAttempt(scope)
         invalid = true
         return
       }
-      this.run('UPDATE users SET password_hash=? WHERE id=?', passwordHash(nextPassword), id)
-      this.run('DELETE FROM sessions WHERE user_id=?', id)
-      const session = this.createSession('user', id)
-      this.audit(actor, 'user.password.change', id, { email: row.email, revokeOtherSessions: true })
-      this.clearPasswordAttempts(scope)
+      await this.run('UPDATE users SET password_hash=? WHERE id=?', passwordHash(nextPassword), id)
+      await this.run('DELETE FROM sessions WHERE user_id=?', id)
+      const session = (await this.createSession('user', id))
+      await this.audit(actor, 'user.password.change', id, { email: row.email, revokeOtherSessions: true })
+      await this.clearPasswordAttempts(scope)
       next = session
     })
     if (invalid) throw failure('原密码不正确', 401)
     return next
   }
-  resetPassword(id, password, actor) {
+  async resetPassword(id, password, actor) {
     if (!validPassword(password)) throw failure('密码长度需要为 8 到 128 位')
-    return this.transaction(() => {
-      const user = this.user(id); if (!user) throw failure('用户不存在',404)
-      this.run('UPDATE users SET password_hash=? WHERE id=?', passwordHash(password), id)
-      this.run('DELETE FROM sessions WHERE user_id=?', id)
-      this.audit(actor,'user.password.reset',id,{email:user.email})
-      return this.user(id)
-    })
+    return (await this.transaction(async () => {
+      await this.db.lockRow('users','id',id)
+      const user = (await this.user(id)); if (!user) throw failure('用户不存在',404)
+      await this.run('UPDATE users SET password_hash=? WHERE id=?', passwordHash(password), id)
+      await this.run('DELETE FROM sessions WHERE user_id=?', id)
+      await this.audit(actor,'user.password.reset',id,{email:user.email})
+      return (await this.user(id))
+    }))
   }
-  updateProfile(id, name) {
+  async updateProfile(id, name) {
     if (typeof name !== 'string') throw failure('请输入 1–60 字的昵称')
     name = name.trim()
     if (!name || name.length > 60 || /[\u0000-\u001f\u007f]/.test(name)) throw failure('请输入 1–60 字的昵称，不能包含换行或控制字符')
-    return this.transaction(() => {
-      const user = this.user(id)
+    return (await this.transaction(async () => {
+      await this.db.lock('auth:account-registration')
+      await this.db.lockRow('users','id',id)
+      const user = (await this.user(id))
       if (!user || user.status !== 'active') throw failure('会话失效，请重新登录', 401)
-      if (user.name === name) return this.publicUser(id)
-      if (this.get('SELECT id FROM users WHERE name=? AND id<>?', name, id)) throw failure('这个昵称已经被使用，请换一个', 409)
-      this.run('UPDATE users SET name=? WHERE id=?', name, id)
-      this.audit(user.email || id, 'user.profile.update', id, { previousName: user.name, name })
-      return this.publicUser(id)
-    })
+      if (user.name === name) return (await this.publicUser(id))
+      if ((await this.get('SELECT id FROM users WHERE name=? AND id<>?', name, id))) throw failure('这个昵称已经被使用，请换一个', 409)
+      await this.run('UPDATE users SET name=? WHERE id=?', name, id)
+      await this.audit(user.email || id, 'user.profile.update', id, { previousName: user.name, name })
+      return (await this.publicUser(id))
+    }))
   }
-  updateUser(id, patch, actor) {
-    return this.transaction(() => {
-      const u = this.user(id); if (!u) throw failure('用户不存在',404)
+  async updateUser(id, patch, actor) {
+    return (await this.transaction(async () => {
+      await this.db.lockRow('users','id',id)
+      const u = (await this.user(id)); if (!u) throw failure('用户不存在',404)
       const status = patch.status ?? u.status
       const requestedModels = patch.models ?? u.models
       if (!['active','disabled'].includes(status) || !Array.isArray(requestedModels) || requestedModels.some((modelId) => !publicModelId(modelId))) throw failure('用户设置无效')
       const models = normalizeModelList(requestedModels)
-      this.run('UPDATE users SET status=?,models=? WHERE id=?',status,JSON.stringify(models),id)
-      if (status === 'disabled') this.run('DELETE FROM sessions WHERE user_id=?',id)
-      this.audit(actor,'user.update',id,{status,models}); return this.user(id)
-    })
+      await this.run('UPDATE users SET status=?,models=? WHERE id=?',status,JSON.stringify(models),id)
+      if (status === 'disabled') await this.run('DELETE FROM sessions WHERE user_id=?',id)
+      await this.audit(actor,'user.update',id,{status,models}); return (await this.user(id))
+    }))
   }
-  adjustPoints(id, delta, reason, actor) {
+  async adjustPoints(id, delta, reason, actor) {
     delta = credits(delta,-1000000,1000000); reason = String(reason || '').trim()
     if (!delta || !reason || reason.length > 200) throw failure('请填写非零积分和调整原因')
-    return this.transaction(() => {
-      const u = this.user(id); if (!u) throw failure('用户不存在',404)
+    return (await this.transaction(async () => {
+      await this.db.lockRow('users','id',id)
+      const u = (await this.user(id)); if (!u) throw failure('用户不存在',404)
       if (u.points + delta < 0) throw failure('调整后余额不能为负数')
-      this.run('UPDATE users SET points=ROUND(points+?,4) WHERE id=?',delta,id); this.ledger(id,delta,reason)
-      this.audit(actor,'points.adjust',id,{delta,reason}); return this.user(id)
-    })
+      await this.run('UPDATE users SET points=ROUND(points+?,4) WHERE id=?',delta,id); await this.ledger(id,delta,reason)
+      await this.audit(actor,'points.adjust',id,{delta,reason}); return (await this.user(id))
+    }))
   }
-  rotateCode(id, actor) {
-    return this.transaction(() => {
-      if (!this.user(id)) throw failure('用户不存在',404)
+  async rotateCode(id, actor) {
+    return (await this.transaction(async () => {
+      if (!(await this.user(id))) throw failure('用户不存在',404)
       const code = randomBytes(24).toString('base64url')
-      this.run('UPDATE users SET secret_hash=? WHERE id=?',digest(code),id); this.run('DELETE FROM sessions WHERE user_id=?',id)
-      this.audit(actor,'user.code.rotate',id); return { accessCode: code }
-    })
+      await this.run('UPDATE users SET secret_hash=? WHERE id=?',digest(code),id); await this.run('DELETE FROM sessions WHERE user_id=?',id)
+      await this.audit(actor,'user.code.rotate',id); return { accessCode: code }
+    }))
   }
-  ledger(id, delta, reason, requestId = null, paymentOrderId = null) { this.run('INSERT INTO ledger(id,user_id,delta,reason,request_id,created_at,payment_order_id) VALUES(?,?,?,?,?,?,?)',randomUUID(),id,delta,reason,requestId,new Date().toISOString(),paymentOrderId) }
-  reserveText(options: Record<string, any>) { return this.textBilling.reserve(options) }
-  settleText(requestId, options: Record<string, any> = {}) { return this.textBilling.settle(requestId, options) }
-  failText(requestId, error = '') { return this.textBilling.fail(requestId, error) }
-  reviewTextCharge(requestId, error = '') { return this.textBilling.review(requestId, error) }
-  textChargeSummary({ userId = '' }: Record<string, any> = {}) {
-    const row = this.get(`SELECT
+  async ledger(id, delta, reason, requestId = null, paymentOrderId = null) { await this.run('INSERT INTO ledger(id,user_id,delta,reason,request_id,created_at,payment_order_id) VALUES(?,?,?,?,?,?,?)',randomUUID(),id,delta,reason,requestId,new Date().toISOString(),paymentOrderId) }
+  async reserveText(options: Record<string, any>) { return (await this.textBilling.reserve(options)) }
+  async settleText(requestId, options: Record<string, any> = {}) { return (await this.textBilling.settle(requestId, options)) }
+  async failText(requestId, error = '') { return (await this.textBilling.fail(requestId, error)) }
+  async reviewTextCharge(requestId, error = '') { return (await this.textBilling.review(requestId, error)) }
+  async textChargeSummary({ userId = '' }: Record<string, any> = {}) {
+    const row = (await this.get(`SELECT
       COALESCE(SUM(CASE WHEN status='reserved' THEN 1 ELSE 0 END),0) reservedRequests,
       COALESCE(SUM(CASE WHEN status='reserved' THEN reserved_points ELSE 0 END),0) reservedPoints,
       COALESCE(SUM(CASE WHEN status='billing_review' THEN 1 ELSE 0 END),0) reviewRequests,
       COALESCE(SUM(CASE WHEN status='billing_review' THEN reserved_points ELSE 0 END),0) reviewPoints
-      FROM text_charges${userId ? ' WHERE user_id=?' : ''}`, ...(userId ? [userId] : []))
+      FROM text_charges${userId ? ' WHERE user_id=?' : ''}`, ...(userId ? [userId] : [])))
     return { reservedRequests: Number(row.reservedRequests), reservedPoints: Math.round(Number(row.reservedPoints) * 10000) / 10000,
       reviewRequests: Number(row.reviewRequests), reviewPoints: Math.round(Number(row.reviewPoints) * 10000) / 10000 }
   }
-  pendingTextCharges(userId, { page = 1, limit = 30 }: Record<string, any> = {}) {
+  async pendingTextCharges(userId, { page = 1, limit = 30 }: Record<string, any> = {}) {
     const current = integer(page, 1, 100000), size = integer(limit, 1, 200)
     const where = "user_id=? AND status IN ('reserved','billing_review')"
-    const total = Number(this.get(`SELECT COUNT(*) n FROM text_charges WHERE ${where}`, userId).n)
-    const rows = this.all(`SELECT id,request_id,model,status,reserved_points,error,created_at,finished_at
-      FROM text_charges WHERE ${where} ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?`, userId, size, (current - 1) * size)
-    return { items: rows.map(textChargeView), total, page: current, limit: size, summary: this.textChargeSummary({ userId }) }
+    const total = Number((await this.get(`SELECT COUNT(*) n FROM text_charges WHERE ${where}`, userId)).n)
+    const rows = (await this.all(`SELECT id,request_id,model,status,reserved_points,error,created_at,finished_at
+      FROM text_charges WHERE ${where} ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?`, userId, size, (current - 1) * size))
+    return { items: rows.map(textChargeView), total, page: current, limit: size, summary: (await this.textChargeSummary({ userId })) }
   }
   paymentOrderPublic(row) {
     if (!row) return null
@@ -1117,8 +1145,8 @@ export class ManagementStore {
       failureReason: row.failure_reason || '',
     }
   }
-  paymentQrCache(outTradeNo) {
-    const row = this.get('SELECT out_trade_no,mime,bytes,created_at,expires_at FROM payment_qr_cache WHERE out_trade_no=?', String(outTradeNo || ''))
+  async paymentQrCache(outTradeNo) {
+    const row = (await this.get('SELECT out_trade_no,mime,bytes,created_at,expires_at FROM payment_qr_cache WHERE out_trade_no=?', String(outTradeNo || '')))
     if (!row) return null
     return {
       outTradeNo: row.out_trade_no,
@@ -1128,29 +1156,30 @@ export class ManagementStore {
       expiresAt: row.expires_at,
     }
   }
-  savePaymentQrCache({ outTradeNo, mime, bytes, expiresAt }: Record<string, any>) {
+  async savePaymentQrCache({ outTradeNo, mime, bytes, expiresAt }: Record<string, any>) {
     const value = Buffer.from(bytes || [])
     if (!outTradeNo || !mime || !value.length || !expiresAt) throw failure('付款二维码缓存无效', 500)
-    return this.transaction(() => {
-      const order = this.get('SELECT status,expires_at FROM payment_orders WHERE out_trade_no=?', String(outTradeNo))
+    return (await this.transaction(async () => {
+      const order = (await this.get('SELECT status,expires_at FROM payment_orders WHERE out_trade_no=?', String(outTradeNo)))
       if (!order || order.status !== PAYMENT_STATES.CREATED || order.expires_at !== String(expiresAt) || Date.parse(order.expires_at) <= Date.now()) return false
-      this.run(`INSERT INTO payment_qr_cache(out_trade_no,mime,bytes,created_at,expires_at)
+      await this.run(`INSERT INTO payment_qr_cache(out_trade_no,mime,bytes,created_at,expires_at)
         VALUES(?,?,?,?,?)
         ON CONFLICT(out_trade_no) DO UPDATE SET mime=excluded.mime,bytes=excluded.bytes,created_at=excluded.created_at,expires_at=excluded.expires_at`,
       String(outTradeNo), String(mime), value, new Date().toISOString(), String(expiresAt))
       return true
-    })
+    }))
   }
-  deletePaymentQrCache(outTradeNo) {
-    this.run('DELETE FROM payment_qr_cache WHERE out_trade_no=?', String(outTradeNo || ''))
+  async deletePaymentQrCache(outTradeNo) {
+    await this.run('DELETE FROM payment_qr_cache WHERE out_trade_no=?', String(outTradeNo || ''))
   }
-  createPaymentOrder({ userId, packageId, packageName, points, amountCents, paymentType = PAYMENT_TYPE, expiresAt, merchantPid = '', idempotencyKey = newRequestId(), outTradeNo = newPaymentOrderNo() }: Record<string, any>) {
-    return this.transaction(() => {
-      const user = this.user(userId)
+  async createPaymentOrder({ userId, packageId, packageName, points, amountCents, paymentType = PAYMENT_TYPE, expiresAt, merchantPid = '', idempotencyKey = newRequestId(), outTradeNo = newPaymentOrderNo() }: Record<string, any>) {
+    return (await this.transaction(async () => {
+      await this.db.lockRow('users','id',userId)
+      const user = (await this.user(userId))
       if (!user || user.status !== 'active') throw failure('账号已停用', 403)
       const owner = ownerForSession({ role: 'user', userId })
       if (!validIdempotencyKey(idempotencyKey)) throw failure('请求标识无效')
-      const existing = this.get('SELECT * FROM payment_orders WHERE owner_scope=? AND idempotency_key=?', owner.scope, idempotencyKey)
+      const existing = (await this.get('SELECT * FROM payment_orders WHERE owner_scope=? AND idempotency_key=?', owner.scope, idempotencyKey))
       if (existing) {
         if (existing.package_id !== packageId || existing.payment_type !== paymentType) throw failure('同一请求标识不能更换充值金额或支付方式', 409)
         return { ...this.paymentOrderPublic(existing), duplicate: true }
@@ -1158,106 +1187,114 @@ export class ManagementStore {
       if (!/^[A-Za-z0-9_-]{20,32}$/.test(outTradeNo) || !Number.isSafeInteger(points) || points < 1 || !Number.isSafeInteger(amountCents) || amountCents < 1) throw failure('充值订单参数无效')
       const now = new Date().toISOString()
       const id = randomUUID()
-      this.run(`INSERT INTO payment_orders(id,out_trade_no,user_id,package_id,package_name,points,amount_cents,currency,status,payment_type,provider,payurl,payurl2,qrcode,img,upstream_trade_no,created_at,expires_at,completed_at,updated_at,failure_reason)
+      await this.run(`INSERT INTO payment_orders(id,out_trade_no,user_id,package_id,package_name,points,amount_cents,currency,status,payment_type,provider,payurl,payurl2,qrcode,img,upstream_trade_no,created_at,expires_at,completed_at,updated_at,failure_reason)
         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, outTradeNo, userId, packageId, packageName, points, amountCents, 'CNY', PAYMENT_STATES.CREATED, paymentType, PAYMENT_PROVIDER, null, null, null, null, null, now, expiresAt, null, now, null)
-      this.run('UPDATE payment_orders SET owner_scope=?,idempotency_key=?,merchant_pid=? WHERE id=?', owner.scope, idempotencyKey, merchantPid, id)
-      this.audit(user.email || user.name, 'payment.order.create', id, { outTradeNo, packageId, points, amountCents, paymentType })
-      return this.paymentOrderPublic(this.get('SELECT * FROM payment_orders WHERE id=?', id))
-    })
+      await this.run('UPDATE payment_orders SET owner_scope=?,idempotency_key=?,merchant_pid=? WHERE id=?', owner.scope, idempotencyKey, merchantPid, id)
+      await this.audit(user.email || user.name, 'payment.order.create', id, { outTradeNo, packageId, points, amountCents, paymentType })
+      return this.paymentOrderPublic((await this.get('SELECT * FROM payment_orders WHERE id=?', id)))
+    }))
   }
-  paymentOrderForIdempotency(userId, idempotencyKey) {
-    const row = this.get('SELECT * FROM payment_orders WHERE user_id=? AND idempotency_key=?', userId, String(idempotencyKey || ''))
+  async paymentOrderForIdempotency(userId, idempotencyKey) {
+    const row = (await this.get('SELECT * FROM payment_orders WHERE user_id=? AND idempotency_key=?', userId, String(idempotencyKey || '')))
     return this.paymentOrderPublic(row)
   }
-  attachPaymentGateway(outTradeNo, gateway: Record<string, any> = {}) {
-    return this.transaction(() => {
-      const row = this.get('SELECT * FROM payment_orders WHERE out_trade_no=?', outTradeNo)
+  async attachPaymentGateway(outTradeNo, gateway: Record<string, any> = {}) {
+    return (await this.transaction(async () => {
+      await this.db.lockRow('payment_orders','out_trade_no',String(outTradeNo || ''))
+      const row = (await this.get('SELECT * FROM payment_orders WHERE out_trade_no=?', outTradeNo))
       if (!row) throw failure('充值订单不存在', 404)
       const now = new Date().toISOString()
-      this.run(`UPDATE payment_orders SET payurl=?,payurl2=?,qrcode=?,img=?,gateway_order_id=?,upstream_trade_no=COALESCE(upstream_trade_no,?),updated_at=? WHERE id=?`, gateway.payurl || null, gateway.payurl2 || null, gateway.qrcode || null, gateway.img || null, gateway.gatewayOrderId || null, gateway.upstreamTradeNo || null, now, row.id)
-      return this.paymentOrderPublic(this.get('SELECT * FROM payment_orders WHERE id=?', row.id))
-    })
+      await this.run(`UPDATE payment_orders SET payurl=?,payurl2=?,qrcode=?,img=?,gateway_order_id=?,upstream_trade_no=COALESCE(upstream_trade_no,?),updated_at=? WHERE id=?`, gateway.payurl || null, gateway.payurl2 || null, gateway.qrcode || null, gateway.img || null, gateway.gatewayOrderId || null, gateway.upstreamTradeNo || null, now, row.id)
+      return this.paymentOrderPublic((await this.get('SELECT * FROM payment_orders WHERE id=?', row.id)))
+    }))
   }
-  failPaymentOrder(outTradeNo, reason) {
-    return this.transaction(() => {
-      const row = this.get('SELECT * FROM payment_orders WHERE out_trade_no=?', outTradeNo)
+  async failPaymentOrder(outTradeNo, reason) {
+    return (await this.transaction(async () => {
+      await this.db.lockRow('payment_orders','out_trade_no',String(outTradeNo || ''))
+      const row = (await this.get('SELECT * FROM payment_orders WHERE out_trade_no=?', outTradeNo))
       if (!row) return null
       if (isPaymentTerminal(row.status)) return this.paymentOrderPublic(row)
       const now = new Date().toISOString()
-      this.run('UPDATE payment_orders SET status=?,failure_reason=?,updated_at=? WHERE id=? AND status=?', PAYMENT_STATES.FAILED, String(reason || '支付请求失败').slice(0, 300), now, row.id, PAYMENT_STATES.CREATED)
-      this.deletePaymentQrCache(row.out_trade_no)
-      this.audit('系统', 'payment.order.failed', row.id, { outTradeNo, reason: String(reason || '').slice(0, 200) })
-      return this.paymentOrderPublic(this.get('SELECT * FROM payment_orders WHERE id=?', row.id))
-    })
+      await this.run('UPDATE payment_orders SET status=?,failure_reason=?,updated_at=? WHERE id=? AND status=?', PAYMENT_STATES.FAILED, String(reason || '支付请求失败').slice(0, 300), now, row.id, PAYMENT_STATES.CREATED)
+      await this.deletePaymentQrCache(row.out_trade_no)
+      await this.audit('系统', 'payment.order.failed', row.id, { outTradeNo, reason: String(reason || '').slice(0, 200) })
+      return this.paymentOrderPublic((await this.get('SELECT * FROM payment_orders WHERE id=?', row.id)))
+    }))
   }
-  expirePaymentOrders(now = new Date()) {
+  async expirePaymentOrders(now = new Date()) {
     const timestamp = now.toISOString()
-    for (const row of this.all('SELECT * FROM payment_orders WHERE status=? AND expires_at<?', PAYMENT_STATES.CREATED, timestamp)) {
-      this.run('UPDATE payment_orders SET status=?,updated_at=?,failure_reason=? WHERE id=? AND status=?', PAYMENT_STATES.EXPIRED, timestamp, '充值订单已过期，请重新发起', row.id, PAYMENT_STATES.CREATED)
-      this.deletePaymentQrCache(row.out_trade_no)
-      // All callers wrap expiration in BEGIN IMMEDIATE, matching generation settlement.
-      this.audit('系统', 'payment.order.expired', row.id, { outTradeNo: row.out_trade_no })
+    for (const candidate of await this.all('SELECT id FROM payment_orders WHERE status=? AND expires_at<? ORDER BY id', PAYMENT_STATES.CREATED, timestamp)) {
+      await this.transaction(async () => {
+        await this.db.lockRow('payment_orders','id',candidate.id)
+        const row = await this.get('SELECT * FROM payment_orders WHERE id=? AND status=? AND expires_at<?', candidate.id, PAYMENT_STATES.CREATED, timestamp)
+        if (!row) return
+        await this.run('UPDATE payment_orders SET status=?,updated_at=?,failure_reason=? WHERE id=? AND status=?', PAYMENT_STATES.EXPIRED, timestamp, '充值订单已过期，请重新发起', row.id, PAYMENT_STATES.CREATED)
+        await this.deletePaymentQrCache(row.out_trade_no)
+        await this.audit('系统', 'payment.order.expired', row.id, { outTradeNo: row.out_trade_no })
+      })
     }
   }
-  paymentOrderForUser(outTradeNo, userId) {
-    return this.transaction(() => {
-      this.expirePaymentOrders()
-      return this.paymentOrderPublic(this.get('SELECT * FROM payment_orders WHERE out_trade_no=? AND user_id=?', String(outTradeNo || ''), userId))
-    })
+  async paymentOrderForUser(outTradeNo, userId) {
+    await this.expirePaymentOrders()
+    return (await this.transaction(async () => {
+      return this.paymentOrderPublic((await this.get('SELECT * FROM payment_orders WHERE out_trade_no=? AND user_id=?', String(outTradeNo || ''), userId)))
+    }))
   }
-  paymentOrderForReturn(outTradeNo) {
-    return this.transaction(() => {
-      this.expirePaymentOrders()
-      return this.paymentOrderPublic(this.get('SELECT * FROM payment_orders WHERE out_trade_no=?', String(outTradeNo || '')))
-    })
+  async paymentOrderForReturn(outTradeNo) {
+    await this.expirePaymentOrders()
+    return (await this.transaction(async () => {
+      return this.paymentOrderPublic((await this.get('SELECT * FROM payment_orders WHERE out_trade_no=?', String(outTradeNo || ''))))
+    }))
   }
-  completePaymentOrder({ outTradeNo, amountCents, tradeNo = '', tradeStatus, type, merchantPid }: Record<string, any>) {
-    return this.transaction(() => {
-      this.expirePaymentOrders()
-      const row = this.get('SELECT * FROM payment_orders WHERE out_trade_no=?', String(outTradeNo || ''))
+  async completePaymentOrder({ outTradeNo, amountCents, tradeNo = '', tradeStatus, type, merchantPid }: Record<string, any>) {
+    await this.expirePaymentOrders()
+    return (await this.transaction(async () => {
+      await this.db.lockRow('payment_orders','out_trade_no',String(outTradeNo || ''))
+      const row = (await this.get('SELECT * FROM payment_orders WHERE out_trade_no=?', String(outTradeNo || '')))
       if (!row) return { kind: 'not_found' }
-      const publicOrder = () => this.paymentOrderPublic(this.get('SELECT * FROM payment_orders WHERE id=?', row.id))
+      const publicOrder = async () => this.paymentOrderPublic((await this.get('SELECT * FROM payment_orders WHERE id=?', row.id)))
       if (type !== row.payment_type || (row.merchant_pid && row.merchant_pid !== merchantPid)) {
-        this.audit('zpay', 'payment.notify.rejected', row.id, { outTradeNo, reason: '支付方式与订单不一致', expectedType: row.payment_type, type })
-        return { kind: 'rejected', reason: '支付方式不受支持', order: publicOrder() }
+        await this.audit('zpay', 'payment.notify.rejected', row.id, { outTradeNo, reason: '支付方式与订单不一致', expectedType: row.payment_type, type })
+        return { kind: 'rejected', reason: '支付方式不受支持', order: (await publicOrder()) }
       }
       if (amountCents !== Number(row.amount_cents)) {
-        this.audit('zpay', 'payment.notify.rejected', row.id, { outTradeNo, reason: '金额不一致', expectedCents: Number(row.amount_cents), receivedCents: amountCents })
-        return { kind: 'rejected', reason: '支付金额与订单不一致', order: publicOrder() }
+        await this.audit('zpay', 'payment.notify.rejected', row.id, { outTradeNo, reason: '金额不一致', expectedCents: Number(row.amount_cents), receivedCents: amountCents })
+        return { kind: 'rejected', reason: '支付金额与订单不一致', order: (await publicOrder()) }
       }
       if (tradeStatus === 'TRADE_SUCCESS' && (!tradeNo || tradeNo.length > 200)) return { kind: 'rejected', reason: '上游订单号无效' }
       if (row.status === PAYMENT_STATES.PAID) {
         if (tradeStatus === 'TRADE_SUCCESS' && row.upstream_trade_no !== tradeNo) return { kind: 'rejected', reason: '上游订单号不一致' }
-        return { kind: 'duplicate', order: publicOrder() }
+        return { kind: 'duplicate', order: (await publicOrder()) }
       }
       if (tradeStatus !== 'TRADE_SUCCESS') {
-        if (isPaymentTerminal(row.status)) return { kind: 'ignored', order: publicOrder() }
-        if (!['TRADE_CLOSED', 'TRADE_FAILED', 'TRADE_FAIL'].includes(tradeStatus)) return { kind: 'non_success', order: publicOrder() }
+        if (isPaymentTerminal(row.status)) return { kind: 'ignored', order: (await publicOrder()) }
+        if (!['TRADE_CLOSED', 'TRADE_FAILED', 'TRADE_FAIL'].includes(tradeStatus)) return { kind: 'non_success', order: (await publicOrder()) }
         const next = tradeStatus === 'TRADE_CLOSED' ? PAYMENT_STATES.CLOSED : PAYMENT_STATES.FAILED
         const now = new Date().toISOString()
-        this.run('UPDATE payment_orders SET status=?,upstream_trade_no=?,updated_at=?,failure_reason=? WHERE id=? AND status=?', next, String(tradeNo || '').slice(0, 200) || null, now, `上游状态：${String(tradeStatus || '未知').slice(0, 80)}`, row.id, PAYMENT_STATES.CREATED)
-        this.deletePaymentQrCache(row.out_trade_no)
-        this.audit('zpay', 'payment.notify.non_success', row.id, { outTradeNo, tradeStatus })
-        return { kind: 'non_success', order: publicOrder() }
+        await this.run('UPDATE payment_orders SET status=?,upstream_trade_no=?,updated_at=?,failure_reason=? WHERE id=? AND status=?', next, String(tradeNo || '').slice(0, 200) || null, now, `上游状态：${String(tradeStatus || '未知').slice(0, 80)}`, row.id, PAYMENT_STATES.CREATED)
+        await this.deletePaymentQrCache(row.out_trade_no)
+        await this.audit('zpay', 'payment.notify.non_success', row.id, { outTradeNo, tradeStatus })
+        return { kind: 'non_success', order: (await publicOrder()) }
       }
-      const user = this.user(row.user_id)
+      const user = (await this.user(row.user_id))
       if (!user) return { kind: 'rejected', reason: '用户不存在' }
       const effectiveMerchantPid = merchantPid || row.merchant_pid || ''
-      const reused = this.get("SELECT id FROM payment_orders WHERE provider=? AND upstream_trade_no=? AND status='paid' AND id<>? AND (merchant_pid=? OR merchant_pid IS NULL OR merchant_pid='')", PAYMENT_PROVIDER, tradeNo, row.id, effectiveMerchantPid)
+      await this.db.lock(`payment-trade:${PAYMENT_PROVIDER}:${tradeNo}`)
+      const reused = (await this.get("SELECT id FROM payment_orders WHERE provider=? AND upstream_trade_no=? AND status='paid' AND id<>? AND (merchant_pid=? OR merchant_pid IS NULL OR merchant_pid='')", PAYMENT_PROVIDER, tradeNo, row.id, effectiveMerchantPid))
       if (reused) return { kind: 'rejected', reason: '上游订单已结算' }
       const now = new Date().toISOString()
       // Expiry closes the displayed QR, not funds: verified delayed notifications still settle.
-      const changed = this.run('UPDATE payment_orders SET status=?,upstream_trade_no=?,completed_at=?,updated_at=?,failure_reason=NULL WHERE id=? AND status<>?', PAYMENT_STATES.PAID, tradeNo, now, now, row.id, PAYMENT_STATES.PAID).changes
-      if (changed !== 1) return { kind: 'duplicate', order: publicOrder() }
-      this.deletePaymentQrCache(row.out_trade_no)
-      this.run('UPDATE users SET points=ROUND(points+?,4) WHERE id=?', Number(row.points), row.user_id)
-      this.ledger(row.user_id, Number(row.points), `充值到账 ${row.out_trade_no}`, row.out_trade_no, row.id)
-      this.audit('zpay', 'payment.order.paid', row.id, { outTradeNo, points: Number(row.points), amountCents: Number(row.amount_cents), tradeNo, previousStatus: row.status })
-      return { kind: 'paid', order: publicOrder() }
-    })
+      const changed = (await this.run('UPDATE payment_orders SET status=?,upstream_trade_no=?,completed_at=?,updated_at=?,failure_reason=NULL WHERE id=? AND status<>?', PAYMENT_STATES.PAID, tradeNo, now, now, row.id, PAYMENT_STATES.PAID)).changes
+      if (changed !== 1) return { kind: 'duplicate', order: (await publicOrder()) }
+      await this.deletePaymentQrCache(row.out_trade_no)
+      await this.run('UPDATE users SET points=ROUND(points+?,4) WHERE id=?', Number(row.points), row.user_id)
+      await this.ledger(row.user_id, Number(row.points), `充值到账 ${row.out_trade_no}`, row.out_trade_no, row.id)
+      await this.audit('zpay', 'payment.order.paid', row.id, { outTradeNo, points: Number(row.points), amountCents: Number(row.amount_cents), tradeNo, previousStatus: row.status })
+      return { kind: 'paid', order: (await publicOrder()) }
+    }))
   }
-  paymentOrders({ search = '', status = '', userId = '', page = 1, limit = 30 }: Record<string, any> = {}) {
-    this.transaction(() => this.expirePaymentOrders())
+  async paymentOrders({ search = '', status = '', userId = '', page = 1, limit = 30 }: Record<string, any> = {}) {
+    await this.expirePaymentOrders()
     page = integer(page, 1, 100000); limit = integer(limit, 1, 100)
     const clauses = ['1=1']; const args = []
     if (search) {
@@ -1268,36 +1305,36 @@ export class ManagementStore {
     if (status) { clauses.push('p.status=?'); args.push(String(status)) }
     if (userId) { clauses.push('p.user_id=?'); args.push(String(userId)) }
     const where = clauses.join(' AND ')
-    const total = this.get(`SELECT COUNT(*) n FROM payment_orders p JOIN users u ON u.id=p.user_id WHERE ${where}`, ...args).n
-    const items = this.all(`SELECT p.*,u.name AS user_name,u.email AS user_email FROM payment_orders p JOIN users u ON u.id=p.user_id WHERE ${where} ORDER BY p.created_at DESC,p.id DESC LIMIT ? OFFSET ?`, ...args, limit, (page - 1) * limit).map((row) => ({
+    const total = (await this.get(`SELECT COUNT(*) n FROM payment_orders p JOIN users u ON u.id=p.user_id WHERE ${where}`, ...args)).n
+    const items = (await mapAsync((await this.all(`SELECT p.*,u.name AS user_name,u.email AS user_email FROM payment_orders p JOIN users u ON u.id=p.user_id WHERE ${where} ORDER BY p.created_at DESC,p.id DESC LIMIT ? OFFSET ?`, ...args, limit, (page - 1) * limit)), async (row) => ({
       ...this.paymentOrderPublic(row),
       userId: row.user_id,
       userName: row.user_name,
       userEmail: row.user_email || '',
-      postedPoints: Number(this.get('SELECT COALESCE(SUM(delta),0) points FROM ledger WHERE payment_order_id=?',row.id).points),
+      postedPoints: Number((await this.get('SELECT COALESCE(SUM(delta),0) points FROM ledger WHERE payment_order_id=?',row.id)).points),
       failureReason: row.failure_reason || '',
-    }))
+    })))
     return { items, total, page, limit }
   }
-  paymentSummary() {
-    const all = this.get(`SELECT COUNT(*) orders,COALESCE(SUM(CASE WHEN status='paid' THEN 1 ELSE 0 END),0) paid,COALESCE(SUM(CASE WHEN status='paid' THEN amount_cents ELSE 0 END),0) paidCents,COALESCE(SUM(CASE WHEN status='paid' THEN points ELSE 0 END),0) points FROM payment_orders`)
-    const today = this.get("SELECT COUNT(*) AS orders,COALESCE(SUM(amount_cents),0) AS cents FROM payment_orders WHERE status='paid' AND completed_at>=?", isoStartOfDay())
+  async paymentSummary() {
+    const all = (await this.get(`SELECT COUNT(*) orders,COALESCE(SUM(CASE WHEN status='paid' THEN 1 ELSE 0 END),0) paid,COALESCE(SUM(CASE WHEN status='paid' THEN amount_cents ELSE 0 END),0) paidCents,COALESCE(SUM(CASE WHEN status='paid' THEN points ELSE 0 END),0) points FROM payment_orders`))
+    const today = (await this.get("SELECT COUNT(*) AS orders,COALESCE(SUM(amount_cents),0) AS cents FROM payment_orders WHERE status='paid' AND completed_at>=?", isoStartOfDay()))
     const monthDate = new Date(); monthDate.setUTCDate(1); monthDate.setUTCHours(0, 0, 0, 0)
-    const month = this.get("SELECT COUNT(*) AS orders,COALESCE(SUM(amount_cents),0) AS cents FROM payment_orders WHERE status='paid' AND completed_at>=?", monthDate.toISOString())
+    const month = (await this.get("SELECT COUNT(*) AS orders,COALESCE(SUM(amount_cents),0) AS cents FROM payment_orders WHERE status='paid' AND completed_at>=?", monthDate.toISOString()))
     return { ...all, todayOrders: Number(today.orders || 0), todayCents: Number(today.cents || 0), monthOrders: Number(month.orders || 0), monthCents: Number(month.cents || 0) }
   }
 
   // 管理端运维视图只读：这里集中取迁移、磁盘、备份、数据集和运行时状态，
   // 不执行迁移/对账/快照脚本，也不返回任何凭据或令牌原文。
   async operations({ signal }: { signal?: AbortSignal } = {}) {
-    const filesColumns = new Set(tableColumns(this, 'workspace_files'))
-    const artifactsColumns = new Set(tableColumns(this, 'artifacts'))
-    const projects = Boolean(this.get("SELECT 1 FROM sqlite_master WHERE type='table' AND name='projects'"))
-    const layoutReport = projectLayoutReport(this)
+    const filesColumns = new Set((await tableColumns(this, 'workspace_files')))
+    const artifactsColumns = new Set((await tableColumns(this, 'artifacts')))
+    const projects = Boolean((await this.get("SELECT 1 FROM sqlite_master WHERE type='table' AND name='projects'")))
+    const layoutReport = (await projectLayoutReport(this))
     const storageDistribution = filesColumns.size
-      ? this.all('SELECT COALESCE(storage,\'unknown\') AS value,COUNT(*) AS rows,COALESCE(SUM(COALESCE(size,length(bytes))),0) AS bytes FROM workspace_files GROUP BY storage ORDER BY value')
+      ? (await this.all('SELECT COALESCE(storage,\'unknown\') AS value,COUNT(*) AS rows,COALESCE(SUM(COALESCE(size,length(bytes))),0) AS bytes FROM workspace_files GROUP BY storage ORDER BY value'))
       : []
-    const hasMediaLayout = Boolean(this.get("SELECT 1 FROM sqlite_master WHERE type='table' AND name='media_layout'"))
+    const hasMediaLayout = Boolean((await this.get("SELECT 1 FROM sqlite_master WHERE type='table' AND name='media_layout'")))
     const migration = {
       projectLayout: layoutReport.layout,
       projectLayoutLabel: layoutReport.layout === 'scoped' ? '新布局（多项目）' : layoutReport.layout === 'legacy' ? '单项目索引' : layoutReport.layout === 'mixed' ? '半迁移（需处理）' : layoutReport.layout === 'fresh' ? '单项目索引' : '新库（尚无文件）',
@@ -1312,15 +1349,15 @@ export class ManagementStore {
       workspaceRowsAtNeither: Number(layoutReport.atNeither || 0),
       workspaceRowsAtBlob: Number(layoutReport.atBlob || 0),
       workspaceMissingBlobs: Number(layoutReport.missingBlob || 0),
-      projectCount: projects ? Number(this.get('SELECT COUNT(*) AS n FROM projects')?.n || 0) : 0,
-      mediaLayout: mediaLayout(this),
-      mediaLayoutUpdatedAt: hasMediaLayout ? this.get("SELECT updated_at FROM media_layout WHERE id=1")?.updated_at || null : null,
-      workspaceBlobRows: filesColumns.has('blob') ? Number(this.get('SELECT COUNT(*) AS n FROM workspace_files WHERE blob IS NOT NULL AND blob<>\'\'')?.n || 0) : 0,
-      artifactBlobRows: artifactsColumns.has('blob') ? Number(this.get('SELECT COUNT(*) AS n FROM artifacts WHERE blob IS NOT NULL AND blob<>\'\'')?.n || 0) : 0,
-      workspaceBytesRows: filesColumns.has('bytes') ? Number(this.get('SELECT COUNT(*) AS n FROM workspace_files WHERE bytes IS NOT NULL')?.n || 0) : 0,
-      artifactBytesRows: artifactsColumns.has('bytes') ? Number(this.get('SELECT COUNT(*) AS n FROM artifacts WHERE bytes IS NOT NULL')?.n || 0) : 0,
+      projectCount: projects ? Number((await this.get('SELECT COUNT(*) AS n FROM projects'))?.n || 0) : 0,
+      mediaLayout: (await mediaLayout(this)),
+      mediaLayoutUpdatedAt: hasMediaLayout ? (await this.get("SELECT updated_at FROM media_layout WHERE id=1"))?.updated_at || null : null,
+      workspaceBlobRows: filesColumns.has('blob') ? Number((await this.get('SELECT COUNT(*) AS n FROM workspace_files WHERE blob IS NOT NULL AND blob<>\'\''))?.n || 0) : 0,
+      artifactBlobRows: artifactsColumns.has('blob') ? Number((await this.get('SELECT COUNT(*) AS n FROM artifacts WHERE blob IS NOT NULL AND blob<>\'\''))?.n || 0) : 0,
+      workspaceBytesRows: filesColumns.has('bytes') ? Number((await this.get('SELECT COUNT(*) AS n FROM workspace_files WHERE bytes IS NOT NULL'))?.n || 0) : 0,
+      artifactBytesRows: artifactsColumns.has('bytes') ? Number((await this.get('SELECT COUNT(*) AS n FROM artifacts WHERE bytes IS NOT NULL'))?.n || 0) : 0,
       storageDistribution,
-      artifactStorageDistribution: artifactsColumns.size ? this.all('SELECT COALESCE(storage,\'unknown\') AS value,COUNT(*) AS rows,COALESCE(SUM(COALESCE(size,length(bytes))),0) AS bytes FROM artifacts GROUP BY storage ORDER BY value') : [],
+      artifactStorageDistribution: artifactsColumns.size ? (await this.all('SELECT COALESCE(storage,\'unknown\') AS value,COUNT(*) AS rows,COALESCE(SUM(COALESCE(size,length(bytes))),0) AS bytes FROM artifacts GROUP BY storage ORDER BY value')) : [],
     }
 
     const root = mediaRoot()
@@ -1415,65 +1452,66 @@ export class ManagementStore {
       runtime: { revision: process.env.OIP_RUNTIME_REVISION || null, image: process.env.OIP_RUNTIME_IMAGE || null, observedAt: new Date().toISOString(), textModels, textContextWindow: textModels[0]?.contextWindow ?? null, textContextWindowSource: textModels[0]?.sources.contextWindow ?? null, mediaMode: String(process.env.OIP_MEDIA_MODE || 'owner').trim() || 'owner', mediaRoot: root },
     }
   }
-  loginUser(code) { const row = this.get('SELECT id FROM users WHERE secret_hash=? AND status=?',digest(code),'active'); if (!row) throw failure('登录码无效或账号已停用',401); return this.createSession('user',row.id) }
+  async loginUser(code) { const row = (await this.get('SELECT id FROM users WHERE secret_hash=? AND status=?',digest(code),'active')); if (!row) throw failure('登录码无效或账号已停用',401); return (await this.createSession('user',row.id)) }
 
   // MCP 访问令牌：只保存摘要，明文仅在生成/轮换时返回一次。
-  mcpTokenInfo(userId) {
-    const row = this.get('SELECT mcp_token_hash,mcp_enabled FROM users WHERE id=?', userId)
+  async mcpTokenInfo(userId) {
+    const row = (await this.get('SELECT mcp_token_hash,mcp_enabled FROM users WHERE id=?', userId))
     return { hasToken: Boolean(row?.mcp_token_hash), enabled: Boolean(row?.mcp_token_hash && row.mcp_enabled) }
   }
-  setMcpEnabled(userId, enabled) {
+  async setMcpEnabled(userId, enabled) {
     if (typeof enabled !== 'boolean') throw failure('缺少 MCP 开关状态', 422)
-    if (!this.get('SELECT id FROM users WHERE id=?', userId)) throw failure('账号不存在', 404)
-    this.run('UPDATE users SET mcp_enabled=? WHERE id=?', enabled ? 1 : 0, userId)
-    this.audit('用户', 'mcp.enabled', userId, { enabled })
-    return this.mcpTokenInfo(userId)
+    if (!(await this.get('SELECT id FROM users WHERE id=?', userId))) throw failure('账号不存在', 404)
+    await this.run('UPDATE users SET mcp_enabled=? WHERE id=?', enabled ? 1 : 0, userId)
+    await this.audit('用户', 'mcp.enabled', userId, { enabled })
+    return (await this.mcpTokenInfo(userId))
   }
-  rotateMcpToken(userId) {
-    const user = this.get('SELECT id FROM users WHERE id=?', userId)
+  async rotateMcpToken(userId) {
+    const user = (await this.get('SELECT id FROM users WHERE id=?', userId))
     if (!user) throw failure('账号不存在', 404)
     const token = `miao_${randomBytes(24).toString('base64url')}`
-    this.run('UPDATE users SET mcp_token_hash=? WHERE id=?', digest(token), userId)
-    this.audit('用户', 'mcp.rotate', userId, {})
+    await this.run('UPDATE users SET mcp_token_hash=? WHERE id=?', digest(token), userId)
+    await this.audit('用户', 'mcp.rotate', userId, {})
     return { token }
   }
-  userByMcpToken(token) {
+  async userByMcpToken(token) {
     const value = String(token || '')
     if (value.length < 20 || value.length > 200) return null
-    const row = this.get('SELECT id FROM users WHERE mcp_token_hash=? AND status=? AND mcp_enabled=1', digest(value), 'active')
+    const row = (await this.get('SELECT id FROM users WHERE mcp_token_hash=? AND status=? AND mcp_enabled=1', digest(value), 'active'))
     return row?.id || null
   }
-  createSession(role, userId = null) {
-    this.run('DELETE FROM sessions WHERE expires<?',Date.now())
+  async createSession(role, userId = null) {
+    await this.run('DELETE FROM sessions WHERE expires<?',Date.now())
     const token = randomBytes(32).toString('base64url'), csrf = randomBytes(24).toString('base64url')
-    this.run('INSERT INTO sessions VALUES(?,?,?,?,?)',digest(token),role,userId,csrf,Date.now()+12*3600000)
+    await this.run('INSERT INTO sessions VALUES(?,?,?,?,?)',digest(token),role,userId,csrf,Date.now()+12*3600000)
     return { token, csrf, role, userId }
   }
-  session(token) {
+  async session(token) {
     if (!token) return null
     const tokenHash = digest(token)
-    const session = this.get('SELECT role,user_id AS userId,csrf,expires FROM sessions WHERE hash=? AND expires>?', tokenHash, Date.now())
-    if (!session || (session.userId && this.user(session.userId)?.status !== 'active')) return null
+    const session = (await this.get('SELECT role,user_id AS userId,csrf,expires FROM sessions WHERE hash=? AND expires>?', tokenHash, Date.now()))
+    if (!session || (session.userId && (await this.user(session.userId))?.status !== 'active')) return null
     const { role, userId } = session
     // A slow body or an Agent round can outlive logout, password revocation or
     // the twelve-hour deadline. Keep only the digest, and check the live row at
     // a new dispatch; already accepted jobs and settlement own their lifetimes.
-    Object.defineProperty(session, MODEL_SESSION_CURRENT, { value: () => Boolean(this.get(
-      'SELECT 1 FROM sessions WHERE hash=? AND role=? AND user_id IS ? AND expires>?', tokenHash, role, userId, Date.now(),
-    )) })
+    Object.defineProperty(session, MODEL_SESSION_CURRENT, { value: async () => Boolean((await this.get(
+      'SELECT 1 FROM sessions WHERE hash=? AND role=? AND user_id IS ? AND expires>?'+(this.db.dialect==='postgres'&&this.db.isTransaction?' FOR SHARE':''), tokenHash, role, userId, Date.now(),
+    ))) })
     // 请求级读取生效价；视频询价等直接计价路径也要刷新，不能依赖队列轮询。
-    this.settings()
+    await this.settings()
     return session
   }
-  logout(token) { this.run('DELETE FROM sessions WHERE hash=?',digest(token)) }
-  begin(args) { return this.reserve({ ...args, status: GENERATION_STATES.RUNNING }).id }
-  reserve({ session, model, points, prompt, parameters, idempotencyKey, requestId, status = GENERATION_STATES.QUEUED, inputs = {}, accessToken = '', workerId = '' }: Record<string, any>) {
-    return this.transaction(() => {
-      const cfg = this.settings()
+  async logout(token) { await this.run('DELETE FROM sessions WHERE hash=?',digest(token)) }
+  async begin(args) { return (await this.reserve({ ...args, status: GENERATION_STATES.RUNNING })).id }
+  async reserve({ session, model, points, prompt, parameters, idempotencyKey, requestId, status = GENERATION_STATES.QUEUED, inputs = {}, accessToken = '', workerId = '' }: Record<string, any>) {
+    return (await this.transaction(async () => {
+      const cfg = (await this.settings())
       const publicId = publicModelId(model)
       const owner = ownerForSession(session)
       const userId = owner.id && owner.type === 'user' ? owner.id : null
-      const actor = owner.type === 'admin' ? '管理员' : userId ? this.user(userId)?.name : '访客'
+      if (userId) await this.db.lockRow('users','id',userId)
+      const actor = owner.type === 'admin' ? '管理员' : userId ? (await this.user(userId))?.name : '访客'
       const suppliedAccessToken = String(accessToken || '').trim()
       if (owner.type === 'guest' && suppliedAccessToken && !/^[A-Za-z0-9_-]{20,200}$/.test(suppliedAccessToken)) throw failure('访问标识无效')
       const issuedAccessToken = owner.type === 'guest' ? suppliedAccessToken || randomBytes(32).toString('base64url') : ''
@@ -1483,20 +1521,20 @@ export class ManagementStore {
       const candidateRequestId = suppliedRequestId || newRequestId()
       const candidateKey = String(idempotencyKey || suppliedRequestId || candidateRequestId).trim()
       if (!validIdempotencyKey(candidateKey)) throw failure('请求标识无效')
-      const byRequest = this.get('SELECT * FROM generations WHERE request_id=?', candidateRequestId)
+      const byRequest = (await this.get('SELECT * FROM generations WHERE request_id=?', candidateRequestId))
       if (byRequest) {
         if (owner.type === 'guest' ? !isGuestScope(byRequest.owner_scope) : byRequest.owner_scope !== ownerScope) throw failure('请求标识已被其他所有者使用',409)
-        return this.reservationFromExisting(byRequest, accessToken)
+        return (await this.reservationFromExisting(byRequest, accessToken))
       }
-      const byKey = this.get('SELECT * FROM generations WHERE owner_scope=? AND idempotency_key=?', ownerScope, candidateKey)
-        || (owner.type === 'guest' ? this.get('SELECT * FROM generations WHERE owner_scope=? AND idempotency_key=?', 'guest', candidateKey) : null)
-      if (byKey) return this.reservationFromExisting(byKey, accessToken)
+      const byKey = (await this.get('SELECT * FROM generations WHERE owner_scope=? AND idempotency_key=?', ownerScope, candidateKey))
+        || (owner.type === 'guest' ? (await this.get('SELECT * FROM generations WHERE owner_scope=? AND idempotency_key=?', 'guest', candidateKey)) : null)
+      if (byKey) return (await this.reservationFromExisting(byKey, accessToken))
       // Management credentials can inspect/recover historical tasks, but are
       // not a user balance. Every new media order must belong to a billed user.
-      requireModelUser(session, '图片和视频模型')
+      await requireModelUser(session, '图片和视频模型')
       if (userId && /^assets\/[A-Za-z0-9_-]+$/.test(parameters.outputDirectory || '')) {
-        const activeNode = this.get("SELECT request_id FROM generations WHERE user_id=? AND json_extract(parameters,'$.outputDirectory')=? AND COALESCE(json_extract(parameters,'$.workspaceProject'),'default')=? AND status IN ('queued','running') ORDER BY created_at DESC LIMIT 1",
-          userId, parameters.outputDirectory, parameters.workspaceProject || 'default')
+        const activeNode = (await this.get("SELECT request_id FROM generations WHERE user_id=? AND json_extract(parameters,'$.outputDirectory')=? AND COALESCE(json_extract(parameters,'$.workspaceProject'),'default')=? AND status IN ('queued','running') ORDER BY created_at DESC LIMIT 1",
+          userId, parameters.outputDirectory, parameters.workspaceProject || 'default'))
         if (activeNode) throw Object.assign(failure('该节点已在另一页面生成，请取回原任务后再操作，未重复扣费', 409), { activeRequestId: activeNode.request_id })
       }
       if (!cfg.enabled) throw failure('管理员已暂停生成',503)
@@ -1508,7 +1546,7 @@ export class ManagementStore {
         throw failure('模型渠道刚刚发生变化，请重新提交', 409)
       }
       // 管理员给用户勾选的可用模型（空数组 = 全部开放）。这里在预扣/调上游之前拦截。
-      const allowed = this.user(userId)?.models
+      const allowed = (await this.user(userId))?.models
       if (Array.isArray(allowed) && allowed.length && !allowed.includes(publicId)) throw failure('这个模型未对你的账号开放', 403)
       if (![GENERATION_STATES.QUEUED, GENERATION_STATES.RUNNING].includes(status)) throw failure('生成状态无效',422)
       points = credits(points, 0, 1000000, model.provider === 'suihe' || parameters.videoPricing?.version===VIDEO_PRICING_VERSION ? 10000 : 100)
@@ -1531,44 +1569,44 @@ export class ManagementStore {
           throw failure('模型价格刚刚发生变化，请重新询价后再提交',409)
         }
       }
-      const user = this.user(userId)
+      const user = (await this.user(userId))
       if (!user || user.status !== 'active') throw failure('账号已停用',403)
       if (!(Number(user.points) > 0)) throw failure('积分不足，请先充值后生成',402)
       if (user.models.length && !user.models.includes(publicId)) throw failure('账号未获准使用这个模型',403)
       const configuredActiveLimit = Number(process.env.MIAO_MAX_ACTIVE_GENERATIONS_PER_USER || 8)
       const activeLimit = Number.isSafeInteger(configuredActiveLimit) && configuredActiveLimit > 0 ? Math.min(configuredActiveLimit, 1000) : 8
-      const active = Number(this.get("SELECT COUNT(*) AS count FROM generations WHERE user_id=? AND status IN ('queued','running')", userId)?.count || 0)
+      const active = Number((await this.get("SELECT COUNT(*) AS count FROM generations WHERE user_id=? AND status IN ('queued','running')", userId))?.count || 0)
       if (active >= activeLimit) throw failure('当前账号进行中的生成任务过多，请等待已有任务完成后再试', 429)
-      if (this.run('UPDATE users SET points=ROUND(points-?,4) WHERE id=? AND points>=?',points,userId,points).changes !== 1) throw failure('积分不足，请联系妙图团队',402)
+      if ((await this.run('UPDATE users SET points=ROUND(points-?,4) WHERE id=? AND points>=?',points,userId,points)).changes !== 1) throw failure('积分不足，请联系妙图团队',402)
       const id = newGenerationId()
       const now = new Date().toISOString()
       const expiresAt = status === GENERATION_STATES.QUEUED ? new Date(Date.now() + GENERATION_LIMITS.queueMs).toISOString() : null
-      this.run(`INSERT INTO generations(id,user_id,actor,model,status,points,reserved_points,charged_points,prompt,parameters,error,created_at,finished_at,request_id,idempotency_key,owner_scope,viewer_token_hash,provider,upstream_model,upstream_request_id,usage,started_at,cancel_requested,lease_id,lease_at,upstream_status,expires_at)
+      await this.run(`INSERT INTO generations(id,user_id,actor,model,status,points,reserved_points,charged_points,prompt,parameters,error,created_at,finished_at,request_id,idempotency_key,owner_scope,viewer_token_hash,provider,upstream_model,upstream_request_id,usage,started_at,cancel_requested,lease_id,lease_at,upstream_status,expires_at)
         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, userId, actor, publicId, status, points, points, 0, prompt, JSON.stringify(parameters), null, now, null, candidateRequestId, candidateKey, ownerScope, issuedAccessToken ? digest(issuedAccessToken) : null, model.provider || null, model.id || publicId, null, null, status === GENERATION_STATES.RUNNING ? now : null, 0, status === GENERATION_STATES.RUNNING ? workerId || null : null, status === GENERATION_STATES.RUNNING ? now : null, null, expiresAt)
-      this.ledger(userId,-points,'生成预扣',id)
-      this.saveGenerationInputs(id, inputs)
-      const row = this.get('SELECT * FROM generations WHERE id=?', id)
-      return { id, requestId: candidateRequestId, idempotencyKey: candidateKey, status, owner, accessToken: issuedAccessToken, position: this.queuePosition(row), duplicate: false }
-    })
+      await this.ledger(userId,-points,'生成预扣',id)
+      await this.saveGenerationInputs(id, inputs)
+      const row = (await this.get('SELECT * FROM generations WHERE id=?', id))
+      return { id, requestId: candidateRequestId, idempotencyKey: candidateKey, status, owner, accessToken: issuedAccessToken, position: (await this.queuePosition(row)), duplicate: false }
+    }))
   }
-  existingGeneration({ session, requestId = '', idempotencyKey = '', accessToken = '' }: Record<string, any> = {}) {
+  async existingGeneration({ session, requestId = '', idempotencyKey = '', accessToken = '' }: Record<string, any> = {}) {
     const owner = ownerForSession(session)
     const ownerScope = owner.type === 'guest' && accessToken ? guestScope(accessToken) : owner.scope
     const suppliedRequestId = String(requestId || '').trim()
     if (suppliedRequestId) {
-      const byRequest = this.get('SELECT * FROM generations WHERE request_id=?', suppliedRequestId)
+      const byRequest = (await this.get('SELECT * FROM generations WHERE request_id=?', suppliedRequestId))
       if (byRequest) {
         if (owner.type === 'guest' ? !isGuestScope(byRequest.owner_scope) : byRequest.owner_scope !== ownerScope) throw failure('请求标识已被其他所有者使用',409)
-        return this.reservationFromExisting(byRequest, accessToken)
+        return (await this.reservationFromExisting(byRequest, accessToken))
       }
     }
     const suppliedKey = String(idempotencyKey || '').trim()
     if (!suppliedKey) return null
-    const byKey = this.get('SELECT * FROM generations WHERE owner_scope=? AND idempotency_key=?', ownerScope, suppliedKey)
-      || (owner.type === 'guest' ? this.get('SELECT * FROM generations WHERE owner_scope=? AND idempotency_key=?', 'guest', suppliedKey) : null)
-    return byKey ? this.reservationFromExisting(byKey, accessToken) : null
+    const byKey = (await this.get('SELECT * FROM generations WHERE owner_scope=? AND idempotency_key=?', ownerScope, suppliedKey))
+      || (owner.type === 'guest' ? (await this.get('SELECT * FROM generations WHERE owner_scope=? AND idempotency_key=?', 'guest', suppliedKey)) : null)
+    return byKey ? (await this.reservationFromExisting(byKey, accessToken)) : null
   }
-  reservationFromExisting(row, accessToken = '') {
+  async reservationFromExisting(row, accessToken = '') {
     const guestAccess = isGuestScope(row.owner_scope) && hashMatches(accessToken, row.viewer_token_hash)
     if (isGuestScope(row.owner_scope) && !guestAccess) throw failure('无权使用这次请求',403)
     return {
@@ -1582,15 +1620,16 @@ export class ManagementStore {
       owner: { scope: row.owner_scope },
       accessToken: guestAccess ? accessToken : '',
       upstreamRequestId: row.upstream_request_id || '',
-      position: this.queuePosition(row),
+      position: (await this.queuePosition(row)),
       duplicate: true,
     }
   }
-  assertGenerationDispatch(id, workerId, { markStarted = false }: { markStarted?: boolean } = {}) {
-    return this.transaction(() => {
-      const row = this.get('SELECT status,lease_id,parameters,user_id,owner_scope,model FROM generations WHERE id=?', id)
-      const user = row?.user_id ? this.user(row.user_id) : null
-      const cfg = this.settings(), model = row ? modelById(row.model) : null
+  async assertGenerationDispatch(id, workerId, { markStarted = false }: { markStarted?: boolean } = {}) {
+    return (await this.transaction(async () => {
+      await this.db.lockRow('generations','id',id)
+      const row = (await this.get('SELECT status,lease_id,parameters,user_id,owner_scope,model FROM generations WHERE id=?', id))
+      const user = row?.user_id ? (await this.user(row.user_id)) : null
+      const cfg = (await this.settings()), model = row ? modelById(row.model) : null
       assertReservedDispatch({
         running: row?.status === GENERATION_STATES.RUNNING,
         ownsLease: Boolean(workerId) && row?.lease_id === workerId,
@@ -1602,133 +1641,139 @@ export class ManagementStore {
       })
       if (markStarted) {
         const parameters = { ...parse(row.parameters), submissionState: 'started', submissionStartedAt: new Date().toISOString() }
-        this.run('UPDATE generations SET parameters=? WHERE id=?', JSON.stringify(parameters), id)
+        await this.run('UPDATE generations SET parameters=? WHERE id=?', JSON.stringify(parameters), id)
       }
-    })
+    }))
   }
-  setUpstreamTask(id, { requestId = '', model = '', status = null, workerId = '' }: Record<string, any> = {}) {
-    return this.transaction(() => {
-      const row = this.get('SELECT * FROM generations WHERE id=?', id)
+  async setUpstreamTask(id, { requestId = '', model = '', status = null, workerId = '' }: Record<string, any> = {}) {
+    return (await this.transaction(async () => {
+      await this.db.lockRow('generations','id',id)
+      const row = (await this.get('SELECT * FROM generations WHERE id=?', id))
       // 上游请求可能已接受后，用户才取消本地记录。即使本地已经是 cancelled，
       // 也必须把 upstream_request_id 落下来，供后续对账和人工找回；不能因 409 丢掉它。
       if (!row || ![GENERATION_STATES.RUNNING, GENERATION_STATES.CANCELLED].includes(row.status)) throw failure('生成记录已结算', 409)
       const keepLease=workerId && row.lease_id===workerId && row.status===GENERATION_STATES.RUNNING
-      this.run('UPDATE generations SET upstream_request_id=?,upstream_model=COALESCE(?,upstream_model),upstream_status=?,lease_id=?,lease_at=? WHERE id=?', String(requestId || '').slice(0, 200) || null, String(model || '').slice(0, 200) || null, status == null ? row.upstream_status : Number(status), keepLease?workerId:null,keepLease?row.lease_at:null,id)
-      return this.get('SELECT * FROM generations WHERE id=?', id)
-    })
+      await this.run('UPDATE generations SET upstream_request_id=?,upstream_model=COALESCE(?,upstream_model),upstream_status=?,lease_id=?,lease_at=? WHERE id=?', String(requestId || '').slice(0, 200) || null, String(model || '').slice(0, 200) || null, status == null ? row.upstream_status : Number(status), keepLease?workerId:null,keepLease?row.lease_at:null,id)
+      return (await this.get('SELECT * FROM generations WHERE id=?', id))
+    }))
   }
-  saveGenerationInputs(id, inputs: Record<string, any> = {}) {
+  async saveGenerationInputs(id, inputs: Record<string, any> = {}) {
     const references = Array.isArray(inputs.references) ? inputs.references : []
-    references.forEach((item, index) => this.run('INSERT INTO generation_inputs(generation_id,position,kind,role,mime,extension,bytes) VALUES(?,?,?,?,?,?,?)', id, index, 'reference', item.role || null, item.mime, item.extension, item.bytes))
-    if (inputs.edit?.mask) this.run('INSERT INTO generation_inputs(generation_id,position,kind,role,mime,extension,bytes) VALUES(?,?,?,?,?,?,?)', id, references.length, 'mask', null, inputs.edit.mask.mime, inputs.edit.mask.extension, inputs.edit.mask.bytes)
+    await forEachAsync(references, async (item, index) => (await this.run('INSERT INTO generation_inputs(generation_id,position,kind,role,mime,extension,bytes) VALUES(?,?,?,?,?,?,?)', id, index, 'reference', item.role || null, item.mime, item.extension, item.bytes)))
+    if (inputs.edit?.mask) await this.run('INSERT INTO generation_inputs(generation_id,position,kind,role,mime,extension,bytes) VALUES(?,?,?,?,?,?,?)', id, references.length, 'mask', null, inputs.edit.mask.mime, inputs.edit.mask.extension, inputs.edit.mask.bytes)
   }
-  loadGeneration(id) {
-    const row = this.get('SELECT * FROM generations WHERE id=?', id)
+  async loadGeneration(id) {
+    const row = (await this.get('SELECT * FROM generations WHERE id=?', id))
     if (!row) return null
     const parameters = parse(row.parameters)
-    const references = this.all('SELECT * FROM generation_inputs WHERE generation_id=? AND kind=? ORDER BY position', id, 'reference').map((item) => ({ value: `data:${item.mime};base64,${Buffer.from(item.bytes).toString('base64')}`, bytes: Buffer.from(item.bytes), mime: item.mime, extension: item.extension, role: item.role || 'general' }))
-    const mask = this.get('SELECT * FROM generation_inputs WHERE generation_id=? AND kind=? ORDER BY position LIMIT 1', id, 'mask')
+    const references = (await this.all('SELECT * FROM generation_inputs WHERE generation_id=? AND kind=? ORDER BY position', id, 'reference')).map((item) => ({ value: `data:${item.mime};base64,${Buffer.from(item.bytes).toString('base64')}`, bytes: Buffer.from(item.bytes), mime: item.mime, extension: item.extension, role: item.role || 'general' }))
+    const mask = (await this.get('SELECT * FROM generation_inputs WHERE generation_id=? AND kind=? ORDER BY position LIMIT 1', id, 'mask'))
     const edit = parameters.edit ? { ...parameters.edit, ...(mask ? { mask: { value: `data:${mask.mime};base64,${Buffer.from(mask.bytes).toString('base64')}`, bytes: Buffer.from(mask.bytes), mime: mask.mime, extension: mask.extension } } : {}) } : null
     return { ...row, parameters, references, edit }
   }
-  queuePosition(row) {
+  async queuePosition(row) {
     if (!row || row.status !== GENERATION_STATES.QUEUED) return 0
-    return Number(this.get("SELECT COUNT(*) n FROM generations WHERE status='queued' AND (created_at<? OR (created_at=? AND id<=?))", row.created_at, row.created_at, row.id).n)
+    return Number((await this.get("SELECT COUNT(*) n FROM generations WHERE status='queued' AND (created_at<? OR (created_at=? AND id<=?))", row.created_at, row.created_at, row.id)).n)
   }
-  claimNext(workerId) {
-    return this.transaction(() => {
-      const cfg = this.settings()
+  async claimNext(workerId) {
+    return (await this.transaction(async () => {
+      const cfg = (await this.settings())
       if (!cfg.enabled) return null
       // Maintenance runs once per pump. Claim only the oldest candidate, rather
       // than rescanning every running/queued generation for every dispatch.
       while (true) {
-        const candidate = this.get("SELECT * FROM generations WHERE status='queued' ORDER BY created_at ASC,id ASC LIMIT 1")
+        const candidate = (await this.get("SELECT * FROM generations WHERE status='queued' ORDER BY created_at ASC,id ASC LIMIT 1" + (this.db.dialect === 'postgres' ? ' FOR UPDATE SKIP LOCKED' : '')))
         if (!candidate) return null
         const now = new Date().toISOString()
         if (candidate.expires_at && candidate.expires_at < now) {
-          this.expireQueued(candidate.id, now)
+          await this.expireQueued(candidate.id, now)
           continue
         }
-        const user = candidate.user_id ? this.user(candidate.user_id) : null
+        const user = candidate.user_id ? (await this.user(candidate.user_id)) : null
         if ((modelById(candidate.model)?.video && !cfg.videoEnabled) || cfg.models[candidate.model] === false || (candidate.user_id && (!user || user.status !== 'active' || (user.models.length && !user.models.includes(candidate.model))))) {
-          this.settleFailure(candidate, '生成权限已变更，预扣积分已退还')
+          await this.settleFailure(candidate, '生成权限已变更，预扣积分已退还')
           continue
         }
-        const changed = this.run("UPDATE generations SET status='running',started_at=?,lease_id=?,lease_at=?,expires_at=NULL WHERE id=? AND status='queued'", now, workerId, now, candidate.id).changes
+        const changed = (await this.run("UPDATE generations SET status='running',started_at=?,lease_id=?,lease_at=?,expires_at=NULL WHERE id=? AND status='queued'", now, workerId, now, candidate.id)).changes
         if (changed !== 1) return null
-        return this.loadGeneration(candidate.id)
+        return (await this.loadGeneration(candidate.id))
       }
-    })
+    }))
   }
-  suiheLibraryAsset(userId, library, sha256) {
-    return this.get('SELECT reference_id AS referenceId,status FROM suihe_library_assets WHERE user_id=? AND library=? AND sha256=?', userId, library, sha256) || null
+  async suiheLibraryAsset(userId, library, sha256) {
+    return (await this.get('SELECT reference_id AS referenceId,status FROM suihe_library_assets WHERE user_id=? AND library=? AND sha256=?', userId, library, sha256)) || null
   }
-  saveSuiheLibraryAsset(userId, library, sha256, referenceId, status) {
+  async saveSuiheLibraryAsset(userId, library, sha256, referenceId, status) {
     const now = new Date().toISOString()
-    this.run(`INSERT INTO suihe_library_assets(user_id,library,sha256,reference_id,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)
+    await this.run(`INSERT INTO suihe_library_assets(user_id,library,sha256,reference_id,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)
       ON CONFLICT(user_id,library,sha256) DO UPDATE SET reference_id=excluded.reference_id,status=excluded.status,updated_at=excluded.updated_at`,
     userId, library, sha256, referenceId, status, now, now)
   }
-  forgetSuiheLibraryAsset(userId, library, sha256) {
-    this.run('DELETE FROM suihe_library_assets WHERE user_id=? AND library=? AND sha256=?', userId, library, sha256)
+  async forgetSuiheLibraryAsset(userId, library, sha256) {
+    await this.run('DELETE FROM suihe_library_assets WHERE user_id=? AND library=? AND sha256=?', userId, library, sha256)
   }
-  heartbeat(id, workerId) {
-    return this.run("UPDATE generations SET lease_at=? WHERE id=? AND lease_id=? AND status='running'", new Date().toISOString(), id, workerId).changes === 1
+  async heartbeat(id, workerId) {
+    return (await this.run("UPDATE generations SET lease_at=? WHERE id=? AND lease_id=? AND status='running'", new Date().toISOString(), id, workerId)).changes === 1
   }
-  releaseLease(id, workerId) { this.run('UPDATE generations SET lease_id=NULL,lease_at=NULL WHERE id=? AND lease_id=?', id, workerId) }
-  noteImageResultPending(id: string, workerId: string, metadata: Record<string, any>) {
-    return this.transaction(() => {
-      const g = this.get('SELECT * FROM generations WHERE id=?', id)
+  async releaseLease(id, workerId) { await this.run('UPDATE generations SET lease_id=NULL,lease_at=NULL WHERE id=? AND lease_id=?', id, workerId) }
+  async noteImageResultPending(id: string, workerId: string, metadata: Record<string, any>) {
+    return (await this.transaction(async () => {
+      await this.db.lockRow('generations','id',id)
+      const g = (await this.get('SELECT * FROM generations WHERE id=?', id))
       if (!g || g.status !== GENERATION_STATES.RUNNING || g.lease_id !== workerId) throw failure('原任务已停止保存', 409)
       const parameters = { ...parse(g.parameters), imageResultPending: true }
       delete parameters.submissionUncertain
       delete parameters.submissionDiagnosticId
-      this.run('UPDATE generations SET parameters=?,error=?,usage=?,upstream_model=?,upstream_request_id=?,upstream_status=? WHERE id=?',
+      await this.run('UPDATE generations SET parameters=?,error=?,usage=?,upstream_model=?,upstream_request_id=?,upstream_status=? WHERE id=?',
         JSON.stringify(parameters), '生成已完成，正在保存原图；不会重新生成', metadata.usage ? JSON.stringify(metadata.usage) : g.usage,
         metadata.upstreamModel || g.upstream_model, metadata.upstreamRequestId || g.upstream_request_id, metadata.upstreamStatus ?? g.upstream_status, id)
-    })
+    }))
   }
-  deferImageResult(id: string, workerId: string) {
-    return this.transaction(() => {
-      const g = this.get('SELECT * FROM generations WHERE id=?', id)
+  async deferImageResult(id: string, workerId: string) {
+    return (await this.transaction(async () => {
+      await this.db.lockRow('generations','id',id)
+      const g = (await this.get('SELECT * FROM generations WHERE id=?', id))
       if (!g || g.status !== GENERATION_STATES.RUNNING || g.lease_id !== workerId) return
       const parameters = { ...parse(g.parameters), imageResultPending: true }
       const attempt = Math.min(1000, Math.max(0, Number(parameters.imageResultRetry?.attempt) || 0)) + 1
       parameters.imageResultRetry = { attempt, at: Date.now() + Math.min(300_000, 30_000 * 2 ** Math.min(4, attempt - 1)) }
       delete parameters.submissionUncertain
       delete parameters.submissionDiagnosticId
-      this.run('UPDATE generations SET parameters=?,error=?,lease_id=NULL,lease_at=NULL WHERE id=?', JSON.stringify(parameters),
+      await this.run('UPDATE generations SET parameters=?,error=?,lease_id=NULL,lease_at=NULL WHERE id=?', JSON.stringify(parameters),
         '生成已完成，原图保存暂未成功，系统将继续取回原图；不会重新生成', id)
-    })
+    }))
   }
-  claimImageResult(id: string, workerId: string) {
-    return this.transaction(() => {
-      const g = this.get('SELECT * FROM generations WHERE id=?', id)
+  async claimImageResult(id: string, workerId: string) {
+    return (await this.transaction(async () => {
+      await this.db.lockRow('generations','id',id)
+      const g = (await this.get('SELECT * FROM generations WHERE id=?', id))
       if (!g || g.status !== GENERATION_STATES.RUNNING) return null
       if (g.lease_id && Date.parse(g.lease_at) > Date.now() - GENERATION_LIMITS.leaseMs) return null
       const parameters = { ...parse(g.parameters), imageResultPending: true }
       if (Number(parameters.imageResultRetry?.at) > Date.now()) return null
       delete parameters.submissionUncertain
       delete parameters.submissionDiagnosticId
-      this.run('UPDATE generations SET parameters=?,lease_id=?,lease_at=? WHERE id=?', JSON.stringify(parameters), workerId, new Date().toISOString(), id)
-      return this.get('SELECT * FROM generations WHERE id=?', id)
-    })
+      await this.run('UPDATE generations SET parameters=?,lease_id=?,lease_at=? WHERE id=?', JSON.stringify(parameters), workerId, new Date().toISOString(), id)
+      return (await this.get('SELECT * FROM generations WHERE id=?', id))
+    }))
   }
-  claimAcceptedImage(id: string, workerId: string) {
-    return this.transaction(()=>{
-      const g=this.get('SELECT * FROM generations WHERE id=?',id)
+  async claimAcceptedImage(id: string, workerId: string) {
+    return (await this.transaction(async ()=>{
+      await this.db.lockRow('generations','id',id)
+      const g=(await this.get('SELECT * FROM generations WHERE id=?',id))
       if(!g || g.status!==GENERATION_STATES.RUNNING || g.provider!=='suihe' || !g.upstream_request_id || modelById(g.model)?.video) return null
       if(g.lease_id && Date.parse(g.lease_at)>Date.now()-GENERATION_LIMITS.leaseMs) return null
       const parameters=parse(g.parameters)
       if(parameters.imageResultPending || parameters.imageResultExpiredAt) return null
-      this.run('UPDATE generations SET lease_id=?,lease_at=? WHERE id=?',workerId,new Date().toISOString(),id)
-      return this.loadGeneration(id)
-    })
+      await this.run('UPDATE generations SET lease_id=?,lease_at=? WHERE id=?',workerId,new Date().toISOString(),id)
+      return (await this.loadGeneration(id))
+    }))
   }
-  stopImageResultRecovery(id: string, reason: 'expired' | 'missing') {
+  async stopImageResultRecovery(id: string, reason: 'expired' | 'missing') {
     if (!['expired', 'missing'].includes(reason)) throw failure('原图回执恢复停止原因无效', 422)
-    return this.transaction(() => {
-      const g = this.get('SELECT * FROM generations WHERE id=?', id)
+    return (await this.transaction(async () => {
+      await this.db.lockRow('generations','id',id)
+      const g = (await this.get('SELECT * FROM generations WHERE id=?', id))
       if (!g || g.status !== GENERATION_STATES.RUNNING) return true
       const leaseAt = Date.parse(g.lease_at)
       if (g.lease_id && (!Number.isFinite(leaseAt) || leaseAt > Date.now() - GENERATION_LIMITS.leaseMs)) return false
@@ -1740,18 +1785,18 @@ export class ManagementStore {
         parameters.imageResultRecoveryStopped = { reason, at: new Date().toISOString() }
         // Receipt recovery reads its original result only. This generation's
         // uploaded inputs cannot help after that recovery has explicitly ended.
-        this.run('DELETE FROM generation_inputs WHERE generation_id=?', id)
+        await this.run('DELETE FROM generation_inputs WHERE generation_id=?', id)
       }
-      this.run('UPDATE generations SET parameters=?,error=?,lease_id=NULL,lease_at=NULL WHERE id=?', JSON.stringify(parameters),
+      await this.run('UPDATE generations SET parameters=?,error=?,lease_id=NULL,lease_at=NULL WHERE id=?', JSON.stringify(parameters),
         reason === 'expired' ? '原图暂存期已结束，请联系妙图团队核对原任务，避免重复生成' : '原图暂存回执缺失，请保留原任务并联系妙图团队核对，避免重复生成', id)
       return true
-    })
+    }))
   }
-  generationForViewer(requestId, session, accessToken = '') {
-    const row = this.get('SELECT * FROM generations WHERE request_id=?', requestId)
+  async generationForViewer(requestId, session, accessToken = '') {
+    const row = (await this.get('SELECT * FROM generations WHERE request_id=?', requestId))
     if (!row) return null
     if (!this.canView(row, session, accessToken)) throw failure('无权查看这次生成',403)
-    return this.publicGeneration(row, accessToken)
+    return (await this.publicGeneration(row, accessToken))
   }
   canView(row, session, accessToken = '') {
     if (session?.role === 'admin') return true
@@ -1759,7 +1804,7 @@ export class ManagementStore {
     if (row.owner_scope === 'admin') return false
     return hashMatches(accessToken, row.viewer_token_hash)
   }
-  publicGeneration(row, accessToken = '') {
+  async publicGeneration(row, accessToken = '') {
     const parameters = parse(row.parameters)
     delete parameters.videoPricing
     delete parameters.upstreamImagePricing
@@ -1773,34 +1818,34 @@ export class ManagementStore {
     const outputDirectory = String(parameters.desktopDelivery === 1 ? '' : parameters.outputDirectory || '').replace(/^\/+|\/+$/g, '')
     const accessQuery = isGuestScope(row.owner_scope) && accessToken ? `?access=${encodeURIComponent(accessToken)}` : ''
     const previewQuery = accessQuery + `${accessQuery ? '&' : '?'}v=${MEDIA_INPUT_VERSION}`
-    const images = this.all('SELECT a.id,a.mime FROM artifacts a LEFT JOIN artifact_expiry e ON e.artifact_id=a.id WHERE a.request_id=? AND (e.expires_at IS NULL OR e.expires_at>?) ORDER BY a.rowid', row.id, new Date().toISOString()).map((item) => ({ id: item.id, url: `/api/imagine/result/${item.id}${accessQuery}`, thumbnailUrl: delivery ? '' : `/api/imagine/preview/image/${item.id}${previewQuery}`, mime: item.mime, format: item.mime.split('/')[1], path: outputDirectory ? `${outputDirectory}/${item.id}.${item.mime.split('/')[1] || 'png'}` : '' }))
-    const video = publicVideoResult(this.videoResult(row.id), {
+    const images = (await this.all('SELECT a.id,a.mime FROM artifacts a LEFT JOIN artifact_expiry e ON e.artifact_id=a.id WHERE a.request_id=? AND (e.expires_at IS NULL OR e.expires_at>?) ORDER BY a.rowid', row.id, new Date().toISOString())).map((item) => ({ id: item.id, url: `/api/imagine/result/${item.id}${accessQuery}`, thumbnailUrl: delivery ? '' : `/api/imagine/preview/image/${item.id}${previewQuery}`, mime: item.mime, format: item.mime.split('/')[1], path: outputDirectory ? `${outputDirectory}/${item.id}.${item.mime.split('/')[1] || 'png'}` : '' }))
+    const video = publicVideoResult((await this.videoResult(row.id)), {
       url: delivery && delivery.status !== 'pending' ? '' : `/api/imagine/video-content?requestId=${encodeURIComponent(row.request_id)}`,
       thumbnailUrl: delivery ? '' : `/api/imagine/preview/video/${row.request_id}${previewQuery}`,
     })
     const resultCount = Number.isSafeInteger(parameters.resultCount) ? parameters.resultCount : video ? 1 : images.length || (row.status === GENERATION_STATES.SUCCEEDED ? null : 0)
     const errorExplanation = row.error ? explainUserError(row.error, { generationStatus: row.status, chargedPoints: row.charged_points, reservedPoints: row.reserved_points || row.points, submissionUncertain: Boolean(parameters.submissionUncertain), requestId: row.request_id }) : null
-    return { errorExplanation, delivery, resultCount, requestId: row.request_id, status: row.status, model: row.model, modelLabel: modelById(row.model)?.label || row.model, points: row.points, reservedPoints: Number(row.reserved_points || row.points || 0), chargedPoints: Number(row.charged_points || (row.status === GENERATION_STATES.SUCCEEDED ? row.points : 0)), prompt: row.prompt, parameters, size: parameters.size, quality: parameters.quality, format: parameters.format, background: parameters.background, inputFidelity: parameters.inputFidelity, count: parameters.count, duration: parameters.duration, editMode: parameters.editMode || null, usage: row.usage ? parse(row.usage) : null, error: row.error ? userFacingError(row.error, { generationStatus: row.status, chargedPoints: row.charged_points, reservedPoints: row.reserved_points || row.points, submissionUncertain: Boolean(parameters.submissionUncertain) }) : '', createdAt: row.created_at, startedAt: row.started_at || null, finishedAt: row.finished_at || null, submissionUncertain: Boolean(parameters.submissionUncertain), images, video, queuePosition: this.queuePosition(row) }
+    return { errorExplanation, delivery, resultCount, requestId: row.request_id, status: row.status, model: row.model, modelLabel: modelById(row.model)?.label || row.model, points: row.points, reservedPoints: Number(row.reserved_points || row.points || 0), chargedPoints: Number(row.charged_points || (row.status === GENERATION_STATES.SUCCEEDED ? row.points : 0)), prompt: row.prompt, parameters, size: parameters.size, quality: parameters.quality, format: parameters.format, background: parameters.background, inputFidelity: parameters.inputFidelity, count: parameters.count, duration: parameters.duration, editMode: parameters.editMode || null, usage: row.usage ? parse(row.usage) : null, error: row.error ? userFacingError(row.error, { generationStatus: row.status, chargedPoints: row.charged_points, reservedPoints: row.reserved_points || row.points, submissionUncertain: Boolean(parameters.submissionUncertain) }) : '', createdAt: row.created_at, startedAt: row.started_at || null, finishedAt: row.finished_at || null, submissionUncertain: Boolean(parameters.submissionUncertain), images, video, queuePosition: (await this.queuePosition(row)) }
   }
-  videoResult(generationId) {
-    const row = this.get('SELECT * FROM video_results WHERE generation_id=?', generationId)
+  async videoResult(generationId) {
+    const row = (await this.get('SELECT * FROM video_results WHERE generation_id=?', generationId))
     if (!row) return null
     return { id: row.video_id, url: row.video_url, mime: row.mime, duration: row.duration === null ? null : Number(row.duration), width: row.width === null ? null : Number(row.width), height: row.height === null ? null : Number(row.height), thumbnailUrl: row.thumbnail_url || '', metadata: parse(row.metadata || '{}'), createdAt: row.created_at }
   }
   // 上游调用留档：每条记录保留「我们发出去什么、上游回了什么、用量多少、花了多少、
   // 秘塔账户余额前后差多少」。用户跑得越多，我们就越能据此推算真实单价——
   // 包括上游没公开价的档位（秘塔 480p/512p、Mini 720p、标准版 4K 等）。
-  recordUpstreamCall({ generationId = null, provider, model, kind, tier = '', seconds = null, hasInputVideo = false, request = {}, response = null, usage = null, cost = null, creditsBefore = null, creditsAfter = null, estimatedCredits = null, upstreamRequestId = '', status = 'ok', error = '' }: Record<string, any> = {}) {
-    const existing = generationId ? this.get('SELECT id FROM upstream_calls WHERE generation_id=? ORDER BY created_at DESC LIMIT 1', generationId) : null
+  async recordUpstreamCall({ generationId = null, provider, model, kind, tier = '', seconds = null, hasInputVideo = false, request = {}, response = null, usage = null, cost = null, creditsBefore = null, creditsAfter = null, estimatedCredits = null, upstreamRequestId = '', status = 'ok', error = '' }: Record<string, any> = {}) {
+    const existing = generationId ? (await this.get('SELECT id FROM upstream_calls WHERE generation_id=? ORDER BY created_at DESC LIMIT 1', generationId)) : null
     if (existing) {
-      this.finishUpstreamCall(generationId, { response, usage, cost, estimatedCredits, upstreamRequestId, status, error })
-      this.run('UPDATE upstream_calls SET request=? WHERE id=?', auditJson(request ?? {}, 20000), existing.id)
+      await this.finishUpstreamCall(generationId, { response, usage, cost, estimatedCredits, upstreamRequestId, status, error })
+      await this.run('UPDATE upstream_calls SET request=? WHERE id=?', auditJson(request ?? {}, 20000), existing.id)
       return null
     }
     const delta = Number.isFinite(creditsBefore) && Number.isFinite(creditsAfter)
       ? Math.round((creditsBefore - creditsAfter) * 100) / 100
       : null
-    this.run(`INSERT INTO upstream_calls(id,generation_id,provider,model,kind,tier,seconds,has_input_video,request,response,usage,cost_rmb,cost_basis,credits_before,credits_after,credits_delta,estimated_credits,upstream_request_id,status,error,created_at,cost_detail,updated_at)
+    await this.run(`INSERT INTO upstream_calls(id,generation_id,provider,model,kind,tier,seconds,has_input_video,request,response,usage,cost_rmb,cost_basis,credits_before,credits_after,credits_delta,estimated_credits,upstream_request_id,status,error,created_at,cost_detail,updated_at)
       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     randomUUID(), generationId, String(provider || ''), String(model || ''), String(kind || 'video'), String(tier || ''),
     Number.isFinite(seconds) ? Number(seconds) : null, hasInputVideo ? 1 : 0,
@@ -1811,20 +1856,20 @@ export class ManagementStore {
     delta, estimatedCredits != null && Number.isFinite(Number(estimatedCredits)) ? Number(estimatedCredits) : null, String(upstreamRequestId || '').slice(0, 200), String(status || 'ok').slice(0, 40), String(error || '').slice(0, 500), new Date().toISOString(), cost ? auditJson(cost, 12000) : null, new Date().toISOString())
     return delta
   }
-  recordUpstreamBalance({ provider, balance, consumed = null, total = null, observedAt = new Date().toISOString() }: Record<string, any> = {}) {
+  async recordUpstreamBalance({ provider, balance, consumed = null, total = null, observedAt = new Date().toISOString() }: Record<string, any> = {}) {
     if (!provider || balance == null || !Number.isFinite(Number(balance))) return null
     const at = String(observedAt)
-    const previous = this.get('SELECT * FROM upstream_balance_snapshots WHERE provider=? AND observed_at<? ORDER BY observed_at DESC LIMIT 1', String(provider), at)
-    this.run('INSERT INTO upstream_balance_snapshots(id,provider,balance,consumed,total,observed_at) VALUES(?,?,?,?,?,?)', randomUUID(), String(provider), Number(balance), consumed != null && Number.isFinite(Number(consumed)) ? Number(consumed) : null, total != null && Number.isFinite(Number(total)) ? Number(total) : null, at)
+    const previous = (await this.get('SELECT * FROM upstream_balance_snapshots WHERE provider=? AND observed_at<? ORDER BY observed_at DESC LIMIT 1', String(provider), at))
+    await this.run('INSERT INTO upstream_balance_snapshots(id,provider,balance,consumed,total,observed_at) VALUES(?,?,?,?,?,?)', randomUUID(), String(provider), Number(balance), consumed != null && Number.isFinite(Number(consumed)) ? Number(consumed) : null, total != null && Number.isFinite(Number(total)) ? Number(total) : null, at)
     return previous || null
   }
-  reconcileUpstreamBalance({ provider, balance, consumed = null, total = null, observedAt = new Date().toISOString() }: Record<string, any> = {}) {
+  async reconcileUpstreamBalance({ provider, balance, consumed = null, total = null, observedAt = new Date().toISOString() }: Record<string, any> = {}) {
     if (!provider || balance == null || !Number.isFinite(Number(balance))) return { provider: String(provider || ''), status: 'unknown', conclusion: '余额未知，未对账', alarm: false }
     const at = String(observedAt)
-    const previous = this.recordUpstreamBalance({ provider, balance, consumed, total, observedAt: at })
+    const previous = (await this.recordUpstreamBalance({ provider, balance, consumed, total, observedAt: at }))
     const fromAt = previous?.observed_at || null
     const rows = fromAt
-      ? this.all(`SELECT status, estimated_credits FROM upstream_calls WHERE provider=? AND created_at>? AND created_at<=?`, String(provider), fromAt, at)
+      ? (await this.all(`SELECT status, estimated_credits FROM upstream_calls WHERE provider=? AND created_at>? AND created_at<=?`, String(provider), fromAt, at))
       : []
     const delta = previous ? Math.round((Number(previous.balance) - Number(balance)) * 10000) / 10000 : null
     const successful = rows.filter(row => ['ok','succeeded','submitted'].includes(row.status))
@@ -1834,8 +1879,8 @@ export class ManagementStore {
     const expectedRounded = Math.round(expected*10000)/10000
     const consumedDelta=previous && finiteCost(consumed)!==null && finiteCost(previous.consumed)!==null && Number(consumed)>=Number(previous.consumed) ? Math.round((Number(consumed)-Number(previous.consumed))*10000)/10000 : null
     const comparisonDelta=consumedDelta ?? delta
-    const pending=fromAt ? Number(this.get("SELECT COUNT(*) n FROM upstream_calls WHERE provider=? AND created_at<=? AND status IN ('submitted','submission_unknown')",String(provider),at).n) : 0
-    const late=fromAt ? Number(this.get("SELECT COUNT(*) n FROM upstream_calls WHERE provider=? AND created_at<=? AND updated_at>? AND updated_at<=? AND status IN ('ok','succeeded','failed_after_submit','cancelled_after_submit')",String(provider),fromAt,fromAt,at).n) : 0
+    const pending=fromAt ? Number((await this.get("SELECT COUNT(*) n FROM upstream_calls WHERE provider=? AND created_at<=? AND status IN ('submitted','submission_unknown')",String(provider),at)).n) : 0
+    const late=fromAt ? Number((await this.get("SELECT COUNT(*) n FROM upstream_calls WHERE provider=? AND created_at<=? AND updated_at>? AND updated_at<=? AND status IN ('ok','succeeded','failed_after_submit','cancelled_after_submit')",String(provider),fromAt,fromAt,at)).n) : 0
     const unexplained=comparisonDelta===null || unknownCosts>0 ? null : Math.round((comparisonDelta-expectedRounded)*10000)/10000
     const tolerance=Math.max(0.5,Math.abs(expectedRounded)*0.2)
     const alarm=unexplained!==null && Math.abs(unexplained)>tolerance
@@ -1848,34 +1893,34 @@ export class ManagementStore {
         +(pending || late ? '；有 '+pending+' 个待确认任务、'+late+' 个跨窗口终态' : '')
         +'；非逐单账单结论'
     const row = { provider: String(provider), fromAt, toAt: at, previousBalance: previous ? Number(previous.balance) : null, currentBalance: Number(balance), delta, successfulEstimatedCredits: previous && unknownCosts===0 ? expectedRounded : null, unexplainedCredits: unexplained, calls: rows.length, successfulCalls: successful.length, failedCalls: failed.length, conclusion, alarm, details }
-    this.run(`INSERT INTO upstream_reconciliations(id,provider,from_at,to_at,previous_balance,current_balance,delta,successful_estimated_credits,unexplained_credits,calls,successful_calls,failed_calls,conclusion,alarm,created_at,details)
+    await this.run(`INSERT INTO upstream_reconciliations(id,provider,from_at,to_at,previous_balance,current_balance,delta,successful_estimated_credits,unexplained_credits,calls,successful_calls,failed_calls,conclusion,alarm,created_at,details)
       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, randomUUID(), row.provider, row.fromAt, row.toAt, row.previousBalance, row.currentBalance, row.delta, row.successfulEstimatedCredits, row.unexplainedCredits, row.calls, row.successfulCalls, row.failedCalls, row.conclusion, row.alarm ? 1 : 0, at, JSON.stringify(details))
     return row
   }
-  upstreamReconciliation({ provider = '', limit = 30 }: Record<string, any> = {}) {
+  async upstreamReconciliation({ provider = '', limit = 30 }: Record<string, any> = {}) {
     const clauses = ['1=1']; const args = []
     if (provider) { clauses.push('provider=?'); args.push(String(provider).slice(0, 40)) }
-    const rows = this.all(`SELECT * FROM upstream_reconciliations WHERE ${clauses.join(' AND ')} ORDER BY to_at DESC LIMIT ?`, ...args, integer(limit, 1, 200)).map(row => ({ ...row, alarm: Boolean(row.alarm), details:row.details ? parse(row.details):null }))
-    const snapshots = this.all(`SELECT * FROM upstream_balance_snapshots WHERE ${clauses.join(' AND ')} ORDER BY observed_at DESC LIMIT ?`, ...args, integer(limit, 1, 200))
+    const rows = (await this.all(`SELECT * FROM upstream_reconciliations WHERE ${clauses.join(' AND ')} ORDER BY to_at DESC LIMIT ?`, ...args, integer(limit, 1, 200))).map(row => ({ ...row, alarm: Boolean(row.alarm), details:row.details ? parse(row.details):null }))
+    const snapshots = (await this.all(`SELECT * FROM upstream_balance_snapshots WHERE ${clauses.join(' AND ')} ORDER BY observed_at DESC LIMIT ?`, ...args, integer(limit, 1, 200)))
     return { items: rows, snapshots }
   }
   // 终态回来时补全同一条留档：上游原始返回、用量、成本、失败原因。
-  finishUpstreamCall(generationId, { response = null, usage = null, cost = null, estimatedCredits = null, upstreamRequestId = '', status = 'ok', error = '' }: Record<string, any> = {}) {
-    const row = this.get('SELECT id,status FROM upstream_calls WHERE generation_id=? ORDER BY created_at DESC LIMIT 1', generationId)
+  async finishUpstreamCall(generationId, { response = null, usage = null, cost = null, estimatedCredits = null, upstreamRequestId = '', status = 'ok', error = '' }: Record<string, any> = {}) {
+    const row = (await this.get('SELECT id,status FROM upstream_calls WHERE generation_id=? ORDER BY created_at DESC LIMIT 1', generationId))
     if (row && ['ok','succeeded','failed_after_submit','cancelled_after_submit'].includes(row.status) && ['submitted','submission_unknown'].includes(status)) return row.id
     if (!row) {
-      const g = this.get('SELECT * FROM generations WHERE id=?', generationId)
+      const g = (await this.get('SELECT * FROM generations WHERE id=?', generationId))
       if (!g) return null
       const parameters = parse(g.parameters)
       const model = modelById(g.model)
-      this.recordUpstreamCall({ generationId, provider:g.provider || model?.provider, model:g.model,
+      await this.recordUpstreamCall({ generationId, provider:g.provider || model?.provider, model:g.model,
         kind:model?.video ? 'video':'image', tier:parameters.resolution || parameters.size || '',
         seconds:model?.video ? parameters.billableDuration ?? parameters.duration : null,
         hasInputVideo:Number(parameters.videoSeconds)>0, request:{ recoveredSummary:true, parameters:redactReferencePayload(parameters) },
         response, usage, cost, estimatedCredits, upstreamRequestId, status, error })
-      return this.get('SELECT id FROM upstream_calls WHERE generation_id=? ORDER BY created_at DESC LIMIT 1', generationId)?.id || null
+      return (await this.get('SELECT id FROM upstream_calls WHERE generation_id=? ORDER BY created_at DESC LIMIT 1', generationId))?.id || null
     }
-    this.run(`UPDATE upstream_calls SET response=COALESCE(?,response), usage=COALESCE(?,usage),
+    await this.run(`UPDATE upstream_calls SET response=COALESCE(?,response), usage=COALESCE(?,usage),
       cost_rmb=COALESCE(?,cost_rmb), cost_basis=COALESCE(?,cost_basis), cost_detail=COALESCE(?,cost_detail), updated_at=?, estimated_credits=COALESCE(?,estimated_credits), upstream_request_id=COALESCE(NULLIF(?,''),upstream_request_id), status=?, error=? WHERE id=?`,
     response == null ? null : auditJson(response, 40000),
     usage == null ? null : auditJson(usage, 4000),
@@ -1885,7 +1930,7 @@ export class ManagementStore {
     String(status || 'ok').slice(0, 40), String(error || '').slice(0, 500), row.id)
     return row.id
   }
-  upstreamCalls({ search = '', status = '', provider = '', model = '', tier = '', limit = 50, page = 1 }: Record<string, any> = {}) {
+  async upstreamCalls({ search = '', status = '', provider = '', model = '', tier = '', limit = 50, page = 1 }: Record<string, any> = {}) {
     const clauses = ['1=1']; const args = []
     if(search){clauses.push('(model LIKE ? OR provider LIKE ? OR generation_id LIKE ? OR upstream_request_id LIKE ? OR error LIKE ?)');args.push(...Array(5).fill(`%${String(search).slice(0,100)}%`))}
     if(status){clauses.push('status=?');args.push(String(status).slice(0,40))}
@@ -1893,9 +1938,9 @@ export class ManagementStore {
     if (model) { clauses.push('model=?'); args.push(String(model).slice(0, 80)) }
     if (tier) { clauses.push('tier=?'); args.push(String(tier).slice(0, 40)) }
     const where = clauses.join(' AND ')
-    const total = Number(this.get(`SELECT COUNT(*) n FROM upstream_calls WHERE ${where}`, ...args).n)
+    const total = Number((await this.get(`SELECT COUNT(*) n FROM upstream_calls WHERE ${where}`, ...args)).n)
     const size = integer(limit, 1, 200), current = integer(page, 1, 100000)
-    const items = this.all(`SELECT upstream_calls.*, (SELECT request_id FROM generations WHERE id=upstream_calls.generation_id) generationRequestId, (SELECT upstream_cost FROM generations WHERE id=upstream_calls.generation_id) generationCost FROM upstream_calls WHERE ${where} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`, ...args, size, (current - 1) * size)
+    const items = (await this.all(`SELECT upstream_calls.*, (SELECT request_id FROM generations WHERE id=upstream_calls.generation_id) generationRequestId, (SELECT upstream_cost FROM generations WHERE id=upstream_calls.generation_id) generationCost FROM upstream_calls WHERE ${where} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`, ...args, size, (current - 1) * size))
       .map(row => {
         const { generationCost, ...item }=row
         const candidate=generationCost ? parse(generationCost) : null
@@ -1905,11 +1950,11 @@ export class ManagementStore {
     return { items, total, page: current, limit: size }
   }
   // 按「上游 × 模型 × 档位」汇总，直接给出可用来定价的推算值。
-  derivedUpstreamPrices({ provider = '', model = '' }: Record<string, any> = {}) {
+  async derivedUpstreamPrices({ provider = '', model = '' }: Record<string, any> = {}) {
     const clauses = ['1=1']; const args = []
     if (provider) { clauses.push('provider=?'); args.push(String(provider).slice(0, 40)) }
     if (model) { clauses.push('model=?'); args.push(String(model).slice(0, 80)) }
-    const rows = this.all(`SELECT provider, model, tier, has_input_video,
+    const rows = (await this.all(`SELECT provider, model, tier, has_input_video,
         COUNT(*) calls,
         SUM(CASE WHEN status='ok' THEN 1 ELSE 0 END) okCalls,
         SUM(CASE WHEN credits_delta>0 AND seconds>0 AND status IN ('ok','succeeded') THEN 1 ELSE 0 END) samplesWithCredits,
@@ -1920,7 +1965,7 @@ export class ManagementStore {
         SUM(CASE WHEN cost_rmb IS NOT NULL AND status IN ('ok','succeeded') THEN 1 ELSE 0 END) samplesWithCost,
         AVG(CASE WHEN status IN ('ok','succeeded') THEN cost_rmb END) avgCost,
         MAX(created_at) lastSeen
-      FROM upstream_calls WHERE ${clauses.join(' AND ')} GROUP BY provider, model, tier, has_input_video ORDER BY provider, model, tier, has_input_video`, ...args)
+      FROM upstream_calls WHERE ${clauses.join(' AND ')} GROUP BY provider, model, tier, has_input_video ORDER BY provider, model, tier, has_input_video`, ...args))
     return rows.map(row => ({
       ...row,
       // 仅匹配同一次调用的余额差与正时长；共享账户的余额变化仍不是逐单账单。
@@ -1940,9 +1985,10 @@ export class ManagementStore {
     const raw = Number(process.env.OIP_ARTIFACT_TTL_SECONDS || 7 * 24 * 60 * 60)
     return Number.isFinite(raw) && raw > 0 ? raw * 1000 : 7 * 24 * 60 * 60 * 1000
   }
-  finish(id, artifacts, metadata: Record<string, any> = {}, workerId = '') {
-    return this.transaction(() => {
-      const g=this.get('SELECT * FROM generations WHERE id=?',id)
+  async finish(id, artifacts, metadata: Record<string, any> = {}, workerId = '') {
+    return (await this.transaction(async () => {
+      await this.db.lockRow('generations','id',id)
+      const g=(await this.get('SELECT * FROM generations WHERE id=?',id))
       if (!g || g.status !== GENERATION_STATES.RUNNING) throw failure('生成记录已结算',409)
       if (workerId && g.lease_id !== workerId) throw failure('原任务保存租约已变更', 409)
       assertTransition(g.status, GENERATION_STATES.SUCCEEDED)
@@ -1955,35 +2001,38 @@ export class ManagementStore {
       const charged = savedArtifacts.length >= count ? reserved : Math.max(0.01, Math.round(reserved * savedArtifacts.length / count * precision) / precision)
       const refund = Math.round((reserved - charged) * precision) / precision
       if (g.user_id && refund > 0) {
-        this.run('UPDATE users SET points=ROUND(points+?,4) WHERE id=?',refund,g.user_id)
-        this.ledger(g.user_id,refund,'未生成张数退还',id)
+        await this.run('UPDATE users SET points=ROUND(points+?,4) WHERE id=?',refund,g.user_id)
+        await this.ledger(g.user_id,refund,'未生成张数退还',id)
       }
       if (!savedArtifacts.length) throw failure('上游没有返回可保存的图片', 502)
       const expiresAt = new Date(Date.now() + this.artifactTtlMs()).toISOString()
-      const results = savedArtifacts.map(a => {
+      const results = (await mapAsync(savedArtifacts, async a => {
         const artifactId = randomUUID()
         // 先落字节、再写两行索引：整个过程在同一个事务里，索引写失败会整体回滚，
         // 磁盘上最坏多一份没人认领的字节，由 media-reconcile 报告并回收。
         // 内容寻址之后这里通常**一个字节都不写**：同一张图在画布上已经有一份时，
         // 算出来的 sha 一样，直接复用那份字节，只多一行引用。
-        const placed = this.artifactFiles().put(g.user_id || '', artifactId, a.bytes)
-        this.run('INSERT INTO artifacts(id,request_id,mime,bytes,storage,size,blob) VALUES(?,?,?,NULL,?,?,?)', artifactId, id, a.mime, placed.blob ? 'blob' : 'disk', placed.size, placed.blob)
-        if (parse(g.parameters).desktopDelivery !== 1) this.run('INSERT INTO artifact_expiry(artifact_id,expires_at) VALUES(?,?)', artifactId, expiresAt)
+        const placed = (await (await this.artifactFiles()).put(g.user_id || '', artifactId, a.bytes))
+        await this.run('INSERT INTO artifacts(id,request_id,mime,bytes,storage,size,blob) VALUES(?,?,?,NULL,?,?,?)', artifactId, id, a.mime, placed.blob ? 'blob' : 'disk', placed.size, placed.blob)
+        if (parse(g.parameters).desktopDelivery !== 1) await this.run('INSERT INTO artifact_expiry(artifact_id,expires_at) VALUES(?,?)', artifactId, expiresAt)
         return { id:artifactId, url:`/api/imagine/result/${artifactId}`, mime:a.mime, format:a.mime.split('/')[1] }
-      })
+      }))
       const parameters = parse(g.parameters)
       const imageCost = estimateUpstreamCostRmb({ model: modelForGeneration(g.model,parameters,g.provider), count: savedArtifacts.length, parameters })
-      this.run("UPDATE generations SET status='succeeded',error=NULL,points=?,charged_points=?,finished_at=?,usage=?,upstream_cost=?,upstream_model=?,upstream_request_id=?,upstream_status=?,lease_id=NULL,lease_at=NULL,expires_at=NULL WHERE id=?",charged,charged,new Date().toISOString(),metadata.usage ? JSON.stringify(metadata.usage) : g.usage,imageCost ? JSON.stringify(imageCost) : g.upstream_cost || null,metadata.upstreamModel || g.upstream_model,metadata.upstreamRequestId || g.upstream_request_id || null,metadata.upstreamStatus ?? g.upstream_status ?? null,id)
-      this.run("UPDATE generations SET parameters=json_set(json_remove(parameters,'$.imageResultPending','$.imageResultRetry','$.imageResultExpiredAt','$.submissionUncertain','$.submissionDiagnosticId'),'$.resultCount',?) WHERE id=?", savedArtifacts.length, id)
-      if (parameters.desktopDelivery === 1) this.run("UPDATE generations SET parameters=json_set(parameters,'$.desktopExpiresAt',?) WHERE id=?", expiresAt, id)
-      this.finishUpstreamCall(id, {cost:imageCost,usage:metadata.usage || null,response:{images:savedArtifacts.length},upstreamRequestId:metadata.upstreamRequestId || g.upstream_request_id || '',status:'ok'})
-      this.run('DELETE FROM generation_inputs WHERE generation_id=?', id)
+      await this.run("UPDATE generations SET status='succeeded',error=NULL,points=?,charged_points=?,finished_at=?,usage=?,upstream_cost=?,upstream_model=?,upstream_request_id=?,upstream_status=?,lease_id=NULL,lease_at=NULL,expires_at=NULL WHERE id=?",charged,charged,new Date().toISOString(),metadata.usage ? JSON.stringify(metadata.usage) : g.usage,imageCost ? JSON.stringify(imageCost) : g.upstream_cost || null,metadata.upstreamModel || g.upstream_model,metadata.upstreamRequestId || g.upstream_request_id || null,metadata.upstreamStatus ?? g.upstream_status ?? null,id)
+      for (const key of ['imageResultPending','imageResultRetry','imageResultExpiredAt','submissionUncertain','submissionDiagnosticId']) delete parameters[key]
+      parameters.resultCount = savedArtifacts.length
+      if (parameters.desktopDelivery === 1) parameters.desktopExpiresAt = expiresAt
+      await this.run('UPDATE generations SET parameters=? WHERE id=?',JSON.stringify(parameters),id)
+      await this.finishUpstreamCall(id, {cost:imageCost,usage:metadata.usage || null,response:{images:savedArtifacts.length},upstreamRequestId:metadata.upstreamRequestId || g.upstream_request_id || '',status:'ok'})
+      await this.run('DELETE FROM generation_inputs WHERE generation_id=?', id)
       return results
-    })
+    }))
   }
-  completeVideo(id, result: Record<string, any> = {}) {
-    return this.transaction(() => {
-      const g = this.get('SELECT * FROM generations WHERE id=?', id)
+  async completeVideo(id, result: Record<string, any> = {}) {
+    return (await this.transaction(async () => {
+      await this.db.lockRow('generations','id',id)
+      const g = (await this.get('SELECT * FROM generations WHERE id=?', id))
       if (!g || g.status !== GENERATION_STATES.RUNNING) throw failure('生成记录已结算', 409)
       assertTransition(g.status, GENERATION_STATES.SUCCEEDED)
       const url = String(result.url || '').trim()
@@ -1991,7 +2040,7 @@ export class ManagementStore {
       if (!url || !videoId) throw failure('上游没有返回可展示的视频', 502)
       const now = new Date().toISOString()
       const metadata = result.metadata && typeof result.metadata === 'object' ? result.metadata : {}
-      this.run('INSERT INTO video_results(generation_id,video_id,video_url,mime,duration,width,height,thumbnail_url,metadata,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)', id, videoId, url, String(result.mime || 'video/mp4').slice(0, 100), result.duration == null ? null : Number(result.duration), result.width == null ? null : Number(result.width), result.height == null ? null : Number(result.height), String(result.thumbnailUrl || '').slice(0, 2000), JSON.stringify(metadata), now)
+      await this.run('INSERT INTO video_results(generation_id,video_id,video_url,mime,duration,width,height,thumbnail_url,metadata,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)', id, videoId, url, String(result.mime || 'video/mp4').slice(0, 100), result.duration == null ? null : Number(result.duration), result.width == null ? null : Number(result.width), result.height == null ? null : Number(result.height), String(result.thumbnailUrl || '').slice(0, 2000), JSON.stringify(metadata), now)
       const reserved = Number(g.reserved_points || g.points || 0)
       // 火山 Seedance 的真实账单由任务查询返回的 usage.completion_tokens（同值的
       // total_tokens 也保留）决定，
@@ -2012,48 +2061,53 @@ export class ManagementStore {
       const settlementPrecision=model?.provider==='suihe' || parameters.videoPricing?.version===VIDEO_PRICING_VERSION ? 10000 : 100
       const refund = Math.round((reserved - charged) * settlementPrecision) / settlementPrecision
       if (g.user_id && refund > 0) {
-        this.run('UPDATE users SET points=ROUND(points+?,4) WHERE id=?', refund, g.user_id)
-        this.ledger(g.user_id, refund, '视频实际用量对账退还', id)
+        await this.run('UPDATE users SET points=ROUND(points+?,4) WHERE id=?', refund, g.user_id)
+        await this.ledger(g.user_id, refund, '视频实际用量对账退还', id)
       }
       const cost = estimateUpstreamCostRmb({ model, parameters, usage: result.usage, seconds: result.duration == null ? parameters.billableDuration ?? parameters.duration : Number(result.duration) })
       if (cost && isCostPlusVideo(g.model)) {
         const precision=model?.provider==='suihe' || parameters.videoPricing?.version===VIDEO_PRICING_VERSION ?10000:100
-        cost.detail = { ...cost.detail, pricing: { reservedPoints:reserved, requiredPoints:usageCost?.points ?? reserved, chargedPoints:charged, shortfallPoints:Math.max(0,Math.round(((usageCost?.points??reserved)-charged)*precision)/precision), markupPerSecond:model?.provider==='suihe'?parameters.suiheCost?.customerMarkupRmbPerUnit:parameters.videoPricing?.markupPerSecond ?? this.settings().videoPricing.markupPerSecond, policyVersion:model?.provider==='suihe'?parameters.suiheCost?.version:parameters.videoPricing?.version || null, expenseConfigured:Boolean(cost.detail.expenses?.configured), paymentFeeRmb:charged*(cost.detail.expenses?.paymentFeePercent||0)/100, allocatedExpenseRmb:(cost.detail.expenses?.rmbPerRequest||0)+(cost.detail.outputSeconds||0)*(cost.detail.expenses?.rmbPerOutputSecond||0), estimatedNetRmb:cost.detail.expenses?.configured ? Math.round((charged*(1-cost.detail.expenses.paymentFeePercent/100)-cost.rmb-(cost.detail.expenses.rmbPerRequest||0)-cost.detail.outputSeconds*cost.detail.expenses.rmbPerOutputSecond)*10000)/10000 : null } }
+        cost.detail = { ...cost.detail, pricing: { reservedPoints:reserved, requiredPoints:usageCost?.points ?? reserved, chargedPoints:charged, shortfallPoints:Math.max(0,Math.round(((usageCost?.points??reserved)-charged)*precision)/precision), markupPerSecond:model?.provider==='suihe'?parameters.suiheCost?.customerMarkupRmbPerUnit:parameters.videoPricing?.markupPerSecond ?? (await this.settings()).videoPricing.markupPerSecond, policyVersion:model?.provider==='suihe'?parameters.suiheCost?.version:parameters.videoPricing?.version || null, expenseConfigured:Boolean(cost.detail.expenses?.configured), paymentFeeRmb:charged*(cost.detail.expenses?.paymentFeePercent||0)/100, allocatedExpenseRmb:(cost.detail.expenses?.rmbPerRequest||0)+(cost.detail.outputSeconds||0)*(cost.detail.expenses?.rmbPerOutputSecond||0), estimatedNetRmb:cost.detail.expenses?.configured ? Math.round((charged*(1-cost.detail.expenses.paymentFeePercent/100)-cost.rmb-(cost.detail.expenses.rmbPerRequest||0)-cost.detail.outputSeconds*cost.detail.expenses.rmbPerOutputSecond)*10000)/10000 : null } }
       }
-      this.run("UPDATE generations SET status='succeeded',points=?,charged_points=?,finished_at=?,usage=?,upstream_cost=?,upstream_model=?,upstream_request_id=?,upstream_status=?,lease_id=NULL,lease_at=NULL,expires_at=NULL WHERE id=?", charged, charged, now, result.usage ? JSON.stringify(result.usage) : g.usage, cost ? JSON.stringify(cost) : g.upstream_cost || null, result.upstreamModel || g.upstream_model, result.upstreamRequestId || videoId, result.upstreamStatus ?? g.upstream_status ?? null, id)
-      if (parameters.desktopDelivery === 1) this.run("UPDATE generations SET parameters=json_set(parameters,'$.desktopExpiresAt',?) WHERE id=?", new Date(Date.now() + this.artifactTtlMs()).toISOString(), id)
-      this.finishUpstreamCall(id, {cost,usage:result.usage || null,response:result.metadata?.raw || null,estimatedCredits:cost?.detail?.supplierCredits ?? null,upstreamRequestId:result.upstreamRequestId || videoId,status:'ok'})
-      this.run('DELETE FROM generation_inputs WHERE generation_id=?', id)
-      return this.videoResult(id)
-    })
+      await this.run("UPDATE generations SET status='succeeded',points=?,charged_points=?,finished_at=?,usage=?,upstream_cost=?,upstream_model=?,upstream_request_id=?,upstream_status=?,lease_id=NULL,lease_at=NULL,expires_at=NULL WHERE id=?", charged, charged, now, result.usage ? JSON.stringify(result.usage) : g.usage, cost ? JSON.stringify(cost) : g.upstream_cost || null, result.upstreamModel || g.upstream_model, result.upstreamRequestId || videoId, result.upstreamStatus ?? g.upstream_status ?? null, id)
+      if (parameters.desktopDelivery === 1) {
+        parameters.desktopExpiresAt = new Date(Date.now() + this.artifactTtlMs()).toISOString()
+        await this.run('UPDATE generations SET parameters=? WHERE id=?',JSON.stringify(parameters),id)
+      }
+      await this.finishUpstreamCall(id, {cost,usage:result.usage || null,response:result.metadata?.raw || null,estimatedCredits:cost?.detail?.supplierCredits ?? null,upstreamRequestId:result.upstreamRequestId || videoId,status:'ok'})
+      await this.run('DELETE FROM generation_inputs WHERE generation_id=?', id)
+      return (await this.videoResult(id))
+    }))
   }
-  setVideoWorkspacePath(generationId, path) {
-    return this.transaction(() => {
-      const generation = this.get('SELECT parameters FROM generations WHERE id=?', generationId)
+  async setVideoWorkspacePath(generationId, path) {
+    return (await this.transaction(async () => {
+      await this.db.lockRow('generations','id',generationId)
+      const generation = (await this.get('SELECT parameters FROM generations WHERE id=?', generationId))
       if (!generation) return null
       const delivery = parse(generation?.parameters)
       if (delivery.desktopDeliveredAt || delivery.desktopMediaExpiredAt) throw failure('服务器临时文件已清理，请打开本机保存的结果', 410)
-      const row = this.get('SELECT metadata FROM video_results WHERE generation_id=?', generationId)
+      const row = (await this.get('SELECT metadata FROM video_results WHERE generation_id=?', generationId))
       if (!row) return null
       let metadata: Record<string, any> = {}
       try { metadata = JSON.parse(row.metadata || '{}') } catch { metadata = {} }
       metadata.workspacePath = String(path || '')
-      this.run('UPDATE video_results SET metadata=? WHERE generation_id=?', JSON.stringify(metadata), generationId)
+      await this.run('UPDATE video_results SET metadata=? WHERE generation_id=?', JSON.stringify(metadata), generationId)
       return metadata
-    })
+    }))
   }
-  refundGeneration(g, reason) {
+  async refundGeneration(g, reason) {
     const reserved = Number(g.reserved_points || g.points || 0)
-    if (g.user_id && reserved) { this.run('UPDATE users SET points=ROUND(points+?,4) WHERE id=?',reserved,g.user_id); this.ledger(g.user_id,reserved,reason,g.id) }
+    if (g.user_id && reserved) { await this.run('UPDATE users SET points=ROUND(points+?,4) WHERE id=?',reserved,g.user_id); await this.ledger(g.user_id,reserved,reason,g.id) }
   }
-  markSubmissionUncertain(id, message, metadata: Record<string, any> = {}, workerId = '') {
-    return this.transaction(() => {
-      if (workerId && this.get('SELECT lease_id FROM generations WHERE id=?', id)?.lease_id !== workerId) return
-      return this.setSubmissionUncertain(id, message, metadata)
-    })
+  async markSubmissionUncertain(id, message, metadata: Record<string, any> = {}, workerId = '') {
+    return (await this.transaction(async () => {
+      await this.db.lockRow('generations','id',id)
+      if (workerId && (await this.get('SELECT lease_id FROM generations WHERE id=?', id))?.lease_id !== workerId) return
+      return (await this.setSubmissionUncertain(id, message, metadata))
+    }))
   }
-  setSubmissionUncertain(id, message, metadata: Record<string, any> = {}) {
-    const g = this.get('SELECT * FROM generations WHERE id=?', id)
+  async setSubmissionUncertain(id, message, metadata: Record<string, any> = {}) {
+    const g = (await this.get('SELECT * FROM generations WHERE id=?', id))
     if (!g || g.status !== GENERATION_STATES.RUNNING) return
     const parameters = { ...parse(g.parameters) }
     const accepted = acceptedVideoSubmissionRecovery(metadata, Boolean(modelById(g.model)?.video || g.provider==='suihe'), g.upstream_request_id)
@@ -2062,89 +2116,99 @@ export class ManagementStore {
       // existing review transaction so the normal collector can only poll it.
       delete parameters.submissionUncertain
       delete parameters.submissionDiagnosticId
-      this.run('UPDATE generations SET parameters=?,error=NULL,upstream_request_id=?,upstream_model=?,upstream_status=?,lease_id=NULL,lease_at=NULL WHERE id=?',
+      await this.run('UPDATE generations SET parameters=?,error=NULL,upstream_request_id=?,upstream_model=?,upstream_status=?,lease_id=NULL,lease_at=NULL WHERE id=?',
         JSON.stringify(parameters), accepted.requestId, accepted.model || g.upstream_model, accepted.status, id)
       return
     }
     parameters.submissionUncertain = true
     // Diagnostic request IDs are not necessarily pollable task IDs.
     if (metadata.upstreamRequestId) parameters.submissionDiagnosticId = String(metadata.upstreamRequestId).slice(0, 200)
-    this.run("UPDATE generations SET parameters=?,error=?,lease_id=NULL,lease_at=NULL WHERE id=?", JSON.stringify(parameters), `提交结果待确认；不会自动重复生成。${message || ''}`.slice(0, 500), id)
-    this.run("UPDATE upstream_calls SET status='submission_unknown' WHERE generation_id=? AND status IN ('failed','submitted')", id)
+    await this.run("UPDATE generations SET parameters=?,error=?,lease_id=NULL,lease_at=NULL WHERE id=?", JSON.stringify(parameters), `提交结果待确认；不会自动重复生成。${message || ''}`.slice(0, 500), id)
+    await this.run("UPDATE upstream_calls SET status='submission_unknown' WHERE generation_id=? AND status IN ('failed','submitted')", id)
   }
-  fail(id, message, metadata: Record<string, any> = {}, workerId = '') {
-    return this.transaction(() => {
-      const g=this.get('SELECT * FROM generations WHERE id=?',id); if (!g || ![GENERATION_STATES.RUNNING, GENERATION_STATES.QUEUED].includes(g.status)) return
+  async fail(id, message, metadata: Record<string, any> = {}, workerId = '') {
+    return (await this.transaction(async () => {
+      await this.db.lockRow('generations','id',id)
+      const g=(await this.get('SELECT * FROM generations WHERE id=?',id)); if (!g || ![GENERATION_STATES.RUNNING, GENERATION_STATES.QUEUED].includes(g.status)) return
       if (workerId && g.lease_id !== workerId) return
-      this.settleFailure(g, message, metadata)
-    })
+      await this.settleFailure(g, message, metadata)
+    }))
   }
-  settleFailure(g, message, metadata: Record<string, any> = {}) {
+  async settleFailure(g, message, metadata: Record<string, any> = {}) {
       const id = g.id
       assertTransition(g.status, GENERATION_STATES.FAILED)
-      this.refundGeneration(g, '生成失败退还')
-      this.run("UPDATE upstream_calls SET status='failed_after_submit', error=COALESCE(NULLIF(error,''),?) WHERE generation_id=? AND status='submitted'", String(message).slice(0, 500), id)
-      this.run("UPDATE generations SET status='failed',error=?,points=0,charged_points=0,finished_at=?,usage=?,upstream_model=?,upstream_request_id=?,upstream_status=?,lease_id=NULL,lease_at=NULL,expires_at=NULL WHERE id=?",String(message).slice(0,500),new Date().toISOString(),metadata.usage ? JSON.stringify(metadata.usage) : g.usage,metadata.upstreamModel || g.upstream_model,metadata.upstreamRequestId || g.upstream_request_id || null,metadata.upstreamStatus ?? g.upstream_status ?? null,id)
-      this.run('DELETE FROM generation_inputs WHERE generation_id=?', id)
+      await this.refundGeneration(g, '生成失败退还')
+      await this.run("UPDATE upstream_calls SET status='failed_after_submit', error=COALESCE(NULLIF(error,''),?) WHERE generation_id=? AND status='submitted'", String(message).slice(0, 500), id)
+      await this.run("UPDATE generations SET status='failed',error=?,points=0,charged_points=0,finished_at=?,usage=?,upstream_model=?,upstream_request_id=?,upstream_status=?,lease_id=NULL,lease_at=NULL,expires_at=NULL WHERE id=?",String(message).slice(0,500),new Date().toISOString(),metadata.usage ? JSON.stringify(metadata.usage) : g.usage,metadata.upstreamModel || g.upstream_model,metadata.upstreamRequestId || g.upstream_request_id || null,metadata.upstreamStatus ?? g.upstream_status ?? null,id)
+      await this.run('DELETE FROM generation_inputs WHERE generation_id=?', id)
   }
-  cancel(requestId, session, accessToken = '') {
-    return this.transaction(() => {
-      const g = this.get('SELECT * FROM generations WHERE request_id=?', requestId)
+  async cancel(requestId, session, accessToken = '') {
+    return (await this.transaction(async () => {
+      await this.db.lockRow('generations','request_id',requestId)
+      const g = (await this.get('SELECT * FROM generations WHERE request_id=?', requestId))
       if (!g) return null
       if (!this.canView(g, session, accessToken)) throw failure('无权取消这次生成',403)
-      if (![GENERATION_STATES.QUEUED, GENERATION_STATES.RUNNING].includes(g.status)) return this.publicGeneration(g, accessToken)
+      if (![GENERATION_STATES.QUEUED, GENERATION_STATES.RUNNING].includes(g.status)) return (await this.publicGeneration(g, accessToken))
       assertTransition(g.status, GENERATION_STATES.CANCELLED)
       // 计费规则（用户口径）：请求已经真实发到上游（任务已在跑）后再取消不退积分；
       // 只有还在排队、尚未发出请求的取消才全额退回。
       const refundable = canRefundMediaCancellation(g.status, parse(g.parameters).submissionState, g.upstream_request_id)
       const reserved = Number(g.reserved_points || g.points || 0)
-      if (refundable) this.refundGeneration(g, g.status === GENERATION_STATES.QUEUED ? '排队取消退还' : '生成取消退还')
-      if (!refundable) this.run("UPDATE upstream_calls SET status='cancelled_after_submit', error=COALESCE(NULLIF(error,''),'本地取消；上游任务已提交，可能已产生费用') WHERE generation_id=? AND status='submitted'", g.id)
+      if (refundable) await this.refundGeneration(g, g.status === GENERATION_STATES.QUEUED ? '排队取消退还' : '生成取消退还')
+      if (!refundable) await this.run("UPDATE upstream_calls SET status='cancelled_after_submit', error=COALESCE(NULLIF(error,''),'本地取消；上游任务已提交，可能已产生费用') WHERE generation_id=? AND status='submitted'", g.id)
       const charged = refundable ? 0 : reserved
-      this.run("UPDATE generations SET status='cancelled',cancel_requested=1,points=?,charged_points=?,finished_at=?,expires_at=NULL WHERE id=?",charged,charged,new Date().toISOString(),g.id)
-      this.run('DELETE FROM generation_inputs WHERE generation_id=?', g.id)
-      return this.publicGeneration(this.get('SELECT * FROM generations WHERE id=?', g.id), accessToken)
-    })
+      await this.run("UPDATE generations SET status='cancelled',cancel_requested=1,points=?,charged_points=?,finished_at=?,expires_at=NULL WHERE id=?",charged,charged,new Date().toISOString(),g.id)
+      await this.run('DELETE FROM generation_inputs WHERE generation_id=?', g.id)
+      return (await this.publicGeneration((await this.get('SELECT * FROM generations WHERE id=?', g.id)), accessToken))
+    }))
   }
-  expireQueued(id?: string, now = new Date().toISOString()) {
-    for (const g of this.all(`SELECT * FROM generations WHERE status='queued' AND expires_at IS NOT NULL AND expires_at<?${id ? ' AND id=?' : ''}`, now, ...(id ? [id] : []))) {
-      this.refundGeneration(g, '排队超时退还')
-      this.run("UPDATE generations SET status='expired',error=?,points=0,charged_points=0,finished_at=?,expires_at=NULL WHERE id=? AND status='queued'", '排队等待超时，请重新提交', now, g.id)
-      this.run('DELETE FROM generation_inputs WHERE generation_id=?', g.id)
+  async expireQueued(id?: string, now = new Date().toISOString()) {
+    for (const candidate of await this.all(`SELECT id FROM generations WHERE status='queued' AND expires_at IS NOT NULL AND expires_at<?${id ? ' AND id=?' : ''} ORDER BY id`, now, ...(id ? [id] : []))) {
+      await this.transaction(async () => {
+        await this.db.lockRow('generations','id',candidate.id)
+        const g = await this.get("SELECT * FROM generations WHERE id=? AND status='queued' AND expires_at<?", candidate.id, now)
+        if (!g) return
+        await this.refundGeneration(g, '排队超时退还')
+        await this.run("UPDATE generations SET status='expired',error=?,points=0,charged_points=0,finished_at=?,expires_at=NULL WHERE id=? AND status='queued'", '排队等待超时，请重新提交', now, g.id)
+        await this.run('DELETE FROM generation_inputs WHERE generation_id=?',g.id)
+      })
     }
   }
-  recoverStale() {
+  async recoverStale() {
     // 过期清理：先删索引行（同一个事务里 artifact_expiry 会级联删掉），**再**处理字节。
     // 字节必须在事务提交之后才动：事务一旦回滚，引用还在、字节没了就是不可恢复的数据丢失。
-    const expired = this.all(`SELECT a.id AS id,a.blob AS blob,g.user_id AS user_id
+    const expired = (await this.all(`SELECT a.id AS id,a.blob AS blob,g.user_id AS user_id
       FROM artifact_expiry e JOIN artifacts a ON a.id=e.artifact_id
-      LEFT JOIN generations g ON g.id=a.request_id WHERE e.expires_at<=?`, new Date().toISOString())
-    const result = this.transaction(() => {
-      if (expired.length) this.run('DELETE FROM artifacts WHERE id IN (SELECT artifact_id FROM artifact_expiry WHERE expires_at<=?)', new Date().toISOString())
-      this.expireQueued()
+      LEFT JOIN generations g ON g.id=a.request_id WHERE e.expires_at<=?`, new Date().toISOString()))
+    const result = (await this.transaction(async () => {
+      if (expired.length) await this.run('DELETE FROM artifacts WHERE id IN (SELECT artifact_id FROM artifact_expiry WHERE expires_at<=?)', new Date().toISOString())
+      await this.expireQueued()
       const leaseCutoff = new Date(Date.now() - GENERATION_LIMITS.leaseMs).toISOString()
-      for (const g of this.all("SELECT * FROM generations WHERE status='running'")) {
+      for (const candidate of (await this.all("SELECT id FROM generations WHERE status='running' ORDER BY id"))) {
+        await this.db.lockRow('generations','id',candidate.id)
+        const g = await this.get("SELECT * FROM generations WHERE id=? AND status='running'",candidate.id)
+        if (!g) continue
         // A live worker or accepted upstream task has no model wait budget.
         if (g.lease_id && g.lease_at >= leaseCutoff) continue
         if (g.upstream_request_id && (modelById(g.model)?.video || g.provider==='suihe')) continue
         if (parse(g.parameters).submissionUncertain || parse(g.parameters).imageResultPending) continue
         // A worker crash during POST cannot prove the provider rejected it.
-        this.setSubmissionUncertain(g.id, '本地执行连接中断，等待核对原请求')
+        await this.setSubmissionUncertain(g.id, '本地执行连接中断，等待核对原请求')
       }
-      this.run("UPDATE generations SET lease_id=NULL,lease_at=NULL WHERE status NOT IN ('queued','running') AND lease_at<?", leaseCutoff)
-    })
+      await this.run("UPDATE generations SET lease_id=NULL,lease_at=NULL WHERE status NOT IN ('queued','running') AND lease_at<?", leaseCutoff)
+    }))
     // 删掉的只是引用。画布上那份素材还引用着同一份字节时，blob-store 不会回收它——
     // 「历史过期了，但画布上那张图还得能用」。最后一个引用也没了才真正回收。
     // 删不掉只记日志，交给 media-reconcile 回收，不阻塞清理。
     for (const row of expired) {
-      try { this.artifactFiles().release(row, row.user_id || '') } catch (error) {
+      try { await (await this.artifactFiles()).release(row, row.user_id || '') } catch (error) {
         console.warn(`[artifacts] 回收过期结果的字节失败，留给对账回收：id=${row.id} ${error?.message || error}`)
       }
     }
     return result
   }
-  artifact(id, session, accessToken = '') { const a=this.get('SELECT a.id,a.mime,a.bytes,a.storage,a.size,a.blob,e.expires_at,g.user_id,g.actor,g.owner_scope,g.viewer_token_hash FROM artifacts a LEFT JOIN artifact_expiry e ON e.artifact_id=a.id JOIN generations g ON g.id=a.request_id WHERE a.id=?',id); if (!a) return null; if (a.expires_at && Date.parse(a.expires_at) <= Date.now()) return null; if (!this.canView(a, session, accessToken)) throw failure('无权查看这张图片',403); const mime = supportedImageMime(a.mime); if (!mime) return null; const location = this.artifactFiles().locate(a, a.user_id || ''); if (!location) return null; const bytes = location.bytes || null; return { id: a.id, ownerId: a.user_id || '', bytes, diskPath: location.diskPath || '', size: location.size, mime } }
-  records({ requestId = '', search = '', status = '', model = '', provider = '', upstreamRequestId = '', page = 1, userId, limit = 30, active = '', kind = '', from = '', to = '', summaryFrom = '', summaryTo = '', view = '' }: Record<string, any> = {}, admin = true) {
+  async artifact(id, session, accessToken = '') { const a=(await this.get('SELECT a.id,a.mime,a.bytes,a.storage,a.size,a.blob,e.expires_at,g.user_id,g.actor,g.owner_scope,g.viewer_token_hash FROM artifacts a LEFT JOIN artifact_expiry e ON e.artifact_id=a.id JOIN generations g ON g.id=a.request_id WHERE a.id=?',id)); if (!a) return null; if (a.expires_at && Date.parse(a.expires_at) <= Date.now()) return null; if (!this.canView(a, session, accessToken)) throw failure('无权查看这张图片',403); const mime = supportedImageMime(a.mime); if (!mime) return null; const location = (await (await this.artifactFiles()).locate(a, a.user_id || '')); if (!location) return null; const bytes = location.bytes || null; return { id: a.id, ownerId: a.user_id || '', bytes, diskPath: location.diskPath || '', size: location.size, mime } }
+  async records({ requestId = '', search = '', status = '', model = '', provider = '', upstreamRequestId = '', page = 1, userId, limit = 30, active = '', kind = '', from = '', to = '', summaryFrom = '', summaryTo = '', view = '' }: Record<string, any> = {}, admin = true) {
     page=integer(page,1,100000); limit=integer(limit,1,100)
     const clauses=['1=1'],args=[]
     if(search){clauses.push('(g.actor LIKE ? OR g.model LIKE ? OR g.provider LIKE ? OR g.request_id LIKE ? OR g.upstream_request_id LIKE ? OR g.prompt LIKE ?)'); args.push(...Array(6).fill(`%${String(search).slice(0,100)}%`))}
@@ -2162,16 +2226,16 @@ export class ManagementStore {
     if(kind==='video'){clauses.push(videoClause);args.push(...videoModels)}
     else if(kind==='image'){clauses.push(`NOT ${videoClause}`);args.push(...videoModels)}
     const where=clauses.join(' AND ')
-    const total=this.get(`SELECT COUNT(*) n FROM generations g WHERE ${where}`,...args).n
+    const total=(await this.get(`SELECT COUNT(*) n FROM generations g WHERE ${where}`,...args)).n
     // 区间小结（本月生成次数）。区间由客户端给：月初/月末按用户本地时区算，服务端不猜。
     const rangeClauses=[...clauses], rangeArgs=[...args]
     const summaryStart = summaryFrom
     const summaryEnd = summaryTo
     if(summaryStart){rangeClauses.push('g.created_at>=?');rangeArgs.push(String(summaryStart))}
     if(summaryEnd){rangeClauses.push('g.created_at<?');rangeArgs.push(String(summaryEnd))}
-    const summary=summaryStart||summaryEnd?this.get(`SELECT COUNT(*) runs FROM generations g WHERE ${rangeClauses.join(' AND ')}`,...rangeArgs):null
-    const items=this.all(`SELECT g.* FROM generations g WHERE ${where} ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?`,...args,limit,(page-1)*limit).map(g => {
-      const publicRow = this.publicGeneration(g)
+    const summary=summaryStart||summaryEnd?(await this.get(`SELECT COUNT(*) runs FROM generations g WHERE ${rangeClauses.join(' AND ')}`,...rangeArgs)):null
+    const items=(await mapAsync((await this.all(`SELECT g.* FROM generations g WHERE ${where} ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?`,...args,limit,(page-1)*limit)), async g => {
+      const publicRow = (await this.publicGeneration(g))
       // Existing history fields remain as compatibility aliases. New operational
       // fields are projected only by the authenticated admin endpoint.
       const record = { ...publicRow, created_at:g.created_at, finished_at:g.finished_at }
@@ -2194,8 +2258,8 @@ export class ManagementStore {
             mime: video.mime, duration: video.duration, width: video.width, height: video.height } : null,
         }
       }
-      const upstreamCost=this.recordedGenerationCost(g)
-      const internalVideo = this.videoResult(g.id)
+      const upstreamCost=(await this.recordedGenerationCost(g))
+      const internalVideo = (await this.videoResult(g.id))
       return {
         ...record,
         // The database generation ID and user ID are operational fields. Keep
@@ -2217,64 +2281,64 @@ export class ManagementStore {
         // 不是支付收入或上游账单毛利；赠送积分、缺成本与文本成本会影响解释。
         marginRmb: finiteCost(upstreamCost?.rmb)!==null ? Math.round((Number(g.charged_points || 0)*Number(process.env.ZPAY_POINT_PRICE_CENTS || 100)/100-Number(upstreamCost.rmb))*10000)/10000 : null,
       }
-    })
+    }))
     return {items,total,page,limit,...(summary?{summary}:{})}
   }
-  recordedGenerationCost(g) {
+  async recordedGenerationCost(g) {
     const saved=g.upstream_cost ? parse(g.upstream_cost) : null
     if (finiteCost(saved?.rmb)!==null) return saved
     if (g.status!=='succeeded') return null
-    const call=this.get("SELECT cost_detail,cost_rmb,cost_basis FROM upstream_calls WHERE generation_id=? AND status IN ('ok','succeeded') AND cost_rmb IS NOT NULL ORDER BY created_at DESC,id DESC LIMIT 1",g.id)
+    const call=(await this.get("SELECT cost_detail,cost_rmb,cost_basis FROM upstream_calls WHERE generation_id=? AND status IN ('ok','succeeded') AND cost_rmb IS NOT NULL ORDER BY created_at DESC,id DESC LIMIT 1",g.id))
     return call ? call.cost_detail ? parse(call.cost_detail) : {rmb:call.cost_rmb,basis:call.cost_basis,detail:null} : null
   }
-  reconciliation(filters: Record<string, any> = {}) {
-    const records = this.records(filters, true)
-    const summary = this.get("SELECT COUNT(*) requests, COALESCE(SUM(CASE WHEN provider IS NOT NULL AND provider<>'' THEN 1 ELSE 0 END),0) providerRows, COALESCE(SUM(CASE WHEN upstream_request_id IS NOT NULL AND upstream_request_id<>'' THEN 1 ELSE 0 END),0) linkedRows, COALESCE(SUM(CASE WHEN usage IS NOT NULL AND usage<>'' THEN 1 ELSE 0 END),0) usageRows, COALESCE(SUM(CASE WHEN status='succeeded' THEN charged_points ELSE 0 END),0) chargedPoints FROM generations")
-    const costRow=this.get("SELECT COALESCE(SUM(retained_cost),0) upstreamCostRmb, SUM(CASE WHEN retained_cost IS NULL THEN 1 ELSE 0 END) missingCostRows, COALESCE(SUM(charged_points),0) chargedAllPoints, COALESCE(SUM(CASE WHEN retained_cost IS NOT NULL THEN charged_points ELSE 0 END),0) costMatchedPoints FROM "+RETAINED_COST_ROWS)
+  async reconciliation(filters: Record<string, any> = {}) {
+    const records = (await this.records(filters, true))
+    const summary = (await this.get("SELECT COUNT(*) requests, COALESCE(SUM(CASE WHEN provider IS NOT NULL AND provider<>'' THEN 1 ELSE 0 END),0) providerRows, COALESCE(SUM(CASE WHEN upstream_request_id IS NOT NULL AND upstream_request_id<>'' THEN 1 ELSE 0 END),0) linkedRows, COALESCE(SUM(CASE WHEN usage IS NOT NULL AND usage<>'' THEN 1 ELSE 0 END),0) usageRows, COALESCE(SUM(CASE WHEN status='succeeded' THEN charged_points ELSE 0 END),0) chargedPoints FROM generations"))
+    const costRow=(await this.get("SELECT COALESCE(SUM(retained_cost),0) upstreamCostRmb, SUM(CASE WHEN retained_cost IS NULL THEN 1 ELSE 0 END) missingCostRows, COALESCE(SUM(charged_points),0) chargedAllPoints, COALESCE(SUM(CASE WHEN retained_cost IS NOT NULL THEN charged_points ELSE 0 END),0) costMatchedPoints FROM "+RETAINED_COST_ROWS))
     return { ...records, reconciliation: { ...summary, unlinkedRows: Number(summary.providerRows) - Number(summary.linkedRows), upstreamCostRmb: Math.round(Number(costRow.upstreamCostRmb) * 10000) / 10000, missingCostRows: Number(costRow.missingCostRows), chargedAllPoints: Math.round(Number(costRow.chargedAllPoints) * 100) / 100, marginRmb: Math.round((Number(costRow.costMatchedPoints) * Number(process.env.ZPAY_POINT_PRICE_CENTS || 100) / 100 - Number(costRow.upstreamCostRmb)) * 10000) / 10000, scope: '全库关联统计不随列表筛选变化；成功实扣单列统计。成本按价目与实测单价推算；差额仅将有成本留档请求的实扣积分按当前充值兑换价折元减同批推算成本，缺成本及文本成本未纳入，并非支付收入或账单毛利。' } }
   }
-  userStats(userId, { from = '', to = '' }: Record<string, any> = {}) {
-    if (!this.user(userId)) throw failure('用户不存在', 404)
+  async userStats(userId, { from = '', to = '' }: Record<string, any> = {}) {
+    if (!(await this.user(userId))) throw failure('用户不存在', 404)
     const clauses = ['user_id=?']; const args = [userId]
     if (from) { clauses.push('created_at>=?'); args.push(String(from).slice(0, 40)) }
     if (to) { clauses.push('created_at<?'); args.push(String(to).slice(0, 40)) }
     const where = clauses.join(' AND ')
-    const row = this.get(`SELECT COUNT(*) requests,
+    const row = (await this.get(`SELECT COUNT(*) requests,
       COALESCE(SUM(CASE WHEN status='succeeded' THEN 1 ELSE 0 END),0) succeeded,
       COALESCE(SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END),0) failed,
       COALESCE(SUM(CASE WHEN status='running' THEN 1 ELSE 0 END),0) running,
       COALESCE(SUM(CASE WHEN status='queued' THEN 1 ELSE 0 END),0) queued,
       COALESCE(SUM(CASE WHEN status IN ('cancelled','expired') THEN 1 ELSE 0 END),0) cancelled,
       COALESCE(SUM(charged_points),0) pointsConsumed
-      FROM generations WHERE ${where}`, ...args)
+      FROM generations WHERE ${where}`, ...args))
     return { userId, from: from || null, to: to || null, ...row, scope: '仅该登录用户；不含管理员和访客请求' }
   }
-  overview() {
-    this.recoverStale()
-    const stats = this.get("SELECT COUNT(*) requests, COALESCE(SUM(CASE WHEN status='succeeded' THEN 1 ELSE 0 END),0) succeeded,COALESCE(SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END),0) failed,COALESCE(SUM(CASE WHEN status='queued' THEN 1 ELSE 0 END),0) queued,COALESCE(SUM(CASE WHEN status='running' THEN 1 ELSE 0 END),0) running,COALESCE(SUM(CASE WHEN status='cancelled' THEN 1 ELSE 0 END),0) cancelled,COALESCE(SUM(CASE WHEN status='expired' THEN 1 ELSE 0 END),0) expired,COALESCE(SUM(charged_points),0) points,COALESCE(SUM(CASE WHEN status='succeeded' THEN charged_points ELSE 0 END),0) succeededPoints FROM generations")
+  async overview() {
+    await this.recoverStale()
+    const stats = (await this.get("SELECT COUNT(*) requests, COALESCE(SUM(CASE WHEN status='succeeded' THEN 1 ELSE 0 END),0) succeeded,COALESCE(SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END),0) failed,COALESCE(SUM(CASE WHEN status='queued' THEN 1 ELSE 0 END),0) queued,COALESCE(SUM(CASE WHEN status='running' THEN 1 ELSE 0 END),0) running,COALESCE(SUM(CASE WHEN status='cancelled' THEN 1 ELSE 0 END),0) cancelled,COALESCE(SUM(CASE WHEN status='expired' THEN 1 ELSE 0 END),0) expired,COALESCE(SUM(charged_points),0) points,COALESCE(SUM(CASE WHEN status='succeeded' THEN charged_points ELSE 0 END),0) succeededPoints FROM generations"))
     // 成本与毛利：每单成本落在 generations.upstream_cost（图片与视频都写），
     // 参考差额只包含有数值成本的同批请求，按当前充值兑换价折元，并非账单毛利。
     // 缺成本请求单列且不进入差额；文本成本也未纳入。
-    const money=this.get("SELECT COALESCE(SUM(retained_cost),0) cost, COALESCE(SUM(CASE WHEN retained_cost IS NOT NULL THEN charged_points ELSE 0 END),0) matchedPoints, SUM(CASE WHEN retained_cost IS NOT NULL THEN 1 ELSE 0 END) matchedRows, SUM(CASE WHEN retained_cost IS NULL AND status='succeeded' THEN 1 ELSE 0 END) missing FROM "+RETAINED_COST_ROWS)
+    const money=(await this.get("SELECT COALESCE(SUM(retained_cost),0) cost, COALESCE(SUM(CASE WHEN retained_cost IS NOT NULL THEN charged_points ELSE 0 END),0) matchedPoints, SUM(CASE WHEN retained_cost IS NOT NULL THEN 1 ELSE 0 END) matchedRows, SUM(CASE WHEN retained_cost IS NULL AND status='succeeded' THEN 1 ELSE 0 END) missing FROM "+RETAINED_COST_ROWS))
     // 成片存储 = 图片 artifact 的实际字节 + 工作区文件（成片/素材现在存在工作区，含磁盘存储的 size）。
-    const artifactBytes = Number(this.get('SELECT COALESCE(SUM(COALESCE(size,length(bytes))),0) n FROM artifacts').n)
+    const artifactBytes = Number((await this.get('SELECT COALESCE(SUM(COALESCE(size,length(bytes))),0) n FROM artifacts')).n)
     let fileBytes = 0
-    try { fileBytes = Number(this.get('SELECT COALESCE(SUM(COALESCE(size, length(bytes))),0) n FROM workspace_files').n) } catch { fileBytes = 0 }
+    try { fileBytes = Number((await this.get('SELECT COALESCE(SUM(COALESCE(size, length(bytes))),0) n FROM workspace_files')).n) } catch { fileBytes = 0 }
     const cost = Math.round(Number(money.cost) * 10000) / 10000
     const charged = Math.round(Number(stats.points) * 100) / 100
-    const balanceAudit = this.balanceAudit()
-    const holds=this.get("SELECT COALESCE(SUM(reserved_points),0) points FROM generations WHERE user_id IS NOT NULL AND status IN ('queued','running')")
-    const shortfalls=this.get("SELECT COUNT(*) rows,COALESCE(SUM(json_extract(upstream_cost,'$.detail.pricing.shortfallPoints')),0) points FROM generations WHERE status='succeeded' AND json_valid(upstream_cost) AND json_extract(upstream_cost,'$.detail.pricing.shortfallPoints')>0")
+    const balanceAudit = (await this.balanceAudit())
+    const holds=(await this.get("SELECT COALESCE(SUM(reserved_points),0) points FROM generations WHERE user_id IS NOT NULL AND status IN ('queued','running')"))
+    const shortfalls=(await this.get("SELECT COUNT(*) rows,COALESCE(SUM(json_extract(upstream_cost,'$.detail.pricing.shortfallPoints')),0) points FROM generations WHERE status='succeeded' AND json_valid(upstream_cost) AND json_extract(upstream_cost,'$.detail.pricing.shortfallPoints')>0"))
     return {
-      users: this.get('SELECT COUNT(*) n FROM users').n,
-      activeUsers: this.get("SELECT COUNT(*) n FROM users WHERE status='active'").n,
-      disabledUsers: this.get("SELECT COUNT(*) n FROM users WHERE status='disabled'").n,
-      emailVerifiedUsers: this.get("SELECT COUNT(*) n FROM users WHERE email_verified=1").n,
+      users: (await this.get('SELECT COUNT(*) n FROM users')).n,
+      activeUsers: (await this.get("SELECT COUNT(*) n FROM users WHERE status='active'")).n,
+      disabledUsers: (await this.get("SELECT COUNT(*) n FROM users WHERE status='disabled'")).n,
+      emailVerifiedUsers: (await this.get("SELECT COUNT(*) n FROM users WHERE email_verified=1")).n,
       ...stats,
       upstreamCostRmb: cost,
-      ledgerConsumedPoints: this.generationCreditSummary().spent,
+      ledgerConsumedPoints: (await this.generationCreditSummary()).spent,
       reservedUserPoints: Math.round(Number(holds.points)*100)/100,
-      textCharges: this.textChargeSummary(),
+      textCharges: (await this.textChargeSummary()),
       shortfallRows: Number(shortfalls.rows),
       shortfallPoints: Math.round(Number(shortfalls.points)*100)/100,
       chargedPointsRmb: charged,
@@ -2284,27 +2348,27 @@ export class ManagementStore {
       costMatchedPoints: Number(money.matchedPoints),
       pointPriceRmb: Number(process.env.ZPAY_POINT_PRICE_CENTS || 100) / 100,
       missingCostRows: Number(money.missing),
-      daily: this.all("SELECT substr(created_at,1,10) date,COUNT(*) requests,COALESCE(SUM(charged_points),0) points FROM generations WHERE created_at>=? GROUP BY date ORDER BY date", new Date(Date.now() - 7 * 86400000).toISOString()),
+      daily: (await this.all("SELECT substr(created_at,1,10) date,COUNT(*) requests,COALESCE(SUM(charged_points),0) points FROM generations WHERE created_at>=? GROUP BY date ORDER BY date", new Date(Date.now() - 7 * 86400000).toISOString())),
       storageBytes: artifactBytes + fileBytes,
       artifactBytes,
       workspaceBytes: fileBytes,
       balanceAudit,
     }
   }
-  audits({ search = '', page = 1, limit = 30 }: Record<string, any> = {}) {
+  async audits({ search = '', page = 1, limit = 30 }: Record<string, any> = {}) {
     const where = search ? '(a.actor LIKE ? OR a.action LIKE ? OR a.target LIKE ? OR u.name LIKE ? OR u.email LIKE ?)' : '1=1'
     const args = search ? Array(5).fill(`%${String(search).slice(0,100)}%`) : []
-    const total = this.get(`SELECT COUNT(*) n FROM audit a LEFT JOIN users u ON u.id=a.target WHERE ${where}`, ...args).n
+    const total = (await this.get(`SELECT COUNT(*) n FROM audit a LEFT JOIN users u ON u.id=a.target WHERE ${where}`, ...args)).n
     const current=integer(page,1,100000), size=integer(limit,1,200)
-    const items=this.all(`SELECT a.*,u.name targetName,u.email targetEmail FROM audit a LEFT JOIN users u ON u.id=a.target WHERE ${where} ORDER BY a.created_at DESC,a.id DESC LIMIT ? OFFSET ?`,...args,size,(current-1)*size).map(r=>({...r,details:redactReferencePayload(parse(r.details))}))
+    const items=(await this.all(`SELECT a.*,u.name targetName,u.email targetEmail FROM audit a LEFT JOIN users u ON u.id=a.target WHERE ${where} ORDER BY a.created_at DESC,a.id DESC LIMIT ? OFFSET ?`,...args,size,(current-1)*size)).map(r=>({...r,details:redactReferencePayload(parse(r.details))}))
     return {items,total,page:current,limit:size}
   }
-  generationCreditSummary({ userId = '', from = '', to = '' }: Record<string, any> = {}) {
+  async generationCreditSummary({ userId = '', from = '', to = '' }: Record<string, any> = {}) {
     const clauses=["reason='生成预扣'",'delta<0','request_id IS NOT NULL'],args=[]
     if (userId) { clauses.push('user_id=?'); args.push(userId) }
     if (from) { clauses.push('created_at>=?'); args.push(String(from)) }
     if (to) { clauses.push('created_at<?'); args.push(String(to)) }
-    const row = this.get(`WITH reservations AS (
+    const row = (await this.get(`WITH reservations AS (
       SELECT user_id,request_id,SUM(-delta) amount FROM ledger
       WHERE ${clauses.join(' AND ')} GROUP BY user_id,request_id
     ), totals AS (
@@ -2315,14 +2379,14 @@ export class ManagementStore {
           WHERE g.id=r.request_id AND g.user_id=r.user_id AND g.status IN ('queued','running')),0) held
       FROM reservations r
     ) SELECT COALESCE(SUM(MAX(0,amount-refund-held)),0) spent,
-      COALESCE(SUM(held),0) reserved,COALESCE(SUM(refund),0) refunded FROM totals`, ...args)
+      COALESCE(SUM(held),0) reserved,COALESCE(SUM(refund),0) refunded FROM totals`, ...args))
     return Object.fromEntries(Object.entries(row).map(([key,value])=>[key,Math.round(Number(value)*100)/100]))
   }
-  ledgers(userId, { from = '', to = '', page = 1, limit = 200, includeTextCharges = false, textPage = 1 }: Record<string, any> = {}) {
+  async ledgers(userId, { from = '', to = '', page = 1, limit = 200, includeTextCharges = false, textPage = 1 }: Record<string, any> = {}) {
     const current=integer(page,1,100000),size=integer(limit,1,200)
-    const total=Number(this.get('SELECT COUNT(*) n FROM ledger WHERE user_id=?',userId).n)
-    const rows = this.all('SELECT * FROM ledger WHERE user_id=? ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?', userId,size,(current-1)*size)
-    const reasonSummary = this.all('SELECT reason,COUNT(*) AS rows,COALESCE(SUM(delta),0) AS delta FROM ledger WHERE user_id=? GROUP BY reason ORDER BY rows DESC,reason', userId).map(row => ({ reason: row.reason, rows: Number(row.rows), delta: Number(row.delta) }))
+    const total=Number((await this.get('SELECT COUNT(*) n FROM ledger WHERE user_id=?',userId)).n)
+    const rows = (await this.all('SELECT * FROM ledger WHERE user_id=? ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?', userId,size,(current-1)*size))
+    const reasonSummary = (await this.all('SELECT reason,COUNT(*) AS rows,COALESCE(SUM(delta),0) AS delta FROM ledger WHERE user_id=? GROUP BY reason ORDER BY rows DESC,reason', userId)).map(row => ({ reason: row.reason, rows: Number(row.rows), delta: Number(row.delta) }))
     // 区间小结按**全量行**算，不受上面 200 条上限影响——客户端拿到的分页数据算出来的数字会偏小，
     // 那种"看起来对其实少了"的数比没有数更糟。
     const clauses = ['user_id=?'], args = [userId]
@@ -2330,15 +2394,21 @@ export class ManagementStore {
     if (to) { clauses.push('created_at<?'); args.push(String(to)) }
     let summary = null
     if (from || to) {
-      summary = this.get(`SELECT COALESCE(SUM(CASE WHEN delta<0 THEN -delta ELSE 0 END),0) deducted, COALESCE(SUM(CASE WHEN delta>0 THEN delta ELSE 0 END),0) gained FROM ledger WHERE ${clauses.join(' AND ')}`, ...args)
+      summary = (await this.get(`SELECT COALESCE(SUM(CASE WHEN delta<0 THEN -delta ELSE 0 END),0) deducted, COALESCE(SUM(CASE WHEN delta>0 THEN delta ELSE 0 END),0) gained FROM ledger WHERE ${clauses.join(' AND ')}`, ...args))
       // Attribute consumption to reservations made in this period, net of all
       // linked refunds, including later refunds. Keep queued/running holds apart.
       // Read the ledger rather than only generations: old deleted records still
       // have their original debit/refund evidence. Admin adjustments are not usage.
-      summary = { ...summary, ...this.generationCreditSummary({userId,from,to}), scope: 'period_reservations_net_of_linked_refunds_excluding_active_holds' }
+      summary = { ...summary, ...(await this.generationCreditSummary({userId,from,to})), scope: 'period_reservations_net_of_linked_refunds_excluding_active_holds' }
       for (const key of ['spent','reserved','refunded','deducted','gained']) summary[key] = Math.round(Number(summary[key] || 0)*100)/100
     }
     return { rows, summary, reasonSummary, total, page:current, limit:size,
-      ...(includeTextCharges ? { textCharges: this.pendingTextCharges(userId, { page: textPage, limit: size }) } : {}) }
+      ...(includeTextCharges ? { textCharges: (await this.pendingTextCharges(userId, { page: textPage, limit: size })) } : {}) }
+  }
+
+  static async open<T extends new (...args: any[]) => any>(this: T, ...args: any[]): Promise<InstanceType<T>> {
+    const value = new this()
+    try { await value.initialize(...args); return value }
+    catch (error) { await value.db?.close?.().catch(() => {}); throw error }
   }
 }

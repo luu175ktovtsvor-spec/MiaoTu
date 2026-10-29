@@ -1,3 +1,4 @@
+import { redisRuntime } from './redis-runtime.ts'
 import { failure } from './management-store.ts'
 
 type RequestLike = {
@@ -69,11 +70,11 @@ function ruleFor(operation: string, env = process.env) {
 }
 
 /**
- * Apply a bounded sliding-window budget to an expensive API operation.
+ * Apply a bounded fixed-window budget to an expensive API operation.
  * Call this before reading a large request body or dispatching an upstream
  * request. A rejected request does not consume a token.
  */
-export function enforceRequestLimit(request: RequestLike, session: SessionLike, operation: string, env = process.env) {
+export async function enforceRequestLimit(request: RequestLike, session: SessionLike, operation: string, env = process.env) {
   const limits = ruleFor(operation, env)
   if (!limits) return
   const now = Date.now()
@@ -82,6 +83,11 @@ export function enforceRequestLimit(request: RequestLike, session: SessionLike, 
     [`ip:${operation}:${clientAddress(request)}`, limits.ip],
     ...(session?.role === 'user' && session.userId ? [[`user:${operation}:${session.userId}`, limits.user]] : []),
   ] as Array<[string, number]>
+  if (redisRuntime.configured) {
+    const retryAfter = await redisRuntime.limit(keys, WINDOW_MS)
+    if (retryAfter) throw Object.assign(failure('请求过于频繁，请稍后再试', 429), { retryAfter })
+    return
+  }
   for (const [key, limit] of keys) {
     const bucket = buckets.get(key)
     if (bucket && now - bucket.started < WINDOW_MS && bucket.count >= limit) {

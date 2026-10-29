@@ -1,3 +1,4 @@
+import { flatMapAsync, mapAsync, someAsync } from './async-collections.ts'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { hasCanvasHeader } from './canvas-document.ts'
 import { isInternalAssetPath, isProtectedWorkspacePath, isWorkspacePath } from './workspace-path.ts'
@@ -6,7 +7,7 @@ import { readWorkspaceRange } from './workspace-read.ts'
 
 type Entry = { path: string; mime?: string }
 export type ToolWorkspaceView = { paths: readonly string[]; uncertain?: boolean; busy?: boolean }
-type ViewProvider = (userId: any, project: string) => readonly ToolWorkspaceView[]
+type ViewProvider = (userId: any, project: string) => readonly ToolWorkspaceView[] | Promise<readonly ToolWorkspaceView[]>
 const failure = (message: string, status = 409) => Object.assign(new Error(message), { status })
 const contains = (parent: string, child: string) => child.toLowerCase() === parent.toLowerCase() || child.toLowerCase().startsWith(parent.toLowerCase() + '/')
 
@@ -19,9 +20,9 @@ export function toolWorkspaceStatePaths(state: any): string[] {
 
 // Pure policy shared by both tool transports. The raw workspace service remains
 // available to node saves, canvas transactions and other admitted host writers.
-export function assertToolFileMutation({ path, target, operation = 'write', revision, entries, views, isCanvas, ownsWrite }: {
+export async function assertToolFileMutation({ path, target, operation = 'write', revision, entries, views, isCanvas, ownsWrite }: {
   path: string; target?: string; operation?: string; revision?: string; entries: readonly Entry[];
-  views: readonly ToolWorkspaceView[]; isCanvas(entry: Entry): boolean; ownsWrite(path: string, revision: string): boolean;
+  views: readonly ToolWorkspaceView[]; isCanvas(entry: Entry): boolean | Promise<boolean>; ownsWrite(path: string, revision: string): boolean | Promise<boolean>;
 }) {
   const protectedTree = (candidate: string) => isProtectedWorkspacePath(candidate)
     || entries.some(entry => isProtectedWorkspacePath(entry.path) && contains(candidate, entry.path))
@@ -37,14 +38,14 @@ export function assertToolFileMutation({ path, target, operation = 'write', revi
   if (operation !== 'copy' && isInternalAssetPath(path)) {
     const newDirectory = operation === 'mkdir' && !entries.some(entry => contains(path, entry.path)
       || (contains(entry.path, path) && entry.mime !== 'inode/directory'))
-    const rollback = operation === 'remove' && typeof revision === 'string' && ownsWrite(path, revision)
+    const rollback = operation === 'remove' && typeof revision === 'string' && (await ownsWrite(path, revision))
       && !entries.some(entry => contains(path, entry.path) && entry.path !== path)
     if (!rollback && !newDirectory && (operation !== 'write' || entries.some(entry => intersects(path, entry.path)
       && (entry.mime !== 'inode/directory' || contains(path, entry.path))))) {
       throw failure('节点内部文件保持原位；请用节点工具编辑，或另存到素材库后整理副本')
     }
   }
-  if (operation !== 'copy' && entries.some(entry => contains(path, entry.path) && !isProtectedWorkspacePath(entry.path) && isCanvas(entry))) {
+  if (operation !== 'copy' && (await someAsync(entries, async entry => contains(path, entry.path) && !isProtectedWorkspacePath(entry.path) && (await isCanvas(entry))))) {
     throw failure('画布文件请使用画布工具修改、重命名或删除；复制请使用 duplicateCanvas')
   }
 }
@@ -55,92 +56,92 @@ const projectOf = (project?: string) => project || currentProject() || DEFAULT_P
 
 function createGuard(raw: any) {
   const providers = new Set<ViewProvider>()
-  const writeKey = (userId, project, path) => JSON.stringify([userId, project, raw.referenceOwner?.(userId), path])
-  const remember = (userId, project, path, revision) => {
-    if (isInternalAssetPath(path) && typeof revision === 'string') writes.getStore()?.set(writeKey(userId, project, path), revision)
+  const writeKey = async (userId, project, path) => JSON.stringify([userId, project, (await raw.referenceOwner?.(userId)), path])
+  const remember = async (userId, project, path, revision) => {
+    if (isInternalAssetPath(path) && typeof revision === 'string') writes.getStore()?.set((await writeKey(userId, project, path)), revision)
   }
-  const isCanvasFile = (userId, entry: Entry, project = projectOf()) => {
+  const isCanvasFile = async (userId, entry: Entry, project = projectOf()) => {
     if (entry.mime === 'inode/directory' || !/\.json$/i.test(entry.path)) return false
-    const file = typeof raw.locate === 'function' ? raw.locate(userId, entry.path, project) : raw.read(userId, entry.path, project)
+    const file = typeof raw.locate === 'function' ? (await raw.locate(userId, entry.path, project)) : (await raw.read(userId, entry.path, project))
     return hasCanvasHeader(readWorkspaceRange(file, { limit: 4096 }).bytes.toString('utf8'))
   }
-  const assertWritable = (userId, value, target?: string, operation = 'write', revision?: string, project = projectOf()) => {
+  const assertWritable = async (userId, value, target?: string, operation = 'write', revision?: string, project = projectOf()) => {
     const path = raw.path(value)
-    assertToolFileMutation({ path, target: target === undefined ? undefined : raw.path(target), operation, revision,
-      entries: raw.list(userId, project), views: [...providers].flatMap(read => read(userId, project)),
-      isCanvas: entry => isCanvasFile(userId, entry, project),
-      ownsWrite: (path, revision) => writes.getStore()?.get(writeKey(userId, project, path)) === revision })
+    await assertToolFileMutation({ path, target: target === undefined ? undefined : raw.path(target), operation, revision,
+      entries: (await raw.list(userId, project)), views: (await flatMapAsync([...providers], async read => (await read(userId, project)))),
+      isCanvas: async entry => (await isCanvasFile(userId, entry, project)),
+      ownsWrite: async (path, revision) => writes.getStore()?.get((await writeKey(userId, project, path))) === revision })
   }
   const files = new Proxy(raw, { get(target, key) {
     const value = Reflect.get(target, key, target)
-    if (key === 'list') return (...args) => value.apply(target, args).filter(entry => !isProtectedWorkspacePath(entry.path))
-    if (['read', 'locate', 'stat', 'copyTo'].includes(String(key))) return (userId, path, ...args) => {
+    if (key === 'list') return async (...args) => (await value.apply(target, args)).filter(entry => !isProtectedWorkspacePath(entry.path))
+    if (['read', 'locate', 'stat', 'copyTo'].includes(String(key))) return async (userId, path, ...args) => {
       if (isProtectedWorkspacePath(raw.path(path))) throw failure('该文件包含供应商密钥，工具不能读取', 403)
-      return value.call(target, userId, path, ...args)
+      return (await value.call(target, userId, path, ...args))
     }
-    if (key === 'upsert') return (userId, valuePath, mime, bytes, projectArg) => {
+    if (key === 'upsert') return async (userId, valuePath, mime, bytes, projectArg) => {
       const path = raw.path(valuePath), project = projectOf(projectArg)
-      assertWritable(userId, path, undefined, mime === 'inode/directory' ? 'mkdir' : 'write', undefined, project)
-      if (!isInternalAssetPath(path)) return value.call(target, userId, path, mime, bytes, project)
-      const result = target.writeBytes(userId, { path, mime, bytes, project, revision: null })
-      remember(userId, project, path, result.revision)
+      await assertWritable(userId, path, undefined, mime === 'inode/directory' ? 'mkdir' : 'write', undefined, project)
+      if (!isInternalAssetPath(path)) return (await value.call(target, userId, path, mime, bytes, project))
+      const result = (await target.writeBytes(userId, { path, mime, bytes, project, revision: null }))
+      await remember(userId, project, path, result.revision)
       return result.revision
     }
-    if (key === 'write') return (userId, projectArg, valuePath, mime, bytes) => {
+    if (key === 'write') return async (userId, projectArg, valuePath, mime, bytes) => {
       const path = raw.path(valuePath), project = projectOf(projectArg)
-      assertWritable(userId, path, undefined, mime === 'inode/directory' ? 'mkdir' : 'write', undefined, project)
+      await assertWritable(userId, path, undefined, mime === 'inode/directory' ? 'mkdir' : 'write', undefined, project)
       const revision = isInternalAssetPath(path)
-        ? target.writeBytes(userId, { path, mime, bytes, project, revision: null }).revision
-        : value.call(target, userId, project, path, mime, bytes)
-      remember(userId, project, path, revision)
+        ? (await target.writeBytes(userId, { path, mime, bytes, project, revision: null })).revision
+        : (await value.call(target, userId, project, path, mime, bytes))
+      await remember(userId, project, path, revision)
       return revision
     }
     if (key === 'importFile') return async (userId, valuePath, mime, source, signal, options: Record<string, any> = {}) => {
       const path = raw.path(valuePath), project = projectOf(options.project)
-      assertWritable(userId, path, undefined, 'write', undefined, project)
-      const result = await withWorkspaceProject(project, () => value.call(target, userId, path, mime, source, signal, { ...options,
+      await assertWritable(userId, path, undefined, 'write', undefined, project)
+      const result = await withWorkspaceProject(project, async () => (await value.call(target, userId, path, mime, source, signal, { ...options,
         ...(isInternalAssetPath(path) ? { overwrite: false } : {}),
-        beforeCommit: size => { assertWritable(userId, path, undefined, 'write', undefined, project); options.beforeCommit?.(size) },
-      }))
-      remember(userId, project, path, result.revision)
+        beforeCommit: async size => { await assertWritable(userId, path, undefined, 'write', undefined, project); await options.beforeCommit?.(size) },
+      })))
+      await remember(userId, project, path, result.revision)
       return result
     }
     if (key === 'writeStream') return async (userId, options: Record<string, any>) => {
       const path = raw.path(options.path), project = projectOf(options.project)
-      assertWritable(userId, path, undefined, 'write', undefined, project)
+      await assertWritable(userId, path, undefined, 'write', undefined, project)
       const result = await value.call(target, userId, { ...options, path, project,
         ...(isInternalAssetPath(path) ? { overwrite: false, revision: null } : {}),
-        beforeCommit: size => { assertWritable(userId, path, undefined, 'write', undefined, project); options.beforeCommit?.(size) },
+        beforeCommit: async size => { await assertWritable(userId, path, undefined, 'write', undefined, project); await options.beforeCommit?.(size) },
       })
-      remember(userId, project, path, result.revision)
+      await remember(userId, project, path, result.revision)
       return result
     }
     if (key === 'importFiles') return async (userId, entries, options: Record<string, any> = {}) => {
       const project = projectOf(options.project)
-      const entriesToWrite = entries.map(entry => {
+      const entriesToWrite = (await mapAsync(entries, async entry => {
         const path = raw.path(entry.path)
-        assertWritable(userId, path, undefined, 'write', undefined, project)
+        await assertWritable(userId, path, undefined, 'write', undefined, project)
         return { ...entry, path, ...(isInternalAssetPath(path) ? { revision: null } : {}) }
-      })
-      const result = await value.call(target, userId, entriesToWrite, { ...options, beforeCommit: path => {
-        assertWritable(userId, path, undefined, 'write', undefined, project)
-        options.beforeCommit?.(path)
+      }))
+      const result = await value.call(target, userId, entriesToWrite, { ...options, beforeCommit: async path => {
+        await assertWritable(userId, path, undefined, 'write', undefined, project)
+        await options.beforeCommit?.(path)
       } })
-      for (const entry of result) remember(userId, project, entry.path, entry.revision)
+      for (const entry of result) await remember(userId, project, entry.path, entry.revision)
       return result
     }
-    if (['writeBytes', 'mutate'].includes(String(key))) return (userId, args, ...rest) => {
+    if (['writeBytes', 'mutate'].includes(String(key))) return async (userId, args, ...rest) => {
       const operation = key === 'mutate' ? args.operation : 'write', project = projectOf(args.project)
-      assertWritable(userId, args.path, ['rename', 'copy'].includes(operation) ? args.target : undefined, operation, args.revision, project)
-      const result = value.call(target, userId, args, ...rest)
-      if (operation === 'write') remember(userId, project, raw.path(args.path), result.revision)
+      await assertWritable(userId, args.path, ['rename', 'copy'].includes(operation) ? args.target : undefined, operation, args.revision, project)
+      const result = (await value.call(target, userId, args, ...rest))
+      if (operation === 'write') await remember(userId, project, raw.path(args.path), result.revision)
       return result
     }
-    if (['removeTree', 'replaceTree'].includes(String(key))) return (userId, path, ...args) => {
+    if (['removeTree', 'replaceTree'].includes(String(key))) return async (userId, path, ...args) => {
       const project = projectOf(key === 'removeTree' ? args[0] : args[1]?.project)
-      assertWritable(userId, path, undefined, key === 'removeTree' ? 'remove' : 'replace', undefined, project)
-      if (key === 'replaceTree') for (const entry of args[0]) assertWritable(userId, entry.path, undefined, 'write', undefined, project)
-      return value.call(target, userId, path, ...args)
+      await assertWritable(userId, path, undefined, key === 'removeTree' ? 'remove' : 'replace', undefined, project)
+      if (key === 'replaceTree') for (const entry of args[0]) await assertWritable(userId, entry.path, undefined, 'write', undefined, project)
+      return (await value.call(target, userId, path, ...args))
     }
     return typeof value === 'function' ? value.bind(target) : value
   } })

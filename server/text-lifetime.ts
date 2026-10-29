@@ -28,11 +28,11 @@ export class TextOperation {
     this.readerClosed = true
     if (!this.started || !this.keepAfterDisconnect) this.reader.abort(reason)
   }
-  dispatch(commit: () => void) {
+  async dispatch(commit: () => void) {
     this.signal.throwIfAborted()
     if (this.readerClosed) throw new DOMException('文本读取连接已断开', 'AbortError')
     if (this.started) throw Object.assign(new Error('原文本请求已经派发，未重复提交'), { status: 409 })
-    commit()
+    await commit()
     this.started = true
   }
   wait<T>(pending: Promise<T>): Promise<T> {

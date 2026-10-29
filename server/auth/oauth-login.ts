@@ -50,13 +50,13 @@ export function createOAuthLogin({ management }: { management: OAuthAccounts }) 
     redirect(response, location, { 'set-cookie': oauthStateCookie(request, '', true) })
   }
 
-  function startGoogleLogin(request, response) {
+  async function startGoogleLogin(request, response) {
     const config = googleOAuthConfig(process.env)
     if (!config.enabled) { redirectGoogleError(request, response, 'google_unavailable'); return }
     const state = oauthToken()
     const nonce = oauthToken()
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
-    management.saveOAuthState({ provider: 'google', state, nonce, redirectUri: config.redirectUri, expiresAt })
+    await management.saveOAuthState({ provider: 'google', state, nonce, redirectUri: config.redirectUri, expiresAt })
     redirect(response, googleAuthorizationUrl(config, { state, nonce }), { 'set-cookie': oauthStateCookie(request, state) })
   }
 
@@ -65,7 +65,7 @@ export function createOAuthLogin({ management }: { management: OAuthAccounts }) 
     const stateCookie = cookieToken(request, 'miao_google_state')
     if (!state || !stateCookie) { redirectGoogleError(request, response, 'google_state_invalid'); return }
     const config = googleOAuthConfig(process.env)
-    const stored = config.enabled ? management.consumeOAuthState({ provider: 'google', state, stateCookie }) : null
+    const stored = config.enabled ? (await management.consumeOAuthState({ provider: 'google', state, stateCookie })) : null
     if (!stored || stored.redirectUri !== config.redirectUri) { redirectGoogleError(request, response, 'google_state_invalid'); return }
     if (url.searchParams.get('error')) { redirectGoogleError(request, response, 'google_denied'); return }
     const code = String(url.searchParams.get('code') || '').trim()
@@ -74,7 +74,7 @@ export function createOAuthLogin({ management }: { management: OAuthAccounts }) 
       const tokens: any = await exchangeGoogleCode(config, code)
       const profile = await fetchGoogleUserInfo(config, tokens.access_token)
       const identity = await validateGoogleIdentity({ config, tokens, profile, nonceHash: stored.nonceHash })
-      const session = management.loginGoogle(identity)
+      const session = (await management.loginGoogle(identity))
       redirect(response, '/', { 'set-cookie': [sessionCookie(request, session.token), oauthStateCookie(request, '', true)] })
     } catch (error) {
       redirectGoogleError(request, response, googleErrorCode(error))
@@ -93,13 +93,13 @@ export function createOAuthLogin({ management }: { management: OAuthAccounts }) 
     redirect(response, location, { 'set-cookie': oauthStateCookie(request, '', true, 'miao_qq_state') })
   }
 
-  function startQQLogin(request, response) {
+  async function startQQLogin(request, response) {
     const config = qqOAuthConfig(process.env)
     if (!config.enabled) { redirectQQError(request, response, 'qq_unavailable'); return }
     const state = oauthToken()
     const nonce = oauthToken()
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
-    management.saveOAuthState({ provider: 'qq', state, nonce, redirectUri: config.redirectUri, expiresAt })
+    await management.saveOAuthState({ provider: 'qq', state, nonce, redirectUri: config.redirectUri, expiresAt })
     redirect(response, qqAuthorizationUrl(config, { state }), { 'set-cookie': oauthStateCookie(request, state, false, 'miao_qq_state') })
   }
 
@@ -108,7 +108,7 @@ export function createOAuthLogin({ management }: { management: OAuthAccounts }) 
     const stateCookie = cookieToken(request, 'miao_qq_state')
     if (!state || !stateCookie) { redirectQQError(request, response, 'qq_state_invalid'); return }
     const config = qqOAuthConfig(process.env)
-    const stored = config.enabled ? management.consumeOAuthState({ provider: 'qq', state, stateCookie }) : null
+    const stored = config.enabled ? (await management.consumeOAuthState({ provider: 'qq', state, stateCookie })) : null
     if (!stored || stored.redirectUri !== config.redirectUri) { redirectQQError(request, response, 'qq_state_invalid'); return }
     if (url.searchParams.get('error') || url.searchParams.get('error_code')) { redirectQQError(request, response, 'qq_denied'); return }
     const code = String(url.searchParams.get('code') || '').trim()
@@ -118,7 +118,7 @@ export function createOAuthLogin({ management }: { management: OAuthAccounts }) 
       const openId = await fetchQQOpenId(config, tokens.access_token)
       const profile = await fetchQQUserInfo(config, tokens.access_token, openId.openid)
       const identity = validateQQIdentity({ config, openId: openId.openid, profile: { ...profile, unionid: openId.unionid } })
-      const session = management.loginQQ({ ...identity, appId: config.appId })
+      const session = (await management.loginQQ({ ...identity, appId: config.appId }))
       redirect(response, '/', { 'set-cookie': [sessionCookie(request, session.token), oauthStateCookie(request, '', true, 'miao_qq_state')] })
     } catch (error) {
       redirectQQError(request, response, qqErrorCode(error))
@@ -132,7 +132,7 @@ export function createOAuthLogin({ management }: { management: OAuthAccounts }) 
       startUrl: githubAuthorizationUrl,
       exchange: (config, code) => exchangeGithubCode(config, code),
       identity: (config, tokens) => fetchGithubIdentity(config, tokens.access_token),
-      login: (identity, config) => management.loginGitHub({ ...identity, appId: config.clientId }),
+      login: async (identity, config) => (await management.loginGitHub({ ...identity, appId: config.clientId })),
     },
     wechat: {
       cookie: 'miao_wechat_state',
@@ -140,7 +140,7 @@ export function createOAuthLogin({ management }: { management: OAuthAccounts }) 
       startUrl: wechatAuthorizationUrl,
       exchange: (config, code) => exchangeWeChatCode(config, code),
       identity: (config, tokens) => fetchWeChatIdentity(config, tokens),
-      login: (identity, config) => management.loginWeChat({ ...identity, appId: config.appId }),
+      login: async (identity, config) => (await management.loginWeChat({ ...identity, appId: config.appId })),
     },
     dingtalk: {
       cookie: 'miao_dingtalk_state',
@@ -148,7 +148,7 @@ export function createOAuthLogin({ management }: { management: OAuthAccounts }) 
       startUrl: dingTalkAuthorizationUrl,
       exchange: (config, code) => exchangeDingTalkCode(config, code),
       identity: (config, tokens) => fetchDingTalkIdentity(config, tokens),
-      login: (identity, config) => management.loginDingTalk({ ...identity, appId: config.clientId }),
+      login: async (identity, config) => (await management.loginDingTalk({ ...identity, appId: config.clientId })),
     },
     linuxdo: {
       cookie: 'miao_linuxdo_state',
@@ -157,7 +157,7 @@ export function createOAuthLogin({ management }: { management: OAuthAccounts }) 
       startUrl: linuxDoAuthorizationUrl,
       exchange: (config, code, verifier) => exchangeLinuxDoCode(config, code, verifier),
       identity: (config, tokens) => fetchLinuxDoIdentity(config, tokens),
-      login: (identity) => management.loginLinuxDo(identity),
+      login: async (identity) => (await management.loginLinuxDo(identity)),
     },
     oidc: {
       cookie: 'miao_oidc_state',
@@ -166,7 +166,7 @@ export function createOAuthLogin({ management }: { management: OAuthAccounts }) 
       startUrl: oidcAuthorizationUrl,
       exchange: (config, code, verifier) => exchangeOIDCCode(config, code, verifier),
       identity: (config, tokens, nonceHash) => fetchOIDCIdentity(config, tokens, nonceHash),
-      login: (identity) => management.loginOIDC(identity),
+      login: async (identity) => (await management.loginOIDC(identity)),
     },
   }
 
@@ -214,7 +214,7 @@ export function createOAuthLogin({ management }: { management: OAuthAccounts }) 
         challenge = createHash('sha256').update(verifier).digest('base64url')
       }
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
-      management.saveOAuthState({ provider: providerName, state, nonce, redirectUri: config.redirectUri, expiresAt })
+      await management.saveOAuthState({ provider: providerName, state, nonce, redirectUri: config.redirectUri, expiresAt })
       const location = providerName === 'oidc'
         ? provider.startUrl(config, { state, nonce, codeChallenge: challenge })
         : provider.startUrl(config, { state, codeChallenge: challenge })
@@ -234,7 +234,7 @@ export function createOAuthLogin({ management }: { management: OAuthAccounts }) 
     let config = provider.config(process.env)
     try {
       config = await extraStartConfig(providerName, config)
-      const stored = config.enabled ? management.consumeOAuthState({ provider: providerName, state, stateCookie }) : null
+      const stored = config.enabled ? (await management.consumeOAuthState({ provider: providerName, state, stateCookie })) : null
       if (!stored || stored.redirectUri !== config.redirectUri) { redirectExtraError(request, response, providerName, `${providerName}_state_invalid`); return }
       if (url.searchParams.get('error') || url.searchParams.get('error_code')) { redirectExtraError(request, response, providerName, `${providerName}_denied`); return }
       const code = String(url.searchParams.get('code') || '').trim()
@@ -253,7 +253,7 @@ export function createOAuthLogin({ management }: { management: OAuthAccounts }) 
   return {
     async handle(request, response, url: URL) {
       if (url.pathname === '/api/imagine/oauth/google/start' && request.method === 'GET') {
-        startGoogleLogin(request, response)
+        await startGoogleLogin(request, response)
         return true
       }
       if (url.pathname === '/api/imagine/oauth/google/callback' && request.method === 'GET') {
@@ -261,7 +261,7 @@ export function createOAuthLogin({ management }: { management: OAuthAccounts }) 
         return true
       }
       if (url.pathname === '/api/imagine/oauth/qq/start' && request.method === 'GET') {
-        startQQLogin(request, response)
+        await startQQLogin(request, response)
         return true
       }
       if (url.pathname === '/api/imagine/oauth/qq/callback' && request.method === 'GET') {

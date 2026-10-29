@@ -1,0 +1,4 @@
+# Replace the placeholder with the SHA-256 of a new private random password.
+# Protect the actual ACL file; place the password only in the private app env.
+user default off
+user miaoimg_cn on #REPLACE_WITH_SHA256_PASSWORD ~{miaoimg:cn:limit}:* ~miaoimg:cn:cache:* +ping +hello +auth +select +client|setname +client|setinfo +get +set +del +incr +pttl +pexpire +eval

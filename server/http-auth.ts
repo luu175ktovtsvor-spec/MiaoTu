@@ -1,3 +1,4 @@
+import { redisRuntime } from './redis-runtime.ts'
 import { readJsonRequest } from './model-transport.ts'
 import { failure } from './management-store.ts'
 export function cookieToken(request, name = 'miao_session') { return new RegExp(`(?:^|;\\s*)${name}=([^;]+)`).exec(request.headers.cookie || '')?.[1] || '' }
@@ -44,10 +45,15 @@ function isLoopback(value) {
   return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1'
 }
 
-export function loginRate(request) {
+export async function loginRate(request) {
   const remote = String(request.socket?.remoteAddress || '')
   const forwarded = isLoopback(remote) ? String(request.headers?.['x-real-ip'] || request.headers?.['x-forwarded-for'] || '').split(',')[0].trim() : ''
   const ip = (forwarded || remote || 'unknown').slice(0, 64)
+  if (redisRuntime.configured) {
+    const retryAfter = await redisRuntime.limit([[`login:ip:${ip}`, 12]], 600000)
+    if (retryAfter) throw Object.assign(failure('登录尝试过多，请十分钟后重试', 429), { retryAfter })
+    return
+  }
   const now = Date.now()
   for (const [key, value] of attempts) if (now - value.at > 600000) attempts.delete(key)
   const row = attempts.get(ip) || { at: now, count: 0 }

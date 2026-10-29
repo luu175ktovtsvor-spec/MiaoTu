@@ -1,3 +1,6 @@
+import { forEachAsync, mapAsync } from './async-collections.ts'
+import { candidateMode, candidateRequestAllowed } from './candidate-safety.ts'
+import { redisRuntime } from './redis-runtime.ts'
 import { assertCloudWorkspaceWrite, cloudWorkspaceStorageEnabled } from './cloud-storage-policy.ts'
 import { createDesktopMedia } from './desktop-media.ts'
 import { proxyVideoContent } from './video-content-proxy.ts'
@@ -118,11 +121,11 @@ const showcaseAssetFetch = async (path, signal) => {
   })
 }
 assertMockProviderConfiguration(process.env)
-const management = new ManagementStore()
+const management = (await ManagementStore.open())
 const imageReceipts = new ImageReceiptFiles(join(mediaRoot(), IMAGE_RECEIPT_DIRECTORY), IMAGE_PROXY_MAX_BYTES)
 const errorExplanations = createErrorExplanations({ management })
 const emailOtp = createEmailOtp({ management })
-const feedback = createFeedbackStore(management)
+const feedback = (await createFeedbackStore(management))
 // 密码登录按邮箱计失败次数：15 分钟内连错 5 次就暂停密码登录，只能用验证码。
 const PASSWORD_FAILURE_LIMIT = 5
 const PASSWORD_FAILURE_WINDOW_MS = 15 * 60_000
@@ -131,20 +134,20 @@ const oauthLogin = createOAuthLogin({ management })
 const { createPaymentOrder, handlePaymentNotify, paymentQrImage } = createPaymentService({ management })
 // 生成结果的字节也从库里搬到磁盘（和 workspace_files 同一套做法）：
 // 启动时跑一次，幂等可续跑，失败的行留在库里下次重试。
-management.artifactFiles().migrateToDisk()
-const workspaceFiles = new WorkspaceFiles(management)
-workspaceFiles.referenceOwner = userId => management.publicUser(userId).workspaceKey
-const desktopMedia = createDesktopMedia({ management, workspaceFiles, publicOrigin: process.env.OIP_PUBLIC_ORIGIN })
+await (await management.artifactFiles()).migrateToDisk()
+const workspaceFiles = (await WorkspaceFiles.open(management))
+workspaceFiles.referenceOwner = async userId => (await management.publicUser(userId)).workspaceKey
+const desktopMedia = (await createDesktopMedia({ management, workspaceFiles, publicOrigin: process.env.OIP_PUBLIC_ORIGIN }))
 workspaceFiles.userMutationGuard = desktopMedia.assertWorkspaceMutation
 workspaceFiles.userListFilter = desktopMedia.filterWorkspaceEntries
-const probeReferenceMedia = createReferenceMediaProbe({ workspaceFiles, secret: () => management.referenceSecret(), publicOrigin: process.env.OIP_PUBLIC_ORIGIN })
-const materializeReference = createReferenceMaterializer({ workspaceFiles, secret: () => management.referenceSecret(), publicOrigin: process.env.OIP_PUBLIC_ORIGIN })
-const agentApi = createAgentApi({ management, workspaceFiles, showcaseRoot, showcaseAssetFetch, assertTextAccess: (session, { providerId = 'miaoimg' } = {}) => providerId === 'miaoimg' ? assertTextAccess({ management, session }) : assertTextIdentity({ management, session }) })
+const probeReferenceMedia = createReferenceMediaProbe({ workspaceFiles, secret: async () => (await management.referenceSecret()), publicOrigin: process.env.OIP_PUBLIC_ORIGIN })
+const materializeReference = createReferenceMaterializer({ workspaceFiles, secret: async () => (await management.referenceSecret()), publicOrigin: process.env.OIP_PUBLIC_ORIGIN })
+const agentApi = createAgentApi({ management, workspaceFiles, showcaseRoot, showcaseAssetFetch, assertTextAccess: async (session, { providerId = 'miaoimg' } = {}) => providerId === 'miaoimg' ? (await assertTextAccess({ management, session })) : (await assertTextIdentity({ management, session })) })
 const mcpApi = createMcpApi({ management, workspaceFiles, showcaseRoot, showcaseAssetFetch })
 const nodePlugins = createNodePlugins({ workspaceFiles })
 const extPlugins = createExtPlugins({ workspaceFiles })
 const pluginExport = createPluginExport({ workspaceFiles })
-const ffmpegExec = createFfmpegExec({ workspaceFiles, workspaceKey: (userId) => management.publicUser(userId).workspaceKey })
+const ffmpegExec = createFfmpegExec({ workspaceFiles, workspaceKey: async (userId) => (await management.publicUser(userId)).workspaceKey })
 const aiCompat = createAiCompat({ management, workspaceFiles, generate, probeReferenceMedia })
 const shortTextApi = createShortTextApi({ management, workspaceFiles })
 // 预览生成只在第一次进入历史视口时发生；同一张媒体的并发请求共用一个 Promise。
@@ -155,9 +158,9 @@ const mediaPreviews = createMediaPreviews()
 // 结果就是输入框被禁用、画布打不开（线上 2026-10-06 复现过）。
 // 生成结束后前端要能立刻把顶部的积分数字刷新掉。轮询接口顺带把「扣完之后的余额」
 // 带回去，客户端就不用再单独拉一次会话：少一次往返，退款/取消导致的变化也一起覆盖了。
-function viewerBalance(session) {
+async function viewerBalance(session) {
   if (session?.role !== 'user') return null
-  const user = management.user(session.userId)
+  const user = (await management.user(session.userId))
   return user ? Number(user.points) : null
 }
 
@@ -165,9 +168,9 @@ function viewerSession(session) {
   return session?.role === 'user' ? session : null
 }
 
-function publicSession(session) {
+async function publicSession(session) {
   return session
-    ? { role: session.role, csrf: session.csrf, user: session.userId ? management.publicUser(session.userId) : null }
+    ? { role: session.role, csrf: session.csrf, user: session.userId ? (await management.publicUser(session.userId)) : null }
     : null
 }
 
@@ -200,8 +203,8 @@ function settings(env = process.env) {
   }
 }
 
-function json(response, status, value, headers: Record<string, any> = {}) {
-  value = errorExplanations.attach(value, status)
+async function json(response, status, value, headers: Record<string, any> = {}) {
+  value = (await errorExplanations.attach(value, status))
   if (value?.error && (status >= 400 || value.ok === false)) {
     value = { ...value, error: userFacingError(value.error, { status }), errorExplanation: value.errorExplanation || explainUserError(value.error, { status, submissionUncertain: value.submissionUncertain, generationStatus: value.status, chargedPoints: value.chargedPoints, reservedPoints: value.reservedPoints, requestId: value.requestId }) }
   }
@@ -238,35 +241,35 @@ function parseImageData(value, model) {
 }
 
 const WORKSPACE_REFERENCE_SOURCES = Symbol('workspace-reference-sources')
-function resolveImageReferenceFiles(payload, session, env = process.env) {
+async function resolveImageReferenceFiles(payload, session, env = process.env) {
   if (payload.referenceFiles === undefined) return payload
   if (session?.role !== 'user') throw failure('请使用自己的工作区参考素材', 403)
-  const model = activeModelForSettings(String(payload.model || management.settings().defaultModel || defaultModel(env)).trim(), management.settings(), env)
+  const model = activeModelForSettings(String(payload.model || (await management.settings()).defaultModel || defaultModel(env)).trim(), (await management.settings()), env)
   if (!model || model.video) throw failure('不支持的图片模型', 422)
   if (!Array.isArray(payload.referenceFiles) || (payload.references !== undefined && (!Array.isArray(payload.references) || payload.references.length))) throw failure('参考素材参数无效', 422)
   if (payload.referenceFiles.length > model.maxReferences) throw failure('当前模型最多支持 ' + model.maxReferences + ' 张参考图', 422)
-  const project = resolveWorkspaceProject(session.userId, currentProject())
+  const project = (await resolveWorkspaceProject(session.userId, currentProject()))
   const limit = referenceInputPolicy(model, 'image')
   const sources = []
-  const references = payload.referenceFiles.map(item => {
+  const references = (await mapAsync(payload.referenceFiles, async item => {
     if (!item || typeof item.path !== 'string') throw failure('参考素材路径无效', 422)
-    const file = workspaceFiles.stat(session.userId, item.path, project)
+    const file = (await workspaceFiles.stat(session.userId, item.path, project))
     const mime = String(file.mime || '').split(';')[0].trim().toLowerCase().replace('image/jpg', 'image/jpeg')
     if (!limit.mimes.includes(mime)) throw failure(unsupportedReferenceFormat(model, 'image', { mime }), 422)
     if (file.size > limit.maxBytes) throw failure('单张参考图不能超过 ' + limit.maxBytes / (1024 * 1024) + 'MB；原素材未被压缩', 422)
     if (item.revision && item.revision !== file.revision) throw failure('参考素材已更新，请刷新后重新选择', 409)
-    const content = workspaceFiles.read(session.userId, item.path, project)
+    const content = (await workspaceFiles.read(session.userId, item.path, project))
     if (content.revision !== file.revision) throw failure('参考素材已更新，请刷新后重新选择', 409)
     sources.push({ path: file.path, revision: file.revision, project })
     return 'data:' + mime + ';base64,' + content.bytes.toString('base64')
-  })
+  }))
   return { ...payload, references, [WORKSPACE_REFERENCE_SOURCES]: sources }
 }
 
 const probeImageBytes = createMediaBufferProbe()
 async function prepareImageRequest(payload, session, env = process.env) {
-  const resolved = resolveImageReferenceFiles(payload, session, env)
-  const request = validateRequest(resolved, env)
+  const resolved = (await resolveImageReferenceFiles(payload, session, env))
+  const request = (await validateRequest(resolved, env))
   // Actual format/dimensions are read from the original bytes. No thumbnail,
   // canvas draw, or encoder participates in this path.
   for (const reference of request.references) {
@@ -280,13 +283,13 @@ async function prepareImageRequest(payload, session, env = process.env) {
   return request
 }
 
-function validateRequest(payload, env = process.env): Record<string, any> {
+async function validateRequest(payload, env = process.env): Promise<Record<string, any>> {
   const prompt = String(payload?.prompt || '').trim()
   const layerDecomposition = payload?.layerDecomposition === true
   // 图层拆分允许不写提示词（官方：不传 prompt 时自动拆分主要元素）。
   if (prompt.length < 2 && !layerDecomposition) throw Object.assign(new Error('请先输入画面描述'), { status: 422 })
-  const modelId = String(payload?.model || management.settings().defaultModel || defaultModel(env)).trim()
-  const model = activeModelForSettings(modelId, management.settings(), env)
+  const modelId = String(payload?.model || (await management.settings()).defaultModel || defaultModel(env)).trim()
+  const model = activeModelForSettings(modelId, (await management.settings()), env)
   if (!model || model.video || model.internalOnly) throw Object.assign(new Error('不支持的图片模型'), { status: 422 })
   if (!providerConfigured(model.provider, env)) throw Object.assign(new Error(`${model.label} 的服务端 Key 尚未配置`), { status: 503 })
   if (env.ENABLE_MODEL_CALLS !== 'true') throw Object.assign(new Error('模型调用开关未开启'), { status: 503 })
@@ -331,7 +334,7 @@ function validateRequest(payload, env = process.env): Record<string, any> {
   }
   const roles = payload.referenceRoles || []
   if (!Array.isArray(roles) || (roles.length && roles.length !== references.length) || roles.some(role => !REFERENCE_ROLES.some(item => item.value === role))) throw failure('参考图分工无效')
-  const pricing = management.costPolicy().models[model.publicId || model.id]
+  const pricing = (await management.costPolicy()).models[model.publicId || model.id]
   if (!pricing) throw failure('当前模型定价待确认', 503)
   return { prompt: editPrompt(compileReferencePrompt(prompt, roles), edit), referenceRoles: roles, model, edit, references: parsedReferences, generation, cost: estimateGenerationCost({ model, generation, referenceCount: parsedReferences.length, price: pricing }) }
 }
@@ -343,16 +346,16 @@ async function submitArk(request, env = process.env, signal, fetchImpl = fetch) 
   // a quote. Keep the captured bytes as a lossless fallback if its original
   // workspace path was replaced/deleted meanwhile.
   const origin = String(env.OIP_PUBLIC_ORIGIN || '').replace(/\/$/, '')
-  const references = request.references.map(reference => {
+  const references = (await mapAsync(request.references, async reference => {
     if (!origin || !request.userId || !reference.workspaceSource) return reference
     try {
       const source = reference.workspaceSource
-      const file = workspaceFiles.stat(request.userId, source.path, source.project)
+      const file = (await workspaceFiles.stat(request.userId, source.path, source.project))
       if (file.revision !== source.revision) return reference
-      const token = createReferenceToken(management.referenceSecret(), { userId: request.userId, path: file.path, revision: file.revision, project: source.project })
+      const token = createReferenceToken((await management.referenceSecret()), { userId: request.userId, path: file.path, revision: file.revision, project: source.project })
       return { ...reference, value: origin + '/api/imagine/reference?t=' + encodeURIComponent(token) }
     } catch { return reference }
-  })
+  }))
   const body = buildArkBody({ ...request, references }, config)
   return requestImageUpstream(config, { kind: 'json', path: '/images/generations', body }, request.generation, { env, signal, fetchImpl })
 }
@@ -360,7 +363,7 @@ async function submitArk(request, env = process.env, signal, fetchImpl = fetch) 
 async function submitYunshu(request, env = process.env, signal, fetchImpl = fetch) {
   const config = request.model.provider === 'grok' ? settings(env).grok : settings(env).yunshu
   assertProviderRequestAllowed(request.model.provider === 'grok' ? 'grok' : 'yunshu', config.baseUrl, env)
-  const references = request.model.provider === 'grok' ? request.references.map(item => ({ ...item, value: materializeReference(item.value, request.userId, { kind: 'image', inline: false }).value })) : request.references
+  const references = request.model.provider === 'grok' ? (await mapAsync(request.references, async item => ({ ...item, value: (await materializeReference(item.value, request.userId, { kind: 'image', inline: false })).value }))) : request.references
   return requestImageUpstream(config, buildYunshuRequest({ ...request, references }), request.generation, { env, signal, fetchImpl })
 }
 
@@ -429,7 +432,7 @@ async function executeGeneration(generationId, request, env, signal: AbortSignal
   let expiryTimer: ReturnType<typeof setTimeout> | undefined
   try {
     signal.throwIfAborted()
-    const row = management.get('SELECT * FROM generations WHERE id=?', generationId)
+    const row = (await management.get('SELECT * FROM generations WHERE id=?', generationId))
     if (!row || row.status !== GENERATION_STATES.RUNNING || row.lease_id !== workerId) throw failure('原任务已停止执行', 409)
     // Always check disk before dispatch. A crash after publishing the receipt
     // but before updating the task is recoverable without another model POST.
@@ -440,10 +443,10 @@ async function executeGeneration(generationId, request, env, signal: AbortSignal
       acceptedTaskId=request.model.provider==='suihe'?String(row.upstream_request_id||''):''
       if (!acceptedTaskId && (parameters.imageResultPending || parameters.submissionUncertain || parameters.imageResultExpiredAt)) throw Object.assign(failure('原任务等待核对，不会重新生成', 503), { upstreamAccepted: true })
       signal.throwIfAborted()
-      if (!management.heartbeat(generationId, workerId)) throw failure('原任务已停止执行', 409)
-      const dispatchFetch: typeof fetch = (input, init) => {
+      if (!(await management.heartbeat(generationId, workerId))) throw failure('原任务已停止执行', 409)
+      const dispatchFetch: typeof fetch = async (input, init) => {
         signal.throwIfAborted()
-        management.assertGenerationDispatch(generationId, workerId, { markStarted: true })
+        await management.assertGenerationDispatch(generationId, workerId, { markStarted: true })
         dispatchStarted = true
         return fetch(input, init)
       }
@@ -452,9 +455,9 @@ async function executeGeneration(generationId, request, env, signal: AbortSignal
         if(!acceptedTaskId) {
           const task=await createSuiheTask(request,{env,fetchImpl:dispatchFetch,discoveryFetch:fetch,signal})
           acceptedTaskId=task.id
-          try { management.setUpstreamTask(generationId,{requestId:task.id,model:task.upstreamModel,status:task.upstreamStatus,workerId}) }
+          try { await management.setUpstreamTask(generationId,{requestId:task.id,model:task.upstreamModel,status:task.upstreamStatus,workerId}) }
           catch(error) {throw acceptedVideoSubmissionError(error,task,'图片')}
-          try {management.recordUpstreamCall({generationId,provider:'suihe',model:request.model.publicId||request.model.id,kind:'image',tier:request.generation.size,request:task.sentBody,response:task.raw,upstreamRequestId:task.id,status:'submitted'})} catch {}
+          try {await management.recordUpstreamCall({generationId,provider:'suihe',model:request.model.publicId||request.model.id,kind:'image',tier:request.generation.size,request:task.sentBody,response:task.raw,upstreamRequestId:task.id,status:'submitted'})} catch {}
         }
         received=await receiveSuiheImages(request,acceptedTaskId,{env,signal})
       } else received = ['yunshu', 'grok'].includes(request.model.provider)
@@ -464,7 +467,7 @@ async function executeGeneration(generationId, request, env, signal: AbortSignal
       receipt = await imageReceipts.write(generationId, imageReceiptBinding(row), received, Date.now() + management.artifactTtlMs(), signal)
     }
     result = receipt.result
-    management.noteImageResultPending(generationId, workerId, result)
+    await management.noteImageResultPending(generationId, workerId, result)
     const expiry = new AbortController()
     expiryTimer = setTimeout(() => expiry.abort(Object.assign(new Error('原图暂存期已结束'), { code: 'IMAGE_RECEIPT_EXPIRED' })), Math.min(2_147_483_647, Math.max(1, receipt.expiresAt - Date.now())))
     expiryTimer.unref()
@@ -473,36 +476,36 @@ async function executeGeneration(generationId, request, env, signal: AbortSignal
       imageReceipts.artifact(receipt, index, (url, remoteSignal) => readImageArtifact({ url },
         { signal: remoteSignal, allowUrl: isAllowedImageProxyUrl, maxBytes: IMAGE_PROXY_MAX_BYTES, env }), receiveSignal), signal)
     signal.throwIfAborted()
-    const finished = management.finish(generationId, artifacts, result, workerId)
+    const finished = (await management.finish(generationId, artifacts, result, workerId))
     try { await imageReceipts.remove(generationId) } catch (error) { console.warn('[image] 已保存原图的临时回执待清理', generationId, error?.code || 'unknown') }
     // 图片结果由服务端直接写进用户工作区（与视频同一套）：客户端拿路径即可，
     // 不必再下载回写，快也不会因为关页面/断线丢图。字节就用刚提交给 finish 的那份。
     try {
-      const row = management.get('SELECT user_id, parameters FROM generations WHERE id=?', generationId)
+      const row = (await management.get('SELECT user_id, parameters FROM generations WHERE id=?', generationId))
       const userId = row?.user_id
       let directory = request.outputDirectory || ''
       if (!directory) { try { directory = JSON.parse(row?.parameters || '{}').outputDirectory || '' } catch { directory = '' } }
       directory = String(directory).replace(/^\/+|\/+$/g, '')
       if (userId && directory && request.desktopDelivery !== 1 && cloudWorkspaceStorageEnabled()) {
-        finished.forEach((artifact, index) => {
+        await forEachAsync(finished, async (artifact, index) => {
           const content = artifacts[index]?.bytes
           if (!content?.length) return
           const mime = String(artifact.mime || artifacts[index]?.mime || 'image/png')
           const extension = mime.split('/')[1] || 'png'
           // 文件名固定用 artifact id：这样结果接口能直接推导出路径给客户端，不用额外存映射。
           const path = `${directory}/${artifact.id}.${extension}`
-          workspaceFiles.upsert(userId, path, mime, Buffer.from(content), request.workspaceProject || JSON.parse(row.parameters || '{}').workspaceProject || DEFAULT_PROJECT_ID)
+          await workspaceFiles.upsert(userId, path, mime, Buffer.from(content), request.workspaceProject || JSON.parse(row.parameters || '{}').workspaceProject || DEFAULT_PROJECT_ID)
           artifact.path = path
         })
       }
     } catch (error) {
       console.warn('[image] 结果写入工作区失败', generationId, error?.message || error)
     }
-    try { syncCanvasGeneration(generationId, { management, workspaceFiles }) } catch (error) { console.warn('[canvas] 图片回写待恢复', error?.message) }
+    try { await syncCanvasGeneration(generationId, { management, workspaceFiles }) } catch (error) { console.warn('[canvas] 图片回写待恢复', error?.message) }
     // 上游留档：发出参数、上游返回摘要、用量与成本，供以后从真实账单反推单价。
     try {
       const cost = estimateUpstreamCostRmb({ model: request.model, count: finished.length, parameters: request.generation || {} })
-      management.recordUpstreamCall({
+      await management.recordUpstreamCall({
         generationId,
         provider: request.model.provider,
         model: request.model.publicId || request.model.id,
@@ -542,7 +545,7 @@ async function executeGeneration(generationId, request, env, signal: AbortSignal
       ? `${baseMessage}（上游 Request id: ${upstreamRequestId}）`
       : baseMessage
     if (dispatchStarted || result) try {
-      management.recordUpstreamCall({
+      await management.recordUpstreamCall({
         generationId,
         provider: request.model.provider,
         model: request.model.publicId || request.model.id,
@@ -585,9 +588,9 @@ async function generate(payload, session, env = process.env, preparePayload?: (p
   if (suppliedRequestId && !validRequestId(suppliedRequestId)) throw failure('请求标识无效')
   if (suppliedIdempotencyKey && !validIdempotencyKey(suppliedIdempotencyKey)) throw failure('请求标识无效')
   const accessToken = String(payload?.accessToken || '').trim()
-  const existing = management.existingGeneration({ session, requestId: suppliedRequestId, idempotencyKey: suppliedIdempotencyKey || suppliedRequestId, accessToken })
+  const existing = (await management.existingGeneration({ session, requestId: suppliedRequestId, idempotencyKey: suppliedIdempotencyKey || suppliedRequestId, accessToken }))
   if (existing) {
-    const current = management.generationForViewer(existing.requestId, session, existing.accessToken || accessToken)
+    const current = (await management.generationForViewer(existing.requestId, session, existing.accessToken || accessToken))
     if (!current) throw failure('生成记录不存在', 404)
     return generationReceipt(current, {
       accessToken: existing.accessToken || undefined,
@@ -597,8 +600,8 @@ async function generate(payload, session, env = process.env, preparePayload?: (p
     })
   }
   // Desktop input leases belong to new admission, never to a status replay.
-  assertModelAccess({ management, session, service: '图片模型' })
-  if (preparePayload) payload = preparePayload(payload)
+  await assertModelAccess({ management, session, service: '图片模型' })
+  if (preparePayload) payload = (await preparePayload(payload))
   const request = await prepareImageRequest(payload, session, env)
   if (stopping) throw failure('服务正在关闭，请稍后重试', 503)
   request.userId = session?.userId
@@ -615,7 +618,7 @@ async function generate(payload, session, env = process.env, preparePayload?: (p
     references: request.references.map((item, index) => ({ ...item, role: request.referenceRoles[index] || 'general' })),
     edit: request.edit,
   }
-  const reservation = management.reserve({
+  const reservation = (await management.reserve({
     session,
     model: request.model,
     points: request.cost.points,
@@ -627,11 +630,11 @@ async function generate(payload, session, env = process.env, preparePayload?: (p
     workerId,
     inputs,
     accessToken,
-  })
-  try { syncCanvasGeneration(reservation.id, { management, workspaceFiles }) } catch (error) { console.warn('[canvas] 图片任务绑定待恢复', error?.message) }
+  }))
+  try { await syncCanvasGeneration(reservation.id, { management, workspaceFiles }) } catch (error) { console.warn('[canvas] 图片任务绑定待恢复', error?.message) }
   reservation.cost = request.cost
   if (reservation.duplicate) {
-    const current = management.generationForViewer(reservation.requestId, session, reservation.accessToken || accessToken)
+    const current = (await management.generationForViewer(reservation.requestId, session, reservation.accessToken || accessToken))
     if (!current) throw failure('生成记录不存在', 404)
     return generationReceipt(current, {
       accessToken: reservation.accessToken || undefined,
@@ -645,25 +648,25 @@ async function generate(payload, session, env = process.env, preparePayload?: (p
     return { async: true, requestId: reservation.requestId, status: reservation.status, queuePosition: reservation.position, accessToken: reservation.accessToken || undefined, pollAfterMs: 1000, httpStatus: 202 }
   }
   const controller = new AbortController()
-  const heartbeat = setInterval(() => { if (!management.heartbeat(reservation.id, workerId)) controller.abort() }, 5000)
+  const heartbeat = setInterval(async () => { if (!(await management.heartbeat(reservation.id, workerId))) controller.abort() }, 5000)
   activeControllers.set(reservation.requestId, controller)
   try {
     const { images, result } = await executeGeneration(reservation.id, request, env, controller.signal)
     return resultPayload(request, { ...reservation, cost: request.cost }, images, result, reservation.accessToken)
   } catch (error) {
     if (submissionUncertain(error)) {
-      if (error.imageResultPending) management.deferImageResult(reservation.id, workerId)
-      else management.markSubmissionUncertain(reservation.id, error.message, error, workerId)
-      const current = management.generationForViewer(reservation.requestId, session, reservation.accessToken)
+      if (error.imageResultPending) await management.deferImageResult(reservation.id, workerId)
+      else await management.markSubmissionUncertain(reservation.id, error.message, error, workerId)
+      const current = (await management.generationForViewer(reservation.requestId, session, reservation.accessToken))
       const receipt = generationReceipt(current)
       return { ...receipt, ...(receipt.async ? { pollAfterMs: 5000 } : {}) }
     }
-    management.fail(reservation.id, error.message, error, workerId)
+    await management.fail(reservation.id, error.message, error, workerId)
     throw error
   } finally {
     clearInterval(heartbeat)
     activeControllers.delete(reservation.requestId)
-    try { management.releaseLease(reservation.id, workerId) } catch (error) { console.warn('[image] 执行租约待回收', reservation.id, error?.code || 'unknown') }
+    try { await management.releaseLease(reservation.id, workerId) } catch (error) { console.warn('[image] 执行租约待回收', reservation.id, error?.code || 'unknown') }
   }
 }
 
@@ -675,7 +678,7 @@ let stopping = false
 
 async function runQueuedJob(job, originalReceipt?: StoredImageReceipt) {
   const controller = new AbortController()
-  const heartbeat = setInterval(() => { if (!management.heartbeat(job.id, workerId)) controller.abort() }, 5000)
+  const heartbeat = setInterval(async () => { if (!(await management.heartbeat(job.id, workerId))) controller.abort() }, 5000)
   activeControllers.set(job.request_id, controller)
   try {
     // Queue claims contain decoded parameters; receipt recovery returns a DB row.
@@ -697,15 +700,15 @@ async function runQueuedJob(job, originalReceipt?: StoredImageReceipt) {
       error = new ImageResultError(error, originalReceipt.result)
       error.imageResultPending = true
     }
-    if (error.imageResultPending) management.deferImageResult(job.id, workerId)
-    else if (submissionUncertain(error)) management.markSubmissionUncertain(job.id, error.message, error, workerId)
-    else management.fail(job.id, error.message, error, workerId)
+    if (error.imageResultPending) await management.deferImageResult(job.id, workerId)
+    else if (submissionUncertain(error)) await management.markSubmissionUncertain(job.id, error.message, error, workerId)
+    else await management.fail(job.id, error.message, error, workerId)
   } finally {
     clearInterval(heartbeat)
     activeControllers.delete(job.request_id)
     activeJobs.delete(job.id)
-    try { management.releaseLease(job.id, workerId) } catch (error) { console.warn('[generation] 执行租约待回收', job.id, error?.code || 'unknown') }
-    try { syncCanvasGeneration(job.id, { management, workspaceFiles }) } catch (error) { console.warn('[canvas] 任务终态回写待恢复', error?.message) }
+    try { await management.releaseLease(job.id, workerId) } catch (error) { console.warn('[generation] 执行租约待回收', job.id, error?.code || 'unknown') }
+    try { await syncCanvasGeneration(job.id, { management, workspaceFiles }) } catch (error) { console.warn('[canvas] 任务终态回写待恢复', error?.message) }
     void pumpQueue().catch(() => {})
   }
 }
@@ -719,21 +722,22 @@ function startQueuedJob(job, receipt?: StoredImageReceipt) {
 }
 
 function pumpQueue(): Promise<void> {
+  if (candidateMode) return Promise.resolve()
   if (pumping) return pumping
   if (stopping) return Promise.resolve()
   const pending: Promise<void> = Promise.resolve().then(async () => {
     if (stopping) return
-    management.recoverStale()
+    await management.recoverStale()
     // Accepted asynchronous pictures resume their original task even when
     // model admission is paused. Never send a second creation POST.
-    for(const row of management.all("SELECT id FROM generations WHERE status='running' AND provider='suihe' AND upstream_request_id IS NOT NULL")) {
+    for(const row of (await management.all("SELECT id FROM generations WHERE status='running' AND provider='suihe' AND upstream_request_id IS NOT NULL"))) {
       if(stopping||activeJobs.has(row.id)) continue
-      const job=management.claimAcceptedImage(row.id,workerId)
+      const job=(await management.claimAcceptedImage(row.id,workerId))
       if(job) startQueuedJob(job)
     }
     if (!settings().enabled) return
     while (!stopping) {
-      const job = management.claimNext(workerId)
+      const job = (await management.claimNext(workerId))
       if (!job) break
       startQueuedJob(job)
       // Let accepted jobs start and HTTP/heartbeat/shutdown events progress;
@@ -757,26 +761,27 @@ const imageRecovery = new ImageReceiptRecovery({
 let videoCollection: Promise<void> | undefined
 const videoRestoreAfter = new Map()
 function collectVideoResults(): Promise<void> {
+  if (candidateMode) return Promise.resolve()
   if (videoCollection) return videoCollection
   if (stopping) return Promise.resolve()
   // Register before dispatch so shutdown also sees a collector whose first
   // provider read has not started yet. Keep the existing single-flight scan.
   const pending: Promise<void> = Promise.resolve().then(async () => {
     if (stopping) return
-    const rows = management.all("SELECT request_id,user_id,model FROM generations WHERE user_id IS NOT NULL AND status='running' AND upstream_request_id IS NOT NULL")
-    await Promise.allSettled(rows.filter(row => modelById(row.model)?.video).map(async row => {
+    const rows = (await management.all("SELECT request_id,user_id,model FROM generations WHERE user_id IS NOT NULL AND status='running' AND upstream_request_id IS NOT NULL"))
+    await Promise.allSettled((await mapAsync(rows.filter(row => modelById(row.model)?.video), async row => {
       const result = await pollVideo({ requestId: row.request_id }, { role: 'user', userId: row.user_id }, { management, workspaceFiles })
-      const stored = management.get('SELECT id FROM generations WHERE request_id=?', row.request_id)
-      if (stored) syncCanvasGeneration(stored.id, { management, workspaceFiles })
+      const stored = (await management.get('SELECT id FROM generations WHERE request_id=?', row.request_id))
+      if (stored) await syncCanvasGeneration(stored.id, { management, workspaceFiles })
       return result
-    }))
+    })))
     if (stopping) return
-    const missing = management.all("SELECT g.request_id,g.user_id FROM generations g JOIN video_results v ON v.generation_id=g.id WHERE g.user_id IS NOT NULL AND g.status='succeeded' AND json_extract(v.metadata,'$.workspacePath') IS NULL AND json_extract(g.parameters,'$.desktopDeliveredAt') IS NULL AND json_extract(g.parameters,'$.desktopMediaExpiredAt') IS NULL AND g.finished_at>=? ORDER BY g.finished_at DESC", new Date(Date.now() - 24 * 60 * 60_000).toISOString())
+    const missing = (await management.all("SELECT g.request_id,g.user_id FROM generations g JOIN video_results v ON v.generation_id=g.id WHERE g.user_id IS NOT NULL AND g.status='succeeded' AND json_extract(v.metadata,'$.workspacePath') IS NULL AND json_extract(g.parameters,'$.desktopDeliveredAt') IS NULL AND json_extract(g.parameters,'$.desktopMediaExpiredAt') IS NULL AND g.finished_at>=? ORDER BY g.finished_at DESC", new Date(Date.now() - 24 * 60 * 60_000).toISOString()))
     await Promise.allSettled(missing.filter(row => Date.now() >= (videoRestoreAfter.get(row.request_id) || 0)).map(row => {
       videoRestoreAfter.set(row.request_id, Date.now() + 60_000)
-      return restoreVideoResult({ requestId: row.request_id }, { role: 'user', userId: row.user_id }, { management, workspaceFiles }).then(result => {
-        const stored = management.get('SELECT id FROM generations WHERE request_id=?', row.request_id)
-        if (stored) syncCanvasGeneration(stored.id, { management, workspaceFiles })
+      return restoreVideoResult({ requestId: row.request_id }, { role: 'user', userId: row.user_id }, { management, workspaceFiles }).then(async result => {
+        const stored = (await management.get('SELECT id FROM generations WHERE request_id=?', row.request_id))
+        if (stored) await syncCanvasGeneration(stored.id, { management, workspaceFiles })
         return result
       })
     }))
@@ -787,14 +792,15 @@ function collectVideoResults(): Promise<void> {
 }
 const videoCollectorTimer = setInterval(() => { void collectVideoResults().catch(error => console.warn('[video] 结果取回失败', error?.message)) }, 5000)
 
-const desktopMediaTimer = setInterval(() => { try { desktopMedia.sweep() } catch (error) { console.warn('[desktop-media] 暂存回收待重试', error.code || 'unknown') } }, 60_000)
+const desktopMediaTimer = setInterval(async () => { if (candidateMode) return; try { await desktopMedia.sweep() } catch (error) { console.warn('[desktop-media] 暂存回收待重试', error.code || 'unknown') } }, 60_000)
 const queueTimer = setInterval(() => { void pumpQueue().catch(() => {}) }, 1000)
-const imageReceiptTimer = setInterval(() => { void imageRecovery.collect().catch(error => console.warn('[image] 原图恢复扫描失败', error?.code || 'unknown')) }, 5000)
-void imageRecovery.collect().catch(error => console.warn('[image] 初始原图恢复扫描失败', error?.code || 'unknown'))
+const imageReceiptTimer = setInterval(() => { if (!candidateMode) void imageRecovery.collect().catch(error => console.warn('[image] 原图恢复扫描失败', error?.code || 'unknown')) }, 5000)
+if (!candidateMode) void imageRecovery.collect().catch(error => console.warn('[image] 初始原图恢复扫描失败', error?.code || 'unknown'))
 // 秘塔余额异步落账，按固定间隔取快照并把区间差额与所有 upstream_calls 对照。
 // 没配 Key 时函数只返回 unknown，不会阻塞生成；脚本可随时手工补一次快照。
 const upstreamReconciliations = new Set<Promise<unknown>>()
 function startUpstreamReconcile(): Promise<unknown> {
+  if (candidateMode) return Promise.resolve()
   if (stopping) return Promise.resolve()
   const pending: Promise<unknown> = Promise.resolve().then(() => stopping ? undefined : reconcileMetasoBalance({ management }))
     .finally(() => upstreamReconciliations.delete(pending))
@@ -842,9 +848,9 @@ function previewFile(path) {
 }
 
 async function imagePreview(id, session, accessToken, signal?: AbortSignal) {
-  const entry = management.artifact(id, session, accessToken)
+  const entry = (await management.artifact(id, session, accessToken))
   if (!entry) return null
-  if (management.get("SELECT 1 FROM artifacts a JOIN generations g ON g.id=a.request_id WHERE a.id=? AND json_extract(g.parameters,'$.desktopDelivery')=1", id)) return null
+  if ((await management.get("SELECT 1 FROM artifacts a JOIN generations g ON g.id=a.request_id WHERE a.id=? AND json_extract(g.parameters,'$.desktopDelivery')=1", id))) return null
   const path = previewPath(entry.ownerId, id)
   const existing = previewFile(path)
   if (existing) return existing
@@ -855,17 +861,17 @@ async function imagePreview(id, session, accessToken, signal?: AbortSignal) {
 }
 
 async function videoPreview(requestId, session, accessToken, signal?: AbortSignal) {
-  const existing = management.existingGeneration({ session, requestId, accessToken })
+  const existing = (await management.existingGeneration({ session, requestId, accessToken }))
   if (!existing) return null
-  const record = management.generationForViewer(requestId, session, accessToken)
+  const record = (await management.generationForViewer(requestId, session, accessToken))
   if (record?.parameters?.desktopDelivery === 1) return null
   const workspacePath = String(record?.video?.metadata?.workspacePath || '').trim()
-  const ownerId = management.get('SELECT user_id FROM generations WHERE id=?', existing.id)?.user_id || ''
+  const ownerId = (await management.get('SELECT user_id FROM generations WHERE id=?', existing.id))?.user_id || ''
   if (!workspacePath || !ownerId) return null
   let source
   try {
     // History can contain results from another project: use the task's immutable project.
-    source = workspaceFiles.locate(ownerId, workspacePath, record.parameters?.workspaceProject || DEFAULT_PROJECT_ID)
+    source = (await workspaceFiles.locate(ownerId, workspacePath, record.parameters?.workspaceProject || DEFAULT_PROJECT_ID))
   } catch { return null }
   const path = previewPath(ownerId, requestId)
   const ready = previewFile(path)
@@ -898,15 +904,15 @@ function mediaAccelLocation(file) {
 // 工作区接口的项目参数：不传一律落到默认项目——线上可能还有缓存住的旧前端包，
 // 它们不带项目参数，不能让它们因为这次改动读不到文件。
 // 传了就必须是这个账号自己的项目：别人的 id 和不存在的 id 一样回 404，不泄露存在性。
-function resolveWorkspaceProject(userId, value) {
+async function resolveWorkspaceProject(userId, value) {
   const requested = String(value ?? '').trim()
   // 还没迁移到多项目的库：整个库就是默认项目，行为要和迁移前完全一致。
   if (!management.projectScoped) {
     if (requested && requested !== DEFAULT_PROJECT_ID) throw failure('工作区还没有迁移到多项目，请先运行 node scripts/migrate-projects.ts --apply', 409)
     return DEFAULT_PROJECT_ID
   }
-  if (!requested || requested === DEFAULT_PROJECT_ID) return management.ensureDefaultProject(userId).id
-  const project = management.projectForUser(userId, projectId(requested))
+  if (!requested || requested === DEFAULT_PROJECT_ID) return (await management.ensureDefaultProject(userId)).id
+  const project = (await management.projectForUser(userId, projectId(requested)))
   if (!project) throw failure('项目不存在', 404)
   return project.id
 }
@@ -979,30 +985,31 @@ const server = createServer(withRequestProject(async (request, response) => {
     return
   }
   try { await errorExplanations.withViewer(
-  management.session(cookieToken(request)) || management.session(cookieToken(request, 'miao_admin')),
+  (await management.session(cookieToken(request))) || (await management.session(cookieToken(request, 'miao_admin'))),
   (request.url || '').split('?')[0] === '/api/imagine/error-explanation',
   async () => {
  try {
   // Resolve request scope inside the HTTP error boundary, before routing.
   currentProject()
   const url = new URL(request.url || '/', `http://${HOST}:${PORT}`)
-  const session = management.session(cookieToken(request)) || management.session(cookieToken(request, 'miao_admin'))
+  candidateRequestAllowed(request.method || 'GET', url.pathname)
+  const session = (await management.session(cookieToken(request))) || (await management.session(cookieToken(request, 'miao_admin')))
   const operation = requestOperation(url.pathname, request.method || 'GET')
-  if (operation) enforceRequestLimit(request, session, operation)
+  if (operation) await enforceRequestLimit(request, session, operation)
   if (await desktopModel(request, response, session, url, { management, readJson, mutation })) return
   if (await desktopWeb(request, response, session, url, { management, readJson, mutation })) return
   // 参考素材只读链接：上游按签名直接抓取，不要求登录（token 已绑定用户、路径和过期时间）。
   if (url.pathname === '/api/imagine/reference' && request.method === 'GET') {
-    const resolved = verifyReferenceToken(management.referenceSecret(), url.searchParams.get('t'))
+    const resolved = verifyReferenceToken((await management.referenceSecret()), url.searchParams.get('t'))
     if (!resolved) throw failure('参考资源链接无效或已过期', 410)
-    const file = workspaceFiles.locate(resolved.userId, resolved.path, resolved.project)
+    const file = (await workspaceFiles.locate(resolved.userId, resolved.path, resolved.project))
     if (resolved.revision && resolved.revision !== file.revision) throw failure('参考素材已更新，请重新获取链接', 409)
     if (!isReferenceMediaMime(file.mime)) throw failure('参考资源类型不受支持', 415)
     await sendWorkspaceFile(request, response, resolved.userId, file, { cacheControl: 'private, max-age=300' })
     return
   }
    if (url.pathname === '/api/imagine/session' && request.method === 'GET') {
-     json(response,200,{session:publicSession(viewerSession(session)),requireLogin:management.settings().requireLogin}); return
+     await json(response,200,{session:(await publicSession(viewerSession(session))),requireLogin:(await management.settings()).requireLogin}); return
    }
   if (url.pathname.startsWith('/api/agent')) {
     if (session?.role !== 'user') throw failure('请先登录', 401)
@@ -1036,34 +1043,34 @@ const server = createServer(withRequestProject(async (request, response) => {
   }
   if (url.pathname === '/api/imagine/mcp-skill' && request.method === 'GET') {
     if (session?.role !== 'user') throw failure('请先登录', 401)
-    json(response, 200, { ok: true, name: 'SKILL.md', content: mcpSkillMarkdown() })
+    await json(response, 200, { ok: true, name: 'SKILL.md', content: mcpSkillMarkdown() })
     return
   }
   if (url.pathname === '/api/imagine/mcp') {
     if (session?.role !== 'user') throw failure('请先登录', 401)
-    if (request.method === 'GET') { json(response, 200, { ok: true, ...management.mcpTokenInfo(session.userId) }); return }
+    if (request.method === 'GET') { await json(response, 200, { ok: true, ...(await management.mcpTokenInfo(session.userId)) }); return }
     if (request.method === 'PUT') {
       sameOrigin(request)
       if (!isWorkspaceRequest(request.headers)) throw failure('请求来源无效', 403)
       const payload = await readJson(request, SMALL_BODY_BYTES)
-      const info = management.setMcpEnabled(session.userId, payload.enabled)
+      const info = (await management.setMcpEnabled(session.userId, payload.enabled))
       if (!payload.enabled) mcpApi.disconnectUser(session.userId)
-      json(response, 200, { ok: true, ...info }); return
+      await json(response, 200, { ok: true, ...info }); return
     }
     if (request.method === 'POST') {
       // 画布内发起的同源请求（带自定义头），用同源校验替代 CSRF 令牌。
       sameOrigin(request)
       if (!isWorkspaceRequest(request.headers)) throw failure('请求来源无效', 403)
-      const token = management.rotateMcpToken(session.userId)
+      const token = (await management.rotateMcpToken(session.userId))
       mcpApi.disconnectUser(session.userId)
-      json(response, 200, { ok: true, ...token, ...management.mcpTokenInfo(session.userId) })
+      await json(response, 200, { ok: true, ...token, ...(await management.mcpTokenInfo(session.userId)) })
       return
     }
   }
   if ((url.pathname === '/api/imagine/providers' || url.pathname === '/api/imagine/providers/models')) {
     if (session?.role !== 'user') throw failure('请先登录', 401)
     if (url.pathname === '/api/imagine/providers' && request.method === 'GET') {
-      json(response, 200, { ok: true, providers: listPublicProviders(workspaceFiles, session.userId) })
+      await json(response, 200, { ok: true, providers: (await listPublicProviders(workspaceFiles, session.userId)) })
       return
     }
     // 画布内发起的同源请求（带自定义头），用同源校验替代 CSRF 令牌。
@@ -1073,25 +1080,25 @@ const server = createServer(withRequestProject(async (request, response) => {
       await withRequestSignal(request, response, undefined, async signal => {
         const payload = await readJson(request, SMALL_BODY_BYTES)
         signal.throwIfAborted()
-        const stored = payload?.id ? providerById(workspaceFiles, session.userId, payload.id) : null
+        const stored = payload?.id ? (await providerById(workspaceFiles, session.userId, payload.id)) : null
         if (payload?.id && !stored) throw failure('供应商不存在', 404)
         const models = await fetchUpstreamProviderModels({
           apiUrl: payload?.apiUrl || stored?.apiUrl,
           protocol: payload?.protocol || stored?.protocol,
           apiKey: String(payload?.apiKey ?? '').trim() || stored?.apiKey || '',
-        }, { signal, beforeDispatch: () => assertTextIdentity({ management, session }) })
+        }, { signal, beforeDispatch: async () => (await assertTextIdentity({ management, session })) })
         signal.throwIfAborted()
-        json(response, 200, { ok: true, models })
+        await json(response, 200, { ok: true, models })
       })
       return
     }
     if (url.pathname === '/api/imagine/providers' && request.method === 'POST') {
       const payload = await readJson(request, SMALL_BODY_BYTES)
       if (payload?.operation === 'remove') {
-        json(response, 200, { ok: true, ...removeTextProvider(workspaceFiles, session.userId, payload.id) })
+        await json(response, 200, { ok: true, ...(await removeTextProvider(workspaceFiles, session.userId, payload.id)) })
         return
       }
-      json(response, 200, { ok: true, provider: upsertTextProvider(workspaceFiles, session.userId, payload) })
+      await json(response, 200, { ok: true, provider: (await upsertTextProvider(workspaceFiles, session.userId, payload)) })
       return
     }
     throw failure('供应商接口不存在', 404)
@@ -1101,7 +1108,7 @@ const server = createServer(withRequestProject(async (request, response) => {
     if (request.method === 'GET') {
       const requested = url.searchParams.get('document')
       const name = requested === 'memory' ? 'memory' : requested === 'system' ? 'system' : 'agents'
-      json(response, 200, { ok: true, ...agentApi.readPersonalization(session.userId, name) })
+      await json(response, 200, { ok: true, ...(await agentApi.readPersonalization(session.userId, name)) })
       return
     }
     if (request.method === 'POST') {
@@ -1109,7 +1116,7 @@ const server = createServer(withRequestProject(async (request, response) => {
       if (!isWorkspaceRequest(request.headers)) throw failure('请求来源无效', 403)
       const payload = await readJson(request, 1024 * 1024)
       const name = payload.document === 'memory' ? 'memory' : payload.document === 'system' ? 'system' : 'agents'
-      json(response, 200, { ok: true, ...agentApi.writePersonalization(session.userId, name, payload.content, payload.revision ?? null) })
+      await json(response, 200, { ok: true, ...(await agentApi.writePersonalization(session.userId, name, payload.content, payload.revision ?? null)) })
       return
     }
   }
@@ -1120,28 +1127,28 @@ const server = createServer(withRequestProject(async (request, response) => {
     const mime = String(request.headers['content-type'] || '').split(';')[0]
     const staged = request.method === 'PUT'
       ? await desktopMedia.stageStream(session.userId, desktopReference[1], mime, request)
-      : desktopMedia.stage(session.userId, desktopReference[1], mime)
-    json(response, 200, { ok: true, ...staged }); return
+      : (await desktopMedia.stage(session.userId, desktopReference[1], mime))
+    await json(response, 200, { ok: true, ...staged }); return
   }
   const delivered = /^\/api\/imagine\/desktop\/tasks\/([A-Za-z0-9_-]+)\/delivered$/.exec(url.pathname)
   if (delivered && request.method === 'POST') {
     if (session?.role !== 'user') throw failure('请先登录账号', 401)
     mutation(request, session)
     const payload = await readJson(request, 64 * 1024)
-    json(response, 200, { ok: true, ...await desktopMedia.delivered(session.userId, delivered[1], payload.results) }); return
+    await json(response, 200, { ok: true, ...await desktopMedia.delivered(session.userId, delivered[1], payload.results) }); return
   }
   // 画布把本地参考素材换成上游可抓取的签发地址：只允许签发自己工作区里存在的文件。
   if (url.pathname === '/api/imagine/reference-url' && request.method === 'POST') {
     if (session?.role !== 'user') throw failure('请先登录', 401)
     mutation(request, session)
     const payload = await readJson(request, 4096)
-    const project = resolveWorkspaceProject(session.userId, payload?.project ?? url.searchParams.get('project'))
+    const project = (await resolveWorkspaceProject(session.userId, payload?.project ?? url.searchParams.get('project')))
     const path = workspaceFiles.path(String(payload?.path || '').trim())
-    const file = workspaceFiles.locate(session.userId, path, project)
+    const file = (await workspaceFiles.locate(session.userId, path, project))
     if (!isReferenceMediaMime(file.mime)) throw failure('参考素材必须是图片、视频或音频文件', 422)
     const origin = String(process.env.OIP_PUBLIC_ORIGIN || '').replace(/\/$/, '') || `http://${request.headers.host}`
-    const token = createReferenceToken(management.referenceSecret(), { userId: session.userId, path, revision: file.revision, project })
-    json(response, 200, { ok: true, url: `${origin}/api/imagine/reference?t=${encodeURIComponent(token)}`, expiresIn: Math.floor(REFERENCE_TTL_MS / 1000) })
+    const token = createReferenceToken((await management.referenceSecret()), { userId: session.userId, path, revision: file.revision, project })
+    await json(response, 200, { ok: true, url: `${origin}/api/imagine/reference?t=${encodeURIComponent(token)}`, expiresIn: Math.floor(REFERENCE_TTL_MS / 1000) })
     return
   }
   // Suihe's person whitelist/cloud library is a server-side integration.
@@ -1151,103 +1158,103 @@ const server = createServer(withRequestProject(async (request, response) => {
     if (session?.role !== 'user') throw failure('请先登录', 401)
     if (request.method === 'GET') {
       const library = url.searchParams.get('library') || 'whitelist'
-      json(response, 200, { ok: true, ...(await listSuiheAssets({ userId: session.userId, library, page: url.searchParams.get('page'), pageSize: url.searchParams.get('pageSize') })) })
+      await json(response, 200, { ok: true, ...(await listSuiheAssets({ userId: session.userId, library, page: url.searchParams.get('page'), pageSize: url.searchParams.get('pageSize') })) })
       return
     }
     if (request.method === 'POST') {
       mutation(request, session)
       const payload = await readJson(request, SMALL_BODY_BYTES)
       const library = payload?.library || 'whitelist'
-      const project = resolveWorkspaceProject(session.userId, payload?.project)
+      const project = (await resolveWorkspaceProject(session.userId, payload?.project))
       const path = workspaceFiles.path(String(payload?.path || '').trim())
-      const file = workspaceFiles.locate(session.userId, path, project)
-      const content = workspaceFiles.read(session.userId, path, project)
+      const file = (await workspaceFiles.locate(session.userId, path, project))
+      const content = (await workspaceFiles.read(session.userId, path, project))
       if (content.revision !== file.revision) throw failure('素材已更新，请重新选择后上传', 409)
-      json(response, 200, { ok: true, ...(await uploadSuiheAsset({ userId: session.userId, bytes: content.bytes, mime: file.mime, name: payload?.name || path.split('/').at(-1), library })) })
+      await json(response, 200, { ok: true, ...(await uploadSuiheAsset({ userId: session.userId, bytes: content.bytes, mime: file.mime, name: payload?.name || path.split('/').at(-1), library })) })
       return
     }
   }
   const suiheWhitelist = /^\/api\/imagine\/suihe\/library\/whitelist\/([^/]+)$/.exec(url.pathname)
   if (suiheWhitelist && request.method === 'GET') {
     if (session?.role !== 'user') throw failure('请先登录', 401)
-    json(response, 200, { ok: true, ...(await getSuiheWhitelistAsset({ userId: session.userId, id: decodeURIComponent(suiheWhitelist[1]) })) })
+    await json(response, 200, { ok: true, ...(await getSuiheWhitelistAsset({ userId: session.userId, id: decodeURIComponent(suiheWhitelist[1]) })) })
     return
   }
   if (url.pathname.startsWith('/api/imagine/workspace')) {
     assertCloudWorkspaceWrite(request.method || 'GET')
     if (session?.role !== 'user') throw failure('请先登录', 401)
     const expectedOwner = request.headers['x-workspace-owner'] || url.searchParams.get('owner')
-    if (expectedOwner && expectedOwner !== management.publicUser(session.userId).workspaceKey) throw failure('登录账号已变化，请刷新工作区', 409)
+    if (expectedOwner && expectedOwner !== (await management.publicUser(session.userId)).workspaceKey) throw failure('登录账号已变化，请刷新工作区', 409)
     // 项目列表/新建/改名/删除/打开。全部按 (账号, 项目 id) 查，别人的 id 和不存在的 id 一样是 404。
     if (url.pathname === '/api/imagine/workspace/projects') {
-      const counts = workspaceFiles.fileCounts(session.userId)
+      const counts = (await workspaceFiles.fileCounts(session.userId))
       const withCounts = list => list.map(project => ({ ...project, fileCount: counts.get(project.id) || 0 }))
       if (request.method === 'GET') {
         // 老库没有 projects 表：只报一个默认项目，读接口和老版本完全一致。
         const projects = management.projectScoped
-          ? withCounts(management.projectsForUser(session.userId))
+          ? withCounts((await management.projectsForUser(session.userId)))
           : [{ ...defaultProjectView(), fileCount: counts.get(DEFAULT_PROJECT_ID) || 0 }]
         // scoped 明确告诉前端「这个库支不支持多项目」：没迁移的库是 false，前端据此不渲染
         // 新建/重命名/删除/切换那些入口（点了必然 409），而不是让前端去猜 409 的含义。
         // 迁移完这个值自动变 true，前端不用再改一次。
-        json(response, 200, { projects, scoped: Boolean(management.projectScoped) })
+        await json(response, 200, { projects, scoped: Boolean(management.projectScoped) })
         return
       }
       if (request.method === 'POST') {
         mutation(request, session)
         const payload = await readJson(request, SMALL_BODY_BYTES)
-        json(response, 200, { project: { ...management.createProject(session.userId, payload?.name), fileCount: 0 } })
+        await json(response, 200, { project: { ...(await management.createProject(session.userId, payload?.name)), fileCount: 0 } })
         return
       }
     }
     if (url.pathname === '/api/imagine/workspace/projects/rename' && request.method === 'POST') {
       mutation(request, session)
       const payload = await readJson(request, SMALL_BODY_BYTES)
-      const project = management.renameProject(session.userId, payload?.id, payload?.name)
-      json(response, 200, { project: { ...project, fileCount: workspaceFiles.fileCounts(session.userId).get(project.id) || 0 } })
+      const project = (await management.renameProject(session.userId, payload?.id, payload?.name))
+      await json(response, 200, { project: { ...project, fileCount: (await (await workspaceFiles.fileCounts(session.userId)).get(project.id)) || 0 } })
       return
     }
     if (url.pathname === '/api/imagine/workspace/projects/open' && request.method === 'POST') {
       mutation(request, session)
       const payload = await readJson(request, SMALL_BODY_BYTES)
-      const id = resolveWorkspaceProject(session.userId, payload?.id)
-      json(response, 200, { project: management.touchProject(session.userId, id) || defaultProjectView() })
+      const id = (await resolveWorkspaceProject(session.userId, payload?.id))
+      await json(response, 200, { project: (await management.touchProject(session.userId, id)) || defaultProjectView() })
       return
     }
     if (url.pathname === '/api/imagine/workspace/projects/remove' && request.method === 'POST') {
       mutation(request, session)
       const payload = await readJson(request, SMALL_BODY_BYTES)
       if (typeof payload?.id !== 'string' || !payload.id.trim()) throw failure('缺少项目编号', 422)
-      const id = resolveWorkspaceProject(session.userId, payload?.id)
+      const id = (await resolveWorkspaceProject(session.userId, payload?.id))
       if (id === DEFAULT_PROJECT_ID) throw failure('默认项目不能删除')
       // 字节和索引一起删（默认项目拒绝删除），顺序见 WorkspaceFiles.removeProject。
       await mcpApi.withProjectRemoval(session.userId, id, async () => {
-        json(response, 200, { ok: true, ...workspaceFiles.removeProject(session.userId, id) })
+        await json(response, 200, { ok: true, ...(await workspaceFiles.removeProject(session.userId, id)) })
       })
       return
     }
-    const project = resolveWorkspaceProject(session.userId, url.searchParams.get('project'))
+    const project = (await resolveWorkspaceProject(session.userId, url.searchParams.get('project')))
     if (url.pathname === '/api/imagine/workspace/files') {
       if (request.method === 'GET' || request.method === 'HEAD') {
         const path = url.searchParams.get('path')
-        if (url.searchParams.has('upload')) { json(response, 200, uploadStatus(session.userId, project, url.searchParams.get('upload'))); return }
-        if (!path) { json(response, 200, { ...workspaceFiles.listSnapshot(session.userId, project), capabilities: { nonRecursiveRemove: true, copyFiles: true, copyFilesBatch: true, copyCanvasSnapshots: true, guardedCanvasRemove: true, markdownFileLinks: true, treeSourceEntries: true } }); return }
-        const file: any = workspaceFiles.locate(session.userId, path, project)
+        if (url.searchParams.has('upload')) { await json(response, 200, uploadStatus(session.userId, project, url.searchParams.get('upload'))); return }
+        if (!path) { await json(response, 200, { ...(await workspaceFiles.listSnapshot(session.userId, project)), capabilities: { nonRecursiveRemove: true, copyFiles: true, copyFilesBatch: true, copyCanvasSnapshots: true, guardedCanvasRemove: true, markdownFileLinks: true, treeSourceEntries: true } }); return }
+        const file: any = (await workspaceFiles.locate(session.userId, path, project))
         if (url.searchParams.get('playback') === '1') {
-          const playback = desktopMedia.isTemporary(session.userId, file, project) ? null : await withRequestSignal(request, response, undefined, signal => videoPlayback(session.userId, file, { signal,
-            beforeCommit: () => { if (workspaceFiles.stat(session.userId, path, project).revision !== file.revision) throw failure('媒体已更新，请重新读取', 409) } }))
+          const playback = (await desktopMedia.isTemporary(session.userId, file, project)) ? null : await withRequestSignal(request, response, undefined, signal => videoPlayback(session.userId, file, { signal,
+            beforeCommit: async () => { if ((await workspaceFiles.stat(session.userId, path, project)).revision !== file.revision) throw failure('媒体已更新，请重新读取', 409) } }))
           await sendWorkspaceFile(request, response, session.userId, playback || file, { version: url.searchParams.get('v') })
           return
         }
         if (url.searchParams.get('preview') === '1') {
           if (!/^(image|video)\//.test(file.mime)) throw failure('该文件没有图片预览', 415)
-          if (desktopMedia.isTemporary(session.userId, file, project)) throw failure('请在桌面端预览本机文件', 404)
+          if ((await desktopMedia.isTemporary(session.userId, file, project))) throw failure('请在桌面端预览本机文件', 404)
           // 缓存来自同账号已鉴权的原件，修订号变化时生成新预览；不改原文件和索引。
           const dimension = url.searchParams.get('previewSize') === '320' ? 320 : 1024
           const key = 'workspace-' + createHash('sha256').update(file.blob ? file.blob + ':' + dimension : path + ':' + file.revision + ':' + dimension).digest('hex')
           const cached = await withRequestSignal(request, response, undefined, signal => cachedPreview(previewPath(session.userId, key), file.bytes || file.diskPath, {
             video: file.mime.startsWith('video/'), maxDimension: dimension,
-            beforeCommit: () => { if (workspaceFiles.stat(session.userId, path, project).revision !== file.revision) throw failure('媒体已更新，请重新读取', 409) },
+            beforeCommit: async () => { if ((await workspaceFiles.stat(session.userId, path, project)).revision !== file.revision) throw failure('媒体已更新，请重新读取', 409) },
           }, signal))
           const info = cached && previewFile(cached)
           if (!info) throw failure('预览暂不可用，请读取原文件', 404)
@@ -1263,7 +1270,7 @@ const server = createServer(withRequestProject(async (request, response) => {
       if (request.method === 'PUT') {
         mutation(request, session)
         const path = workspaceFiles.path(String(url.searchParams.get('path') || ''))
-        desktopMedia.assertWorkspaceMutation(session.userId, project, { operation: 'write', path })
+        await desktopMedia.assertWorkspaceMutation(session.userId, project, { operation: 'write', path })
         const exclusive = url.searchParams.get('exclusive') === '1'
         const revision = exclusive ? null : String(url.searchParams.get('revision') || request.headers['x-workspace-revision'] || '') || null
         const mime = String(request.headers['content-type'] || '').split(';', 1)[0].trim()
@@ -1273,23 +1280,23 @@ const server = createServer(withRequestProject(async (request, response) => {
             total: Number(url.searchParams.get('total')), offset: Number(url.searchParams.get('offset')), bytes, maximum: WORKSPACE_FILE_MAX_BYTES,
             commit: async content => {
               const video = await normalizeVideoBuffer(content, { path, mime })
-              const saved = workspaceFiles.writeBytes(session.userId, { path, project, mime, bytes: video.bytes, revision })
-              if (mime.startsWith('video/')) void videoPlayback(session.userId, workspaceFiles.locate(session.userId, path, project)).catch(() => {})
+              const saved = (await workspaceFiles.writeBytes(session.userId, { path, project, mime, bytes: video.bytes, revision }))
+              if (mime.startsWith('video/')) void videoPlayback(session.userId, (await workspaceFiles.locate(session.userId, path, project))).catch(() => {})
               return saved
             },
           })
-          json(response, 200, result); return
+          await json(response, 200, result); return
         }
         const bytes = await readBytes(request, WORKSPACE_FILE_MAX_BYTES)
         // 视频先做一次无损转封装再落盘：moov 在文件末尾的排版会让浏览器「播不了」（见模块注释）。
         const video = await normalizeVideoBuffer(bytes, { path, mime })
-        json(response, 200, workspaceFiles.writeBytes(session.userId, {
+        await json(response, 200, (await workspaceFiles.writeBytes(session.userId, {
           path,
           project,
           mime,
           bytes: video.bytes,
           revision,
-        }))
+        })))
         return
       }
       if (request.method === 'POST') {
@@ -1298,18 +1305,18 @@ const server = createServer(withRequestProject(async (request, response) => {
         // 项目归属在这里重新认一次：mutate 的项目是放在请求体里的（不像 GET/PUT 走查询参数），
         // 只看查询参数会把客户端传的项目覆盖成默认项目——写入就落到默认项目去了。
         // 认完仍然用服务端确认过的 id 覆盖客户端字段。
-        const scoped = resolveWorkspaceProject(session.userId, payload?.project ?? url.searchParams.get('project'))
-        json(response, 200, workspaceFiles.mutate(session.userId, { ...payload, project: scoped })); return
+        const scoped = (await resolveWorkspaceProject(session.userId, payload?.project ?? url.searchParams.get('project')))
+        await json(response, 200, (await workspaceFiles.mutate(session.userId, { ...payload, project: scoped }))); return
       }
     }
     if (url.pathname === '/api/imagine/workspace' && request.method === 'GET') {
-      json(response, 200, management.workspaceForUser(session.userId, project)); return
+      await json(response, 200, (await management.workspaceForUser(session.userId, project))); return
     }
     if (url.pathname === '/api/imagine/workspace' && request.method === 'POST') {
       mutation(request, session)
       const payload = await readJson(request, MAX_BODY_BYTES)
-      const scoped = resolveWorkspaceProject(session.userId, payload?.project ?? url.searchParams.get('project'))
-      const current = management.workspaceForUser(session.userId, scoped)
+      const scoped = (await resolveWorkspaceProject(session.userId, payload?.project ?? url.searchParams.get('project')))
+      const current = (await management.workspaceForUser(session.userId, scoped))
       const has = key => Object.hasOwn(payload, key)
       if (has('canvasFiles') || has('assets')) throw failure('请刷新工作区后使用逐项保存接口', 409)
       if (has('workspace')) {
@@ -1325,28 +1332,28 @@ const server = createServer(withRequestProject(async (request, response) => {
         if (typeof payload.assetId !== 'string') throw failure('素材数据无效')
         assets = assets.filter(item => item.id !== payload.assetId)
       } else if (has('assetOperation')) throw failure('素材操作无效')
-      json(response, 200, management.saveWorkspaceForUser(session.userId, { workspace: has('workspace') ? payload.workspace : current.workspace, assets, project: scoped })); return
+      await json(response, 200, (await management.saveWorkspaceForUser(session.userId, { workspace: has('workspace') ? payload.workspace : current.workspace, assets, project: scoped }))); return
     }
     throw failure('工作区接口不存在', 404)
   }
   if (url.pathname === '/api/imagine/login' && request.method === 'POST') {
-    sameOrigin(request); loginRate(request)
-    const payload=await readJson(request, SMALL_BODY_BYTES), next=management.loginUser(payload.code)
-    json(response,200,{session:publicSession(next)},{'set-cookie':sessionCookie(request,next.token)});return
+    sameOrigin(request); await loginRate(request)
+    const payload=await readJson(request, SMALL_BODY_BYTES), next=(await management.loginUser(payload.code))
+    await json(response,200,{session:(await publicSession(next))},{'set-cookie':sessionCookie(request,next.token)});return
   }
   if (url.pathname === '/api/imagine/register' && request.method === 'POST') {
-    sameOrigin(request); loginRate(request)
+    sameOrigin(request); await loginRate(request)
     throw failure('请先获取邮箱验证码，并和密码一起提交', 422)
   }
   if (url.pathname === '/api/imagine/login-password' && request.method === 'POST') {
-    sameOrigin(request); loginRate(request)
+    sameOrigin(request); await loginRate(request)
     const payload = await readJson(request, SMALL_BODY_BYTES)
     const key = String(payload.email || '').trim().toLowerCase()
     // 同一邮箱连续输错密码就暂停密码登录，改用验证码，防止猜密码。
     const failed = passwordFailures.get(key)
     if (failed && failed.count >= PASSWORD_FAILURE_LIMIT && Date.now() < failed.until) throw failure('密码错误次数过多，请用验证码登录，或 15 分钟后再试', 429)
     let next
-    try { next = management.loginPassword(payload.email, payload.password) }
+    try { next = (await management.loginPassword(payload.email, payload.password)) }
     catch (error) {
       if (error?.status === 401 && key) {
         const count = (failed && Date.now() < failed.until ? failed.count : 0) + 1
@@ -1356,46 +1363,46 @@ const server = createServer(withRequestProject(async (request, response) => {
       throw error
     }
     passwordFailures.delete(key)
-    json(response, 200, { session: publicSession(next) }, { 'set-cookie': sessionCookie(request, next.token) }); return
+    await json(response, 200, { session: (await publicSession(next)) }, { 'set-cookie': sessionCookie(request, next.token) }); return
   }
   if (url.pathname === '/api/imagine/password/reset' && request.method === 'POST') {
-    sameOrigin(request); loginRate(request)
+    sameOrigin(request); await loginRate(request)
     const payload = await readJson(request, SMALL_BODY_BYTES)
-    const next = emailOtp.resetPassword(payload.email, payload.code, payload.password)
+    const next = (await emailOtp.resetPassword(payload.email, payload.code, payload.password))
     passwordFailures.delete(String(payload.email || '').trim().toLowerCase())
-    json(response, 200, { session: publicSession(next) }, { 'set-cookie': sessionCookie(request, next.token) }); return
+    await json(response, 200, { session: (await publicSession(next)) }, { 'set-cookie': sessionCookie(request, next.token) }); return
   }
   if (url.pathname === '/api/imagine/email/config' && request.method === 'GET') {
-    json(response, 200, emailOtp.config()); return
+    await json(response, 200, emailOtp.config()); return
   }
   if (url.pathname === '/api/imagine/email/request-code' && request.method === 'POST') {
-    sameOrigin(request); loginRate(request)
+    sameOrigin(request); await loginRate(request)
     const payload = await readJson(request, SMALL_BODY_BYTES)
     const result = await emailOtp.request(payload.email)
-    json(response, 200, { ok: true, cooldown: result.cooldown }); return
+    await json(response, 200, { ok: true, cooldown: result.cooldown }); return
   }
   if (url.pathname === '/api/imagine/email/verify-code' && request.method === 'POST') {
-    sameOrigin(request); loginRate(request)
+    sameOrigin(request); await loginRate(request)
     const payload = await readJson(request, SMALL_BODY_BYTES)
-    const next = emailOtp.verify(payload.email, payload.code, payload.name, payload.password)
-    json(response, 200, { session: publicSession(next) }, { 'set-cookie': sessionCookie(request, next.token) }); return
+    const next = (await emailOtp.verify(payload.email, payload.code, payload.name, payload.password))
+    await json(response, 200, { session: (await publicSession(next)) }, { 'set-cookie': sessionCookie(request, next.token) }); return
   }
   if (url.pathname.startsWith('/api/imagine/oauth/') && await oauthLogin.handle(request, response, url)) return
   if (url.pathname === '/api/imagine/profile' && request.method === 'POST') {
     mutation(request, session)
     if (session.role !== 'user') throw failure('请先登录账号', 403)
     const payload = await readJson(request, SMALL_BODY_BYTES)
-    if (management.session(cookieToken(request))?.userId !== session.userId) throw failure('会话失效，请重新登录', 401)
-    management.updateProfile(session.userId, payload?.name)
-    json(response, 200, { session: publicSession(session) })
+    if ((await management.session(cookieToken(request)))?.userId !== session.userId) throw failure('会话失效，请重新登录', 401)
+    await management.updateProfile(session.userId, payload?.name)
+    await json(response, 200, { session: (await publicSession(session)) })
     return
   }
   if (url.pathname === '/api/imagine/password' && request.method === 'POST') {
     mutation(request,session)
     if (session.role !== 'user') throw failure('只有普通用户可以修改密码', 403)
     const payload = await readJson(request, SMALL_BODY_BYTES)
-    const next = management.changePassword(session.userId, payload.currentPassword, payload.newPassword, management.user(session.userId)?.email || 'user')
-    json(response,200,{session:publicSession(next)},{'set-cookie':sessionCookie(request,next.token)})
+    const next = (await management.changePassword(session.userId, payload.currentPassword, payload.newPassword, (await management.user(session.userId))?.email || 'user'))
+    await json(response,200,{session:(await publicSession(next))},{'set-cookie':sessionCookie(request,next.token)})
     return
   }
   if (url.pathname === '/api/imagine/logout' && request.method === 'POST') {
@@ -1403,16 +1410,16 @@ const server = createServer(withRequestProject(async (request, response) => {
     // Active sessions keep the original same-origin and CSRF protection.
     if (session) mutation(request, session)
     else sameOrigin(request)
-    management.logout(cookieToken(request))
-    json(response, 200, { ok: true }, { 'set-cookie': sessionCookie(request, '', true) })
+    await management.logout(cookieToken(request))
+    await json(response, 200, { ok: true }, { 'set-cookie': sessionCookie(request, '', true) })
     return
   }
   if (url.pathname === '/api/imagine/payment/notify' && request.method === 'GET') {
-    handlePaymentNotify(url, response)
+    await handlePaymentNotify(url, response)
     return
   }
   if (url.pathname === '/api/imagine/payment/return' && request.method === 'GET') {
-    const order = management.paymentOrderForReturn(url.searchParams.get('out_trade_no') || '')
+    const order = (await management.paymentOrderForReturn(url.searchParams.get('out_trade_no') || ''))
     const body = paymentReturnPage(order)
     response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'content-length': Buffer.byteLength(body) })
     response.end(body)
@@ -1421,26 +1428,26 @@ const server = createServer(withRequestProject(async (request, response) => {
   if (url.pathname === '/api/imagine/payment/orders' && request.method === 'POST') {
     mutation(request, session)
     const order = await createPaymentOrder(await readJson(request, SMALL_BODY_BYTES), session, request)
-    json(response, 201, paymentOrderPayload(order))
+    await json(response, 201, paymentOrderPayload(order))
     return
   }
   const paymentQrMatch = /^\/api\/imagine\/payment\/orders\/([A-Za-z0-9_-]{1,32})\/qrcode$/.exec(url.pathname)
   if (paymentQrMatch && request.method === 'GET') {
     if (session?.role !== 'user') throw failure('请先登录', 401)
-    const order = management.paymentOrderForUser(decodeURIComponent(paymentQrMatch[1]), session.userId)
-    if (!order) { json(response, 404, { ok: false, error: '充值订单不存在' }); return }
+    const order = (await management.paymentOrderForUser(decodeURIComponent(paymentQrMatch[1]), session.userId))
+    if (!order) { await json(response, 404, { ok: false, error: '充值订单不存在' }); return }
     if (order.status !== 'created') {
       const expired = order.status === 'expired'
-      json(response, 410, { ok: false, status: order.status, error: expired ? '二维码已过期，请重新发起充值' : '二维码已失效，请重新发起充值' })
+      await json(response, 410, { ok: false, status: order.status, error: expired ? '二维码已过期，请重新发起充值' : '二维码已失效，请重新发起充值' })
       return
     }
-    if (!order.img) { json(response, 404, { ok: false, error: '订单未提供图片二维码' }); return }
+    if (!order.img) { await json(response, 404, { ok: false, error: '订单未提供图片二维码' }); return }
     try {
       const image = await paymentQrImage(order)
-      const currentOrder = management.paymentOrderForUser(order.outTradeNo, session.userId)
+      const currentOrder = (await management.paymentOrderForUser(order.outTradeNo, session.userId))
       if (!currentOrder || currentOrder.status !== 'created') {
         const expired = currentOrder?.status === 'expired'
-        json(response, 410, { ok: false, status: currentOrder?.status || 'expired', error: expired ? '二维码已过期，请重新发起充值' : '二维码已失效，请重新发起充值' })
+        await json(response, 410, { ok: false, status: currentOrder?.status || 'expired', error: expired ? '二维码已过期，请重新发起充值' : '二维码已失效，请重新发起充值' })
         return
       }
       const remaining = Math.max(1, Math.floor((Date.parse(order.expiresAt) - Date.now()) / 1000))
@@ -1453,21 +1460,21 @@ const server = createServer(withRequestProject(async (request, response) => {
       })
       response.end(image.bytes)
     } catch (error) {
-      json(response, error.status || 502, { ok: false, error: error.message || '付款二维码暂时无法读取' })
+      await json(response, error.status || 502, { ok: false, error: error.message || '付款二维码暂时无法读取' })
     }
     return
   }
   const paymentOrderMatch = /^\/api\/imagine\/payment\/orders\/([A-Za-z0-9_-]{1,32})$/.exec(url.pathname)
   if (paymentOrderMatch && request.method === 'GET') {
     if (session?.role !== 'user') throw failure('请先登录', 401)
-    const order = management.paymentOrderForUser(decodeURIComponent(paymentOrderMatch[1]), session.userId)
-    if (!order) { json(response, 404, { ok: false, error: '充值订单不存在' }); return }
-    json(response, 200, paymentOrderPayload(order))
+    const order = (await management.paymentOrderForUser(decodeURIComponent(paymentOrderMatch[1]), session.userId))
+    if (!order) { await json(response, 404, { ok: false, error: '充值订单不存在' }); return }
+    await json(response, 200, paymentOrderPayload(order))
     return
   }
   if (url.pathname === '/api/imagine/history' && request.method === 'GET') {
     if(!session)throw failure('请先登录',401)
-    json(response,200,management.records({...Object.fromEntries(url.searchParams),userId:session.role==='admin'?undefined:session.userId},false));return
+    await json(response,200,(await management.records({...Object.fromEntries(url.searchParams),userId:session.role==='admin'?undefined:session.userId},false)));return
   }
   const previewMatch = /^\/api\/imagine\/preview\/(image|video)\/([A-Za-z0-9_-]{1,200})$/.exec(url.pathname)
   if (previewMatch && request.method === 'GET') {
@@ -1492,18 +1499,18 @@ const server = createServer(withRequestProject(async (request, response) => {
   if (url.pathname === '/api/imagine/video-content' && request.method === 'GET') {
     if (session?.role !== 'user') throw failure('请先登录', 401)
     const requestId = String(url.searchParams.get('requestId') || '').trim()
-    const existing = requestId ? management.existingGeneration({ session, requestId }) : null
-    const record = existing ? management.generationForViewer(requestId, session) : null
-    const video = existing ? management.videoResult(existing.id) : null
+    const existing = requestId ? (await management.existingGeneration({ session, requestId })) : null
+    const record = existing ? (await management.generationForViewer(requestId, session)) : null
+    const video = existing ? (await management.videoResult(existing.id)) : null
     const model = record ? modelForGeneration(record.model,{},existing.provider) : null
     if (!video || !model || !model.video) throw failure('视频内容不存在', 404)
     if (record.parameters?.desktopDeliveredAt || record.parameters?.desktopMediaExpiredAt || record.parameters?.cloudWorkspaceRetiredAt) throw failure('服务器临时文件已清理，请打开本机保存的结果', 410)
     if (video.metadata?.workspacePath) {
       try {
         const project = record.parameters?.workspaceProject || DEFAULT_PROJECT_ID
-        const file = workspaceFiles.locate(session.userId, video.metadata.workspacePath, project)
-        const playback = url.searchParams.get('playback') === '1' && !desktopMedia.isTemporary(session.userId, file, project) ? await withRequestSignal(request, response, undefined, signal => videoPlayback(session.userId, file, { signal,
-          beforeCommit: () => { if (workspaceFiles.stat(session.userId, video.metadata.workspacePath, project).revision !== file.revision) throw failure('媒体已更新，请重新读取', 409) } })) : null
+        const file = (await workspaceFiles.locate(session.userId, video.metadata.workspacePath, project))
+        const playback = url.searchParams.get('playback') === '1' && !(await desktopMedia.isTemporary(session.userId, file, project)) ? await withRequestSignal(request, response, undefined, signal => videoPlayback(session.userId, file, { signal,
+          beforeCommit: async () => { if ((await workspaceFiles.stat(session.userId, video.metadata.workspacePath, project)).revision !== file.revision) throw failure('媒体已更新，请重新读取', 409) } })) : null
         await sendWorkspaceFile(request, response, session.userId, playback || file, { version: url.searchParams.get('v') })
         return
       } catch (error) { if (Number(error?.status) !== 404) throw error }
@@ -1535,11 +1542,11 @@ const server = createServer(withRequestProject(async (request, response) => {
     else sameOrigin(request)
     try {
       const restored = await restoreVideoResult({ requestId: decodeURIComponent(restoreMatch[1]) }, session, { management, workspaceFiles, env: process.env })
-      const stored = management.get('SELECT id FROM generations WHERE request_id=?', decodeURIComponent(restoreMatch[1]))
-      if (stored) syncCanvasGeneration(stored.id, { management, workspaceFiles })
-      json(response, 200, { ok: true, ...restored })
+      const stored = (await management.get('SELECT id FROM generations WHERE request_id=?', decodeURIComponent(restoreMatch[1])))
+      if (stored) await syncCanvasGeneration(stored.id, { management, workspaceFiles })
+      await json(response, 200, { ok: true, ...restored })
     } catch (error) {
-      json(response, Number(error.status) || 502, { ok: false, error: error.message || '结果取回失败' })
+      await json(response, Number(error.status) || 502, { ok: false, error: error.message || '结果取回失败' })
     }
     return
   }
@@ -1548,14 +1555,14 @@ const server = createServer(withRequestProject(async (request, response) => {
     if (session?.role !== 'user') throw failure('请先登录', 401)
     const directory = safeOutputDirectory(url.searchParams.get('outputDirectory'))
     if (!directory || !/^assets\/[A-Za-z0-9_-]+$/.test(directory)) throw failure('节点目录无效', 422)
-    const row = management.get("SELECT request_id,status,model FROM generations WHERE user_id=? AND json_extract(parameters,'$.outputDirectory')=? AND COALESCE(json_extract(parameters,'$.workspaceProject'),?)=? ORDER BY created_at DESC,id DESC LIMIT 1", session.userId, directory, DEFAULT_PROJECT_ID, currentProject() || DEFAULT_PROJECT_ID)
+    const row = (await management.get("SELECT request_id,status,model FROM generations WHERE user_id=? AND json_extract(parameters,'$.outputDirectory')=? AND COALESCE(json_extract(parameters,'$.workspaceProject'),?)=? ORDER BY created_at DESC,id DESC LIMIT 1", session.userId, directory, DEFAULT_PROJECT_ID, currentProject() || DEFAULT_PROJECT_ID))
     if (row) {
-      const stored = management.get('SELECT id FROM generations WHERE request_id=?', row.request_id)
-      if (stored) syncCanvasGeneration(stored.id, { management, workspaceFiles })
+      const stored = (await management.get('SELECT id FROM generations WHERE request_id=?', row.request_id))
+      if (stored) await syncCanvasGeneration(stored.id, { management, workspaceFiles })
     }
     const task = row && Boolean(modelById(row.model)?.video) === (url.pathname === '/api/imagine/video/node') && ['queued','running','succeeded'].includes(row.status)
       ? { requestId: row.request_id, status: row.status } : null
-    json(response, 200, { ok: true, task })
+    await json(response, 200, { ok: true, task })
     return
   }
   const videoMatch = /^\/api\/imagine\/video\/([A-Za-z0-9_-]+)$/.exec(url.pathname)
@@ -1564,12 +1571,12 @@ const server = createServer(withRequestProject(async (request, response) => {
     const accessToken = url.searchParams.get('access') || ''
     try {
       const result = await pollVideo({ requestId, accessToken }, session, { management, env: process.env, workspaceFiles })
-      const stored = management.get("SELECT id FROM generations WHERE request_id=?", requestId)
-      if (stored) try { syncCanvasGeneration(stored.id, { management, workspaceFiles }) } catch (error) { console.warn("[canvas] 视频结果回写待恢复", error?.message) }
-      json(response, result.httpStatus || (result.status === 'succeeded' ? 200 : 202), { ok: true, balance: viewerBalance(session), ...result })
+      const stored = (await management.get("SELECT id FROM generations WHERE request_id=?", requestId))
+      if (stored) try { await syncCanvasGeneration(stored.id, { management, workspaceFiles }) } catch (error) { console.warn("[canvas] 视频结果回写待恢复", error?.message) }
+      await json(response, result.httpStatus || (result.status === 'succeeded' ? 200 : 202), { ok: true, balance: (await viewerBalance(session)), ...result })
     } catch (error) {
       const code = Number(error.status)
-      json(response, Number.isInteger(code) && code >= 400 && code < 600 ? code : 502, { ok: false, error: error.message || '视频状态读取失败' })
+      await json(response, Number.isInteger(code) && code >= 400 && code < 600 ? code : 502, { ok: false, error: error.message || '视频状态读取失败' })
     }
     return
   }
@@ -1583,9 +1590,9 @@ const server = createServer(withRequestProject(async (request, response) => {
       // 管理端是独立进程：询价前先读生效设置，后台刚改的视频价和下单扣费一致。
       const payload = await bodyJson(request)
       const estimate = await estimateVideoCredits(payload, session, { management, env: process.env, probeReferenceMedia, signal: incoming.signal })
-      json(response, 200, { ok: true, ...estimate, billingSource: estimate.breakdown?.billingSource || 'parameter_reserve', source: 'estimateGenerationCost + prepareVideoRequest' })
+      await json(response, 200, { ok: true, ...estimate, billingSource: estimate.breakdown?.billingSource || 'parameter_reserve', source: 'estimateGenerationCost + prepareVideoRequest' })
     } catch (error) {
-      json(response, Number(error.status) || 502, { ok: false, error: error.message || '积分估算失败' })
+      await json(response, Number(error.status) || 502, { ok: false, error: error.message || '积分估算失败' })
     }
     return
   }
@@ -1597,16 +1604,16 @@ const server = createServer(withRequestProject(async (request, response) => {
     sameOrigin(request)
     try {
       const payload = await readJson(request, MAX_BODY_BYTES)
-      const policy = management.costPolicy()
+      const policy = (await management.costPolicy())
       const request_ = await prepareImageRequest(payload, session, process.env)
       const modelId = request_.model.publicId || request_.model.id
       const policyPrice = policy.models?.[modelId]
       const cost: any = estimateGenerationCost({ model: request_.model, generation: request_.generation, referenceCount: request_.references.length, price: policyPrice })
       const perImage = Number(cost.breakdown?.perImage)
       if (!policyPrice || !Number.isFinite(perImage) || perImage <= 0 || !Number.isFinite(Number(cost.points)) || Number(cost.points) <= 0) {
-        json(response, 200, { ok: true, model: modelId, size: request_.generation.size, count: cost.count, points: null, perImage: null, breakdown: cost.breakdown, billingSource: 'parameter_reserve', policyVersion: cost.policyVersion, pricingAvailable: false, source: 'estimateGenerationCost + management.costPolicy' })
+        await json(response, 200, { ok: true, model: modelId, size: request_.generation.size, count: cost.count, points: null, perImage: null, breakdown: cost.breakdown, billingSource: 'parameter_reserve', policyVersion: cost.policyVersion, pricingAvailable: false, source: 'estimateGenerationCost + management.costPolicy' })
       } else {
-        json(response, 200, {
+        await json(response, 200, {
           ok: true,
           model: modelId,
           size: request_.generation.size,
@@ -1621,7 +1628,7 @@ const server = createServer(withRequestProject(async (request, response) => {
         })
       }
     } catch (error) {
-      json(response, Number(error.status) || 502, { ok: false, error: error.message || '积分估算失败' })
+      await json(response, Number(error.status) || 502, { ok: false, error: error.message || '积分估算失败' })
     }
     return
   }
@@ -1633,25 +1640,25 @@ const server = createServer(withRequestProject(async (request, response) => {
       delete body.desktopDelivery; delete body.desktopReferences
       const desktop = url.pathname === '/api/imagine/desktop/video'
       const result = await withWorkspaceProject(desktop ? DEFAULT_PROJECT_ID : currentProject(), () => createVideo(body, session, { management, env: process.env, probeReferenceMedia, signal: incoming.signal,
-        ...(desktop ? { preparePayload: payload => desktopMedia.prepare(payload, session) } : {}) }))
-      const stored = management.get('SELECT id FROM generations WHERE request_id=?', result.requestId)
-      if (stored) try { syncCanvasGeneration(stored.id, { management, workspaceFiles }) } catch (error) { console.warn('[canvas] 视频任务绑定待恢复', error?.message) }
+        ...(desktop ? { preparePayload: async payload => (await desktopMedia.prepare(payload, session)) } : {}) }))
+      const stored = (await management.get('SELECT id FROM generations WHERE request_id=?', result.requestId))
+      if (stored) try { await syncCanvasGeneration(stored.id, { management, workspaceFiles }) } catch (error) { console.warn('[canvas] 视频任务绑定待恢复', error?.message) }
 
       void pumpQueue().catch(() => {})
-      json(response, result.httpStatus || 202, { ok: true, ...result })
+      await json(response, result.httpStatus || 202, { ok: true, ...result })
     } catch (error) {
-      json(response, error.status || 502, { ok: false, error: error.message || '视频任务创建失败', ...(error.activeRequestId ? { activeRequestId: error.activeRequestId } : {}) })
+      await json(response, error.status || 502, { ok: false, error: error.message || '视频任务创建失败', ...(error.activeRequestId ? { activeRequestId: error.activeRequestId } : {}) })
     }
     return
   }
   if (url.pathname === '/api/imagine/error-explanation' && request.method === 'POST') {
-    assertTextAccess({ management, session })
+    await assertTextAccess({ management, session })
     mutation(request, session)
     const payload = await readJson(request, 4096)
-    assertTextAccess({ management, session })
+    await assertTextAccess({ management, session })
     const explanation = await errorExplanations.explain(payload, session, request.headers['accept-language'])
-    if (!explanation) { json(response, 404, { ok: false, error: '说明暂时无法读取，请查看原任务' }); return }
-    json(response, 200, { ok: true, errorExplanation: explanation })
+    if (!explanation) { await json(response, 404, { ok: false, error: '说明暂时无法读取，请查看原任务' }); return }
+    await json(response, 200, { ok: true, errorExplanation: explanation })
     return
   }
   if (await shortTextApi.handle(request, response, session, url)) return
@@ -1659,9 +1666,9 @@ const server = createServer(withRequestProject(async (request, response) => {
   if (generationMatch && request.method === 'GET') {
     const requestId = decodeURIComponent(generationMatch[1])
     const accessToken = url.searchParams.get('access') || ''
-    const generation = management.generationForViewer(requestId, session, accessToken)
-    if (!generation) { json(response, 404, { ok: false, error: '生成记录不存在' }); return }
-    json(response, generation.status === GENERATION_STATES.EXPIRED ? 410 : 200, { ok: true, balance: viewerBalance(session), ...generation })
+    const generation = (await management.generationForViewer(requestId, session, accessToken))
+    if (!generation) { await json(response, 404, { ok: false, error: '生成记录不存在' }); return }
+    await json(response, generation.status === GENERATION_STATES.EXPIRED ? 410 : 200, { ok: true, balance: (await viewerBalance(session)), ...generation })
     return
   }
   const cancelMatch = /^\/api\/imagine\/generation\/([A-Za-z0-9_-]+)\/cancel$/.exec(url.pathname)
@@ -1670,10 +1677,10 @@ const server = createServer(withRequestProject(async (request, response) => {
     if (session) mutation(request, session)
     else sameOrigin(request)
     const requestId = decodeURIComponent(cancelMatch[1])
-    const generation = management.cancel(requestId, session, accessToken)
-    if (!generation) { json(response, 404, { ok: false, error: '生成记录不存在' }); return }
+    const generation = (await management.cancel(requestId, session, accessToken))
+    if (!generation) { await json(response, 404, { ok: false, error: '生成记录不存在' }); return }
     activeControllers.get(requestId)?.abort()
-    json(response, 200, { ok: true, ...generation })
+    await json(response, 200, { ok: true, ...generation })
     return
   }
   // 用户反馈：桌面端「反馈」页。只能看和改自己提交的反馈。
@@ -1681,14 +1688,14 @@ const server = createServer(withRequestProject(async (request, response) => {
     if (!session?.userId) throw failure('请先登录后再提交反馈', 401)
     const [, id, action, attachmentId] = /^\/api\/imagine\/feedback(?:\/([a-f0-9-]{36}))?(?:\/(comments|status|attachments))?(?:\/([a-f0-9-]{36}))?$/.exec(url.pathname) || []
     if (url.pathname !== '/api/imagine/feedback' && !id) throw failure('反馈接口不存在', 404)
-    if (!id && request.method === 'GET') { json(response, 200, feedback.listForUser(session.userId, url.searchParams.get('status') || 'all')); return }
-    if (!id && request.method === 'POST') { mutation(request, session); json(response, 201, feedback.create(session.userId, await readJson(request, 24 * 1024 * 1024))); return }
-    if (id && !action && request.method === 'GET') { json(response, 200, feedback.getForUser(session.userId, id)); return }
-    if (id && !action && request.method === 'DELETE') { mutation(request, session); json(response, 200, feedback.deleteForUser(session.userId, id)); return }
-    if (action === 'comments' && request.method === 'POST') { mutation(request, session); json(response, 200, feedback.commentAsUser(session.userId, id, (await readJson(request, SMALL_BODY_BYTES)).body)); return }
-    if (action === 'status' && request.method === 'POST') { mutation(request, session); json(response, 200, feedback.setStatusAsUser(session.userId, id, (await readJson(request, SMALL_BODY_BYTES)).status)); return }
+    if (!id && request.method === 'GET') { await json(response, 200, (await feedback.listForUser(session.userId, url.searchParams.get('status') || 'all'))); return }
+    if (!id && request.method === 'POST') { mutation(request, session); await json(response, 201, (await feedback.create(session.userId, await readJson(request, 24 * 1024 * 1024)))); return }
+    if (id && !action && request.method === 'GET') { await json(response, 200, (await feedback.getForUser(session.userId, id))); return }
+    if (id && !action && request.method === 'DELETE') { mutation(request, session); await json(response, 200, (await feedback.deleteForUser(session.userId, id))); return }
+    if (action === 'comments' && request.method === 'POST') { mutation(request, session); await json(response, 200, (await feedback.commentAsUser(session.userId, id, (await readJson(request, SMALL_BODY_BYTES)).body))); return }
+    if (action === 'status' && request.method === 'POST') { mutation(request, session); await json(response, 200, (await feedback.setStatusAsUser(session.userId, id, (await readJson(request, SMALL_BODY_BYTES)).status))); return }
     if (action === 'attachments' && attachmentId && request.method === 'GET') {
-      const file = feedback.attachment(id, attachmentId, session.userId)
+      const file = (await feedback.attachment(id, attachmentId, session.userId))
       response.writeHead(200, { 'content-type': file.mime, 'content-length': file.size, 'cache-control': 'private, max-age=86400', 'x-content-type-options': 'nosniff' })
       response.end(Buffer.from(file.bytes)); return
     }
@@ -1698,8 +1705,8 @@ const server = createServer(withRequestProject(async (request, response) => {
     if(!session?.userId)throw failure('请先登录',401)
     {
       // 区间由客户端给（用它本地的月初/月末），服务端不猜时区；subset 小结按全量算，不受 200 条上限影响。
-      const ledger = management.ledgers(session.userId, { from: url.searchParams.get('from') || '', to: url.searchParams.get('to') || '' })
-      json(response,200,{
+      const ledger = (await management.ledgers(session.userId, { from: url.searchParams.get('from') || '', to: url.searchParams.get('to') || '' }))
+      await json(response,200,{
         items: ledger.rows.map((row)=>({delta:row.delta,reason:row.reason,createdAt:row.created_at,paymentOrderId:row.payment_order_id || null})),
         ...(ledger.summary ? { summary: ledger.summary } : {}),
       });return
@@ -1716,11 +1723,11 @@ const server = createServer(withRequestProject(async (request, response) => {
       const dingtalk = dingTalkOAuthConfig(env)
       const linuxdo = linuxDoOAuthConfig(env)
       const oidc = oidcOAuthConfig(env)
-      json(response, 200, {
+      await json(response, 200, {
       ok: true,
       defaultModel: modelById(defaultModel(env))?.publicId || defaultModel(env),
        generationEnabled: cfg.enabled,
-       videoEnabled: management.settings().videoEnabled,
+       videoEnabled: (await management.settings()).videoEnabled,
         configured: Boolean(cfg.enabled),
         payment: publicPaymentConfig(payments),
         googleLogin: { enabled: google.enabled },
@@ -1740,8 +1747,8 @@ const server = createServer(withRequestProject(async (request, response) => {
   if (request.method === 'GET' && url.pathname.startsWith('/api/imagine/result/')) {
     const id = url.pathname.slice('/api/imagine/result/'.length)
     const accessToken = url.searchParams.get('access') || ''
-    const entry: any = management.artifact(id,session,accessToken)
-    if (!entry) { json(response, 410, { ok: false, error: '图片读取地址已过期，请使用已保存的素材' }); return }
+    const entry: any = (await management.artifact(id,session,accessToken))
+    if (!entry) { await json(response, 410, { ok: false, error: '图片读取地址已过期，请使用已保存的素材' }); return }
     if (entry.remoteUrl) { await proxyImage(request, response, entry.remoteUrl, { json }); return }
     // 结果字节和工作区媒体走同一套直出/Range/缓存策略。老库仍可能只有
     // DB bytes，sendWorkspaceFile 会自动退回 Node；迁移后的结果由 nginx X-Accel 直发。
@@ -1767,12 +1774,12 @@ const server = createServer(withRequestProject(async (request, response) => {
     const dingtalk = dingTalkOAuthConfig(env)
     const linuxdo = linuxDoOAuthConfig(env)
     const oidc = oidcOAuthConfig(env)
-    const operating = management.settings()
+    const operating = (await management.settings())
     let publicDefaultModel = operating.defaultModel
-    const costPolicy = management.costPolicy()
+    const costPolicy = (await management.costPolicy())
     // 管理员对单个用户勾选的可用模型：空列表 = 全部开放；勾选后目录里其余模型直接不下发，
     // 画布节点与服务端看到的目录保持一致，reserve() 仍会再校验一次。
-    const sessionUser = session?.role === 'user' && session.userId ? management.user(session.userId) : null
+    const sessionUser = session?.role === 'user' && session.userId ? (await management.user(session.userId)) : null
     const userModels = Array.isArray(sessionUser?.models) ? sessionUser.models : []
     const allowedForUser = (id) => !userModels.length || userModels.includes(id)
     const models = publicModelCatalog(env, operating).filter((model) => operating.models[model.id] !== false && allowedForUser(model.id)).map((model) => {
@@ -1805,7 +1812,7 @@ const server = createServer(withRequestProject(async (request, response) => {
     publicDefaultModel = models.find(model => model.id === publicDefaultModel)?.id || models[0]?.id || ''
     for (const model of models) model.current = model.id === publicDefaultModel
     const publicDefaultTextModel = textCatalog.find(model => model.id === operating.defaultTextModel)?.id || textCatalog[0]?.id || ''
-    json(response, 200, {
+    await json(response, 200, {
       defaultModel: publicDefaultModel,
       defaultTextModel: publicDefaultTextModel,
       modelLabel: modelById(publicDefaultModel)?.label || '',
@@ -1822,7 +1829,7 @@ const server = createServer(withRequestProject(async (request, response) => {
       dingtalkLogin: { enabled: dingtalk.enabled },
       linuxdoLogin: { enabled: linuxdo.enabled },
       oidcLogin: { enabled: oidc.enabled, providerName: oidc.providerName },
-      session: publicSession(viewerSession(session)),
+      session: (await publicSession(viewerSession(session))),
       models,
       // 供应商和内部通道只留在服务端；公开目录只返回可选模型 ID/名称。
       textModels: textCatalog.map(({ provider: _provider, providerLabel: _providerLabel, ...model }: Record<string, any>) => ({ ...model, configured: textChannelReady(env, model.id) })),
@@ -1839,16 +1846,16 @@ const server = createServer(withRequestProject(async (request, response) => {
       const body = await readJson(request)
       delete body.desktopDelivery; delete body.desktopReferences
       const desktop = url.pathname === '/api/imagine/desktop/generate'
-      const result = await withWorkspaceProject(desktop ? DEFAULT_PROJECT_ID : currentProject(), () => generate(body, session, process.env, desktop ? payload => desktopMedia.prepare(payload, session) : undefined))
+      const result = await withWorkspaceProject(desktop ? DEFAULT_PROJECT_ID : currentProject(), () => generate(body, session, process.env, desktop ? async payload => (await desktopMedia.prepare(payload, session)) : undefined))
       const { httpStatus = 200, ...payload } = result
-      json(response, httpStatus, { ok: true, ...payload, ...(payload.images?.[0] ? { image: payload.images[0] } : {}) })
+      await json(response, httpStatus, { ok: true, ...payload, ...(payload.images?.[0] ? { image: payload.images[0] } : {}) })
     } catch (error) {
-      if (!response.headersSent) json(response, error.status || 500, { ok: false, error: error.message || '生成失败', ...(error.code ? { code: error.code } : {}), ...(error.queue ? { queue: error.queue } : {}), ...(error.activeRequestId ? { activeRequestId: error.activeRequestId } : {}) })
+      if (!response.headersSent) await json(response, error.status || 500, { ok: false, error: error.message || '生成失败', ...(error.code ? { code: error.code } : {}), ...(error.queue ? { queue: error.queue } : {}), ...(error.activeRequestId ? { activeRequestId: error.activeRequestId } : {}) })
     }
     return
   }
-  json(response, 404, { error: 'not found' })
- } catch(error) { if(!response.headersSent)json(response,error.status || 500,{ok:false,error:error.status?error.message:'服务暂时不可用，请重试'}); else response.destroy() }
+  await json(response, 404, { error: 'not found' })
+ } catch(error) { if(!response.headersSent)await json(response,error.status || 500,{ok:false,error:error.status?error.message:'服务暂时不可用，请重试'}); else response.destroy() }
 }) } finally { incoming.finish() }
 }))
 
@@ -1876,7 +1883,8 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
     for (const controller of activeControllers.values()) controller.abort()
     server.close(async () => {
       await Promise.allSettled([...activeJobs.values(), receiptRecoveryStopped, mediaStopped, aiStopped, mcpStopped, agentStopped, httpStopped, backgroundStopped])
-      management.close()
+      await redisRuntime.close()
+      await management.close()
       process.exit(0)
     })
   })

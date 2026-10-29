@@ -92,31 +92,31 @@ function sample(list, format) {
 }
 
 const db = openDatabase(maintenance)
-if (fix) db.exec('PRAGMA busy_timeout=5000')
-function finish(code) { db.close(); process.exit(code) }
+if (fix) await db.exec('PRAGMA busy_timeout=5000')
+async function finish(code) { await db.close(); process.exit(code) }
 // mediaLayout / tableColumns 这些公共函数要的是 store 形状（get/all），这里给只读连接包一层薄壳。
 const storeView = {
-  get: (sql, ...values) => db.prepare(sql).get(...values),
-  all: (sql, ...values) => db.prepare(sql).all(...values),
+  get: async (sql, ...values) => (await (await db.prepare(sql)).get(...values)),
+  all: async (sql, ...values) => (await (await db.prepare(sql)).all(...values)),
   run: () => { throw new Error('对账是只读的') },
 }
-const exists = name => Boolean(db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name=?").get(name))
-if (!exists('workspace_files')) {
+const exists = async name => Boolean((await (await db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name=?")).get(name)))
+if (!(await exists('workspace_files'))) {
   console.log(`数据库里还没有 workspace_files 表（${maintenance}），没有可比对的索引。`)
-  finish(0)
+  await finish(0)
 }
-const layout = mediaLayout(storeView)
+const layout = (await mediaLayout(storeView))
 
 // 老库（还没跑过新版服务）没有 storage / size / blob 列，这里用旧口径顶上，
 // 这样对账脚本可以先于迁移运行，把每一行都报成「未迁移」而不是直接崩掉。
-const columns = new Set(tableColumns(storeView, 'workspace_files'))
+const columns = new Set((await tableColumns(storeView, 'workspace_files')))
 const projectScoped = columns.has('project_id')
 const hasBlob = columns.has('blob')
 const project = projectScoped ? 'project_id' : `'${DEFAULT_PROJECT_ID}' AS project_id`
 const size = columns.has('size') ? 'size' : 'length(bytes) AS size'
 const storage = columns.has('storage') ? 'storage' : "'db' AS storage"
 const blob = hasBlob ? 'blob' : 'NULL AS blob'
-const rows = db.prepare(`SELECT user_id,${project},path,mime,${size},${storage},${blob} FROM workspace_files ORDER BY user_id,path`).all()
+const rows = (await (await db.prepare(`SELECT user_id,${project},path,mime,${size},${storage},${blob} FROM workspace_files ORDER BY user_id,path`)).all())
 const indexKey = (userId, project) => `${userId}\0${project}`
 const index = new Map()
 for (const row of rows) {
@@ -130,7 +130,7 @@ const projectIds = new Map()
 let projectLayout = false
 if (projectScoped) {
   try {
-    for (const row of db.prepare('SELECT user_id,id FROM projects').all()) {
+    for (const row of (await (await db.prepare('SELECT user_id,id FROM projects')).all())) {
       if (!projectIds.has(row.user_id)) projectIds.set(row.user_id, new Set())
       projectIds.get(row.user_id).add(row.id)
     }
@@ -139,13 +139,13 @@ if (projectScoped) {
 }
 
 // ---- 生成结果（artifacts）索引 ----
-const artifactColumns = new Set(tableColumns(storeView, 'artifacts'))
+const artifactColumns = new Set((await tableColumns(storeView, 'artifacts')))
 const artifactRows = artifactColumns.size
-  ? db.prepare(`SELECT a.id AS id,a.request_id AS request_id,
+  ? (await (await db.prepare(`SELECT a.id AS id,a.request_id AS request_id,
       ${artifactColumns.has('size') ? 'a.size' : 'length(a.bytes)'} AS size,
       ${artifactColumns.has('storage') ? 'a.storage' : "'db'"} AS storage,
       ${artifactColumns.has('blob') ? 'a.blob' : 'NULL'} AS blob
-    FROM artifacts a`).all()
+    FROM artifacts a`)).all())
   : []
 
 const missing = []          // ① 引用在、字节没了
@@ -171,7 +171,7 @@ let looseBytes = 0
 
 // 引用计数：两份索引合起来才是活跃集合。存计数列会漂移，每次查才作数。
 const blobStore = new BlobStore(storeView)
-const liveCount = (sha, userId) => blobStore.liveCount(sha, userId)
+const liveCount = async (sha, userId) => (await blobStore.liveCount(sha, userId))
 
 // ---- 引用 → 字节：① ③ ④ ----
 // 每一行引用都要能在自己的桶里找到字节。目录行没有字节，跳过。
@@ -216,7 +216,7 @@ for (const row of rows) {
 const artifactOwner = new Map()
 for (const row of artifactRows) {
   let userId = ''
-  try { userId = String(db.prepare('SELECT user_id FROM generations WHERE id=?').get(row.request_id)?.user_id || '') } catch { userId = '' }
+  try { userId = String((await (await db.prepare('SELECT user_id FROM generations WHERE id=?')).get(row.request_id))?.user_id || '') } catch { userId = '' }
   artifactOwner.set(row.id, userId)
   if (row.storage === 'db' || (!row.blob && row.storage !== 'disk')) { artifactUnmigrated.push(row); continue }
   if (!row.blob) continue
@@ -229,7 +229,7 @@ for (const row of artifactRows) {
 // ---- 字节 → 引用：② ④ ----
 for (const [userId, blobs] of bucketLists) {
   for (const item of blobs.values()) {
-    if (liveCount(item.sha, userId) === 0) {
+    if ((await liveCount(item.sha, userId)) === 0) {
       // 路径树布局下「没有人引用」不是异常：这些字节是 --link-only 建好的成果
       // （索引还没回填），或者 --rollback 的残留（字节仍然在路径树上，和桶里这份是同一个
       // inode，删了也不省空间、更不该在这里删）。**不当泄漏报，--fix 也一个都不动**——
@@ -486,13 +486,13 @@ const reclaimable = leaked.length + strays.length + treeOrphans.length + orphanT
 const manual = mismatched.length + missingTree.length + mismatchedTree.length + loose.length + artifactMissing.length + artifactMismatched.length + legacyTree.length + artifactLegacy.length + pendingTree.length
 if (!severe && !reclaimable && !manual) {
   console.log('两边一致，没有需要处理的问题。')
-  finish(0)
+  await finish(0)
 }
 
 if (!fix) {
   console.log('')
   console.log('以上只是报告。加 --fix 才回收无引用的字节与临时残留（索引对应的字节一个不会被删）。')
-  finish(1)
+  await finish(1)
 }
 
 // --fix：只回收没人引用的东西。
@@ -507,30 +507,30 @@ function safeParent(full) {
   return within && within !== '..' && !within.startsWith('..' + sep)
     && realpathSync(dirname(full)) === resolve(canonicalRoot, dirname(within))
 }
-function transaction(fn) {
-  db.exec('BEGIN IMMEDIATE')
-  try { const value = fn(); db.exec('COMMIT'); return value }
-  catch (error) { db.exec('ROLLBACK'); throw error }
+async function transaction(fn) {
+  await db.exec('BEGIN IMMEDIATE')
+  try { const value = (await fn()); await db.exec('COMMIT'); return value }
+  catch (error) { await db.exec('ROLLBACK'); throw error }
 }
-function collect(item, bucket) {
-  return transaction(() => {
-    if (mediaLayout(storeView) !== layout || !safeParent(item.full)) return false
+async function collect(item, bucket) {
+  return (await transaction(async () => {
+    if ((await mediaLayout(storeView)) !== layout || !safeParent(item.full)) return false
     const current = lstatSync(item.full)
     if (!current.isFile() || recent(current) || ['dev', 'ino', 'size', 'mtimeMs', 'ctimeMs'].some(key => current[key] !== item[key])) return false
     if (bucket && item.sha) {
       // Reuse the live, owner-scoped reference check under the same write lock
       // used by publishers. A scan result is never permission to delete.
-      if (liveCount(item.sha, item.userId)) return false
-      if (blobStore.release(item.userId, item.sha)) return true
-      if (blobStore.stat(item.userId, item.sha)) throw new Error('字节回收未完成，请查看文件权限和存储状态')
+      if ((await liveCount(item.sha, item.userId))) return false
+      if ((await blobStore.release(item.userId, item.sha))) return true
+      if ((await blobStore.stat(item.userId, item.sha))) throw new Error('字节回收未完成，请查看文件权限和存储状态')
       return false
     }
     if (!bucket) {
       const path = relative(join(root, item.userId), item.full).split(sep).join('/')
       const at = path.indexOf('/')
       const referenced = projectScoped
-        ? at >= 0 && db.prepare('SELECT 1 FROM workspace_files WHERE user_id=? AND project_id=? AND path=?').get(item.userId, path.slice(0, at), path.slice(at + 1))
-        : db.prepare('SELECT 1 FROM workspace_files WHERE user_id=? AND path=?').get(item.userId, path)
+        ? at >= 0 && (await (await db.prepare('SELECT 1 FROM workspace_files WHERE user_id=? AND project_id=? AND path=?')).get(item.userId, path.slice(0, at), path.slice(at + 1)))
+        : (await (await db.prepare('SELECT 1 FROM workspace_files WHERE user_id=? AND path=?')).get(item.userId, path))
       if (referenced) return false
     }
     let release
@@ -539,11 +539,11 @@ function collect(item, bucket) {
       rmSync(item.full)
       return true
     } finally { release?.() }
-  })
+  }))
 }
-function removeCandidate(item, bucket) {
+async function removeCandidate(item, bucket) {
   try {
-    if (!collect(item, bucket)) { skipped += 1; return false }
+    if (!(await collect(item, bucket))) { skipped += 1; return false }
     removed += 1; removedBytes += item.size; return true
   } catch (error) {
     if (['ENOENT', 'ELOCKED'].includes(error.code)) { skipped += 1; return false }
@@ -556,7 +556,7 @@ const bucketDirectories = [...bucketLists.keys()].map(userId => userId ? join(ro
 const inBucket = (full) => bucketDirectories.some(directory => full.startsWith(directory + sep))
 for (const item of [...leaked, ...strays]) {
   if (!inBucket(item.full)) { console.log(`    跳过（路径不在 blob 桶内）：${item.full}`); continue }
-  removeCandidate(item, true)
+  await removeCandidate(item, true)
 }
 // 路径树孤儿：只删孤儿，删除前再确认一次落点还在 <MEDIA_ROOT>/<账号>/<项目>/ 之内，空目录顺手回收。
 for (const item of [...orphanTree, ...treeOrphans]) {
@@ -567,7 +567,7 @@ for (const item of [...orphanTree, ...treeOrphans]) {
     console.log(`    跳过（路径不在项目目录内）：${item.full}`)
     continue
   }
-  if (removeCandidate(item, false)) directories.set(dirname(item.full), projectRoot)
+  if ((await removeCandidate(item, false))) directories.set(dirname(item.full), projectRoot)
 }
 let removedLocks = 0
 for (const [path, observed] of abandonedLocks) {
@@ -591,4 +591,4 @@ if (skipped) console.log(`跳过 ${skipped} 个仍在写入、已被引用或扫
 if (failed) console.log(`${failed} 项回收失败，保留待重试。`)
 if (severe) console.log(`【严重】仍有 ${severe} 个「引用在、字节没了」或内容不符，需要人工确认（--fix 不处理这一类）。`)
 if (manual) console.log(`另有 ${manual} 项需要人工确认（--fix 不动这一类）。`)
-finish(severe || manual || failed ? 1 : 0)
+await finish(severe || manual || failed ? 1 : 0)

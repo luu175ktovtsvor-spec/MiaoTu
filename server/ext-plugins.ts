@@ -1,3 +1,4 @@
+import { mapAsync } from './async-collections.ts'
 import { pluginExportNames, inspectPluginExports, readPluginMetadata } from './canvas-document.ts'
 import { isWorkspaceRequest } from './canvas-document.ts'
 // 文件扩展：MiaoImg 的 /api/ext/* 在妙图里的实现。
@@ -209,56 +210,56 @@ function validateExtConfig(rules, input) {
 export function createExtPlugins({ workspaceFiles }: Record<string, any>) {
   const invalidSettings = path => failure(`${path === META_PATH ? '文件扩展清单' : path === STATE_PATH ? '扩展启停设置' : '扩展配置'}无法读取或格式无效，请检查后重试`, 409)
 
-  function readJsonFile(userId, path, fallback) {
-    if (!workspaceFiles.list(userId).some(item => item.path === path)) return fallback
+  async function readJsonFile(userId, path, fallback) {
+    if (!(await workspaceFiles.list(userId)).some(item => item.path === path)) return fallback
     try {
-      const data = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(workspaceFiles.read(userId, path).bytes))
+      const data = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode((await workspaceFiles.read(userId, path)).bytes))
       if (!data || typeof data !== 'object' || Array.isArray(data) !== Array.isArray(fallback)) throw new Error('Invalid plugin settings')
       return data
     } catch { throw invalidSettings(path) }
   }
 
-  function writeJsonFile(userId, path, value) {
-    workspaceFiles.upsert(userId, path, 'application/json', Buffer.from(JSON.stringify(value), 'utf8'))
+  async function writeJsonFile(userId, path, value) {
+    await workspaceFiles.upsert(userId, path, 'application/json', Buffer.from(JSON.stringify(value), 'utf8'))
   }
 
-  const readMeta = (userId) => {
-    const list = readJsonFile(userId, META_PATH, [])
+  const readMeta = async (userId) => {
+    const list = (await readJsonFile(userId, META_PATH, []))
     if (list.some(item => !validExtName(item?.name)) || new Set(list.map(item => item.name)).size !== list.length) throw invalidSettings(META_PATH)
     return list
   }
-  const writeMeta = (userId, list) => writeJsonFile(userId, META_PATH, list)
-  const readState = (userId) => {
-    const state = readJsonFile(userId, STATE_PATH, {})
+  const writeMeta = async (userId, list) => (await writeJsonFile(userId, META_PATH, list))
+  const readState = async (userId) => {
+    const state = (await readJsonFile(userId, STATE_PATH, {}))
     if (state.disabled === undefined) return []
     if (!Array.isArray(state.disabled) || state.disabled.some(item => !validExtName(item))) throw invalidSettings(STATE_PATH)
     return state.disabled
   }
-  const readConfigs = (userId) => readJsonFile(userId, CONFIG_PATH, {})
+  const readConfigs = async (userId) => (await readJsonFile(userId, CONFIG_PATH, {}))
 
   const bundlePath = (name) => `ext/${name}.umd.js`
   const builtinOf = (name) => BUILTIN_EXTS.find(item => item.id === name)
 
   // 用户扩展的配置声明只写在 bundle 头部，清单里不重复存；读不到就当作没有配置项。
-  function rulesOf(userId, name) {
+  async function rulesOf(userId, name) {
     const builtin = builtinOf(name)
     if (builtin) return builtin.configRules || []
-    if (!readMeta(userId).some(item => item.name === name)) return undefined
-    try { return parseExt(Buffer.from(workspaceFiles.read(userId, bundlePath(name)).bytes).toString('utf8'), name).configRules }
+    if (!(await readMeta(userId)).some(item => item.name === name)) return undefined
+    try { return parseExt(Buffer.from((await workspaceFiles.read(userId, bundlePath(name))).bytes).toString('utf8'), name).configRules }
     catch { return [] }
   }
 
   // 版本优先取已装 bundle 头的构建标记，读不到再退回清单里记的值。
-  function installedVersion(plugin, userId) {
-    try { return parseExt(Buffer.from(workspaceFiles.read(userId, bundlePath(plugin.name)).bytes).toString('utf8'), plugin.name).version ?? plugin.version }
+  async function installedVersion(plugin, userId) {
+    try { return parseExt(Buffer.from((await workspaceFiles.read(userId, bundlePath(plugin.name))).bytes).toString('utf8'), plugin.name).version ?? plugin.version }
     catch { return plugin.version }
   }
 
   // 清单里每一项的元数据都以 bundle 头部为准，bundle 读不出来就带着 loadError 出现，
   // 让插件市场能把这一项显示成坏的，而不是让整个列表失败。
-  function entryOf(plugin, userId, disabled, configs) {
+  async function entryOf(plugin, userId, disabled, configs) {
     let launch
-    try { launch = parseExt(Buffer.from(workspaceFiles.read(userId, bundlePath(plugin.name)).bytes).toString('utf8'), plugin.name) }
+    try { launch = parseExt(Buffer.from((await workspaceFiles.read(userId, bundlePath(plugin.name))).bytes).toString('utf8'), plugin.name) }
     catch (error) { launch = { loadError: error?.message || '文件扩展无法读取' } }
     const rules = Array.isArray(launch.configRules) ? launch.configRules : []
     return {
@@ -300,12 +301,12 @@ export function createExtPlugins({ workspaceFiles }: Record<string, any>) {
     }
 
     if (url.pathname === '/api/ext/list' && request.method === 'GET') {
-      const disabled = readState(session.userId)
+      const disabled = (await readState(session.userId))
       // 配置一次读出来，逐项组装时不再重复查库。
-      const configs = readConfigs(session.userId)
+      const configs = (await readConfigs(session.userId))
       const extensions = [
         ...BUILTIN_EXTS.map(extension => builtinEntry(extension, disabled, configs)),
-        ...readMeta(session.userId).map(plugin => entryOf(plugin, session.userId, disabled, configs)),
+        ...(await mapAsync((await readMeta(session.userId)), async plugin => (await entryOf(plugin, session.userId, disabled, configs)))),
       ].sort((left, right) => left.id.localeCompare(right.id))
       json(response, 200, { code: 200, data: extensions })
       return true
@@ -315,9 +316,9 @@ export function createExtPlugins({ workspaceFiles }: Record<string, any>) {
       const name = String(url.searchParams.get('name') || '')
       if (!validExtName(name)) throw failure('扩展名无效', 422)
       if (builtinOf(name)) { json(response, 404, { error: '内置扩展随工作台发布，没有独立脚本' }); return true }
-      if (!readMeta(session.userId).some(item => item.name === name)) throw failure('文件扩展不存在', 404)
-      if (readState(session.userId).includes(name)) throw failure('文件扩展已停用', 404)
-      const file = workspaceFiles.read(session.userId, bundlePath(name))
+      if (!(await readMeta(session.userId)).some(item => item.name === name)) throw failure('文件扩展不存在', 404)
+      if ((await readState(session.userId)).includes(name)) throw failure('文件扩展已停用', 404)
+      const file = (await workspaceFiles.read(session.userId, bundlePath(name)))
       response.writeHead(200, {
         'content-type': 'text/javascript; charset=utf-8',
         'content-length': file.bytes.length,
@@ -351,12 +352,12 @@ export function createExtPlugins({ workspaceFiles }: Record<string, any>) {
         const metadata = parseExt(bundle, name)
         // The installed version, shared list and saved configuration must all
         // belong to the same commit as the bundle.
-        workspaceFiles.withDeferredBytes(() => {
+        await workspaceFiles.withDeferredBytes(async () => {
           assertCurrent()
-          const list = readMeta(session.userId)
+          const list = (await readMeta(session.userId))
           const previous = list.find(item => item.name === name)
-          if (previous && payload.force !== true) requireNewerVersion(installedVersion(previous, session.userId), metadata.version, `文件扩展「${name}」`)
-          workspaceFiles.upsert(session.userId, bundlePath(name), 'text/javascript', Buffer.from(bundle, 'utf8'))
+          if (previous && payload.force !== true) requireNewerVersion((await installedVersion(previous, session.userId)), metadata.version, `文件扩展「${name}」`)
+          await workspaceFiles.upsert(session.userId, bundlePath(name), 'text/javascript', Buffer.from(bundle, 'utf8'))
           // 重装保留用户已经填过的值：只认仍在新声明里的字段，不合新规则就退回默认值。
           const next = list.filter(item => item.name !== name)
           next.push({
@@ -365,15 +366,15 @@ export function createExtPlugins({ workspaceFiles }: Record<string, any>) {
             author: String(payload.author || previous?.author || '').slice(0, 60),
             version: metadata.version,
           })
-          writeMeta(session.userId, next)
-          const configs = readConfigs(session.userId)
+          await writeMeta(session.userId, next)
+          const configs = (await readConfigs(session.userId))
           const saved = configs[name] && typeof configs[name] === 'object' ? configs[name] : {}
           let config
           try { config = validateExtConfig(metadata.configRules, saved) }
           catch { config = declaredConfig(metadata.configRules, {}) }
           configs[name] = config
-          writeJsonFile(session.userId, CONFIG_PATH, configs)
-        })
+          await writeJsonFile(session.userId, CONFIG_PATH, configs)
+        }, session.userId)
         json(response, 200, { code: 200, data: { name, installed: true, version: metadata.version, configFields: configFields(metadata.configRules).length } })
         return true
       })
@@ -384,16 +385,16 @@ export function createExtPlugins({ workspaceFiles }: Record<string, any>) {
       const payload = await readJson(request, CONFIG_BODY_BYTES)
       const name = String(payload?.name || '').trim()
       if (!validExtName(name)) throw failure('扩展名无效', 422)
-      const config = workspaceFiles.withDeferredBytes(() => {
-        const rules = rulesOf(session.userId, name)
+      const config = (await workspaceFiles.withDeferredBytes(async () => {
+        const rules = (await rulesOf(session.userId, name))
         if (!rules) throw failure('文件扩展不存在', 404)
         if (!configFields(rules).length) throw failure('该扩展没有声明配置项', 422)
         const config = validateExtConfig(rules, payload?.config)
-        const configs = readConfigs(session.userId)
+        const configs = (await readConfigs(session.userId))
         configs[name] = config
-        writeJsonFile(session.userId, CONFIG_PATH, configs)
+        await writeJsonFile(session.userId, CONFIG_PATH, configs)
         return config
-      })
+      }, session.userId))
       json(response, 200, { code: 200, data: { name, config } })
       return true
     }
@@ -404,13 +405,13 @@ export function createExtPlugins({ workspaceFiles }: Record<string, any>) {
       const name = String(payload?.name || '').trim()
       if (!validExtName(name)) throw failure('扩展名无效', 422)
       const enabled = payload.enabled !== false
-      workspaceFiles.withDeferredBytes(() => {
-        if (!builtinOf(name) && !readMeta(session.userId).some(item => item.name === name)) throw failure('文件扩展不存在', 404)
-        const disabled = new Set(readState(session.userId))
+      await workspaceFiles.withDeferredBytes(async () => {
+        if (!builtinOf(name) && !(await readMeta(session.userId)).some(item => item.name === name)) throw failure('文件扩展不存在', 404)
+        const disabled = new Set((await readState(session.userId)))
         if (enabled) disabled.delete(name)
         else disabled.add(name)
-        writeJsonFile(session.userId, STATE_PATH, { disabled: [...disabled] })
-      })
+        await writeJsonFile(session.userId, STATE_PATH, { disabled: [...disabled] })
+      }, session.userId)
       json(response, 200, { code: 200, data: { name, enabled } })
       return true
     }
@@ -421,20 +422,20 @@ export function createExtPlugins({ workspaceFiles }: Record<string, any>) {
       const name = String(payload?.name || '').trim()
       if (!validExtName(name)) throw failure('扩展名无效', 422)
       if (builtinOf(name)) throw failure('内置扩展随工作台发布，不能卸载', 422)
-      workspaceFiles.withDeferredBytes(() => {
-        const list = readMeta(session.userId)
+      await workspaceFiles.withDeferredBytes(async () => {
+        const list = (await readMeta(session.userId))
         if (!list.some(item => item.name === name)) throw failure('文件扩展不存在', 404)
-        writeMeta(session.userId, list.filter(item => item.name !== name))
+        await writeMeta(session.userId, list.filter(item => item.name !== name))
         const path = bundlePath(name)
-        if (workspaceFiles.list(session.userId).some(item => item.path === path)) {
-          workspaceFiles.mutate(session.userId, { operation: 'remove', path, revision: workspaceFiles.read(session.userId, path).revision })
+        if ((await workspaceFiles.list(session.userId)).some(item => item.path === path)) {
+          await workspaceFiles.mutate(session.userId, { operation: 'remove', path, revision: (await workspaceFiles.read(session.userId, path)).revision })
         }
-        const configs = readConfigs(session.userId)
+        const configs = (await readConfigs(session.userId))
         delete configs[name]
-        writeJsonFile(session.userId, CONFIG_PATH, configs)
-        const disabled = readState(session.userId).filter(item => item !== name)
-        writeJsonFile(session.userId, STATE_PATH, { disabled })
-      })
+        await writeJsonFile(session.userId, CONFIG_PATH, configs)
+        const disabled = (await readState(session.userId)).filter(item => item !== name)
+        await writeJsonFile(session.userId, STATE_PATH, { disabled })
+      }, session.userId)
       json(response, 200, { code: 200, data: { name, removed: true } })
       return true
     }

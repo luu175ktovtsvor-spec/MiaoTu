@@ -215,11 +215,11 @@ export function createPaymentService({ management }: { management: PaymentAccoun
   const paymentQrFetches = new Map()
 
   async function fetchPaymentQrImage(order, env = process.env) {
-    const cached = management.paymentQrCache(order.outTradeNo)
+    const cached = (await management.paymentQrCache(order.outTradeNo))
     if (validPaymentQrCache(order, cached)) return { bytes: cached.bytes, mime: paymentQrMime(cached.mime) }
-    if (cached) management.deletePaymentQrCache(order.outTradeNo)
+    if (cached) await management.deletePaymentQrCache(order.outTradeNo)
     const { bytes, mime } = await readPaymentQrImage(order.img, env)
-    management.savePaymentQrCache({ outTradeNo: order.outTradeNo, mime, bytes, expiresAt: order.expiresAt })
+    await management.savePaymentQrCache({ outTradeNo: order.outTradeNo, mime, bytes, expiresAt: order.expiresAt })
     return { bytes, mime }
   }
 
@@ -240,7 +240,7 @@ export function createPaymentService({ management }: { management: PaymentAccoun
     const paymentType = resolvePaymentType(requestedPaymentType, config)
     if (String(requestedPaymentType).trim().toLowerCase() === 'wxpay' || paymentType === 'wxpay') throw paymentGatewayError('微信支付暂不可用', 422)
     if (!paymentType) throw paymentGatewayError('所选支付方式暂不可用', 422)
-    const existing = management.paymentOrderForIdempotency(session.userId, idempotencyKey)
+    const existing = (await management.paymentOrderForIdempotency(session.userId, idempotencyKey))
     if (existing) {
       const requestedAmount = normalizeMoneyForComparison(payload?.amount)
       if (requestedAmount === null || requestedAmount !== existing.amountCents) throw paymentGatewayError('同一请求标识不能更换充值金额', 409)
@@ -252,7 +252,7 @@ export function createPaymentService({ management }: { management: PaymentAccoun
     if (amount.error) throw paymentGatewayError(amount.error, 422)
     const expiresAt = new Date(Date.now() + config.orderTtlSeconds * 1000).toISOString()
     const packageId = `amount-${amount.amountCents}`
-    const order = management.createPaymentOrder({
+    const order = (await management.createPaymentOrder({
       userId: session.userId,
       packageId,
       packageName: `${amount.points} 积分`,
@@ -262,18 +262,18 @@ export function createPaymentService({ management }: { management: PaymentAccoun
       expiresAt,
       merchantPid: config.pid,
       idempotencyKey,
-    })
+    }))
     if (order.duplicate) return order
     try {
       const gateway = await callZpay(order, request, env)
-      return management.attachPaymentGateway(order.outTradeNo, gateway)
+      return (await management.attachPaymentGateway(order.outTradeNo, gateway))
     } catch (error) {
-      management.failPaymentOrder(order.outTradeNo, error.message)
+      await management.failPaymentOrder(order.outTradeNo, error.message)
       throw error
     }
   }
 
-  function handlePaymentNotify(url, response, env = process.env) {
+  async function handlePaymentNotify(url, response, env = process.env) {
     const params = Object.fromEntries(url.searchParams.entries())
     const merchantPid = runtimeSecret('ZPAY_PID', env)
     const merchantKey = runtimeSecret('ZPAY_KEY', env)
@@ -290,14 +290,14 @@ export function createPaymentService({ management }: { management: PaymentAccoun
       plain(response, 400, 'fail')
       return
     }
-    const result = management.completePaymentOrder({
+    const result = (await management.completePaymentOrder({
       outTradeNo: params.out_trade_no,
       amountCents,
       tradeNo: params.trade_no,
       tradeStatus: params.trade_status,
       type: params.type,
       merchantPid: params.pid,
-    })
+    }))
     if (result.kind === 'paid' || result.kind === 'duplicate' || result.kind === 'non_success' || result.kind === 'ignored') {
       plain(response, 200, 'success')
       return

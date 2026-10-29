@@ -248,5 +248,5 @@ export async function metasoCreditsBalance({ env = process.env, fetchImpl = fetc
 export async function reconcileMetasoBalance({ management, env = process.env, fetchImpl = fetch, observedAt = new Date().toISOString() }: Record<string, any> = {}) {
   const balance = await metasoCreditsBalance({ env, fetchImpl })
   if (!balance) return { provider: 'metaso', status: 'unknown', conclusion: '余额未知，未对账', alarm: false }
-  return management.reconcileUpstreamBalance({ provider: 'metaso', balance: balance.balance, consumed: balance.consumed, total: balance.total, observedAt })
+  return (await management.reconcileUpstreamBalance({ provider: 'metaso', balance: balance.balance, consumed: balance.consumed, total: balance.total, observedAt }))
 }

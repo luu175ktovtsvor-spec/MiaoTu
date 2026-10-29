@@ -3,8 +3,12 @@
 import argparse
 import json
 import sqlite3
+from postgres_runtime import configured_database
 from datetime import datetime, timezone
 from pathlib import Path
+
+if configured_database('/etc/miaoimg/main.env'):
+    raise SystemExit('Historical SQLite retirement tool is disabled for PostgreSQL; no data changed')
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--db', type=Path, required=True)

@@ -1,3 +1,4 @@
+import { mapAsync } from './async-collections.ts'
 import { createHash } from 'node:crypto'
 import { createMediaProviderFetch } from './provider-fetch.ts'
 import { runtimeSecret } from './runtime-secrets.ts'
@@ -123,20 +124,20 @@ const sleep = (ms, signal) => new Promise<void>((resolve, reject) => {
 export async function whitelistReferenceImages(request, { userId, store, readBytes, env = process.env, fetchImpl = fetch, signal }: Record<string, any> = {}) {
   if (!userId || !store || !readBytes) return request
   const prepared = new Map<string, Promise<string>>()
-  const prepare = (value) => {
+  const prepare = async (value) => {
     if (!value || isLibraryReference(value)) return Promise.resolve(value)
-    if (!prepared.has(value)) prepared.set(value, (async () => {
+    if (!prepared.has(value)) prepared.set(value, ((async () => {
       try {
         const blob = await readBytes(value)
         const bytes = Buffer.from(await blob.arrayBuffer())
         const sha256 = createHash('sha256').update(bytes).digest('hex')
-        const cached = store.suiheLibraryAsset(userId, 'whitelist', sha256)
+        const cached = (await store.suiheLibraryAsset(userId, 'whitelist', sha256))
         if (cached?.status === 'active') {
           try {
             const item = await getSuiheWhitelistAsset({ userId, id: cached.referenceId, env, fetchImpl, signal })
             if (String(item?.status || '').toLowerCase() === 'active') return `whitelist://${cached.referenceId}`
           } catch (error) { if (signal?.aborted) throw error }
-          store.forgetSuiheLibraryAsset(userId, 'whitelist', sha256)
+          await store.forgetSuiheLibraryAsset(userId, 'whitelist', sha256)
         }
         const uploaded = await uploadSuiheAsset({ userId, bytes, mime: blob.type, name: `妙图参考-${sha256.slice(0, 12)}`, library: 'whitelist', env, fetchImpl, signal })
         const id = String(uploaded?.id || uploaded?.reference_id || '').trim()
@@ -148,16 +149,16 @@ export async function whitelistReferenceImages(request, { userId, store, readByt
           status = String((await getSuiheWhitelistAsset({ userId, id, env, fetchImpl, signal }))?.status || '').toLowerCase()
         }
         if (status !== 'active') return value
-        store.saveSuiheLibraryAsset(userId, 'whitelist', sha256, id, 'active')
+        await store.saveSuiheLibraryAsset(userId, 'whitelist', sha256, id, 'active')
         return `whitelist://${id}`
       } catch (error) {
         if (signal?.aborted) throw error
         console.warn('[suihe] reference whitelist preparation failed; using direct upload', String(error?.message || error).slice(0, 200))
         return value
       }
-    })())
+    })()))
     return prepared.get(value)
   }
-  const [image, images] = await Promise.all([prepare(request.image), Promise.all((request.images || []).map(prepare))])
+  const [image, images] = await Promise.all([(await prepare(request.image)), Promise.all((await mapAsync((request.images || []), prepare)))])
   return { ...request, image, images }
 }

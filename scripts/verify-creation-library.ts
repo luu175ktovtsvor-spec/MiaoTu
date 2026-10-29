@@ -1,3 +1,4 @@
+import { mapAsync } from '../server/async-collections.ts'
 // Disposable files/SQLite and a loopback MCP server only. No model/upstream calls.
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
@@ -16,8 +17,8 @@ import { json, sameOrigin } from '../server/http-auth.ts'
 const root = await mkdtemp(join(tmpdir(), 'miao-creation-library-'))
 const originalMedia = process.env.OIP_MEDIA_ROOT
 process.env.OIP_MEDIA_ROOT = join(root, 'media')
-const store = new ManagementStore(':memory:')
-const files = new WorkspaceFiles(store)
+const store = (await ManagementStore.open(':memory:'))
+const files = (await WorkspaceFiles.open(store))
 const guard = toolWorkspaceFiles(files)
 const gallery = join(root, 'gallery')
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j7WQAAAAASUVORK5CYII=', 'base64')
@@ -63,10 +64,10 @@ try {
   assert.equal(partialPage.partial, true); assert.equal(partialPage.archiveDatasetReady, false)
   assert.equal(partialPage.showcaseDatasetReady, true); assert.equal(partialPage.items[0].source, 'showcase')
 
-  const user = name => store.createUser({ name, email: `${name}@example.invalid`, password: 'isolated-library-check', points: 0 }, 'verification').user
-  const a = user('library-a'), b = user('library-b')
-  const pa = store.createProject(a.id, 'A'), pb = store.createProject(b.id, 'B')
-  const tokens = [a, b].map(value => { const { token } = store.rotateMcpToken(value.id); store.setMcpEnabled(value.id, true); return token })
+  const user = async name => (await store.createUser({ name, email: `${name}@example.invalid`, password: 'isolated-library-check', points: 0 }, 'verification')).user
+  const a = (await user('library-a')), b = (await user('library-b'))
+  const pa = (await store.createProject(a.id, 'A')), pb = (await store.createProject(b.id, 'B'))
+  const tokens = (await mapAsync([a, b], async value => { const { token } = (await store.rotateMcpToken(value.id)); await store.setMcpEnabled(value.id, true); return token }))
   mcp = createMcpApi({ management: store, workspaceFiles: files, showcaseRoot: gallery, showcaseAssetFetch: asset })
   server = createServer(withRequestProject(async (req, res) => {
     try { await mcp.handleMcp(req, res, new URL(req.url || '/', 'http://localhost'), { json, sameOrigin }) }
@@ -94,28 +95,28 @@ try {
   }
   const [savedA, savedB] = await Promise.all([call(tokens[0], pa.id), call(tokens[1], pb.id)])
   assert.equal(savedA.status, 200); assert.equal(savedB.status, 200)
-  assert.deepEqual(files.read(a.id, savedA.value.savedReference.path, pa.id).bytes, png)
-  assert.deepEqual(files.read(b.id, savedB.value.savedReference.path, pb.id).bytes, png)
-  assert.throws(() => files.read(b.id, savedA.value.savedReference.path, pb.id), error => (error as any)?.status === 404)
+  assert.deepEqual((await files.read(a.id, savedA.value.savedReference.path, pa.id)).bytes, png)
+  assert.deepEqual((await files.read(b.id, savedB.value.savedReference.path, pb.id)).bytes, png)
+  await assert.rejects(async () => (await files.read(b.id, savedA.value.savedReference.path, pb.id)), error => (error as any)?.status === 404)
   assert.equal((await call(tokens[1], pa.id)).status, 404)
   assert.equal((await call('invalid-token', pa.id)).status, 401)
-  store.setMcpEnabled(a.id, false)
+  await store.setMcpEnabled(a.id, false)
   assert.equal((await call(tokens[0], pa.id)).status, 401)
 
-  const cancelledProject = store.createProject(a.id, 'cancelled')
+  const cancelledProject = (await store.createProject(a.id, 'cancelled'))
   const cancelled = new AbortController()
   let remoteReads = 0
   const cancellable = createLibraryTools({ showcaseRoot: gallery, workspaceFiles: guard.files, userId: a.id, env: {},
     showcaseAssetFetch: async () => { remoteReads++; cancelled.abort(new Error('fixture cancellation')); throw cancelled.signal.reason } })[0]
   await assert.rejects(withWorkspaceProject(cancelledProject.id, () => guard.run(() =>
     cancellable.execute({ source: 'showcase', limit: 2, saveReference: 2 }, { signal: cancelled.signal }))), /fixture cancellation/)
-  assert.equal(remoteReads, 1); assert.equal(files.list(a.id, cancelledProject.id).length, 0)
-  assert.equal(files.list(a.id, pa.id).length, 1); assert.equal(files.list(b.id, pb.id).length, 1)
+  assert.equal(remoteReads, 1); assert.equal((await files.list(a.id, cancelledProject.id)).length, 0)
+  assert.equal((await files.list(a.id, pa.id)).length, 1); assert.equal((await files.list(b.id, pb.id)).length, 1)
   console.log('Creation library verified: cache refresh, provenance/partial results, merged pagination, byte-exact covers, MCP account/project/token isolation and cancellation rollback; no external calls.')
 } finally {
   if (mcp) await mcp.stop()
   if (server) { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())) }
-  store.close()
+  await store.close()
   if (originalMedia === undefined) delete process.env.OIP_MEDIA_ROOT
   else process.env.OIP_MEDIA_ROOT = originalMedia
   await rm(root, { recursive: true, force: true })

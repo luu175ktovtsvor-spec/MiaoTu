@@ -1,0 +1,10 @@
+# Starting values for a shared 8 GiB host; verify with its actual workload.
+# Apply only to MiaoImg's new native PostgreSQL instance.
+listen_addresses = '127.0.0.1'
+port = 5432
+max_connections = 60
+shared_buffers = '512MB'
+work_mem = '4MB'
+maintenance_work_mem = '128MB'
+password_encryption = 'scram-sha-256'
+# Keep the defaults fsync=on, full_page_writes=on, synchronous_commit=on.

@@ -6,22 +6,22 @@ const failure = (message: string, status = 422) => Object.assign(new Error(messa
 
 // Complete preflight before publishing any target index. A plain file copy of
 // a canvas would retain node IDs and silently share mutable node documents.
-export function prepareCanvasCopies(sources: readonly Source[], payload: CopyRequest,
-  readSource: (path: string) => Buffer, maxBytes: number) {
+export async function prepareCanvasCopies(sources: readonly Source[], payload: CopyRequest,
+  readSource: (path: string) => Buffer | Promise<Buffer>, maxBytes: number) {
   if (payload.canvasCopies !== undefined) {
     if (!Array.isArray(payload.canvasCopies) || !payload.canvasCopies.length || !Array.isArray(payload.sourceEntries)) throw failure('画布复制数据无效')
     const expected = new Map(payload.sourceEntries.map(entry => [entry?.path, entry?.revision]))
     if (expected.size !== payload.sourceEntries.length || expected.size !== sources.length
       || sources.some(row => expected.get(row.path) !== row.revision)) throw failure('复制来源已变化，请重新复制', 409)
   }
-  const readCanvas = (path: string) => {
-    const content = readSource(path)
+  const readCanvas = async (path: string) => {
+    const content = (await readSource(path))
     try { return JSON.parse(content.toString('utf8')) } catch { return undefined }
   }
   const canvases = new Map<string, any>()
   for (const source of sources) {
     if (source.mime === 'inode/directory' || !/\.json$/i.test(source.path)) continue
-    const stored = readCanvas(source.path)
+    const stored = (await readCanvas(source.path))
     if (validCanvas(stored)) canvases.set(source.path, stored)
   }
   const byPath = new Map(sources.map(source => [source.path, source]))
@@ -32,7 +32,7 @@ export function prepareCanvasCopies(sources: readonly Source[], payload: CopyReq
     const source = byPath.get(snapshot?.path)
     if (!source || source.revision !== snapshot.revision) throw failure('画布已变化，请重新复制', 409)
     if (copies.has(source.path) || source.mime === 'inode/directory' || !validCanvas(snapshot.canvas)) throw failure('画布复制数据无效')
-    const stored = canvases.get(source.path) ?? readCanvas(source.path)
+    const stored = canvases.get(source.path) ?? (await readCanvas(source.path))
     if (!validCanvas(stored)) throw failure('复制来源不是画布')
     for (const item of [...stored.nodes, ...stored.edges]) originalIds.add(item.id)
     for (const item of [...snapshot.canvas.nodes, ...snapshot.canvas.edges]) {

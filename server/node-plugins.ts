@@ -168,19 +168,19 @@ function validateConfig(rules, input) {
 
 
 export function createNodePlugins({ workspaceFiles }: Record<string, any>) {
-  function readMeta(userId) {
-    const entry = workspaceFiles.list(userId).find(item => item.path === META_PATH)
+  async function readMeta(userId) {
+    const entry = (await workspaceFiles.list(userId)).find(item => item.path === META_PATH)
     if (!entry) return []
     try {
-      const data = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(workspaceFiles.read(userId, META_PATH).bytes))
+      const data = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode((await workspaceFiles.read(userId, META_PATH)).bytes))
       if (!Array.isArray(data) || data.some(item => !validNodeName(item?.name))
         || new Set(data.map(item => item.name)).size !== data.length) throw new Error('Invalid plugin registry')
       return data
     } catch { throw failure('节点插件清单无法读取或格式无效，请检查后重试', 409) }
   }
 
-  function writeMeta(userId, list) {
-    workspaceFiles.upsert(userId, META_PATH, 'application/json', Buffer.from(JSON.stringify(list), 'utf8'))
+  async function writeMeta(userId, list) {
+    await workspaceFiles.upsert(userId, META_PATH, 'application/json', Buffer.from(JSON.stringify(list), 'utf8'))
   }
 
   function bundlePath(name) {
@@ -188,8 +188,8 @@ export function createNodePlugins({ workspaceFiles }: Record<string, any>) {
   }
 
   // 版本优先取已装 bundle 头的构建标记，读不到再退回元数据里记的值。
-  function installedNodeVersion(plugin, userId) {
-    try { return nodeBundleVersion(Buffer.from(workspaceFiles.read(userId, bundlePath(plugin.name)).bytes).toString('utf8')) ?? plugin.version }
+  async function installedNodeVersion(plugin, userId) {
+    try { return nodeBundleVersion(Buffer.from((await workspaceFiles.read(userId, bundlePath(plugin.name))).bytes).toString('utf8')) ?? plugin.version }
     catch { return plugin.version }
   }
 
@@ -201,7 +201,7 @@ export function createNodePlugins({ workspaceFiles }: Record<string, any>) {
     }
 
     if (url.pathname === '/api/nodes/get' && request.method === 'GET') {
-      const plugins = readMeta(session.userId)
+      const plugins = (await readMeta(session.userId))
       json(response, 200, {
         code: 200,
         data: [
@@ -227,8 +227,8 @@ export function createNodePlugins({ workspaceFiles }: Record<string, any>) {
       if (!validNodeName(name)) throw failure('节点名无效', 422)
       const builtin = BUILTIN_NODES.find(node => node.name === name)
       if (builtin) { json(response, 404, { error: '内置节点随工作台发布，没有独立脚本' }); return true }
-      if (!readMeta(session.userId).some(item => item.name === name)) throw failure('节点插件不存在', 404)
-      const file = workspaceFiles.read(session.userId, bundlePath(name))
+      if (!(await readMeta(session.userId)).some(item => item.name === name)) throw failure('节点插件不存在', 404)
+      const file = (await workspaceFiles.read(session.userId, bundlePath(name)))
       response.writeHead(200, {
         'content-type': 'text/javascript; charset=utf-8',
         'content-length': file.bytes.length,
@@ -259,13 +259,13 @@ export function createNodePlugins({ workspaceFiles }: Record<string, any>) {
         if (version.length > MAX_VERSION_LENGTH) throw failure(`插件版本号不能超过 ${MAX_VERSION_LENGTH} 个字符`, 422)
         // Publish the bundle and its settings together. Read the current list and
         // version under the same lock so concurrent updates cannot be overwritten.
-        workspaceFiles.withDeferredBytes(() => {
+        await workspaceFiles.withDeferredBytes(async () => {
           assertCurrent()
           const config = defaultsOf(declaration.rules)
-          const list = readMeta(session.userId)
+          const list = (await readMeta(session.userId))
           const previous = list.find(item => item.name === name)
           if (previous && payload.force !== true) {
-            requireNewerVersion(installedNodeVersion(previous, session.userId), version, `节点「${name}」`)
+            requireNewerVersion((await installedNodeVersion(previous, session.userId)), version, `节点「${name}」`)
           }
           // 重装保留用户已经填过的值：只认仍在新声明里的字段，单个字段不合新规则就退回默认值。
           if (previous?.config && typeof previous.config === 'object') {
@@ -284,9 +284,9 @@ export function createNodePlugins({ workspaceFiles }: Record<string, any>) {
             configRules: declaration.rules,
             config,
           })
-          workspaceFiles.upsert(session.userId, bundlePath(name), 'text/javascript', Buffer.from(bundle, 'utf8'))
-          writeMeta(session.userId, next)
-        })
+          await workspaceFiles.upsert(session.userId, bundlePath(name), 'text/javascript', Buffer.from(bundle, 'utf8'))
+          await writeMeta(session.userId, next)
+        }, session.userId)
         json(response, 200, { code: 200, data: { name, installed: true, configFields: declaration.rules.length, droppedSecretFields: declaration.secretFields } })
         return true
       })
@@ -304,7 +304,7 @@ export function createNodePlugins({ workspaceFiles }: Record<string, any>) {
           ? await downloadPluginFile(remote, { limitBytes: MAX_ARCHIVE_BYTES, label: '技能包', signal })
           : Buffer.from(typeof payload.content === 'string' ? payload.content : '', 'base64')
         assertCurrent()
-        const installed = installSkillPackage({ workspaceFiles, userId: session.userId, fileName, bytes, force: payload.force === true })
+        const installed = (await installSkillPackage({ workspaceFiles, userId: session.userId, fileName, bytes, force: payload.force === true }))
         json(response, 200, { code: 200, data: installed })
         return true
       })
@@ -315,16 +315,16 @@ export function createNodePlugins({ workspaceFiles }: Record<string, any>) {
       const payload = await readJson(request, CONFIG_BODY_BYTES)
       const name = String(payload?.name || '').trim()
       if (!validNodeName(name)) throw failure('节点名无效', 422)
-      const config = workspaceFiles.withDeferredBytes(() => {
-        const list = readMeta(session.userId)
+      const config = (await workspaceFiles.withDeferredBytes(async () => {
+        const list = (await readMeta(session.userId))
         const plugin = list.find(item => item.name === name)
         if (!plugin) throw failure('节点插件不存在', 404)
         const rules = Array.isArray(plugin.configRules) ? plugin.configRules : []
         if (!rules.length) throw failure('该插件没有声明配置项', 422)
         plugin.config = validateConfig(rules, payload?.config)
-        writeMeta(session.userId, list)
+        await writeMeta(session.userId, list)
         return plugin.config
-      })
+      }, session.userId))
       json(response, 200, { code: 200, data: { name, config } })
       return true
     }
@@ -334,15 +334,15 @@ export function createNodePlugins({ workspaceFiles }: Record<string, any>) {
       const payload = await readJson(request)
       const name = String(payload.name || '').trim()
       if (!validNodeName(name)) throw failure('节点名无效', 422)
-      workspaceFiles.withDeferredBytes(() => {
-        const list = readMeta(session.userId)
+      await workspaceFiles.withDeferredBytes(async () => {
+        const list = (await readMeta(session.userId))
         if (!list.some(item => item.name === name)) throw failure('节点插件不存在', 404)
-        writeMeta(session.userId, list.filter(item => item.name !== name))
+        await writeMeta(session.userId, list.filter(item => item.name !== name))
         const path = bundlePath(name)
-        if (workspaceFiles.list(session.userId).some(item => item.path === path)) {
-          workspaceFiles.mutate(session.userId, { operation: 'remove', path, revision: workspaceFiles.read(session.userId, path).revision })
+        if ((await workspaceFiles.list(session.userId)).some(item => item.path === path)) {
+          await workspaceFiles.mutate(session.userId, { operation: 'remove', path, revision: (await workspaceFiles.read(session.userId, path)).revision })
         }
-      })
+      }, session.userId)
       json(response, 200, { code: 200, data: { name, removed: true } })
       return true
     }
@@ -352,13 +352,13 @@ export function createNodePlugins({ workspaceFiles }: Record<string, any>) {
       const payload = await readJson(request)
       const name = String(payload.name || '').trim()
       const enabled = payload.enabled !== false
-      workspaceFiles.withDeferredBytes(() => {
-        const list = readMeta(session.userId)
+      await workspaceFiles.withDeferredBytes(async () => {
+        const list = (await readMeta(session.userId))
         const plugin = list.find(item => item.name === name)
         if (!plugin) throw failure('节点插件不存在', 404)
         plugin.enabled = enabled
-        writeMeta(session.userId, list)
-      })
+        await writeMeta(session.userId, list)
+      }, session.userId)
       json(response, 200, { code: 200, data: { name, enabled } })
       return true
     }

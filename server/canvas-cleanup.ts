@@ -30,9 +30,9 @@ export function canvasCleanupDocument(bytes: Uint8Array, path: string): Canvas |
 
 // Validate only the requested cleanup subset. Ownership comes from the actual
 // canvases being removed; references never grant ownership of another directory.
-export function assertCanvasCleanupSafe({ directories, removedFiles, canvases, files, scope, readText, activePaths = [] }: {
+export async function assertCanvasCleanupSafe({ directories, removedFiles, canvases, files, scope, readText, activePaths = [] }: {
   directories: readonly string[]; removedFiles: ReadonlySet<string>; canvases: readonly Canvas[];
-  files: readonly File[]; scope: WorkspaceReferenceScope; readText(path: string): string; activePaths?: readonly string[];
+  files: readonly File[]; scope: WorkspaceReferenceScope; readText(path: string): string | Promise<string>; activePaths?: readonly string[];
 }) {
   if (!directories.length) return
   const candidates = new Map(directories.map(path => [path.toLowerCase(), path]))
@@ -95,7 +95,7 @@ export function assertCanvasCleanupSafe({ directories, removedFiles, canvases, f
   for (let index = 0; index < pending.length; index++) {
     const path = pending[index]!
     let references
-    try { references = markdownFileReferences(readText(path), path, scope) }
+    try { references = markdownFileReferences((await readText(path)), path, scope) }
     catch { throw denied(`无法确认文档 ${path} 的素材引用，画布与素材均未删除`) }
     for (const reference of references) inspectReference(reference.path, `文档 ${path}`)
   }

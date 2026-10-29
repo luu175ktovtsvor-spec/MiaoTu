@@ -129,27 +129,27 @@ function parseStore(bytes) {
 
 // 3.0.x 按画布项目各存一份；改成应用级后，第一次读取时把各项目里的旧配置合并进来
 // （同一 ID 以最近修改的那份为准），旧文件原样保留，读不了的旧文件跳过不影响其他项目。
-function adoptProjectStores(workspaceFiles, userId, project) {
+async function adoptProjectStores(workspaceFiles, userId, project) {
   if (!workspaceFiles.scoped) return []
-  const rows = workspaceFiles.store.all('SELECT project_id AS project FROM workspace_files WHERE user_id=? AND path=? AND project_id<>? ORDER BY updated_at DESC', userId, PROVIDER_PATH, project)
+  const rows = (await workspaceFiles.store.all('SELECT project_id AS project FROM workspace_files WHERE user_id=? AND path=? AND project_id<>? ORDER BY updated_at DESC', userId, PROVIDER_PATH, project))
   const merged = new Map()
   for (const { project: source } of rows) {
     try {
-      for (const provider of parseStore(workspaceFiles.read(userId, PROVIDER_PATH, source).bytes))
+      for (const provider of parseStore((await workspaceFiles.read(userId, PROVIDER_PATH, source)).bytes))
         if (!merged.has(provider.id)) merged.set(provider.id, provider)
     } catch {}
   }
   const providers = [...merged.values()]
-  if (providers.length) writeStore(workspaceFiles, userId, providers)
+  if (providers.length) await writeStore(workspaceFiles, userId, providers)
   return providers
 }
 
-function readStore(workspaceFiles, userId) {
+async function readStore(workspaceFiles, userId) {
   const project = workspaceFiles.providerProject?.()
-  const entry = workspaceFiles.list(userId, project).find(item => item.path === PROVIDER_PATH)
-  if (!entry) return project ? adoptProjectStores(workspaceFiles, userId, project) : []
+  const entry = (await workspaceFiles.list(userId, project)).find(item => item.path === PROVIDER_PATH)
+  if (!entry) return project ? (await adoptProjectStores(workspaceFiles, userId, project)) : []
   try {
-    return parseStore(workspaceFiles.read(userId, PROVIDER_PATH, project).bytes)
+    return parseStore((await workspaceFiles.read(userId, PROVIDER_PATH, project)).bytes)
   } catch (cause) {
     // A damaged or temporarily unreadable file is not an empty configuration.
     // Reads and edits both stop, preserving every existing provider and key.
@@ -157,8 +157,8 @@ function readStore(workspaceFiles, userId) {
   }
 }
 
-function writeStore(workspaceFiles, userId, providers) {
-  workspaceFiles.upsert(userId, PROVIDER_PATH, 'application/json', Buffer.from(JSON.stringify({ providers }), 'utf8'), workspaceFiles.providerProject?.())
+async function writeStore(workspaceFiles, userId, providers) {
+  await workspaceFiles.upsert(userId, PROVIDER_PATH, 'application/json', Buffer.from(JSON.stringify({ providers }), 'utf8'), workspaceFiles.providerProject?.())
 }
 
 function publicProvider(provider) {
@@ -166,12 +166,12 @@ function publicProvider(provider) {
   return { ...clone, hasKey: Boolean(provider.apiKey) }
 }
 
-export function listPublicProviders(workspaceFiles, userId) {
-  return readStore(workspaceFiles, userId).map(publicProvider)
+export async function listPublicProviders(workspaceFiles, userId) {
+  return (await readStore(workspaceFiles, userId)).map(publicProvider)
 }
 
-export function listPublicProviderModels(workspaceFiles, userId) {
-  return listPublicProviders(workspaceFiles, userId).flatMap(provider => (provider.models || []).map(model => ({
+export async function listPublicProviderModels(workspaceFiles, userId) {
+  return (await listPublicProviders(workspaceFiles, userId)).flatMap(provider => (provider.models || []).map(model => ({
     providerId: provider.id, providerLabel: provider.label, modelId: model.id, label: model.label,
     protocol: provider.protocol || 'openai-completions', configured: Boolean(provider.hasKey),
     ...(model.reasoning ? { reasoning: true } : {}),
@@ -184,8 +184,8 @@ export function listPublicProviderModels(workspaceFiles, userId) {
   })))
 }
 
-export function upsertProvider(workspaceFiles, userId, payload) {
-  const providers = readStore(workspaceFiles, userId)
+export async function upsertProvider(workspaceFiles, userId, payload) {
+  const providers = (await readStore(workspaceFiles, userId))
   const next = normalizeProviderPayload(payload)
   const exists = providers.find(item => item.id === next.id)
   if (!next.apiKey) {
@@ -194,30 +194,30 @@ export function upsertProvider(workspaceFiles, userId, payload) {
   }
   if (!exists && providers.length >= MAX_PROVIDERS) throw failure('最多添加 ' + MAX_PROVIDERS + ' 个供应商', 422)
   const merged = exists ? providers.map(item => (item.id === next.id ? next : item)) : [...providers, next]
-  writeStore(workspaceFiles, userId, merged)
+  await writeStore(workspaceFiles, userId, merged)
   return publicProvider(next)
 }
 
-export function removeProvider(workspaceFiles, userId, id) {
+export async function removeProvider(workspaceFiles, userId, id) {
   const target = String(id || '').trim()
-  const providers = readStore(workspaceFiles, userId)
+  const providers = (await readStore(workspaceFiles, userId))
   const next = providers.filter(item => item.id !== target)
   if (next.length === providers.length) throw failure('供应商不存在', 404)
-  writeStore(workspaceFiles, userId, next)
+  await writeStore(workspaceFiles, userId, next)
   return { id: target }
 }
 
-export function providerById(workspaceFiles, userId, id) {
+export async function providerById(workspaceFiles, userId, id) {
   const target = String(id || '').trim()
   if (!target || target === OFFICIAL_PROVIDER_ID) return null
-  return readStore(workspaceFiles, userId).find(item => item.id === target) || null
+  return (await readStore(workspaceFiles, userId)).find(item => item.id === target) || null
 }
 
 // The legacy short-text endpoint is also hosted by the desktop. Resolve the
 // provider from that host's workspace; never send its private settings upstream.
 export async function completeProviderText(workspaceFiles, userId, payload, options: Record<string, any> = {}) {
   const providerId = String(payload?.providerId || '').trim()
-  const provider = providerById(workspaceFiles, userId, providerId)
+  const provider = (await providerById(workspaceFiles, userId, providerId))
   if (!provider) throw failure('供应商不存在，请在设置 → 文本模型里重新添加', 422)
   const prompt = String(payload?.prompt || '').trim()
   if (!prompt) throw failure('请先输入内容', 422)

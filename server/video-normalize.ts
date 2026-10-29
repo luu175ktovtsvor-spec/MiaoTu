@@ -68,7 +68,7 @@ export async function withNormalizedVideoFile<T>(input: { path: string; size: nu
   consume: (file: { path: string; size: number; sha256?: string }) => T | Promise<T>,
 ) {
   signal?.throwIfAborted()
-  if (!looksLikeVideo(path, mime) || input.size < 1024 || input.size > MAX_BYTES) return consume(input)
+  if (!looksLikeVideo(path, mime) || input.size < 1024 || input.size > MAX_BYTES) return (await consume(input))
   const handle = await open(input.path, 'r')
   let faststart
   try {
@@ -77,7 +77,7 @@ export async function withNormalizedVideoFile<T>(input: { path: string; size: nu
     faststart = needsFaststart(prefix.subarray(0, bytesRead))
   } finally { await handle.close() }
   signal?.throwIfAborted()
-  if (!faststart) return consume(input)
+  if (!faststart) return (await consume(input))
   const directory = await mkdtemp(join(tmpdir(), 'miaoimg-remux-'))
   let selected = input
   try {

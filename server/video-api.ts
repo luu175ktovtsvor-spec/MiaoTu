@@ -1,3 +1,4 @@
+import { mapAsync } from './async-collections.ts'
 import { cloudWorkspaceStorageEnabled } from './cloud-storage-policy.ts'
 import { isSeedance25 } from './seedance25.ts'
 import { recordDesktopMediaOutput } from './desktop-media.ts'
@@ -446,7 +447,7 @@ function taskId(data) { return String(data?.id || data?.request_id || data?.requ
 function taskStatus(data) { return String(data?.status || data?.state || '').toLowerCase() }
 function videoUrl(data) { return String(data?.video_url || data?.videoUrl || data?.url || data?.video?.url || data?.output?.url || data?.data?.video?.url || '').trim() }
 
-function referenceProviderRequest(request, userId, materializeReference, { inlineArkImages = false }: Record<string, any> = {}) {
+async function referenceProviderRequest(request, userId, materializeReference, { inlineArkImages = false }: Record<string, any> = {}) {
   if (!materializeReference) return Promise.resolve(request)
   // Ark prefers the existing signed asset URL: multi-megabyte Base64 bodies
   // can stall the task-create upload. Inline only after an explicit reference
@@ -478,7 +479,7 @@ function referenceProviderRequest(request, userId, materializeReference, { inlin
     convert(request.video, 'video'),
     convert(request.firstFrame, 'image'),
     convert(request.lastFrame, 'image'),
-    Promise.all((request.keyframes || []).map(async (item) => ({ ...item, image: { ...(item.image || {}), url: await convert(item.image?.url || item.url, 'image') } }))),
+    Promise.all((await mapAsync((request.keyframes || []), async (item) => ({ ...item, image: { ...(item.image || {}), url: await convert(item.image?.url || item.url, 'image') } })))),
   ]).then(([image, images, videos, audios, video, firstFrame, lastFrame, keyframes]) => ({ ...request, image, images, videos, audios, video, firstFrame, lastFrame, keyframes, _referenceDelivery: delivery }))
 }
 
@@ -512,9 +513,9 @@ function errorWithUpstreamId(error, request, attempts = 1) {
   return { id, message, diagnostic, errorText: `${message}；${diagnostic}`.slice(0, 500) }
 }
 
-function storedReferenceDiagnostics(management, generationId) {
+async function storedReferenceDiagnostics(management, generationId) {
   try {
-    const stored = management.loadGeneration(generationId)
+    const stored = (await management.loadGeneration(generationId))
     const parameters = stored?.parameters || {}
     return referenceDiagnostics(parameters)
   } catch {
@@ -698,8 +699,8 @@ export async function prepareVideoRequest(payload, session, { env = process.env,
 }
 
 /** 只算积分、不占额不下单：给画布显示「这次请求会扣多少」。 */
-function routeNewVideo(payload, management, env) {
-  const settings = management.settings()
+async function routeNewVideo(payload, management, env) {
+  const settings = (await management.settings())
   const model = activeModelForSettings(payload.model, settings, env)
   if (!model?.video || model.internalOnly || settings.models?.[model.publicId || model.id] === false) throw failure('当前视频模型未开放', 403)
   // The server owns routing. Never trust channel markers from the caller.
@@ -708,7 +709,7 @@ function routeNewVideo(payload, management, env) {
 
 export async function estimateVideoCredits(payload, session, { management, env = process.env, probeReferenceMedia, signal }: Record<string, any> = {}) {
   if (!session) throw failure('请先登录再查看积分', 401)
-  if (management) payload = routeNewVideo(payload, management, env)
+  if (management) payload = (await routeNewVideo(payload, management, env))
   const request = await prepareVideoRequest(payload, session, { env, probeReferenceMedia, signal })
   return {
     model: request.model.publicId || request.model.id,
@@ -723,26 +724,26 @@ export async function createVideo(payload, session, { management, env = process.
   if (!management) throw failure('视频处理器缺少 ManagementStore', 500)
   if (!session) throw failure('请先登录再生成', 401)
   const ids = identity(payload)
-  const existing = management.existingGeneration({ session, requestId: ids.requestId, idempotencyKey: ids.idempotencyKey, accessToken: payload.accessToken })
+  const existing = (await management.existingGeneration({ session, requestId: ids.requestId, idempotencyKey: ids.idempotencyKey, accessToken: payload.accessToken }))
   if (existing) {
-    const current = management.generationForViewer(existing.requestId, session, existing.accessToken || payload.accessToken)
+    const current = (await management.generationForViewer(existing.requestId, session, existing.accessToken || payload.accessToken))
     if (!current) throw failure('生成记录不存在', 404)
     return generationReceipt(current, { taskId: existing.upstreamRequestId || null, accessToken: existing.accessToken || undefined, duplicate: true })
   }
   // A replay may outlive its input lease, model settings or reference files.
   // Only a genuinely new task prepares inputs and checks new-order policy.
-  assertModelAccess({ management, session, service: '视频模型' })
+  await assertModelAccess({ management, session, service: '视频模型' })
   if (preparePayload) payload = preparePayload(payload)
-  if (!management.settings().videoEnabled) throw failure('管理员尚未开启视频生成', 503)
-  payload = routeNewVideo(payload, management, env)
+  if (!(await management.settings()).videoEnabled) throw failure('管理员尚未开启视频生成', 503)
+  payload = (await routeNewVideo(payload, management, env))
   const request = await prepareVideoRequest(payload, session, { env, probeReferenceMedia, signal })
   request.parameters.workspaceProject = currentProject() || DEFAULT_PROJECT_ID
   request.parameters.referenceVideoCount = request.parameters.videos.length
   request.parameters.referenceAudioCount = request.parameters.audios.length
   if (payload.desktopDelivery === 1) Object.assign(request.parameters, { desktopDelivery: 1, desktopReferences: payload.desktopReferences })
   signal?.throwIfAborted()
-  const reservation = management.reserve({ session, model: request.model, points: request.cost.points, prompt: request.prompt, parameters: request.parameters, requestId: ids.requestId, idempotencyKey: ids.idempotencyKey, status: GENERATION_STATES.QUEUED, inputs: {}, accessToken: payload.accessToken })
-  const current = management.generationForViewer(reservation.requestId, session, reservation.accessToken || payload.accessToken)
+  const reservation = (await management.reserve({ session, model: request.model, points: request.cost.points, prompt: request.prompt, parameters: request.parameters, requestId: ids.requestId, idempotencyKey: ids.idempotencyKey, status: GENERATION_STATES.QUEUED, inputs: {}, accessToken: payload.accessToken }))
+  const current = (await management.generationForViewer(reservation.requestId, session, reservation.accessToken || payload.accessToken))
   if (!current) throw failure('生成记录不存在', 404)
   return generationReceipt(current, { accessToken: reservation.accessToken || undefined, duplicate: Boolean(reservation.duplicate), ...(!reservation.duplicate ? { cost: request.cost } : {}) })
 }
@@ -754,16 +755,16 @@ export async function submitQueuedVideo(job, { management, env = process.env, fe
   const request = validateVideoRequest({ ...parameters, model: job.model, prompt: job.prompt, __provider: job.provider }, env)
   if (parameters.videoPricing && isCostPlusVideo(job.model)) request.parameters.videoPricing = parameters.videoPricing
   signal?.throwIfAborted()
-  if (!management.heartbeat(job.id, job.lease_id)) throw failure('生成已取消或已结算', 409)
+  if (!(await management.heartbeat(job.id, job.lease_id))) throw failure('生成已取消或已结算', 409)
   // 秘塔余额差只作共享账号窗口观察，不能直接归为本单实扣。
   const balanceBefore = request.model.provider === 'metaso' ? await metasoCreditsBalance({ env, fetchImpl }) : null
   let task
   let lastError
   let lastUpstreamRequest = request
   let attempts = 0
-  const dispatchFetch: typeof fetch = (input, init) => {
+  const dispatchFetch: typeof fetch = async (input, init) => {
     signal?.throwIfAborted()
-    management.assertGenerationDispatch(job.id, job.lease_id, { markStarted: true })
+    await management.assertGenerationDispatch(job.id, job.lease_id, { markStarted: true })
     return fetchImpl(input, init)
   }
   for (let attempt = 0; attempt <= REFERENCE_RETRY_DELAYS_MS.length; attempt += 1) {
@@ -802,7 +803,7 @@ export async function submitQueuedVideo(job, { management, env = process.env, fe
     const details = errorWithUpstreamId(lastError, lastUpstreamRequest, attempts)
     const failed = Object.assign(lastError || new Error(details.message), { message: details.message, upstreamRequestId: details.id || lastError?.upstreamRequestId || '' })
     try {
-      management.recordUpstreamCall({
+      await management.recordUpstreamCall({
         generationId: job.id,
         provider: request.model.provider,
         model: job.model,
@@ -824,14 +825,14 @@ export async function submitQueuedVideo(job, { management, env = process.env, fe
   try {
     task.referenceDiagnostics = referenceDiagnostics(lastUpstreamRequest)
     task.sentBody = task.sentBody ? redactReferencePayload(task.sentBody) : task.referenceDiagnostics
-    management.setUpstreamTask(job.id, { requestId: task.id, model: task.upstreamModel, status: task.upstreamStatus })
+    await management.setUpstreamTask(job.id, { requestId: task.id, model: task.upstreamModel, status: task.upstreamStatus })
     const balanceAfter = request.model.provider === 'metaso' ? await metasoCreditsBalance({ env, fetchImpl }) : null
     const estimatedCost = request.model.provider === 'metaso'
       ? estimateUpstreamCostRmb({ model: request.model, parameters: request.parameters, seconds: Number(request.billableDuration ?? request.duration) || null })
       : null
     const estimatedCredits = estimatedCost?.detail?.supplierCredits ?? (estimatedCost?.rmb == null ? null : Math.round(Number(estimatedCost.rmb) / 0.0108 * 10000) / 10000)
     try {
-      management.recordUpstreamCall({
+      await management.recordUpstreamCall({
         generationId: job.id,
         provider: request.model.provider,
         model: job.model,
@@ -863,7 +864,7 @@ export async function submitQueuedVideo(job, { management, env = process.env, fe
  * 目标目录优先用这次请求带的 outputDirectory（画布节点目录），否则 assets/。
  */
 async function persistVideoIntoWorkspace({ management, workspaceFiles, generationId, video, model, env, fetchImpl }: Record<string, any>) {
-  const row = management.get('SELECT user_id, request_id, parameters FROM generations WHERE id=?', generationId)
+  const row = (await management.get('SELECT user_id, request_id, parameters FROM generations WHERE id=?', generationId))
   const userId = row?.user_id
   if (!userId) return ''
   let parameters: Record<string, any> = {}
@@ -894,7 +895,7 @@ async function persistVideoIntoWorkspace({ management, workspaceFiles, generatio
     const mimeType = String(video.mime || 'video/mp4').split(';')[0].trim()
     const path = `${directory}/${randomUUID()}.${mimeType === 'video/webm' ? 'webm' : 'mp4'}`
     const project = parameters.workspaceProject || DEFAULT_PROJECT_ID
-    const absolute = workspaceFiles.fileFor(userId, project, path, { create: true })
+    const absolute = (await workspaceFiles.fileFor(userId, project, path, { create: true }))
     const identity = !response.headers.get('content-encoding') || response.headers.get('content-encoding').split(',').every(value => value.trim().toLowerCase() === 'identity')
     const declaredLength = identity && /^\d+$/.test(response.headers.get('content-length') || '') ? Number(response.headers.get('content-length')) : null
     // This is the existing server workspace cache limit. Larger results remain
@@ -909,28 +910,28 @@ async function persistVideoIntoWorkspace({ management, workspaceFiles, generatio
         if (error?.status === 503) throw error
         throw failure('成片文件无效或不完整，请重新取回', 502)
       }
-      const publish = file => {
+      const publish = async file => {
         receiveSignal.throwIfAborted()
         if (file.size > WORKSPACE_FILE_MAX_BYTES) throw failure('单个文件不能超过 200MB', 413)
-        management.transaction(() => {
-          const latest = management.get('SELECT status,parameters FROM generations WHERE id=?', generationId)
+        await management.transaction(async () => {
+          const latest = (await management.get('SELECT status,parameters FROM generations WHERE id=?', generationId))
           const delivery = JSON.parse(latest?.parameters || '{}')
           if (delivery.desktopDeliveredAt || delivery.desktopMediaExpiredAt) throw failure('服务器临时文件已清理，请打开本机保存的结果', 410)
           if (![GENERATION_STATES.RUNNING, GENERATION_STATES.SUCCEEDED].includes(latest?.status)) throw failure('这次生成已取消或结束，未写入成片', 409)
-          if (management.get(`SELECT path FROM workspace_files WHERE ${workspaceFiles.scopeWhere()} AND path=?`, ...workspaceFiles.scopeArgs(userId, project), path)) throw failure('暂存文件路径冲突，未覆盖原文件', 409)
-          workspaceFiles.assertWriteTarget(userId, project, path, mimeType, null)
+          if ((await management.get(`SELECT path FROM workspace_files WHERE ${workspaceFiles.scopeWhere()} AND path=?`, ...(await workspaceFiles.scopeArgs(userId, project)), path))) throw failure('暂存文件路径冲突，未覆盖原文件', 409)
+          await workspaceFiles.assertWriteTarget(userId, project, path, mimeType, null)
           const blob = file.sha256 || workspaceFiles.blobs.putFile(userId, file.path).blob
           if (file.sha256) workspaceFiles.blobs.linkFromFile(userId, file.path, blob, { copyFallback: true })
           const revision = randomUUID()
-          workspaceFiles.putIndex(userId, project, path, mimeType, file.size, revision, blob)
-          if (parameters.desktopDelivery === 1) recordDesktopMediaOutput(management, userId, row.request_id, { path, revision, blob }, project)
+          await workspaceFiles.putIndex(userId, project, path, mimeType, file.size, revision, blob)
+          if (parameters.desktopDelivery === 1) await recordDesktopMediaOutput(management, userId, row.request_id, { path, revision, blob }, project)
         })
-        workspaceFiles.flushBytes()
+        await workspaceFiles.flushBytes()
         return path
       }
       // Preserve the original for desktop digest acknowledgement. Website
       // playback keeps lossless faststart, without loading whole files into JS.
-      return parameters.desktopDelivery === 1 ? publish(received) : withNormalizedVideoFile(received, { path, mime: mimeType, signal: receiveSignal }, publish)
+      return parameters.desktopDelivery === 1 ? (await publish(received)) : withNormalizedVideoFile(received, { path, mime: mimeType, signal: receiveSignal }, publish)
     })
   } catch (error) {
     if (signal.aborted) throw failure('成片下载超时，请重新取回', 504)
@@ -948,7 +949,7 @@ async function persistVideoIntoWorkspace({ management, workspaceFiles, generatio
 const videoRestores = new Map()
 export async function restoreVideoResult({ requestId }: Record<string, any>, session, dependencies: Record<string, any> = {}) {
   if (!session) throw failure('请先登录', 401)
-  dependencies.management.generationForViewer(requestId, session)
+  await dependencies.management.generationForViewer(requestId, session)
   if (videoRestores.has(requestId)) return videoRestores.get(requestId)
   const promise = restoreVideoResultOnce({ requestId }, session, dependencies).finally(() => videoRestores.delete(requestId))
   videoRestores.set(requestId, promise)
@@ -957,28 +958,28 @@ export async function restoreVideoResult({ requestId }: Record<string, any>, ses
 async function restoreVideoResultOnce({ requestId }: Record<string, any>, session, { management, workspaceFiles, env = process.env, fetchImpl = fetch }: Record<string, any> = {}) {
   if (!session) throw failure('请先登录', 401)
   if (!management || !workspaceFiles) throw failure('结果取回缺少依赖', 500)
-  const existing = management.existingGeneration({ session, requestId })
+  const existing = (await management.existingGeneration({ session, requestId }))
   if (!existing) throw failure('生成记录不存在', 404)
-  const record = management.generationForViewer(requestId, session)
+  const record = (await management.generationForViewer(requestId, session))
   if (record.parameters?.cloudWorkspaceRetiredAt) throw failure('旧云端项目文件已停用，请使用桌面版中保存的文件', 410)
   if (record?.parameters?.desktopDeliveredAt || record?.parameters?.desktopMediaExpiredAt) throw failure('服务器临时文件已清理，请打开本机保存的结果', 410)
   if (record?.status !== GENERATION_STATES.SUCCEEDED) throw failure('这次生成还没有成功，无法取回', 409)
-  const video = management.videoResult(existing.id)
+  const video = (await management.videoResult(existing.id))
   if (!video) throw failure('这次生成没有视频结果', 404)
   if (video.metadata?.workspacePath) {
-    try { workspaceFiles.locate(session.userId, video.metadata.workspacePath, record.parameters?.workspaceProject || DEFAULT_PROJECT_ID); return { path: video.metadata.workspacePath, already: true } } catch { /* 文件没了就重下 */ }
+    try { await workspaceFiles.locate(session.userId, video.metadata.workspacePath, record.parameters?.workspaceProject || DEFAULT_PROJECT_ID); return { path: video.metadata.workspacePath, already: true } } catch { /* 文件没了就重下 */ }
   }
   const model = modelForGeneration(record.model, record.parameters || {}, existing.provider) || modelById(record.model)
   const path = await persistVideoIntoWorkspace({ management, workspaceFiles, generationId: existing.id, video, model, env, fetchImpl })
   if (!path) throw failure('成片地址不可用，无法取回', 502)
-  management.setVideoWorkspacePath(existing.id, path)
+  await management.setVideoWorkspacePath(existing.id, path)
   return { path, already: false }
 }
 
 const videoPolls = new Map()
 export async function pollVideo(payload, session, dependencies: Record<string, any> = {}) {
   // Authorize every caller before sharing an in-flight poll with the background worker.
-  dependencies.management.generationForViewer(String(payload?.requestId || ''), session, payload?.accessToken || '')
+  await dependencies.management.generationForViewer(String(payload?.requestId || ''), session, payload?.accessToken || '')
   const key = String(payload?.requestId || '')
   if (videoPolls.has(key)) return videoPolls.get(key)
   const promise = pollVideoOnce(payload, session, dependencies).finally(() => videoPolls.delete(key))
@@ -991,9 +992,9 @@ async function pollVideoOnce(payload, session, { management, env = process.env, 
   const requestId = String(payload?.requestId || '').trim()
   if (!requestId) throw failure('缺少视频请求标识', 422)
   const accessToken = String(payload?.accessToken || '').trim()
-  const existing = management.existingGeneration({ session, requestId, accessToken })
+  const existing = (await management.existingGeneration({ session, requestId, accessToken }))
   if (!existing) throw failure('视频生成记录不存在', 404)
-  const current = management.generationForViewer(requestId, session, accessToken)
+  const current = (await management.generationForViewer(requestId, session, accessToken))
   const terminalResponse = record => record && [GENERATION_STATES.SUCCEEDED, GENERATION_STATES.FAILED, GENERATION_STATES.CANCELLED, GENERATION_STATES.EXPIRED].includes(record.status)
     ? { ...record, httpStatus: record.status === GENERATION_STATES.EXPIRED ? 410 : 200 }
     : null
@@ -1015,7 +1016,7 @@ async function pollVideoOnce(payload, session, { management, env = process.env, 
       : provider === 'suihe'
       ? await pollSuiheTask(taskIdValue, { env, fetchImpl, signal: AbortSignal.timeout(30_000) })
       : await pollSub2ApiVideo(taskIdValue, { env, model, fetchImpl, signal: AbortSignal.timeout(30_000) })
-    const latestTerminal = terminalResponse(management.generationForViewer(requestId, session, accessToken))
+    const latestTerminal = terminalResponse((await management.generationForViewer(requestId, session, accessToken)))
     if (latestTerminal) return latestTerminal
     // 上游视频地址可能要求 Bearer Key、跨域，或只在短时间内对服务端可读；
     // 统一改走同源代理地址，浏览器再从服务端工作区写入账号持久化文件。
@@ -1036,10 +1037,10 @@ async function pollVideoOnce(payload, session, { management, env = process.env, 
           console.warn('[video] 成片写入工作区失败', existing.id, error?.message || error)
         }
       }
-      management.completeVideo(existing.id, result)
+      await management.completeVideo(existing.id, result)
       try {
-        const settled = management.get('SELECT parameters, upstream_cost FROM generations WHERE id=?', existing.id)
-        management.finishUpstreamCall(existing.id, {
+        const settled = (await management.get('SELECT parameters, upstream_cost FROM generations WHERE id=?', existing.id))
+        await management.finishUpstreamCall(existing.id, {
           response: result.metadata?.raw ?? null,
           usage: result.usage ?? null,
           cost: settled?.upstream_cost ? JSON.parse(settled.upstream_cost) : null,
@@ -1048,7 +1049,7 @@ async function pollVideoOnce(payload, session, { management, env = process.env, 
           status: 'ok',
         })
       } catch { /* 留档失败不影响结果 */ }
-      const settled = management.generationForViewer(requestId, session, accessToken)
+      const settled = (await management.generationForViewer(requestId, session, accessToken))
       return { ...settled, requestId, status: GENERATION_STATES.SUCCEEDED, cost: { points: settled?.chargedPoints ?? current?.reservedPoints ?? 0, reservedPoints: settled?.reservedPoints ?? current?.reservedPoints ?? 0 }, httpStatus: 200 }
     }
     if (result.status === 'failed') {
@@ -1059,13 +1060,13 @@ async function pollVideoOnce(payload, session, { management, env = process.env, 
       const resultMessage = resultRequestId && !String(rawResultMessage).includes(resultRequestId)
         ? `${rawResultMessage}（上游 Request id: ${resultRequestId}）`
         : rawResultMessage
-      const diagnostic = `参考素材=${JSON.stringify(storedReferenceDiagnostics(management, existing.id))}`
+      const diagnostic = `参考素材=${JSON.stringify((await storedReferenceDiagnostics(management, existing.id)))}`
       const failureText = `${resultMessage}；${diagnostic}`.slice(0, 500)
-      management.fail(existing.id, failureText, { ...result, upstreamRequestId: resultRequestId || result.upstreamRequestId })
-      const afterFailure = terminalResponse(management.generationForViewer(requestId, session, accessToken))
+      await management.fail(existing.id, failureText, { ...result, upstreamRequestId: resultRequestId || result.upstreamRequestId })
+      const afterFailure = terminalResponse((await management.generationForViewer(requestId, session, accessToken)))
       if (afterFailure && afterFailure.status !== GENERATION_STATES.FAILED) return afterFailure
       try {
-        management.finishUpstreamCall(existing.id, { response: result.metadata?.raw ?? null, usage: result.usage ?? null, upstreamRequestId: resultRequestId || result.upstreamRequestId || taskIdValue, status: 'failed_after_submit', error: failureText })
+        await management.finishUpstreamCall(existing.id, { response: result.metadata?.raw ?? null, usage: result.usage ?? null, upstreamRequestId: resultRequestId || result.upstreamRequestId || taskIdValue, status: 'failed_after_submit', error: failureText })
       } catch { /* 留档失败不影响结算 */ }
       // 注意：result.status 是业务状态（failed），不能覆盖 Error 的 HTTP status。
       throw Object.assign(new Error(failureText), { ...result, upstreamRequestId: resultRequestId || result.upstreamRequestId, status: 422 })
@@ -1074,7 +1075,7 @@ async function pollVideoOnce(payload, session, { management, env = process.env, 
   } catch (error) {
     // Only an explicit upstream terminal task state settles the reservation.
     // HTTP/auth/network errors during a read do not change the task's state.
-    const latest = terminalResponse(management.generationForViewer(requestId, session, accessToken))
+    const latest = terminalResponse((await management.generationForViewer(requestId, session, accessToken)))
     if (latest) return latest
     return { requestId, taskId: taskIdValue, status: GENERATION_STATES.RUNNING, progress: null, pollAfterMs: 5_000, httpStatus: 202 }
   }

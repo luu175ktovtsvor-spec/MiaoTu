@@ -7,12 +7,12 @@ if (provider !== 'metaso') {
   console.error(JSON.stringify({ ok: false, error: `unsupported provider: ${provider}` }))
   process.exitCode = 2
 } else {
-  const management = new ManagementStore()
+  const management = (await ManagementStore.open())
   try {
     const result = await reconcileMetasoBalance({ management })
     console.log(JSON.stringify({ ok: true, ...result }, null, 2))
     if (result.alarm) process.exitCode = 3
   } finally {
-    management.close()
+    await management.close()
   }
 }

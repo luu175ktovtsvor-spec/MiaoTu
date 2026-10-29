@@ -49,8 +49,8 @@ export function createPluginExport({ workspaceFiles }: Record<string, any>) {
   }
 
   // 插件脚本：工作区里存的就是可原样再装回去的产物，直接下发。
-  function exportBundle(response, userId, path, fileName) {
-    const file = workspaceFiles.read(userId, path)
+  async function exportBundle(response, userId, path, fileName) {
+    const file = (await workspaceFiles.read(userId, path))
     if (!file.bytes?.byteLength) throw failure('插件脚本为空，无法导出', 404)
     if (file.bytes.byteLength > MAX_PLUGIN_BYTES) throw failure('插件脚本超过 20 MB，无法导出', 413)
     download(response, fileName, 'text/javascript; charset=utf-8', file.bytes)
@@ -81,14 +81,14 @@ export function createPluginExport({ workspaceFiles }: Record<string, any>) {
 
   async function exportSkill(response, userId, name) {
     const prefix = `${SKILL_ROOT}/${name}/`
-    const entries = workspaceFiles.list(userId)
+    const entries = (await workspaceFiles.list(userId))
       .filter(entry => entry.path.startsWith(prefix) && !isDirectoryMime(entry.mime))
     const files = {}
     let total = 0
     if (entries.length) {
       if (entries.length > MAX_ENTRIES) throw failure(`技能最多包含 ${MAX_ENTRIES} 个文件`, 413)
       for (const entry of entries) {
-        const file = workspaceFiles.read(userId, entry.path)
+        const file = (await workspaceFiles.read(userId, entry.path))
         total += file.bytes?.byteLength ?? 0
         if (total > MAX_PLUGIN_BYTES) throw failure('技能文件总大小超过 20 MB，无法导出', 413)
         files[archivePath(name, entry.path.slice(prefix.length))] = new Uint8Array(file.bytes)
@@ -117,12 +117,12 @@ export function createPluginExport({ workspaceFiles }: Record<string, any>) {
     if (!['node', 'ext', 'skill'].includes(type)) throw failure('导出类型无效', 422)
     if (type === 'node') {
       if (!validNodeName(name)) throw failure('节点名无效', 422)
-      exportBundle(response, session.userId, `nodes/${name}.umd.js`, `${name}.umd.js`)
+      await exportBundle(response, session.userId, `nodes/${name}.umd.js`, `${name}.umd.js`)
       return true
     }
     if (type === 'ext') {
       if (!validExtName(name)) throw failure('扩展名无效', 422)
-      exportBundle(response, session.userId, `ext/${name}.umd.js`, `${name}.umd.js`)
+      await exportBundle(response, session.userId, `ext/${name}.umd.js`, `${name}.umd.js`)
       return true
     }
     if (!SKILL_NAME_PATTERN.test(name)) throw failure('技能名无效', 422)

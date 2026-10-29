@@ -1,3 +1,4 @@
+import { mapAsync } from './async-collections.ts'
 import { createTextMeter } from './text-metering.ts'
 import { isWorkspaceRequest } from './canvas-document.ts'
 // MiaoImg 节点脚手架的 AI 兼容层。
@@ -66,8 +67,8 @@ function publicModelIdOf(catalog, modelId) {
 
 export function createAiCompat({ management, workspaceFiles, generate, probeReferenceMedia, customProviderFetch }: Record<string, any>) {
   const textOperations = new TextOperations()
-  function userModels(session) {
-    const user = session?.role === 'user' && session.userId ? management.user(session.userId) : null
+  async function userModels(session) {
+    const user = session?.role === 'user' && session.userId ? (await management.user(session.userId)) : null
     return Array.isArray(user?.models) ? user.models : []
   }
 
@@ -79,8 +80,8 @@ export function createAiCompat({ management, workspaceFiles, generate, probeRefe
   // GET /api/ai/models：语言模型目录。形状对齐上游 nodeAi 的 NodeAiModel。
   async function listLanguageModels(session) {
     const catalog = await publicTextCatalog()
-    const operating = management.settings()
-    const allowed = userModels(session)
+    const operating = (await management.settings())
+    const allowed = (await userModels(session))
     return [
       ...catalog.filter((model) => operating.models?.[model.id] !== false && (!allowed.length || allowed.includes(model.id))).map((model) => ({
         providerId: 'miaoimg',
@@ -92,17 +93,17 @@ export function createAiCompat({ management, workspaceFiles, generate, probeRefe
         ...(model.maxOutputTokens ? { maxOutputTokens: model.maxOutputTokens } : {}),
         configured: textChannelReady(process.env, model.id),
       })),
-      ...listPublicProviderModels(workspaceFiles, session.userId),
+      ...(await listPublicProviderModels(workspaceFiles, session.userId)),
     ]
   }
 
   // GET /api/ai/media/models：媒体模型目录，复用 /api/imagine/config 的同一份来源与积分规则。
   async function listMediaModels(session) {
     await refreshSuiheModels({env: process.env}).catch(() => [])
-    const operating = management.settings()
-    const allowed = userModels(session)
+    const operating = (await management.settings())
+    const allowed = (await userModels(session))
     const paused = operating.models || {}
-    const costPolicy = management.costPolicy()
+    const costPolicy = (await management.costPolicy())
     const images = publicModelCatalog(process.env, operating)
       .filter((model) => model.configured && available(model.id, paused, allowed))
       .map((model) => {
@@ -223,7 +224,7 @@ export function createAiCompat({ management, workspaceFiles, generate, probeRefe
     }
     try {
       if (session?.role !== 'user' || !session.userId) throw failure('请先登录后使用文本模型', 401)
-      if (management) assertTextIdentity({ management, session })
+      if (management) await assertTextIdentity({ management, session })
       operation.signal.throwIfAborted()
       const payload = suppliedPayload ?? await readModelJson(request, undefined, operation.signal)
       operation.signal.throwIfAborted()
@@ -231,8 +232,8 @@ export function createAiCompat({ management, workspaceFiles, generate, probeRefe
       const providerId = String(payload?.providerId || '').trim()
       const builtin = !providerId || providerId === 'miaoimg'
       operation.continueAfterDisconnect(builtin)
-      if (builtin) assertTextAccess({ management, session })
-      else if (management) assertTextIdentity({ management, session })
+      if (builtin) await assertTextAccess({ management, session })
+      else if (management) await assertTextIdentity({ management, session })
       const modelId = String(payload?.modelId || '').trim()
       const context = payload?.context || {}
       const toolDefinitions = (Array.isArray(context.tools) ? context.tools : []).map((tool) => ({
@@ -254,16 +255,16 @@ export function createAiCompat({ management, workspaceFiles, generate, probeRefe
         if (!settings.apiKey) throw failure('模型服务暂时不可用，请稍后再试', 503)
         const model = await operation.wait(textModelById(modelId))
         if (!model) throw failure('不支持的文本模型', 422)
-        const operating = management.settings()
+        const operating = (await management.settings())
         if (operating.models?.[modelId] === false) throw failure('这个文本模型已暂停', 403)
-        const allowed = userModels(session)
+        const allowed = (await userModels(session))
         if (allowed.length && !allowed.includes(modelId)) throw failure('这个文本模型未对你的账号开放', 403)
         config = { ...settings, baseUrl: settings.baseUrl, apiKey: settings.apiKey, previousResponseId: String(context.previousResponseId || payload?.previousResponseId || '') }
         config.toolChoice = ['auto', 'required', 'none'].includes(context.toolChoice) ? context.toolChoice : 'auto'
         config.parallelToolCalls = context.parallelToolCalls !== false
         upstreamModel = model.id
       } else {
-        const provider = providerById(workspaceFiles, session.userId, providerId)
+        const provider = (await providerById(workspaceFiles, session.userId, providerId))
         if (!provider) throw failure('供应商不存在，请在设置 → 文本模型里重新添加', 422)
         const model = (provider.models || []).find((item) => item.id === modelId)
         if (!model) throw failure('所选模型不在该供应商的模型列表里，请重新选择', 422)
@@ -283,10 +284,10 @@ export function createAiCompat({ management, workspaceFiles, generate, probeRefe
       }
       const meter = builtin ? createTextMeter({ management,session,source:'compat_text' }) : null
       const { runtime,model } = await operation.wait(createAgentModel({ ...config,providerId:providerId || 'miaoimg',modelId:upstreamModel,
-        ...(management && !builtin ? { beforeDispatch:()=>assertTextIdentity({ management,session }) } : {}),
+        ...(management && !builtin ? { beforeDispatch:async ()=>(await assertTextIdentity({ management,session })) } : {}),
         ...(builtin ? { fetchImpl:async (input,init) => {
           if (request.aborted || response.destroyed || signal?.aborted) disconnected()
-          operation.dispatch(()=>assertTextIdentity({ management,session }))
+          await operation.dispatch(async ()=>(await assertTextIdentity({ management,session })))
           openResponse()
           return meter.fetch(input,init)
         } } : {}),
@@ -295,8 +296,8 @@ export function createAiCompat({ management, workspaceFiles, generate, probeRefe
       // after a close event that happened before the streaming listener existed.
       if (response.destroyed || response.writableEnded) return
       operation.signal.throwIfAborted()
-      if (builtin) assertTextAccess({ management, session })
-      else if (management) assertTextIdentity({ management, session })
+      if (builtin) await assertTextAccess({ management, session })
+      else if (management) await assertTextIdentity({ management, session })
       if (!builtin) openResponse()
       try {
         const stream = runtime.streamSimple(model, sdkContext, {
@@ -311,13 +312,13 @@ export function createAiCompat({ management, workspaceFiles, generate, probeRefe
         }
         const message = await stream.result()
         if (message.stopReason === 'error' || message.stopReason === 'aborted') throw new Error(message.errorMessage || '文本生成中断')
-        const billing = meter?.summary()
+        const billing = (await meter?.summary())
         const chargedText = billing?.status === 'settled' ? Number(billing.chargedPoints) : builtin ? null : 0
         const sdkUsage = message.usage
         sendEvent({ type: 'done', ...(builtin ? { billing } : {}), message: { ...message, usage: { ...sdkUsage, cost: { ...sdkUsage.cost, total: chargedText } } } })
       } catch (error) {
         if (!response.headersSent && connected()) throw error
-        sendEvent({ type: 'error', message: error?.message || '文本生成失败', ...(builtin ? { billing:meter?.summary() } : {}) })
+        sendEvent({ type: 'error', message: error?.message || '文本生成失败', ...(builtin ? { billing:(await meter?.summary()) } : {}) })
       }
     } finally {
       if (heartbeat) clearInterval(heartbeat)
@@ -332,18 +333,18 @@ export function createAiCompat({ management, workspaceFiles, generate, probeRefe
   }
 
   // 视频插件引用同一账号工作区的原始素材。
-  function referenceUrl(request, session, path) {
-    const file = workspaceFiles.read(session.userId, String(path || '').trim())
+  async function referenceUrl(request, session, path) {
+    const file = (await workspaceFiles.read(session.userId, String(path || '').trim()))
     const origin = String(process.env.OIP_PUBLIC_ORIGIN || '').replace(/\/$/, '') || `http://${request.headers.host}`
-    const token = createReferenceToken(management.referenceSecret(), { userId: session.userId, path: file.path, revision: file.revision })
+    const token = createReferenceToken((await management.referenceSecret()), { userId: session.userId, path: file.path, revision: file.revision })
     return `${origin}/api/imagine/reference?t=${encodeURIComponent(token)}`
   }
 
   async function pollGeneration(session, requestId) {
-    let current = management.generationForViewer(requestId, session)
+    let current = (await management.generationForViewer(requestId, session))
     while (current && ['queued', 'running'].includes(current.status)) {
       await sleep(POLL_INTERVAL_MS)
-      current = management.generationForViewer(requestId, session)
+      current = (await management.generationForViewer(requestId, session))
     }
     if (!current) throw failure('生成记录不存在', 404)
     if (current.status !== 'succeeded') throw failure(current.error || (current.status === 'cancelled' ? '生成已取消' : '生成失败'), 502)
@@ -352,12 +353,12 @@ export function createAiCompat({ management, workspaceFiles, generate, probeRefe
 
   async function saveToWorkspace(userId, directory, mime, bytes, fallbackExtension) {
     const path = `${directory}/${randomUUID()}.${extensionFor(mime, fallbackExtension)}`
-    workspaceFiles.upsert(userId, path, String(mime || '').split(';')[0].trim() || 'application/octet-stream', bytes)
+    await workspaceFiles.upsert(userId, path, String(mime || '').split(';')[0].trim() || 'application/octet-stream', bytes)
     return path
   }
 
   async function generateImage(session, payload) {
-    const catalog = publicModelCatalog(process.env, management.settings())
+    const catalog = publicModelCatalog(process.env, (await management.settings()))
     const model = publicModelIdOf(catalog, payload.modelId)
     if (!model) throw failure('不支持的图片模型', 422)
     const outputDirectory = safeDirectory(payload.outputDirectory, safeDirectory(payload.directory ? `${payload.directory}/assets` : '', 'assets'))
@@ -389,7 +390,7 @@ export function createAiCompat({ management, workspaceFiles, generate, probeRefe
     const current = await pollGeneration(session, requestId)
     const files = []
     for (const image of current.images || []) {
-      const artifact = management.artifact(String(image.id || ''), session)
+      const artifact = (await management.artifact(String(image.id || ''), session))
       if (!artifact) continue
       const path = await saveToWorkspace(session.userId, outputDirectory, artifact.mime, artifact.bytes, 'png')
       files.push({ path, mimeType: artifact.mime, mediaType: 'image' })
@@ -415,7 +416,7 @@ export function createAiCompat({ management, workspaceFiles, generate, probeRefe
   }
 
   async function generateVideo(request, session, payload) {
-    const catalog = publicVideoCatalog(process.env, management.settings())
+    const catalog = publicVideoCatalog(process.env, (await management.settings()))
     const model = publicModelIdOf(catalog, payload.modelId)
     if (!model) throw failure('不支持的视频模型', 422)
     const requestId = newRequestId()
@@ -429,12 +430,12 @@ export function createAiCompat({ management, workspaceFiles, generate, probeRefe
   }
 
   async function createVideoCompat(request, session, payload, model, requestId) {
-    const toReference = (item) => referenceUrl(request, session, item?.path)
-    const images = (Array.isArray(payload.images) ? payload.images : []).map(toReference)
-    const videos = (Array.isArray(payload.videos) ? payload.videos : []).map(toReference)
-    const audios = (Array.isArray(payload.audios) ? payload.audios : []).map(toReference)
-    const firstFrame = payload.firstFrame?.path ? referenceUrl(request, session, payload.firstFrame.path) : ''
-    const lastFrame = payload.lastFrame?.path ? referenceUrl(request, session, payload.lastFrame.path) : ''
+    const toReference = async (item) => (await referenceUrl(request, session, item?.path))
+    const images = (await mapAsync((Array.isArray(payload.images) ? payload.images : []), toReference))
+    const videos = (await mapAsync((Array.isArray(payload.videos) ? payload.videos : []), toReference))
+    const audios = (await mapAsync((Array.isArray(payload.audios) ? payload.audios : []), toReference))
+    const firstFrame = payload.firstFrame?.path ? (await referenceUrl(request, session, payload.firstFrame.path)) : ''
+    const lastFrame = payload.lastFrame?.path ? (await referenceUrl(request, session, payload.lastFrame.path)) : ''
     const mode = Array.isArray(payload.mode) ? 'image' : String(payload.mode || 'text')
     return createVideo({
       model: model.id,
