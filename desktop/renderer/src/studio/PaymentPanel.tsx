@@ -2,14 +2,14 @@
 import FeedbackNotice from '../components/FeedbackNotice'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import QRCode from 'qrcode'
+import { ArrowLeft, Check, CheckCircle, Clock, QrCode, WarningCircle } from '@phosphor-icons/react'
 import { useLang } from '../i18n'
-import { studioPoint, studioPointParts, studioText } from './studioText'
+import { studioPoint, studioText } from './studioText'
 // 支付宝官方标识（Simple Icons，CC0）。
 import alipayLogo from './assets/alipay.svg?raw'
 
 // 充值面板：只展示金额与积分，不出现任何模型价格或供应商信息。
-// 换算口径全前端只有一处措辞（「1 积分 = 1 元」），写在余额卡里；
-// 这里也不再估算"能生成多少张/多少秒"——用户明确不要那行换算。
+// 换算标准由服务端配置提供，在余额区展示；这里核对本次金额与到账积分。
 
 const STATUS_LABEL = {
   created: '待支付',
@@ -67,22 +67,19 @@ function countdownText(expiresAt, now, lang) {
   return studioText('剩余 {time}', lang, { time: `${minutes}:${seconds}` })
 }
 
-export default function PaymentPanel({ payment, csrf, onPaid, points }) {
+export default function PaymentPanel({ payment, csrf, onPaid, onComplete }) {
   const { lang } = useLang()
   const paymentTypes = useMemo(() => {
-    const values = Array.isArray(payment?.paymentTypes) && payment.paymentTypes.length
+    const values = Array.isArray(payment?.paymentTypes)
       ? payment.paymentTypes
       : payment?.method && payment.method !== 'zpay' ? [payment.method] : ['alipay']
     const visible = [...new Set(values.filter((value) => PAYMENT_METHOD_LABEL[value]))]
-    return visible.length ? visible : ['alipay']
+    return visible
   }, [payment])
   const presets = useMemo(() => {
     if (!payment?.minAmountCents || !payment?.maxAmountCents) return []
-    return PRESET_AMOUNTS.filter((amount) => amount * 100 >= payment.minAmountCents && amount * 100 <= payment.maxAmountCents)
+    return PRESET_AMOUNTS.filter((amount) => amount * 100 >= payment.minAmountCents && amount * 100 <= payment.maxAmountCents && amount * 100 % payment.pointPriceCents === 0)
   }, [payment])
-  // 「推荐」档：没有配置项，取套餐列表的中间那一档（当前 6 档 → ¥50）。
-  // 档位数量变了它会跟着变，不是写死的金额；以后要按运营配置改，从这里换数据源即可。
-  const recommended = presets[Math.floor((presets.length - 1) / 2)] ?? null
   const [amount, setAmount] = useState(() => presets[0] ? String(presets[0]) : String(payment?.minAmount || ''))
   const [paymentType, setPaymentType] = useState(paymentTypes[0] || 'alipay')
   const [order, setOrder] = useState(null)
@@ -133,7 +130,7 @@ export default function PaymentPanel({ payment, csrf, onPaid, points }) {
   useEffect(() => {
     if (!order?.qrcode) return undefined
     let active = true
-    QRCode.toDataURL(order.qrcode, { width: 280, margin: 1, errorCorrectionLevel: 'M', color: { dark: '#09090b', light: '#f4f3ee' } })
+    QRCode.toDataURL(order.qrcode, { width: 280, margin: 1, errorCorrectionLevel: 'M', color: { dark: '#141414', light: '#ffffff' } })
       .then((url) => { if (active) { setQrDataUrl(url); setQrError('') } })
       .catch(() => { if (active) setQrError(studioText('付款二维码暂时不可用，请稍后重试', lang)) })
     return () => { active = false }
@@ -203,105 +200,43 @@ export default function PaymentPanel({ payment, csrf, onPaid, points }) {
     return studioText(PAYMENT_METHOD_LABEL[type]?.label || '支付', lang)
   }
 
-  const balance = (
-    <header className="pay__balance">
-      <div>
-        <p className="pay__kicker">{studioText('当前余额', lang)}</p>
-        <p className="pay__figure">
-          <strong>{Number.isFinite(points) ? studioPointParts(points, lang).value : '—'}</strong>
-          <span>{Number.isFinite(points) ? studioPointParts(points, lang).unit : studioText('积分', lang)}</span>
-        </p>
-      </div>
-      <p className="pay__rate">{studioText('1 积分 = 1 元', lang)}</p>
-    </header>
-  )
-
-  if (!payment?.enabled || !payment?.pointPriceCents) {
-    return (
-      <section className="pay" aria-labelledby="payment-heading">
-        <h2 id="payment-heading" className="pay__title">{studioText('充值积分', lang)}</h2>
-        {balance}
-        <p className="pay__hint">{studioText('充值通道正在配置中，稍后再来。', lang)}</p>
-      </section>
-    )
-  }
-
-  const payLabel = amountState.points === null
-    ? studioText('生成支付二维码', lang)
-    : studioText('支付 ¥{amount}', lang, { amount: formatMoneyCents(amountState.amountCents).replace(/\.00$/, '') })
-
-  return (
-    <section className="pay" aria-labelledby="payment-heading">
-      <div className="pay__head">
-        <h2 id="payment-heading" className="pay__title">{studioText('充值积分', lang)}</h2>
-        {order && <span className={`pay__status pay__status--${status}`}>{studioText(STATUS_LABEL[status] || status, lang)}</span>}
-      </div>
-      {balance}
-      <p className="pay__hint">{studioText('积分用于画布上的图片和视频生成：按次扣费，生成失败自动退回。', lang)}</p>
-
-      {!order && (
-        <>
-          <div className="pay__amounts" role="group" aria-label={studioText('充值金额', lang)}>
-            {presets.map((value) => {
-              const selected = Number(amount) === value
-              return (
-                <button key={value} type="button" className={`pay__amount${selected ? ' is-selected' : ''}`} aria-pressed={selected} onClick={() => setAmount(String(value))}>
-                  <span>¥{value}</span>
-                  {value === recommended && !selected ? <small>{studioText('推荐', lang)}</small> : null}
-                </button>
-              )
-            })}
-          </div>
-          <div className="pay__custom">
-            <label htmlFor="payment-amount">{studioText('自定义金额', lang)}</label>
-            <div className="pay__field">
-              <span>¥</span>
-              <input id="payment-amount" type="number" inputMode="decimal" min={payment.minAmount} max={payment.maxAmount} step={payment.pointPrice} value={amount} onChange={(event) => setAmount(event.target.value)} aria-describedby="payment-amount-help" />
-            </div>
-            <p id="payment-amount-help" className={amountState.message ? 'pay__warn' : 'pay__arrive'}>
-              {amountState.message || studioText('到账 {points}', lang, { points: studioPoint(amountState.points, lang) })}
-            </p>
-          </div>
-          <p className="pay__range">{studioText('可充 ¥{min}–¥{max}，按 ¥{step} 的整数倍输入。', lang, { min: yuanLabel(payment.minAmount), max: yuanLabel(payment.maxAmount), step: yuanLabel(payment.pointPrice) })}</p>
-          {paymentTypes.length > 0 && (
-            <div className="pay__methods" role="radiogroup" aria-label={studioText('支付方式', lang)}>
-              {paymentTypes.map((type) => (
-                <button key={type} type="button" role="radio" aria-checked={paymentType === type} className={`pay__method pay__method--${type}`} onClick={() => setPaymentType(type)}>
-                  {type === 'alipay' ? <span className="pay__method-logo" aria-hidden="true" dangerouslySetInnerHTML={{ __html: alipayLogo }} /> : null}
-                  <span>{methodLabel(type)}</span>
-                </button>
-              ))}
-            </div>
-          )}
-          <button type="button" className="pay__go" onClick={startOrder} disabled={busy || amountState.points === null}>
-            {busy ? studioText('正在生成支付二维码…', lang) : payLabel}
+  const checkout = Boolean(order)
+  const payLabel = amountState.points === null ? studioText('生成支付二维码', lang) : studioText('支付 ¥{amount}', lang, { amount: formatMoneyCents(amountState.amountCents).replace(/\.00$/, '') })
+  if (!payment?.enabled || !payment?.pointPriceCents || !paymentTypes.length) return <section className="pay pay--unavailable" aria-labelledby="payment-heading"><QrCode size={28} aria-hidden="true" /><h2 id="payment-heading">{studioText('充值积分', lang)}</h2><p>{studioText('充值通道正在配置中，稍后再来。', lang)}</p></section>
+  return <section className={`pay${checkout ? ' is-checkout' : ''}`} aria-labelledby="payment-heading">
+    <div className="pay__head"><h2 id="payment-heading" className="pay__title">{studioText(checkout ? '扫码支付' : '充值金额', lang)}</h2>
+      {order && <span className={`pay__status pay__status--${status}`}>{studioText(STATUS_LABEL[status] || status, lang)}</span>}
+    </div>
+    {!order ? <div className="pay__setup">
+      <div className="pay__selection">
+        <div className="pay__amounts" role="group" aria-label={studioText('充值金额', lang)}>{presets.map(value => {
+          const selected = amountState.amountCents === value * 100
+          return <button key={value} type="button" className={`pay__amount${selected ? ' is-selected' : ''}`} aria-pressed={selected} onClick={() => setAmount(String(value))}>
+            <span>¥{value}</span><small>{studioPoint(value * 100 / payment.pointPriceCents, lang)}</small>{selected && <Check className="pay__amount-check" size={14} aria-hidden="true" />}
           </button>
-          <p className="pay__hint">{studioText('支付成功后积分自动到账；如未到账，在支付页点「刷新状态」。', lang)}</p>
-        </>
-      )}
-
-      {order && status === 'created' && (
-        <div className="pay__checkout">
-          <p className="pay__due">¥{money(order)}</p>
-          <p className="pay__due-note">{studioText('请用{method}扫码', lang, { method: methodLabel(order.paymentType) })} · {studioText('到账 {points}', lang, { points: studioPoint(order.points, lang) })}</p>
-          {qrSource
-            ? <img className="pay__qr" src={qrSource} alt={studioText('付款二维码', lang)} referrerPolicy="no-referrer" onError={() => setImageFailed(true)} />
-            : <div className="pay__qr pay__qr--empty"><span>{qrError || studioText('付款码暂时不可用', lang)}</span></div>}
-          <p className="pay__meta"><span>{countdownText(order.expiresAt, now, lang)}</span><span>{order.outTradeNo}</span></p>
-          <button type="button" className="pay__go" onClick={refreshOrder}>{studioText('我已完成支付 · 刷新状态', lang)}</button>
-          <button type="button" className="pay__back" onClick={resetOrder}>{studioText('修改金额', lang)}</button>
+        })}</div>
+        <div className="pay__custom"><label htmlFor="payment-amount">{studioText('自定义金额', lang)}</label><div className="pay__field"><span>¥</span><input id="payment-amount" type="number" inputMode="decimal" min={payment.minAmount} max={payment.maxAmount} step={payment.pointPrice} value={amount} onChange={event => setAmount(event.target.value)} aria-describedby="payment-amount-help" /></div>
+          <p id="payment-amount-help" className={amountState.message ? 'pay__warn' : 'pay__range'}>{amountState.message || studioText('可充 ¥{min}–¥{max}，按 ¥{step} 的整数倍输入。', lang, {min:yuanLabel(payment.minAmount), max:yuanLabel(payment.maxAmount), step:yuanLabel(payment.pointPrice)})}</p>
         </div>
-      )}
-
-      {order && status !== 'created' && (
-        <div className="pay__checkout">
-          {status === 'paid' && <div className="pay__result pay__result--ok"><strong>{studioText('支付成功，{points} 已到账', lang, { points: studioPoint(order.points, lang) })}</strong><span>{studioText('余额已刷新，可以继续使用妙图。', lang)}</span></div>}
-          {TERMINAL.has(status) && status !== 'paid' && <div className="pay__result"><strong>{studioText(STATUS_LABEL[status] || '订单未完成', lang)}</strong><span>{order.failureReason ? publicPaymentError(order.failureReason, lang) : studioText('请重新输入金额。', lang)}</span></div>}
-          <button type="button" className="pay__go" onClick={resetOrder}>{studioText('再充一笔', lang)}</button>
-        </div>
-      )}
-
-      {error && <FeedbackNotice message={error} action={studioText('重试', lang)} onAction={() => { setError(''); if (order) void refreshOrder(); }} onClose={() => setError('')} />}
-    </section>
-  )
+        <div className="pay__method-section"><h3>{studioText('支付方式', lang)}</h3><div className="pay__methods" role="radiogroup" aria-label={studioText('支付方式', lang)}>{paymentTypes.map(type => <button key={type} type="button" role="radio" aria-checked={paymentType === type} className={`pay__method pay__method--${type}`} onClick={() => setPaymentType(type)}>{type === 'alipay' && <span className="pay__method-logo" aria-hidden="true" dangerouslySetInnerHTML={{__html:alipayLogo}} />}<span>{methodLabel(type)}</span><Check size={14} className="pay__method-check" aria-hidden="true" /></button>)}</div></div>
+      </div>
+      <aside className="pay__receipt" aria-label={studioText('充值明细', lang)}>
+        <div className="pay__receive"><span>{studioText('到账积分', lang)}</span><strong>{amountState.points === null ? '—' : studioPoint(amountState.points, lang)}</strong></div>
+        <dl><div><dt>{studioText('充值金额', lang)}</dt><dd>{amountState.amountCents === null ? '—' : '¥' + formatMoneyCents(amountState.amountCents)}</dd></div><div><dt>{studioText('支付方式', lang)}</dt><dd>{methodLabel()}</dd></div></dl>
+        <button type="button" className="pay__go" onClick={startOrder} disabled={busy || amountState.points === null}>{busy ? studioText('正在生成支付二维码…', lang) : payLabel}</button>
+        <p className="pay__hint">{studioText('支付成功后积分自动到账；如未到账，在支付页点「刷新状态」。', lang)}</p>
+      </aside>
+    </div> : status === 'created' ? <div className="pay__cashier">
+      <div className="pay__scan"><div className="pay__scan-label"><QrCode size={16} aria-hidden="true" />{studioText('请用{method}扫码', lang, {method:methodLabel(order.paymentType)})}</div>
+        <div className="pay__qr-frame">{qrSource ? <img className="pay__qr" src={qrSource} alt={studioText('付款二维码', lang)} referrerPolicy="no-referrer" onError={() => setImageFailed(true)} /> : <div className="pay__qr pay__qr--empty"><span>{qrError || studioText('付款码暂时不可用', lang)}</span></div>}</div>
+        <p className="pay__timer"><Clock size={13} aria-hidden="true" />{countdownText(order.expiresAt, now, lang)}</p>
+      </div>
+      <aside className="pay__receipt"><div className="pay__receive"><span>{studioText('应付金额', lang)}</span><strong>¥{money(order)}</strong></div><dl><div><dt>{studioText('到账积分', lang)}</dt><dd>{studioPoint(order.points, lang)}</dd></div><div><dt>{studioText('支付方式', lang)}</dt><dd>{methodLabel(order.paymentType)}</dd></div><div className="pay__order-number"><dt>{studioText('订单号', lang)}</dt><dd title={order.outTradeNo}>{order.outTradeNo}</dd></div></dl>
+        <button type="button" className="pay__go" onClick={refreshOrder}>{studioText('我已完成支付 · 刷新状态', lang)}</button><button type="button" className="pay__back" onClick={resetOrder}><ArrowLeft size={13} aria-hidden="true" />{studioText('修改金额', lang)}</button>
+      </aside>
+    </div> : <div className={`pay__result${status === 'paid' ? ' pay__result--ok' : ''}`} role="status">
+      {status === 'paid' ? <><CheckCircle size={44} weight="light" aria-hidden="true" /><h3>{studioText('支付成功，{points} 已到账', lang, {points:studioPoint(order.points, lang)})}</h3><div className="pay__result-actions"><button type="button" className="pay__go" onClick={onComplete || resetOrder}>{studioText('去画布', lang)}</button><button type="button" className="pay__back" onClick={resetOrder}>{studioText('再充一笔', lang)}</button></div></> : <><WarningCircle size={40} weight="light" aria-hidden="true" /><h3>{studioText(STATUS_LABEL[status] || '订单未完成', lang)}</h3><p>{order.failureReason ? publicPaymentError(order.failureReason, lang) : studioText('请重新输入金额。', lang)}</p><button type="button" className="pay__go" onClick={resetOrder}>{studioText('返回充值', lang)}</button></>}
+    </div>}
+    {error && <FeedbackNotice message={error} action={studioText('重试', lang)} onAction={() => {setError(''); if(order) void refreshOrder();else void startOrder()}} onClose={() => setError('')} />}
+  </section>
 }

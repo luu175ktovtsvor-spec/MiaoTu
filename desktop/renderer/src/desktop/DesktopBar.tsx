@@ -177,7 +177,8 @@ export default function DesktopBar({ children }: { children: ReactNode }) {
           <div className="desktop-account-profile"><div className="desktop-account-avatar">{Array.from(String(account.name || account.email || (isChineseLang(lang) ? '妙' : 'M')))[0]}</div><div><strong>{account.name || t('desktop.account.user')}</strong><p>{account.email}</p></div></div>
           <div className="desktop-account-balance"><span>{t('desktop.account.availableCredits')}</span><strong>{Number(account.points || 0).toLocaleString(locale)}<small>{t('desktop.account.credits')}</small></strong></div>
           {error && <FeedbackNotice message={error} onClose={() => setError('')} />}
-          <button className="desktop-account-submit" type="button" disabled={busy} onClick={() => { close(); window.dispatchEvent(new Event('miao-open-account-surface')) }}>{t('desktop.account.creditsDetails')}<ArrowRight size={18} /></button>
+          <button className="desktop-account-submit" type="button" disabled={busy} onClick={() => { close(); window.dispatchEvent(new Event('miao-open-billing-surface')) }}>{t('desktop.account.creditsDetails')}<ArrowRight size={18} /></button>
+          <button className="desktop-account-settings" type="button" disabled={busy} onClick={() => { close(); window.dispatchEvent(new Event('miao-open-account-surface')) }}>{t('desktop.nav.account')}<ArrowRight size={16} /></button>
           <button className="desktop-account-signout" disabled={busy} onClick={async () => { if (await action('/api/desktop/logout', {})) { setPassword(''); setCode(''); setError(''); window.dispatchEvent(new Event('miao-desktop-session')) } }}><SignOut size={18} />{busy ? t('desktop.account.signingOut') : t('desktop.account.signOut')}</button>
         </>}
         </>}

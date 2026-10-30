@@ -4,25 +4,22 @@ import { imageSources } from '../media'
 import { clearLibraryHandoff, readLibraryHandoff, LIBRARY_TEXT_LIMIT } from '../libraryHandoff'
 import { DEFAULT_PROJECT, setActiveProject, setWorkspaceSession, subscribeWorkspaceScope, workspaceDirectory } from '../lib/workspaceRemote'
 import useWorkspaceFiles from '../lib/workspaceFiles'
-import { ArrowLeft, CaretDown, ClockCounterClockwise, FolderSimple, Receipt, ShieldCheck, SignOut, Sparkle, UserCircle } from '@phosphor-icons/react'
 import { dictText, useLang } from '../i18n'
 // 进度计算全仓只有一份：与框架无关的核心，画布 composable 和历史面板共用（见 generationProgressCore.ts）
 import { createProgressTracker } from './generationProgressCore'
 import LanguageControl from '../LanguageControl'
 import StudioHome from './StudioHome'
-import StudioPicker from './StudioPicker'
-import ModelLogo from './ModelLogo'
-import PaymentPanel from './PaymentPanel'
+import AccountPage from './AccountPage'
+import CreditPage from './CreditPage'
+import GenerationHistoryPage from './GenerationHistoryPage'
 import FeedbackPage from './FeedbackPage'
-import LocalTaskRecovery from './LocalTaskRecovery'
 import PersonalAssetLibrary from './PersonalAssetLibrary'
 import { reloadWorkspace } from '../desktop/navigation'
 import DesktopRail from '../desktop/DesktopRail'
-import { studioPage, studioPoint, studioPointParts, studioRecords, studioText } from './studioText'
+import { studioPoint, studioText } from './studioText'
 import './studio.css'
 import './account.css'
-import { ACTIVE_STATUSES, HISTORY_KINDS, historyProgress, currentMonthRange } from './history'
-import { HistoryCard, LedgerTable, PanelEmpty } from './historyView'
+import { ACTIVE_STATUSES, historyProgress, currentMonthRange } from './history'
 import { emptyHistory, emptyLedger, type BoundCanvasInsert, type HistoryItem, type HistoryState, type LedgerState, type StudioConfig, type StudioSession, type HistoryProgress, type LibrarySelection } from './studioState'
 import type { PendingCanvasInsert } from '../stores/workspace'
 import { importLibraryReference } from './libraryReference'
@@ -32,7 +29,7 @@ import { importLibraryReference } from './libraryReference'
 const MiaoCanvasMount = lazy(() => import('./MiaoCanvasMount'))
 const MiaoSettingsMount = lazy(() => import('./MiaoSettingsMount'))
 
-// 网页工作区由服务器保存；桌面复用界面，通过本机接口保存画布和文件。
+// 桌面外壳负责账号与导航；画布、项目和结果由本机工作区保存。
 
 const PLAY_PROMPTS = {
   wardrobe: '保持人物脸部身份和体态，把人物照片里的穿搭换成连接的服装参考。真实商业摄影，服装结构清楚，手部自然，无文字。',
@@ -117,7 +114,6 @@ export default function StudioPage() {
   const [historyPage, setHistoryPage] = useState(1)
   const [historyModel, setHistoryModel] = useState('')
   const [historyKind, setHistoryKind] = useState('all')       // all | image | video
-  const [ledgerExpanded, setLedgerExpanded] = useState(false)
   // 桌面读取本机任务快照；网站沿用画布的查询接口。共用同一份进度计算。
   const [rowProgress, setRowProgress] = useState<Record<string, HistoryProgress>>({})
   // 每条生成一个 tracker（核心自己记真值峰值，消费者不写 Math.max）
@@ -132,7 +128,6 @@ export default function StudioPage() {
   const [logoutBusy, setLogoutBusy] = useState(false)
   const [userSession, setUserSession] = useState<StudioSession | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [assetSection, setAssetSection] = useState<'history' | 'library'>('library')
   const [homeSection, setHomeSection] = useState<'home' | 'projects' | 'cases'>('home')
   const [homeSectionRequest, setHomeSectionRequest] = useState(0)
   const historyOwner = workspaceOwnerKey(userSession)
@@ -250,7 +245,6 @@ export default function StudioPage() {
     setRowProgress({})
     setHistoryState(emptyHistory())
     setLedgerState(emptyLedger())
-    setAssetSection('library')
     setError('')
     setNotice('')
   }, [])
@@ -279,6 +273,7 @@ export default function StudioPage() {
     projectRef.current = next
     setActiveProject(next)
     setProject(next)
+    setHistoryPage(1)
   }, [])
   const openProject = useCallback((id: string) => {
     switchProject(id)
@@ -373,14 +368,14 @@ export default function StudioPage() {
   }, [lang, userSession, workspaceReady])
 
   useEffect(() => {
-    const page = !userSession ? studioText('登录', lang) : surface === 'history' ? studioText('资产', lang) : surface === 'account' ? studioText('账号', lang) : ''
+    const page = !userSession ? studioText('登录', lang) : surface === 'history' ? studioText('生成历史', lang) : surface === 'assets' ? studioText('资产', lang) : surface === 'billing' ? studioText('积分', lang) : surface === 'account' ? studioText('账号', lang) : ''
     // 品牌按语言取（中文「妙图」／英文 MiaoImg），后面挂当前面板名。
     const brand = dictText(lang, 'app.title')
     document.title = page ? `${brand} · ${page}` : brand
   }, [lang, surface, historyOwner])
 
   useEffect(() => {
-    if (surface !== 'history' || assetSection !== 'history' || !signedIn || !historyOwner) return undefined
+    if (surface !== 'history' || !signedIn || !historyOwner) return undefined
     const controller = new AbortController()
     const params = new URLSearchParams({ limit: '20', page: String(historyPage), view: 'list' })
     if (historyModel) params.set('model', historyModel)
@@ -418,23 +413,24 @@ export default function StudioPage() {
       .finally(() => { if (!controller.signal.aborted && refreshDesktop) timer = window.setTimeout(loadHistory, 2000) })
     void loadHistory()
     return () => { controller.abort(); window.clearTimeout(timer) }
-  }, [assetSection, historyKind, historyModel, historyPage, historyRefresh, lang, signedIn, surface, historyOwner, project])
+  }, [historyKind, historyModel, historyPage, historyRefresh, lang, signedIn, surface, historyOwner, project])
 
   useEffect(() => {
     historyCacheRef.current.clear()
+    setHistoryPage(1)
     setRowProgress({})
     trackersRef.current.clear()
   }, [historyOwner, project])
 
   useEffect(() => {
-    const refresh = () => { if (!document.hidden && surface === 'history' && assetSection === 'history' && signedIn) setHistoryRefresh(value => value + 1) }
+    const refresh = () => { if (!document.hidden && surface === 'history' && signedIn) setHistoryRefresh(value => value + 1) }
     window.addEventListener('focus', refresh)
     document.addEventListener('visibilitychange', refresh)
     return () => { window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh) }
-  }, [assetSection, signedIn, surface])
+  }, [signedIn, surface])
 
   useEffect(() => {
-    if (surface !== 'account' || !signedIn) return undefined
+    if (surface !== 'billing' || !signedIn) return undefined
     const controller = new AbortController()
     setLedgerState({ owner: historyOwner, status: 'loading', items: [], error: '', summary: null })
     const month = currentMonthRange()
@@ -449,7 +445,7 @@ export default function StudioPage() {
         if (loadError.name !== 'AbortError') setLedgerState({ ...emptyLedger(), owner: historyOwner, status: 'error', error: loadError.message })
       })
     return () => controller.abort()
-  }, [assetSection, lang, signedIn, surface, historyOwner, ledgerRefresh])
+  }, [lang, signedIn, surface, historyOwner, ledgerRefresh])
 
   // Server balance is authoritative. A delayed response must never replace
   // another account's session or overwrite a newer refresh.
@@ -647,16 +643,6 @@ export default function StudioPage() {
     finally { passwordPendingRef.current = false; setPasswordBusy(false) }
   }
 
-  function openHistoryRecord(item: HistoryItem) {
-    if (item.video?.url) {
-      window.open(item.video.url, '_blank', 'noopener')
-      return
-    }
-    const image = item.images?.[0] || item.localRecovery?.items?.[0]
-    if (image?.url) window.open(image.url, '_blank', 'noopener')
-    else setNotice(studioText(item.delivery?.status === 'saved' ? '文件已交付桌面，请在生成时使用的电脑上打开。' : item.delivery?.status === 'expired' ? '服务器暂存已过期；如已保存，请在原电脑查看。' : '该记录没有可展示的媒体', lang))
-  }
-
   // 生成历史只有图片和视频：按类型分组、显示模型名和官方标识；文本模型不会出现在这里。
   const historyModels = [
     ...(historyKind === 'video' ? [] : (config?.models || []).map((model) => ({ ...model, group: studioText('图片模型', lang) }))),
@@ -676,8 +662,10 @@ export default function StudioPage() {
   }, [signedIn])
   useEffect(() => {
     const open = () => { closeSettings(); void changeSurface('account') }
+    const billing = () => { closeSettings(); void changeSurface('billing') }
     window.addEventListener('miao-open-account-surface', open)
-    return () => window.removeEventListener('miao-open-account-surface', open)
+    window.addEventListener('miao-open-billing-surface', billing)
+    return () => { window.removeEventListener('miao-open-account-surface', open); window.removeEventListener('miao-open-billing-surface', billing) }
   })
 
   if (!workspaceReady && !error) {
@@ -696,12 +684,12 @@ export default function StudioPage() {
     else void changeSurface('account')
   }
   // 桌面端已登录进入完整账号页；未登录交给原生账号弹窗。
-  const openAccountPage = () => { closeSettings(); void changeSurface('account') }
+  const openBillingPage = () => { closeSettings(); void changeSurface('billing') }
 
   return (
     <div className="studio-shell studio-app">
       {(surface !== 'look' || settingsOpen) && <DesktopRail
-        active={settingsOpen ? 'settings' : surface === 'history' ? 'assets' : surface === 'account' ? 'account' : surface === 'feedback' ? 'feedback' : surface === 'look' ? 'canvas' : homeSection}
+        active={settingsOpen ? 'settings' : surface === 'history' ? 'history' : surface === 'assets' ? 'assets' : surface === 'billing' ? 'billing' : surface === 'account' ? 'account' : surface === 'feedback' ? 'feedback' : surface === 'look' ? 'canvas' : homeSection}
         feedbackUnread={feedbackUnread}
         onFeedback={() => { closeSettings(); void changeSurface('feedback') }}
         onHome={() => { closeSettings(); openHomeSection('home') }}
@@ -709,9 +697,10 @@ export default function StudioPage() {
         onCases={() => { closeSettings(); openHomeSection('cases') }}
         onAssets={() => {
           closeSettings()
-          setAssetSection(signedIn ? 'history' : 'library')
-          void changeSurface('history')
+          void changeSurface('assets')
         }}
+        onHistory={() => { closeSettings(); void changeSurface('history') }}
+        onBilling={openBillingPage}
         onSettings={openSettings}
         onAccount={openAccountSurface}
       />}
@@ -726,155 +715,28 @@ export default function StudioPage() {
           void changeSurface('home')
         }}><img src="/miaoimg-logo.png" alt="" width="28" height="28" />{dictText(lang, 'app.title')}</a>
         <span className="studio-top__gap" />
-        {Number.isFinite(balance) && Boolean(userSession?.user?.email) && <button type="button" aria-current={surface === 'account' ? 'page' : undefined} onClick={openAccountPage}>{studioPoint(balance, lang)}</button>}
+        {Number.isFinite(balance) && Boolean(userSession?.user?.email) && <button type="button" aria-current={surface === 'billing' ? 'page' : undefined} onClick={openBillingPage}>{studioPoint(balance, lang)}</button>}
         <button type="button" aria-current={surface === 'account' ? 'page' : undefined} onClick={openAccountSurface}>{!userSession?.user?.email ? studioText('登录 / 注册', lang) : studioText('账号', lang)}</button>
         {!(surface === 'look' && !settingsOpen) && <LanguageControl compact />}
       </header>
       {statusMessage && <FeedbackNotice message={statusMessage} error={Boolean(error || libraryHandoffError)} onClose={() => { setError(''); setLibraryHandoffError(''); setNotice('') }} />}
       {surface === 'history' ? (
-      <main className="studio-record asset-page">
-        <h1>{studioText('资产', lang)}</h1>
-        <div className="asset-hub">
-          <div className="asset-hub__main">
-            {assetSection === 'library' ? (
-              <PersonalAssetLibrary
-                csrf={userSession?.csrf}
-                owner={workspaceOwner}
-                lang={lang}
-                project={project}
-                onOpenProject={openProject}
-              />
-            ) : !signedIn ? (
-              <section className="asset-login">
-                <ClockCounterClockwise size={28} aria-hidden="true" />
-                <h2>{studioText('登录后可查看生成记录', lang)}</h2>
-                <p>{studioText('生成记录存放在妙图账号里；项目里的素材保存在这台电脑上，离线也能查看。', lang)}</p>
-                <button type="button" onClick={openAccountSurface}>{studioText('登录查看', lang)}</button>
-              </section>
-            ) : (
-              <section className="panel-section asset-history" aria-labelledby="generation-history-title">
-                <div className="panel-section__head">
-                  <h3 id="generation-history-title">{studioText('生成历史', lang)}</h3>
-                </div>
-                <div className="record-toolbar">
-                  <div className="studio-seg" role="group" aria-label={studioText('生成类型', lang)}>
-                    {HISTORY_KINDS.map(([value, label]) => (
-                      <button key={value} type="button" aria-selected={historyKind === value} onClick={() => { setHistoryKind(value); setHistoryPage(1) }}>{studioText(label, lang)}</button>
-                    ))}
-                  </div>
-                  <StudioPicker
-                    compact
-                    label={studioText('模型筛选', lang)}
-                    value={historyModel}
-                    options={[{ value: '', label: studioText('全部模型', lang) }, ...historyModels.map((model) => ({ value: model.id, label: model.label || model.id, group: model.group, leading: <ModelLogo model={model.id} size={18} /> }))]}
-                    onChange={(value) => { setHistoryModel(value); setHistoryPage(1) }}
-                  />
-                  <span>{historyState.total ? studioRecords(historyState.total, lang) : ''}</span>
-                </div>
-                {(historyState.status === 'loading' || historyState.refreshing) && <p>{studioText('正在读取历史记录…', lang)}</p>}
-                {historyState.error && <FeedbackNotice message={historyState.error} />}
-                {historyState.status === 'ready' && historyState.items.length === 0 && (
-                  <PanelEmpty
-                    icon={Sparkle}
-                    title={studioText('还没有生成记录', lang)}
-                    note={studioText('去画布上做第一张吧，出的图和视频都会留在这里。', lang)}
-                    action={studioText('去画布', lang)}
-                  />
-                )}
-                {historyState.status === 'ready' && historyState.items.length > 0 && (
-                  <div className="gen-grid">
-                    {historyState.items.map((item) => (
-                      <div className="gen-entry" key={item.requestId || item.id}>
-                        <HistoryCard item={item} lang={lang} locale={locale} onOpen={openHistoryRecord} progress={rowProgress} now={clock} />
-                        <LocalTaskRecovery recovery={item.localRecovery} lang={lang} />
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {historyState.status === 'ready' && historyState.total > historyState.limit && (
-                  <div className="record-pagination">
-                    <button type="button" onClick={() => setHistoryPage((page) => Math.max(1, page - 1))} disabled={historyPage <= 1}>{studioText('上一页', lang)}</button>
-                    <span>{studioPage(historyPage, Math.max(1, Math.ceil(historyState.total / historyState.limit)), lang)}</span>
-                    <button type="button" onClick={() => setHistoryPage((page) => page + 1)} disabled={historyPage >= Math.ceil(historyState.total / historyState.limit)}>{studioText('下一页', lang)}</button>
-                  </div>
-                )}
-              </section>
-            )}
-          </div>
-          <aside className="asset-hub__nav" aria-label={studioText('资产分类', lang)}>
-            <button type="button" aria-current={assetSection === 'history' ? 'page' : undefined} onClick={() => setAssetSection('history')}>
-              <ClockCounterClockwise size={18} aria-hidden="true" />
-              <span>{studioText('生成历史', lang)}</span>
-            </button>
-            <button type="button" aria-current={assetSection === 'library' ? 'page' : undefined} onClick={() => setAssetSection('library')}>
-              <FolderSimple size={18} aria-hidden="true" />
-              <span>{studioText('个人资产库', lang)}</span>
-            </button>
-          </aside>
-        </div>
-      </main>
+        <GenerationHistoryPage lang={lang} locale={locale} owner={historyOwner} project={project} state={historyState} progress={rowProgress} now={clock}
+          kind={historyKind} model={historyModel} models={historyModels} signedIn={signedIn} onLogin={openAccountSurface}
+          onKind={value => { setHistoryKind(value); setHistoryModel(''); setHistoryPage(1) }} onModel={value => { setHistoryModel(value); setHistoryPage(1) }}
+          onPage={setHistoryPage} onProject={switchProject} onRefresh={() => setHistoryRefresh(value => value + 1)} onCreate={() => void changeSurface('look')} />
+      ) : surface === 'assets' ? (
+        <main className="studio-record asset-page personal-assets-page" aria-labelledby="personal-assets-title">
+          <PersonalAssetLibrary csrf={userSession?.csrf} owner={workspaceOwner} lang={lang} project={project} onOpenProject={openProject} />
+        </main>
+      ) : surface === 'billing' ? (
+        <CreditPage key={historyOwner} payment={config?.payment} csrf={userSession?.csrf} points={balance} ledger={ledgerState} signedIn={signedIn} onLogin={openAccountSurface}
+          onRefresh={() => void refreshAccount()} onPaid={refreshAccount} onCreate={() => void changeSurface('look')} />
       ) : surface === 'feedback' ? (
         <FeedbackPage csrf={userSession?.csrf} signedIn={signedIn} lang={lang} onLogin={() => window.dispatchEvent(new Event('miao-desktop-account'))} onBack={() => openHomeSection('home')} onUnread={setFeedbackUnread} />
       ) : surface === 'account' ? (
-      <main className="studio-record account-page">
-        <button type="button" className="account-back" onClick={() => void changeSurface('home')}><ArrowLeft size={15} aria-hidden="true" />{studioText('返回', lang)}</button>
-        <header className="account-heading">
-          <div><h1>{studioText('账号', lang)}</h1><p>{studioText('管理个人资料、账号安全与积分', lang)}</p></div>
-          <button type="button" className="account-logout" onClick={logoutUser} disabled={logoutBusy || passwordBusy || profileBusy} aria-busy={logoutBusy}>
-            <SignOut size={16} aria-hidden="true" />
-            {studioText(logoutBusy ? '正在退出…' : '退出登录', lang)}
-          </button>
-        </header>
-        <div className="account-layout">
-          <div className="account-settings">
-            <section className="account-card" aria-labelledby="account-profile-title">
-              <header className="account-card__heading"><UserCircle size={20} aria-hidden="true" /><h2 id="account-profile-title">{studioText('个人资料', lang)}</h2></header>
-              <form className="account-form" onSubmit={(event) => { event.preventDefault(); void saveProfile() }}>
-                <div className="account-field"><label htmlFor="account-nickname">{studioText('昵称', lang)}<span className="account-field__count">{profileName.length}/60</span></label>
-                  <input id="account-nickname" type="text" autoComplete="nickname" value={profileName} onChange={(event) => setProfileName(event.target.value)} maxLength={60} required disabled={profileBusy || logoutBusy || passwordBusy} />
-                </div>
-                <div className="account-email"><span>{studioText('登录邮箱', lang)}</span><p>{userSession?.user?.email || '—'}</p></div>
-                <button className="account-save" type="submit" disabled={profileBusy || logoutBusy || passwordBusy || !profileName.trim() || profileName.trim() === userSession?.user?.name} aria-busy={profileBusy}>{studioText(profileBusy ? '正在保存…' : '保存昵称', lang)}</button>
-              </form>
-            </section>
-            <section className="account-card" aria-labelledby="account-security-title">
-              <header className="account-card__heading"><ShieldCheck size={20} aria-hidden="true" /><h2 id="account-security-title">{studioText('账号安全', lang)}</h2></header>
-              <details className="account-security">
-                <summary><span>{studioText(hasPassword ? '修改密码' : '设置密码', lang)}</span><CaretDown size={16} aria-hidden="true" /></summary>
-                <form className="account-form" onSubmit={(event) => { event.preventDefault(); void changePassword() }}>
-                  {hasPassword && <div className="account-field"><label htmlFor="account-current-password">{studioText('原密码', lang)}</label><input id="account-current-password" type="password" autoComplete="current-password" value={passwordForm.currentPassword} onChange={(event) => setPasswordForm((current) => ({ ...current, currentPassword: event.target.value }))} disabled={passwordBusy || logoutBusy || profileBusy} required /></div>}
-                  <div className="account-field"><label htmlFor="account-new-password">{studioText(hasPassword ? '新密码' : '密码', lang)}</label><input id="account-new-password" type="password" autoComplete="new-password" placeholder={studioText('至少 8 位', lang)} value={passwordForm.newPassword} onChange={(event) => setPasswordForm((current) => ({ ...current, newPassword: event.target.value }))} minLength={8} maxLength={128} disabled={passwordBusy || logoutBusy || profileBusy} required /></div>
-                  {!hasPassword && <p className="account-form__hint">{studioText('设置后可使用邮箱和密码登录。', lang)}</p>}
-                  <button className="account-save" type="submit" disabled={passwordBusy || logoutBusy || profileBusy}>{passwordBusy ? studioText('正在保存…', lang) : studioText(hasPassword ? '修改密码' : '设置密码', lang)}</button>
-                </form>
-              </details>
-            </section>
-          </div>
-          <div className="account-billing">
-            <div className="account-card account-credit">
-        <PaymentPanel payment={config?.payment} csrf={userSession?.csrf} onPaid={refreshAccount} points={balance} />
-            </div>
-        <section className="account-card account-ledger" aria-labelledby="account-ledger-title">
-          <header className="account-card__heading">
-            <Receipt size={20} aria-hidden="true" /><h2 id="account-ledger-title">{studioText('积分流水', lang)}</h2>
-            {ledgerState.status === 'ready' && ledgerState.items.length > 8 && <button type="button" className="account-ledger__toggle" aria-expanded={ledgerExpanded} onClick={() => setLedgerExpanded((value) => !value)}>{studioText(ledgerExpanded ? '收起' : '显示全部', lang)}</button>}
-          </header>
-          {ledgerState.status === 'loading' && <p>{studioText('正在读取额度流水…', lang)}</p>}
-          {ledgerState.status === 'error' && <FeedbackNotice message={ledgerState.error} />}
-          {ledgerState.status === 'ready' && ledgerState.items.length === 0 && (
-            <PanelEmpty
-              icon={Receipt}
-              title={studioText('还没有积分变动', lang)}
-              note={studioText('充值和消耗都会记在这里，方便随时对账。', lang)}
-            />
-          )}
-          {ledgerState.status === 'ready' && ledgerState.items.length > 0 && (
-            <LedgerTable rows={ledgerExpanded ? ledgerState.items : ledgerState.items.slice(0, 8)} lang={lang} locale={locale} />
-          )}
-        </section>
-          </div>
-        </div>
-      </main>
+        <AccountPage lang={lang} user={userSession?.user} name={profileName} onName={setProfileName} profileBusy={profileBusy} passwordBusy={passwordBusy} logoutBusy={logoutBusy} hasPassword={hasPassword}
+          password={passwordForm} onPassword={(field,value) => setPasswordForm(current => ({ ...current, [field]: value }))} onSave={() => void saveProfile()} onChangePassword={() => void changePassword()} onLogout={() => void logoutUser()} />
       ) : surface === 'home' ? (
       <StudioHome
         csrf={userSession?.csrf}

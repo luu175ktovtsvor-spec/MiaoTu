@@ -169,7 +169,7 @@ export default function PersonalAssetLibrary({ csrf, owner, lang, project, onOpe
     <section className="asset-library" aria-labelledby="personal-assets-title">
       <header className="asset-library__header">
         <div>
-          <h2 id="personal-assets-title">{studioText('个人资产库', lang)}</h2>
+          <h1 id="personal-assets-title">{studioText('个人资产库', lang)}</h1>
           <p>{studioText('按项目查看妙图项目里的图片、视频和音频，文件都保存在这台电脑上。', lang)}</p>
         </div>
         {projects.length > 0 && <div className="asset-library__actions">

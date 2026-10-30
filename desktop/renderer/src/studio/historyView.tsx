@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ArrowDownLeft, FilmStrip, ImageSquare, Sparkle, TrendUp } from '@phosphor-icons/react'
+import { ArrowDownLeft, ArrowUpRight, ArrowsLeftRight, FilmStrip, Gift, ImageSquare, Sparkle, Wallet } from '@phosphor-icons/react'
 import { studioText, studioPoint } from './studioText'
 import { ACTIVE_STATUSES, STATUS_LABEL, STATUS_TONE, LEDGER_BADGE, ledgerRow, relativeTime, historyTime, waitingText } from './history'
 import type { HistoryItem, HistoryProgress, LedgerEntry } from './studioState'
@@ -144,42 +144,20 @@ export function HistoryCard({ item, lang, locale, onOpen, progress, now }: { ite
 }
 
 export function LedgerTable({ rows, lang, locale }: { rows: LedgerEntry[]; lang: string; locale: string }) {
-  return (
-    <div className="ledger-wrap">
-      <table className="ledger-table">
-        <thead>
-          <tr>
-            <th>{studioText('时间', lang)}</th>
-            <th>{studioText('事项', lang)}</th>
-            <th>{studioText('积分', lang)}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, index) => {
-            const entry = ledgerRow(row, lang)
-            const credit = entry.delta > 0
-            return (
-              <tr key={`${row.createdAt}-${index}`}>
-                <td>
-                  <span className="ledger-time" title={new Date(row.createdAt).toLocaleString(locale, { hour12: false })}>{relativeTime(row.createdAt, lang)}</span>
-                </td>
-                <td>
-                  <span className={`ledger-badge${entry.kind === 'recharge' || entry.kind === 'refund' ? ' is-credit' : ''}`}>{studioText(LEDGER_BADGE[entry.kind], lang)}</span>
-                  <div className="ledger-sub" title={entry.order ? `${studioText('订单号', lang)} ${entry.order}` : undefined}>{entry.sub || entry.text}</div>
-                </td>
-                <td>
-                  <span className={`ledger-amount${credit ? ' is-credit' : entry.delta === 0 ? ' is-zero' : ''}`}>
-                    {credit ? <TrendUp size={12} aria-hidden="true" /> : entry.delta < 0 ? <ArrowDownLeft size={12} aria-hidden="true" /> : null}
-                    {credit ? `+${studioPoint(entry.delta, lang)}` : studioPoint(entry.delta, lang)}
-                  </span>
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
-  )
+  return <div className="ledger-wrap"><table className="ledger-table">
+    <thead><tr><th>{studioText('事项', lang)}</th><th>{studioText('时间', lang)}</th><th>{studioText('积分', lang)}</th></tr></thead>
+    <tbody>{rows.map((row,index) => {
+      const entry = ledgerRow(row, lang), credit = entry.delta != null && entry.delta > 0
+      const Icon = entry.kind === 'recharge' ? Wallet : entry.kind === 'grant' ? Gift : entry.kind === 'refund' ? ArrowDownLeft : entry.kind === 'spend' ? ArrowUpRight : ArrowsLeftRight
+      const date = new Date(row.createdAt)
+      const timestamp = Number.isNaN(date.getTime()) ? '—' : new Intl.DateTimeFormat(locale, { year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false }).format(date)
+      return <tr key={row.createdAt+'-'+index}>
+        <td><div className="ledger-description"><span className={'ledger-icon'+(credit?' is-credit':'')}><Icon size={17} aria-hidden="true" /></span><div><div className="ledger-description__title"><strong>{entry.text}</strong><span className="ledger-badge">{studioText(LEDGER_BADGE[entry.kind], lang)}</span></div>{entry.order && <details className="ledger-reference"><summary>{studioText(entry.orderLabel, lang)}</summary><code>{entry.order}</code></details>}</div></div></td>
+        <td><time className="ledger-time" dateTime={Number.isNaN(date.getTime())?undefined:date.toISOString()} title={Number.isNaN(date.getTime())?'':date.toLocaleString(locale,{hour12:false})}>{timestamp}</time></td>
+        <td><span className={'ledger-amount'+(credit?' is-credit':entry.delta===0?' is-zero':'')}>{entry.delta == null ? '—' : (credit ? '+' : '')+studioPoint(entry.delta, lang)}</span></td>
+      </tr>
+    })}</tbody>
+  </table></div>
 }
 
 export function PanelEmpty({ icon: Icon, title, note, action }: { icon: typeof Sparkle; title: string; note: string; action?: string }) {

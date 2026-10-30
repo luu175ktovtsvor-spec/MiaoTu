@@ -1,8 +1,8 @@
-import { ChatCircleText, ClockCounterClockwise, FolderSimple, GearSix, House, Images, Lightbulb, UserCircle } from '@phosphor-icons/react'
+import { ChatCircleText, ClockCounterClockwise, FolderSimple, GearSix, House, Images, Lightbulb, UserCircle, Wallet } from '@phosphor-icons/react'
 import { useLang } from '../i18n'
 import { isChineseLang } from '../shellLanguage'
 
-export type DesktopRailView = 'home' | 'projects' | 'cases' | 'assets' | 'canvas' | 'settings' | 'account' | 'feedback'
+export type DesktopRailView = 'home' | 'projects' | 'cases' | 'assets' | 'canvas' | 'settings' | 'account' | 'feedback' | 'billing' | 'history'
 
 type DesktopRailProps = {
   active: DesktopRailView
@@ -10,13 +10,15 @@ type DesktopRailProps = {
   onProjects(): void
   onCases(): void
   onAssets(): void
+  onHistory(): void
+  onBilling(): void
   onSettings(): void
   onFeedback(): void
   onAccount(): void
   feedbackUnread?: number
 }
 
-export default function DesktopRail({ active, onHome, onProjects, onCases, onAssets, onSettings, onFeedback, onAccount, feedbackUnread = 0 }: DesktopRailProps) {
+export default function DesktopRail({ active, onHome, onProjects, onCases, onAssets, onHistory, onBilling, onSettings, onFeedback, onAccount, feedbackUnread = 0 }: DesktopRailProps) {
   const { t, lang } = useLang()
   return (
     <aside className="desktop-edge-rail" aria-label={t('desktop.nav.label')}>
@@ -33,8 +35,9 @@ export default function DesktopRail({ active, onHome, onProjects, onCases, onAss
           <FolderSimple size={19} aria-hidden="true" /><span>{t('desktop.nav.projects')}</span>
         </button>
         <button type="button" aria-current={active === 'assets' ? 'page' : undefined} onClick={onAssets}>
-          <ClockCounterClockwise size={19} aria-hidden="true" /><span>{t('desktop.nav.assets')}</span>
+          <Images size={19} aria-hidden="true" /><span>{t('desktop.nav.assets')}</span>
         </button>
+        <button type="button" aria-current={active === 'history' ? 'page' : undefined} onClick={onHistory}><ClockCounterClockwise size={19} aria-hidden="true" /><span>{t('desktop.nav.history')}</span></button>
       </nav>
       {/* 和 LibTV 一样分组：上面是自己的东西，「社区」下面是大家的作品。 */}
       <p className="desktop-edge-rail__group">{t('desktop.nav.community')}</p>
@@ -45,6 +48,7 @@ export default function DesktopRail({ active, onHome, onProjects, onCases, onAss
       </nav>
       <p className="desktop-edge-rail__group">{t('desktop.nav.more')}</p>
       <nav className="desktop-edge-rail__nav" aria-label={t('desktop.nav.more')}>
+        <button type="button" aria-current={active === 'billing' ? 'page' : undefined} onClick={onBilling}><Wallet size={19} aria-hidden="true" /><span>{t('desktop.nav.credits')}</span></button>
         <button type="button" aria-current={active === 'feedback' ? 'page' : undefined} onClick={onFeedback}>
           <ChatCircleText size={19} aria-hidden="true" /><span>{t('desktop.nav.feedback')}</span>{feedbackUnread > 0 && <i className="desktop-edge-rail__dot" aria-label={t('desktop.nav.newReplies')} />}
         </button>

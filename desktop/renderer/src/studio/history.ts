@@ -29,19 +29,20 @@ export const STATUS_TONE = { submitting: 'is-active', confirming: 'is-active', q
 
 // 流水行的分类与文案。服务端给的是中文原文，词典查不到就原样显示（服务端原文不改）。
 export function ledgerRow(row: LedgerEntry, lang: string) {
-  const raw = String(row.reason || '')
-  const delta = Number(row.delta) || 0
-  const recharge = raw.match(/充值到账\s*(\S+)/)
-  // 订单号优先用接口给的 paymentOrderId；旧数据没有这个字段时再从 reason 里兜底抠出来。
-  if (recharge) return { kind: 'recharge', text: studioText('充值到账', lang), sub: studioText('已到账', lang), order: String(row.paymentOrderId || recharge[1] || ''), delta }
-  const grant = raw.match(/^(.*?)\s*注册初始额度$/)
-  if (grant) return { kind: 'grant', text: grant[1] ? studioText('{provider} 注册初始额度', lang, { provider: studioText(grant[1], lang) }) : studioText('注册初始额度', lang), sub: '', order: '', delta }
-  if (/退还|退回/.test(raw)) return { kind: 'refund', text: studioText(raw, lang), sub: '', order: '', delta }
-  if (raw === '生成预扣') return { kind: 'spend', text: studioText('生成预扣', lang), sub: '', order: '', delta }
-  return { kind: delta > 0 ? 'refund' : 'spend', text: studioText(raw, lang), sub: '', order: '', delta }
+  const raw = String(row.reason || '').trim()
+  const value: unknown = row.delta
+  const parsed = value == null || value === '' ? null : Number(value)
+  const delta = parsed != null && Number.isFinite(parsed) ? parsed : null
+  const recharge = /^充值到账(?:\s+(\S+))?$/.exec(raw)
+  if (recharge) return { kind: 'recharge', text: studioText('充值到账', lang), sub: '', order: String(recharge[1] || row.paymentOrderId || ''), orderLabel: recharge[1] ? '订单号' : '记录编号', delta }
+  if (/注册初始额度$|^初始额度$|赠送/.test(raw)) return { kind: 'grant', text: studioText(/注册初始额度$/.test(raw) ? '注册初始额度' : raw, lang), sub: '', order: '', orderLabel: '', delta }
+  if (/退还|退回|退款/.test(raw)) return { kind: 'refund', text: studioText(raw, lang), sub: '', order: '', orderLabel: '', delta }
+  if (/人工|管理员|手动|调整|补发|补扣|修正/.test(raw)) return { kind: 'adjustment', text: studioText(raw, lang), sub: '', order: '', orderLabel: '', delta }
+  if (delta != null && delta < 0 && /生成|文本|对话|Agent/i.test(raw)) return { kind: 'spend', text: studioText(raw, lang), sub: '', order: '', orderLabel: '', delta }
+  return { kind: 'other', text: studioText(raw || '积分变动', lang), sub: '', order: '', orderLabel: '', delta }
 }
 
-export const LEDGER_BADGE = { recharge: '充值', grant: '赠送', spend: '消耗', refund: '退回' }
+export const LEDGER_BADGE = { recharge: '充值', grant: '赠送', spend: '消耗', refund: '退回', adjustment: '调整', other: '其他' }
 // 生成记录的类型筛选：值和取词都走词典。
 export const HISTORY_KINDS = [['all', '全部'], ['image', '图片'], ['video', '视频']]
 
