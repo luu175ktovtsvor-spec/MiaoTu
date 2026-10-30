@@ -5,10 +5,10 @@ const hoursArg = process.argv.find(arg => arg.startsWith('--hours='))
 const hours = Math.max(0.01, Number(hoursArg?.split('=')[1] || 24))
 const provider = String(process.argv.find(arg => arg.startsWith('--provider='))?.split('=').slice(1).join('=') || 'metaso').trim()
 const since = new Date(Date.now() - hours * 3_600_000).toISOString()
-const store = new ManagementStore()
+const store = (await ManagementStore.open())
 try {
-  const rows = store.all('SELECT * FROM upstream_reconciliations WHERE provider=? AND to_at>=? ORDER BY to_at ASC', provider, since)
-  const snapshots = store.all('SELECT * FROM upstream_balance_snapshots WHERE provider=? AND observed_at>=? ORDER BY observed_at DESC', provider, since)
+  const rows = (await store.all('SELECT * FROM upstream_reconciliations WHERE provider=? AND to_at>=? ORDER BY to_at ASC', provider, since))
+  const snapshots = (await store.all('SELECT * FROM upstream_balance_snapshots WHERE provider=? AND observed_at>=? ORDER BY observed_at DESC', provider, since))
   const known = rows.filter(row => row.delta != null)
   const actual = known.reduce((sum, row) => sum + Number(row.delta || 0), 0)
   const attributable = known.reduce((sum, row) => sum + Number(row.successful_estimated_credits || 0), 0)
@@ -29,5 +29,5 @@ try {
     status: known.length ? 'ok' : 'unknown',
   }, null, 2))
 } finally {
-  store.close()
+  await store.close()
 }

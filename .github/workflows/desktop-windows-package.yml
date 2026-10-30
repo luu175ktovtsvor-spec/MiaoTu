@@ -3,7 +3,7 @@ name: 妙图 Windows 打包
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [ChineseMain]
     paths:
       - .github/workflows/desktop-windows-package.yml
       - package.json

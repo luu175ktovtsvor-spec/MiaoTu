@@ -2,7 +2,7 @@
 <script setup lang="ts">
 import { h, useSlots, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { userFacingError } from '../../../../../../server/user-errors.ts'
+import { publicError } from '@/lib/publicError'
 
 const props = withDefaults(defineProps<{ message: string; action?: string; disabled?: boolean; error?: boolean }>(), { error: true })
 const emit = defineEmits<{ action: []; close: [] }>()
@@ -12,7 +12,7 @@ watch(() => [props.message, props.action, props.disabled, props.error] as const,
   let active = true
   const notice = ElMessage({
     message: h('div', { class: 'feedback-notice-content' }, [
-      h('span', props.error ? userFacingError(props.message) : props.message),
+      h('span', props.error ? publicError(props.message) : props.message),
       ...(props.action ? [h('button', { type: 'button', class: 'feedback-notice-action', disabled: props.disabled, onClick: () => emit('action') }, props.action)] : []),
       ...(slots.default ? slots.default() : []),
     ]),

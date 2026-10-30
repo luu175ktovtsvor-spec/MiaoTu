@@ -2,6 +2,7 @@
 // 直接复用 element-plus 已装的官方语言包，不自己维护一份；同样按语言动态加载，
 // 不让这十几个包挤进首屏。
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
+import en from 'element-plus/es/locale/lang/en'
 import type { Locale } from './index'
 
 export type ElementLocale = typeof zhCn
@@ -45,6 +46,6 @@ export async function loadElementLocale(locale: Locale): Promise<ElementLocale> 
     return module.default
   } catch {
     // 包加载失败不该让界面挂掉：用默认包，画布文案不受影响。
-    return defaultElementLocale
+    return locale === 'zh-CN' || locale === 'zh-TW' ? zhCn : en
   }
 }

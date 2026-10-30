@@ -1,4 +1,4 @@
-import { BufferGeometry, Float32BufferAttribute, Group, Mesh, MeshStandardMaterial } from "three";
+import { BufferGeometry, Float32BufferAttribute, Group, Mesh, MeshStandardMaterial, SphereGeometry } from "three";
 
 export const mannequinJoints = [
   "hips", "spine", "neck", "head",
@@ -6,14 +6,30 @@ export const mannequinJoints = [
   "leftHip", "leftKnee", "leftAnkle", "rightHip", "rightKnee", "rightAnkle",
 ] as const;
 
-export function createMannequin(id: string, color = "#c7a77b", hiddenParts: readonly typeof mannequinJoints[number][] = []): Group {
+/** Body proportions: bone length, limb and torso girth, head size; the standard build is the original mannequin. */
+export const bodyTypes = {
+  standard: { name: "标准男性", length: 1, girth: 1, head: 1 },
+  female: { name: "标准女性", length: 0.94, girth: 0.88, head: 0.97 },
+  athletic: { name: "健硕", length: 1.01, girth: 1.22, head: 1 },
+  slim: { name: "纤细", length: 1.02, girth: 0.82, head: 0.98 },
+  teen: { name: "少年", length: 0.88, girth: 0.86, head: 1.03 },
+  child: { name: "儿童", length: 0.66, girth: 0.8, head: 1.2 },
+  broad: { name: "宽厚", length: 0.98, girth: 1.35, head: 1.05 },
+  chibi: { name: "二头身", length: 0.55, girth: 1.05, head: 2.1 },
+} as const;
+export type BodyType = keyof typeof bodyTypes;
+export const bodyTypeIds = Object.keys(bodyTypes) as [BodyType, ...BodyType[]];
+
+export function createMannequin(id: string, color = "#c7a77b", hiddenParts: readonly typeof mannequinJoints[number][] = [], bodyType: BodyType = "standard"): Group {
+  const { length, girth, head: headSize } = bodyTypes[bodyType];
   const root = new Group();
   root.name = `mannequin:${id}`;
   root.userData.threeJsonId = id;
   const material = new MeshStandardMaterial({ color, roughness: 0.75 });
 
   // ACT: 用少量椭圆截面表现人体体积，保留刚性关节预演，不引入蒙皮或外部模型。
-  function bodyPart(parent: Group, rings: [height: number, width: number, depth: number, forward?: number][]) {
+  // Proportions scale each part's own mesh, never a joint group, so posed limbs rotate without shearing.
+  function bodyPart(parent: Group, rings: [height: number, width: number, depth: number, forward?: number][], scale: [number, number, number] = [girth, length, girth]) {
     if (!parent.visible) return;
     const segments = 16;
     const positions: number[] = [];
@@ -42,6 +58,7 @@ export function createMannequin(id: string, color = "#c7a77b", hiddenParts: read
     geometry.setIndex(indices);
     geometry.computeVertexNormals();
     const mesh = new Mesh(geometry, material);
+    mesh.scale.set(...scale);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     parent.add(mesh);
@@ -51,7 +68,7 @@ export function createMannequin(id: string, color = "#c7a77b", hiddenParts: read
     const group = new Group();
     group.name = name;
     group.visible = parent.visible && !hiddenParts.includes(name);
-    group.position.set(...position);
+    group.position.set(position[0] * girth, position[1] * length, position[2]);
     parent.add(group);
     return group;
   }
@@ -64,7 +81,16 @@ export function createMannequin(id: string, color = "#c7a77b", hiddenParts: read
   const neck = joint(spine, "neck", [0, 0.425, 0]);
   bodyPart(neck, [[-0.04, 0.048, 0.043], [0.045, 0.043, 0.04], [0.08, 0.052, 0.047]]);
   const head = joint(neck, "head", [0, 0.07, 0]);
-  bodyPart(head, [[-0.045, 0.038, 0.043, 0.015], [-0.01, 0.072, 0.075, 0.008], [0.055, 0.092, 0.095], [0.125, 0.09, 0.09], [0.17, 0.075, 0.075], [0.198, 0.035, 0.036], [0.205, 0.002, 0.002]]);
+  const headScale: [number, number, number] = [headSize, headSize, headSize];
+  bodyPart(head, [[-0.045, 0.038, 0.043, 0.015], [-0.01, 0.072, 0.075, 0.008], [0.055, 0.092, 0.095], [0.125, 0.09, 0.09], [0.17, 0.075, 0.075], [0.198, 0.035, 0.036], [0.205, 0.002, 0.002]], headScale);
+
+  if (head.visible) {
+    const nose = new Mesh(new SphereGeometry(0.026, 12, 8), material);
+    nose.position.set(0, 0.055 * headSize, 0.09 * headSize);
+    nose.scale.set(0.7 * headSize, 0.8 * headSize, 1.2 * headSize);
+    nose.castShadow = true;
+    head.add(nose);
+  }
 
   for (const side of ["left", "right"] as const) {
     const direction = side === "left" ? 1 : -1;

@@ -10,7 +10,7 @@
     <div class="generationSettings nodrag nopan nowheel" @pointerdown.stop @mousedown.stop @dblclick.stop @keydown.stop @wheel.stop>
       <template v-if="qualityChoices.length">
         <div class="sectionLabel">{{ translate('画质') }}</div>
-        <settingOptions v-model="quality" :options="qualityChoices" :columns="3" :active-values="['', 'auto']" :disabled="disabled" :label="translate('画质')" />
+        <settingOptions v-model="qualitySelection" :options="qualityChoices" :columns="3" :disabled="disabled" :label="translate('画质')" />
       </template>
       <template v-if="tierChoices.length">
         <div class="sectionLabel">{{ translate('清晰度') }}</div>
@@ -30,9 +30,9 @@
         <settingOptions v-model="count" :options="countChoices" :columns="Math.min(4, countChoices.length)" :disabled="disabled" :label="translate('生成数量')" />
       </template>
       <label v-if="supportsLayers" class="layerToggle">
-        <el-switch v-model="layerDecomposition" :disabled="disabled || !layerReady" :aria-label="translate('图层拆分')" />
+        <el-switch v-model="layerDecomposition" :disabled="disabled || !layerReady" :aria-label="translate('图层分离')" />
         <span>
-          {{ translate('图层拆分') }}
+          {{ translate('图层分离') }}
           <small>{{ layerReady ? translate("1 张底图 + 最多 16 个透明图层") : translate("需要恰好 1 张参考图") }}</small>
         </span>
       </label>
@@ -125,8 +125,14 @@ const effectiveRatio = computed(() => {
 const QUALITY_LABELS: Record<string, string> = { low: "低画质", medium: "标准画质", high: "高画质", xhigh: "超高画质", max: "极致画质" };
 const FIDELITY_LABELS: Record<string, string> = { low: "低", high: "高" };
 function fidelityLabel(value: string) { return translate(FIDELITY_LABELS[value] || value); }
+// Keep the server's legacy omitted-quality default visible. Selecting Auto
+// now writes an explicit auto, while merely opening an old canvas keeps medium.
+const qualitySelection = computed({
+  get: () => quality.value || (props.model?.modelId?.startsWith('gpt-image-2') ? 'medium' : qualityOptions.value.includes('auto') ? 'auto' : ''),
+  set: (value: string) => { quality.value = value; },
+});
 const qualityChoices = computed(() => qualityOptions.value.length
-  ? [{ value: "", label: translate("自动") }, ...qualityOptions.value.filter(item => item !== "auto").map(item => ({ value: item, label: translate(QUALITY_LABELS[item] || item) }))]
+  ? [{ value: qualityOptions.value.includes("auto") ? "auto" : "", label: translate("自动") }, ...qualityOptions.value.filter(item => item !== "auto").map(item => ({ value: item, label: translate(QUALITY_LABELS[item] || item) }))]
   : []);
 const backgroundChoices = computed(() => [
   { value: "opaque", label: translate("保留背景") },
@@ -164,7 +170,8 @@ const showAdvanced = ref(false);
 const hasAdvanced = computed(() => Boolean(customRule.value) || formatOptions.value.length > 1 || fidelityOptions.value.length > 0 || optimizeModes.value.length > 0 || controls.value.length > 0);
 const settingsSummary = computed(() => {
   const ratioText = effectiveRatio.value === "auto" || !effectiveRatio.value ? translate("自动") : effectiveRatio.value;
-  const qualityText = quality.value && quality.value !== "auto" ? translate(QUALITY_LABELS[quality.value] || quality.value) : "";
+  const selectedQuality = qualitySelection.value;
+  const qualityText = selectedQuality && selectedQuality !== "auto" ? translate(QUALITY_LABELS[selectedQuality] || selectedQuality) : "";
   const tier = currentTier.value;
   return [ratioText, qualityText, tier, translate("{0}张", { 0: count.value })].filter(Boolean).join(" · ");
 });

@@ -56,7 +56,7 @@ export function cleanProjectName(value) {
 
 // ---- 表结构 ----
 
-export const tableColumns = (store, table) => store.all(`PRAGMA table_info(${table})`).map(column => column.name)
+export const tableColumns = async (store, table) => (await store.all(`PRAGMA table_info(${table})`)).map(column => column.name)
 
 // 主键是 (user_id, id)：项目 id 只需要在账号内唯一，这样每个账号的默认项目都能叫 default。
 // 如果按「id 全局唯一」建表，第二个账号就拿不到 default 这个 id 了，和「默认项目固定用 default」冲突。
@@ -69,8 +69,8 @@ export const PROJECTS_TABLE_DDL = `CREATE TABLE IF NOT EXISTS projects(
   PRIMARY KEY(user_id,id),
   UNIQUE(user_id,name))`
 
-export function ensureProjectsSchema(store) {
-  store.run(PROJECTS_TABLE_DDL)
+export async function ensureProjectsSchema(store) {
+  await store.run(PROJECTS_TABLE_DDL)
 }
 
 const scopedWorkspaceDdl = name => `CREATE TABLE ${name}(
@@ -93,9 +93,9 @@ const legacyWorkspaceDdl = name => `CREATE TABLE ${name}(
 
 // 老库的 bytes 是 NOT NULL，而上一轮迁移后要把它写成 NULL，SQLite 改不了列约束，
 // 只能重建一次表：列和行一个不少。这仍然是上一轮的行为，和项目维度无关。
-export function ensureWorkspaceSchema(store) {
-  const columns = store.all('PRAGMA table_info(workspace_files)')
-  if (!columns.length) { store.run(legacyWorkspaceDdl('workspace_files')); return { created: true, upgraded: false } }
+export async function ensureWorkspaceSchema(store) {
+  const columns = (await store.all('PRAGMA table_info(workspace_files)'))
+  if (!columns.length) { await store.run(legacyWorkspaceDdl('workspace_files')); return { created: true, upgraded: false } }
   const names = new Set(columns.map(column => column.name))
   // 已经是项目结构：那张表由 scopedWorkspaceDdl 建的，列一定齐。
   if (names.has('project_id')) return { created: false, upgraded: false }
@@ -104,24 +104,24 @@ export function ensureWorkspaceSchema(store) {
   const storage = names.has('storage') ? "COALESCE(storage,'db')" : "'db'"
   const size = names.has('size') ? 'size' : 'COALESCE(length(bytes),0)'
   const blob = names.has('blob') ? 'blob' : 'NULL'
-  const before = store.get('SELECT COUNT(*) AS rows FROM workspace_files').rows
-  store.transaction(() => {
-    store.run(legacyWorkspaceDdl('workspace_files_upgrade'))
-    store.run(`INSERT INTO workspace_files_upgrade(user_id,path,mime,bytes,revision,updated_at,storage,size,blob)
+  const before = (await store.get('SELECT COUNT(*) AS rows FROM workspace_files')).rows
+  await store.transaction(async () => {
+    await store.run(legacyWorkspaceDdl('workspace_files_upgrade'))
+    await store.run(`INSERT INTO workspace_files_upgrade(user_id,path,mime,bytes,revision,updated_at,storage,size,blob)
       SELECT user_id,path,mime,bytes,revision,updated_at,${storage},${size},${blob} FROM workspace_files`)
-    store.run('DROP TABLE workspace_files')
-    store.run('ALTER TABLE workspace_files_upgrade RENAME TO workspace_files')
+    await store.run('DROP TABLE workspace_files')
+    await store.run('ALTER TABLE workspace_files_upgrade RENAME TO workspace_files')
   })
   return { created: false, upgraded: true, rows: before }
 }
 
 // 内容寻址用的 blob 列：可空 ADD COLUMN，SQLite 不用重建表，存量行(NULL)语义就是「还没搬」。
 // 建表和重建表的地方都带上它了，这里只补「表已经存在但还没这一列」的老库。
-export function ensureWorkspaceBlobColumn(store) {
-  const columns = tableColumns(store, 'workspace_files')
+export async function ensureWorkspaceBlobColumn(store) {
+  const columns = (await tableColumns(store, 'workspace_files'))
   if (!columns.length || columns.includes('blob')) return { added: false }
   try {
-    store.run('ALTER TABLE workspace_files ADD COLUMN blob TEXT')
+    await store.run('ALTER TABLE workspace_files ADD COLUMN blob TEXT')
   } catch (error) {
     // 容器里同时起好几个进程（image API / admin / 档案 API），它们都会走到这里。
     // 「先查再改」之间有一个窗口，两边的 ALTER 只有一个能成功，另一个拿到 duplicate column name。
@@ -134,9 +134,9 @@ export function ensureWorkspaceBlobColumn(store) {
 
 // 这个库有没有迁移到多项目。两张表分开判断：迁移脚本跑到一半时会出现「一张新一张旧」，
 // 那时服务端不该自己猜，按各自的真实结构跑，等运维把脚本跑完。
-export function detectProjectLayout(store) {
-  const files = tableColumns(store, 'workspace_files')
-  const state = tableColumns(store, 'workspace_state')
+export async function detectProjectLayout(store) {
+  const files = (await tableColumns(store, 'workspace_files'))
+  const state = (await tableColumns(store, 'workspace_state'))
   const filesScoped = files.includes('project_id')
   const stateScoped = state.includes('project_id')
   // 没有 workspace_files 表：既没有文件索引，也就没有磁盘布局可言，按「新库」处理最安全——
@@ -156,18 +156,18 @@ export function detectProjectLayout(store) {
 //   - workspace_files 的主键决定磁盘布局，那是一次要人显式执行的存量迁移，服务端绝不自己动；
 //   - 老库（两张表都是老结构）一列都不动，整个进程按单项目语义跑。
 // 能自己修的修完再判 layout，免得日志里出现「报告说没事、启动说中间态」这种自相矛盾的说法。
-export function ensureProjectDimension(store) {
-  const before = detectProjectLayout(store)
+export async function ensureProjectDimension(store) {
+  const before = (await detectProjectLayout(store))
   if (before.layout === 'legacy') {
     // 只把可能缺失的表补上——建表是上一版代码本来就做的事，不是把老数据改成新结构。
-    if (!tableColumns(store, 'workspace_files').length) store.run(legacyWorkspaceDdl('workspace_files'))
-    if (!tableColumns(store, 'workspace_state').length) store.run(legacyWorkspaceStateDdl('workspace_state'))
+    if (!(await tableColumns(store, 'workspace_files')).length) await store.run(legacyWorkspaceDdl('workspace_files'))
+    if (!(await tableColumns(store, 'workspace_state')).length) await store.run(legacyWorkspaceStateDdl('workspace_state'))
     return { ...before, before: before.layout }
   }
-  if (before.layout === 'fresh') store.run(scopedWorkspaceDdl('workspace_files'))
-  ensureProjectsSchema(store)
-  const state = ensureWorkspaceStateSchema(store)
-  const after = detectProjectLayout(store)
+  if (before.layout === 'fresh') await store.run(scopedWorkspaceDdl('workspace_files'))
+  await ensureProjectsSchema(store)
+  const state = (await ensureWorkspaceStateSchema(store))
+  const after = (await detectProjectLayout(store))
   return { ...after, before: before.layout, stateUpgraded: state.upgraded, stateCreated: state.created, stateRows: state.rows }
 }
 
@@ -195,19 +195,19 @@ const scopedWorkspaceStateDdl = name => `CREATE TABLE ${name}(
 // 草稿/素材库这份 JSON 状态也按项目隔离，主键从 (user_id) 改成 (user_id, project_id)。
 // 老表的 user_id 只是 PRIMARY KEY、没写 NOT NULL（SQLite 允许它为 NULL），
 // 重建时会把约束补齐，真有 NULL 行就停下来报清楚，不静默丢数据。
-export function ensureWorkspaceStateSchema(store) {
-  const columns = store.all('PRAGMA table_info(workspace_state)')
-  if (!columns.length) { store.run(scopedWorkspaceStateDdl('workspace_state')); return { created: true, upgraded: false, rows: 0 } }
+export async function ensureWorkspaceStateSchema(store) {
+  const columns = (await store.all('PRAGMA table_info(workspace_state)'))
+  if (!columns.length) { await store.run(scopedWorkspaceStateDdl('workspace_state')); return { created: true, upgraded: false, rows: 0 } }
   if (columns.some(column => column.name === 'project_id')) return { created: false, upgraded: false, rows: 0 }
-  const orphans = store.get('SELECT COUNT(*) AS rows FROM workspace_state WHERE user_id IS NULL').rows
+  const orphans = (await store.get('SELECT COUNT(*) AS rows FROM workspace_state WHERE user_id IS NULL')).rows
   if (orphans) throw Object.assign(new Error(`workspace_state 里有 ${orphans} 行 user_id 为空，无法归入任何账号，请先人工确认`), { status: 500 })
-  const before = store.get('SELECT COUNT(*) AS rows FROM workspace_state').rows
-  store.transaction(() => {
-    store.run(scopedWorkspaceStateDdl('workspace_state_upgrade'))
-    store.run(`INSERT INTO workspace_state_upgrade(user_id,project_id,workspace,assets,canvas_files,updated_at)
+  const before = (await store.get('SELECT COUNT(*) AS rows FROM workspace_state')).rows
+  await store.transaction(async () => {
+    await store.run(scopedWorkspaceStateDdl('workspace_state_upgrade'))
+    await store.run(`INSERT INTO workspace_state_upgrade(user_id,project_id,workspace,assets,canvas_files,updated_at)
       SELECT user_id,'${DEFAULT_PROJECT_ID}',workspace,assets,canvas_files,updated_at FROM workspace_state`)
-    store.run('DROP TABLE workspace_state')
-    store.run('ALTER TABLE workspace_state_upgrade RENAME TO workspace_state')
+    await store.run('DROP TABLE workspace_state')
+    await store.run('ALTER TABLE workspace_state_upgrade RENAME TO workspace_state')
   })
   return { created: false, upgraded: true, rows: before }
 }
@@ -216,22 +216,22 @@ export function ensureWorkspaceStateSchema(store) {
 
 // 给 workspace_files 加项目维度。SQLite 改不了主键，只能按官方推荐重建表：
 // 列和行一个不少，存量行一律归入默认项目；bytes 仍是 BLOB（回滚老版本代码时数据还在）。
-export function addProjectDimension(store) {
-  const upgraded = ensureWorkspaceSchema(store)
-  const columns = store.all('PRAGMA table_info(workspace_files)')
+export async function addProjectDimension(store) {
+  const upgraded = (await ensureWorkspaceSchema(store))
+  const columns = (await store.all('PRAGMA table_info(workspace_files)'))
   const names = new Set(columns.map(column => column.name))
   if (names.has('project_id')) return { upgraded: false, rows: 0, legacyUpgrade: upgraded }
   const project = `'${DEFAULT_PROJECT_ID}'`
   const storage = names.has('storage') ? "COALESCE(storage,'db')" : "'db'"
   const size = names.has('size') ? 'size' : 'COALESCE(length(bytes),0)'
   const blob = names.has('blob') ? 'blob' : 'NULL'
-  const before = store.get('SELECT COUNT(*) AS rows FROM workspace_files').rows
-  store.transaction(() => {
-    store.run(scopedWorkspaceDdl('workspace_files_project'))
-    store.run(`INSERT INTO workspace_files_project(user_id,project_id,path,mime,bytes,revision,updated_at,storage,size,blob)
+  const before = (await store.get('SELECT COUNT(*) AS rows FROM workspace_files')).rows
+  await store.transaction(async () => {
+    await store.run(scopedWorkspaceDdl('workspace_files_project'))
+    await store.run(`INSERT INTO workspace_files_project(user_id,project_id,path,mime,bytes,revision,updated_at,storage,size,blob)
       SELECT user_id,${project},path,mime,bytes,revision,updated_at,${storage},${size},${blob} FROM workspace_files`)
-    store.run('DROP TABLE workspace_files')
-    store.run('ALTER TABLE workspace_files_project RENAME TO workspace_files')
+    await store.run('DROP TABLE workspace_files')
+    await store.run('ALTER TABLE workspace_files_project RENAME TO workspace_files')
   })
   return { upgraded: true, rows: before, legacyUpgrade: upgraded }
 }
@@ -240,22 +240,22 @@ export function addProjectDimension(store) {
 
 // 回退到老结构。上一版代码读的就是这个形状：主键 (user_id,path)，bytes 可空、storage/size 都在。
 // 索引行必须一一对得上，所以路径在两个项目里重名的先拒绝。
-export function revertWorkspaceSchema(store) {
-  const columns = store.all('PRAGMA table_info(workspace_files)')
+export async function revertWorkspaceSchema(store) {
+  const columns = (await store.all('PRAGMA table_info(workspace_files)'))
   if (!columns.length || !columns.some(column => column.name === 'project_id')) return { reverted: false, rows: 0 }
-  const duplicated = store.all('SELECT user_id,path,COUNT(*) AS n FROM workspace_files GROUP BY user_id,path HAVING n>1')
+  const duplicated = (await store.all('SELECT user_id,path,COUNT(*) AS n FROM workspace_files GROUP BY user_id,path HAVING n>1'))
   if (duplicated.length) {
     const sample = duplicated.slice(0, 20).map(row => `  ${row.user_id} ${row.path}（${row.n} 个项目里都有）`).join('\n')
     throw new Error(`有 ${duplicated.length} 个路径在多个项目里同名，回退后的表存不下，已停止：\n${sample}`)
   }
-  const before = store.get('SELECT COUNT(*) AS rows FROM workspace_files').rows
-  const blob = tableColumns(store, 'workspace_files').includes('blob') ? 'blob' : 'NULL'
-  store.transaction(() => {
-    store.run(legacyWorkspaceDdl('workspace_files_revert'))
-    store.run(`INSERT INTO workspace_files_revert(user_id,path,mime,bytes,revision,updated_at,storage,size,blob)
+  const before = (await store.get('SELECT COUNT(*) AS rows FROM workspace_files')).rows
+  const blob = (await tableColumns(store, 'workspace_files')).includes('blob') ? 'blob' : 'NULL'
+  await store.transaction(async () => {
+    await store.run(legacyWorkspaceDdl('workspace_files_revert'))
+    await store.run(`INSERT INTO workspace_files_revert(user_id,path,mime,bytes,revision,updated_at,storage,size,blob)
       SELECT user_id,path,mime,bytes,revision,updated_at,storage,size,${blob} FROM workspace_files`)
-    store.run('DROP TABLE workspace_files')
-    store.run('ALTER TABLE workspace_files_revert RENAME TO workspace_files')
+    await store.run('DROP TABLE workspace_files')
+    await store.run('ALTER TABLE workspace_files_revert RENAME TO workspace_files')
   })
   return { reverted: true, rows: before }
 }
@@ -269,23 +269,23 @@ const legacyWorkspaceStateDdl = name => `CREATE TABLE ${name}(
 
 // 旧代码按 user_id 单键读写，只能保留默认项目那一行；其它项目的草稿 JSON 在旧代码里
 // 本来就看不见，回退时被丢弃，数量打出来让人知道丢了什么。
-export function revertWorkspaceStateSchema(store) {
-  const columns = store.all('PRAGMA table_info(workspace_state)')
+export async function revertWorkspaceStateSchema(store) {
+  const columns = (await store.all('PRAGMA table_info(workspace_state)'))
   if (!columns.length || !columns.some(column => column.name === 'project_id')) return { reverted: false, rows: 0, kept: 0, dropped: 0 }
-  const before = store.get('SELECT COUNT(*) AS rows FROM workspace_state').rows
-  const kept = store.get('SELECT COUNT(*) AS rows FROM workspace_state WHERE project_id=?', DEFAULT_PROJECT_ID).rows
-  store.transaction(() => {
-    store.run(legacyWorkspaceStateDdl('workspace_state_revert'))
-    store.run(`INSERT INTO workspace_state_revert(user_id,workspace,assets,canvas_files,updated_at)
+  const before = (await store.get('SELECT COUNT(*) AS rows FROM workspace_state')).rows
+  const kept = (await store.get('SELECT COUNT(*) AS rows FROM workspace_state WHERE project_id=?', DEFAULT_PROJECT_ID)).rows
+  await store.transaction(async () => {
+    await store.run(legacyWorkspaceStateDdl('workspace_state_revert'))
+    await store.run(`INSERT INTO workspace_state_revert(user_id,workspace,assets,canvas_files,updated_at)
       SELECT user_id,workspace,assets,canvas_files,updated_at FROM workspace_state WHERE project_id='${DEFAULT_PROJECT_ID}'`)
-    store.run('DROP TABLE workspace_state')
-    store.run('ALTER TABLE workspace_state_revert RENAME TO workspace_state')
+    await store.run('DROP TABLE workspace_state')
+    await store.run('ALTER TABLE workspace_state_revert RENAME TO workspace_state')
   })
   return { reverted: true, rows: before, kept, dropped: before - kept }
 }
 
-export function dropProjectsTable(store) {
-  store.run('DROP TABLE IF EXISTS projects')
+export async function dropProjectsTable(store) {
+  await store.run('DROP TABLE IF EXISTS projects')
 }
 
 // ---- 字节搬迁 ----
@@ -308,26 +308,26 @@ function layoutOf(root, row, direction) {
 
 const isDirectoryMime = mime => mime === 'inode/directory'
 
-function workspaceRows(store) {
-  const columns = new Set(store.all('PRAGMA table_info(workspace_files)').map(column => column.name))
+async function workspaceRows(store) {
+  const columns = new Set((await store.all('PRAGMA table_info(workspace_files)')).map(column => column.name))
   if (!columns.size) return []
   const project = columns.has('project_id') ? 'project_id' : `'${DEFAULT_PROJECT_ID}' AS project_id`
   const size = columns.has('size') ? 'size' : 'COALESCE(length(bytes),0) AS size'
   const storage = columns.has('storage') ? 'storage' : "'db' AS storage"
   const blob = columns.has('blob') ? 'blob' : 'NULL AS blob'
   // 浅路径在前：目录行会把整棵子树一起搬走，它下面的行就不用再搬一次。
-  return store.all(`SELECT user_id,${project},path,mime,${size},${storage},${blob} FROM workspace_files ORDER BY user_id,project_id,length(path),path`)
+  return (await store.all(`SELECT user_id,${project},path,mime,${size},${storage},${blob} FROM workspace_files ORDER BY user_id,project_id,length(path),path`))
 }
 
 // 只报账：每一行的字节现在落在老布局、项目布局、还是两边都有/都没有。
-export function projectLayoutReport(store, { root = mediaRoot() }: Record<string, any> = {}) {
-  const hasProjects = Boolean(store.get("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='projects'"))
-  const columns = tableColumns(store, 'workspace_files')
-  const stateColumns = tableColumns(store, 'workspace_state')
-  const total = columns.length ? store.get('SELECT COUNT(*) AS rows FROM workspace_files').rows : 0
-  const rows = columns.length ? workspaceRows(store) : []
+export async function projectLayoutReport(store, { root = mediaRoot() }: Record<string, any> = {}) {
+  const hasProjects = Boolean((await store.get("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='projects'")))
+  const columns = (await tableColumns(store, 'workspace_files'))
+  const stateColumns = (await tableColumns(store, 'workspace_state'))
+  const total = columns.length ? (await store.get('SELECT COUNT(*) AS rows FROM workspace_files')).rows : 0
+  const rows = columns.length ? (await workspaceRows(store)) : []
   const counts = { rows: total, atOldOnly: 0, atNewOnly: 0, atBoth: 0, atNeither: 0, bytesAtOldOnly: 0, bytesAtNewOnly: 0, atBlob: 0, bytesAtBlob: 0, missingBlob: 0, virtualDirectories: 0 }
-  const blobLayout = mediaLayout(store) === 'blob'
+  const blobLayout = (await mediaLayout(store)) === 'blob'
   for (const row of rows) {
     if (blobLayout && isDirectoryMime(row.mime)) { counts.virtualDirectories++; continue }
     if (row.blob) {
@@ -349,12 +349,12 @@ export function projectLayoutReport(store, { root = mediaRoot() }: Record<string
   }
   return {
     root,
-    layout: columns.length ? detectProjectLayout(store).layout : 'fresh',
+    layout: columns.length ? (await detectProjectLayout(store)).layout : 'fresh',
     hasProjectsTable: hasProjects,
     hasProjectColumn: columns.includes('project_id'),
     hasWorkspaceStateProject: stateColumns.includes('project_id'),
-    users: store.all('SELECT COUNT(*) AS n FROM users')[0]?.n ?? 0,
-    workspaceStateRows: stateColumns.length ? store.get('SELECT COUNT(*) AS rows FROM workspace_state').rows : 0,
+    users: (await store.all('SELECT COUNT(*) AS n FROM users'))[0]?.n ?? 0,
+    workspaceStateRows: stateColumns.length ? (await store.get('SELECT COUNT(*) AS rows FROM workspace_state')).rows : 0,
     ...counts,
   }
 }
@@ -449,7 +449,7 @@ async function verifyPath(from, to) {
   if (expected.files.size !== actual.files.size) return `文件个数不一致（源 ${expected.files.size} / 目标 ${actual.files.size}）`
   for (const [relative, size] of expected.files) {
     if (!actual.files.has(relative)) return `目标缺少 ${relative}`
-    if (actual.files.get(relative) !== size) return `${relative} 字节数不一致（源 ${size} / 目标 ${actual.files.get(relative)}）`
+    if ((await actual.files.get(relative)) !== size) return `${relative} 字节数不一致（源 ${size} / 目标 ${(await actual.files.get(relative))}）`
     const sourceFile = join(from, ...relative.split('/'))
     const targetFile = join(to, ...relative.split('/'))
     if (await hashOf(targetFile) !== await hashOf(sourceFile)) return `${relative} 内容校验不一致（sha256）`
@@ -469,11 +469,11 @@ async function verifyPath(from, to) {
 // 任何一行搬不动时一行都不动，把问题行全列出来再退出。
 export async function copyProjectLayout(store, { direction = 'apply', root = mediaRoot(), allowMissing = false, copyOnly = false, batch = 500, log = console.log }: Record<string, any> = {}) {
   if (!['apply', 'rollback'].includes(direction)) throw new Error(`未知的搬迁方向：${direction}`)
-  const rows = workspaceRows(store)
+  const rows = (await workspaceRows(store))
   // 回滚要把每个项目里的同一相对路径收回到账号根下，两个项目都有 画布1.json 时索引层面就冲突了，
   // 这时候回滚必然丢文件，先查出来直接拒绝。
   if (direction === 'rollback') {
-    const duplicated = store.all('SELECT user_id,path,COUNT(*) AS n FROM workspace_files GROUP BY user_id,path HAVING n>1')
+    const duplicated = (await store.all('SELECT user_id,path,COUNT(*) AS n FROM workspace_files GROUP BY user_id,path HAVING n>1'))
     if (duplicated.length) {
       const sample = duplicated.slice(0, 20).map(row => `  ${row.user_id} ${row.path}（${row.n} 个项目里都有）`).join('\n')
       throw new Error(`有 ${duplicated.length} 个路径在多个项目里同名，回滚到单项目布局会互相覆盖，已停止：\n${sample}`)

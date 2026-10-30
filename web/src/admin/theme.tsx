@@ -30,7 +30,7 @@ export function useAdminTheme() {
     document.documentElement.dataset.adminTheme = theme
     const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
     const previous = meta?.content
-    if (meta) meta.content = theme === 'light' ? '#f2f1ed' : '#0f1010'
+    if (meta) meta.content = theme === 'light' ? '#f6f7f9' : '#11151c'
     return () => {
       delete document.documentElement.dataset.adminTheme
       if (meta && previous) meta.content = previous

@@ -2,8 +2,8 @@
   <el-dialog
     v-model="visible"
     :title="actionLabels[action]"
-    :width="action === 'trim' ? '760px' : '520px'"
-    :top="action === 'trim' ? '6vh' : '15vh'"
+    :width="['trim','crop','speed'].includes(action) ? '760px' : '520px'"
+    :top="['trim','crop','speed'].includes(action) ? '6vh' : '15vh'"
     appendToBody
     destroyOnClose
     :closeOnClickModal="!processing"
@@ -65,6 +65,10 @@
         <p class="actionHint">{{ validRange ? translate('截取后生成新视频节点，原视频会保留。') : translate('请选择有效的起止时间。') }}</p>
         <p class="actionHint">{{ translate('按所选起止精确截取，画质接近原片。') }}</p>
       </template>
+      <template v-else-if="action === 'crop' || action === 'speed'">
+        <el-tooltip :content="translate(action === 'crop' ? '按显示方向的原始像素裁剪，坐标和尺寸对齐偶数；本机重新编码，原片保留。' : '音画同步变速并保持音高；慢放可能重复帧，不是 AI 补帧。浏览器预览与最终导出可能不同。')" placement="top"><el-button text :icon="IconInfoCircle" :aria-label="translate('操作说明')" /></el-tooltip>
+        <videoLocalSettings v-if="visible" ref="localSettings" :action="action" :file="file" :src="src" :disabled="processing || disabled" v-model:crop="crop" v-model:speed="speed" />
+      </template>
       <p v-else class="actionHint">{{ action === 'extractAudio' ? translate('提取音轨并生成音频节点，保留原视频。') : translate('生成静音视频和音频两个节点，保留原视频。') }}</p>
       <div v-if="processing" class="processingStatus" role="status" aria-live="polite">
         <el-progress :percentage="100" :indeterminate="true" :showText="false" />
@@ -72,7 +76,7 @@
       </div>
       <div class="panelActions">
         <el-button :disabled="cancelling" @click="processing ? cancel() : visible = false">{{ processing ? translate('取消处理') : translate('取消') }}</el-button>
-        <el-button type="primary" :loading="processing" :disabled="disabled || !file || (action === 'trim' && !validRange)" @click="run">{{ actionLabels[action] }}</el-button>
+        <el-button type="primary" :loading="processing" :disabled="disabled || !file || (action === 'trim' && !validRange) || (['crop','speed'].includes(action) && !localSettings?.valid)" @click="run">{{ actionLabels[action] }}</el-button>
       </div>
     </div>
   </el-dialog>
@@ -82,10 +86,13 @@
 import { workspacePlaybackUrl } from "@/lib/workspaceFiles";
 import { computed, inject, onBeforeUnmount, ref, watch } from "vue";
 import { useNode, useVueFlow, type Node } from "@vue-flow/core";
-import { ElButton, ElDialog, ElMessage, ElProgress } from "element-plus";
+import { ElButton, ElDialog, ElMessage, ElProgress, ElTooltip } from "element-plus";
+import { IconInfoCircle } from "@tabler/icons-vue";
 import { nodeTools, z, useNodeFiles, useNodeFfmpeg, useNodeEvent, showNodeError, type WorkspaceFiles, type NodeMediaValue } from "@miaoimg/nodes-scaffold/runtime";
 import { translate } from "@miaoimg/i18n/vue";
 import { processVideo } from "./videoProcessing";
+import videoLocalSettings from "./videoLocalSettings.vue";
+import type { PixelCrop } from "./videoLocalGeometry";
 
 const props = defineProps<{ file?: NodeMediaValue; src: string; disabled?: boolean }>();
 const { node } = useNode();
@@ -95,7 +102,11 @@ const loadFfmpeg = useNodeFfmpeg();
 const nodeEvent = useNodeEvent();
 const getCanvas = inject<(() => { id: string } | undefined) | undefined>("canvas", undefined);
 const batchHistory = inject<(action: () => Promise<void>) => Promise<void>>("batchCanvasHistory", action => action());
-const actionKeys = { extractAudio: "提取音轨", separate: "分离音视频", trim: "片段截取" } as const;
+const actionKeys = { extractAudio: "提取音轨", separate: "分离音视频", trim: "片段截取", crop: "画面裁剪", speed: "视频变速" } as const;
+const localSettings = ref<InstanceType<typeof videoLocalSettings>>();
+const crop = ref<PixelCrop>();
+const speed = ref(1);
+const getCanvasSignal = inject<(() => AbortSignal) | undefined>("canvasOperationSignal", undefined);
 // 动作名既是弹窗标题也是提示文案，展示时翻译；写进画布的节点名仍用中文原文。
 const actionLabels = computed(() => Object.fromEntries(Object.entries(actionKeys).map(([key, label]) => [key, translate(label)])) as Record<keyof typeof actionKeys, string>);
 const action = ref<keyof typeof actionKeys>("trim");
@@ -158,7 +169,8 @@ function open(value: keyof typeof actionKeys) {
   currentTime.value = 0;
   frames.value = [];
   visible.value = true;
-  if (value !== "trim") run();
+  crop.value = undefined; speed.value = 1;
+  if (value === "extractAudio" || value === "separate") run();
 }
 
 defineExpose({ open, processing, cancelAndWait });
@@ -307,24 +319,28 @@ function seekTrack(event: PointerEvent) {
 }
 
 function run() {
-  if (processing.value || props.disabled || !props.file || (action.value === "trim" && !validRange.value)) return;
+  if (processing.value || props.disabled || !props.file || (action.value === "trim" && !validRange.value) || (["crop","speed"].includes(action.value) && !localSettings.value?.valid)) return;
   job = process();
 }
 
 async function process(signal?: AbortSignal, toolCall = false) {
   signal?.throwIfAborted();
   const operation = action.value;
-  const requiredTypes = operation === "extractAudio" ? ["remote-audioNode"] : operation === "trim" ? ["remote-videoNode"] : ["remote-videoNode", "remote-audioNode"];
+  const requiredTypes = operation === "extractAudio" ? ["remote-audioNode"] : ["trim","crop","speed"].includes(operation) ? ["remote-videoNode"] : ["remote-videoNode", "remote-audioNode"];
   if (requiredTypes.some(type => !nodeTypes?.value?.[type])) throw new Error(translate("请先启用所需的视频或音频节点插件"));
   const source = props.file!.url;
+  const sourceState = JSON.stringify(node.data.outputs?.video);
   const clipStart = start.value;
   const clipEnd = end.value;
   const current = controller = new AbortController();
-  const abort = () => current.abort(signal?.reason);
-  signal?.addEventListener("abort", abort, { once: true });
+  const canvasSignal = getCanvasSignal?.();
+  const caller = AbortSignal.any([...(signal ? [signal] : []), ...(canvasSignal ? [canvasSignal] : [])]);
+  const abort = () => current.abort(caller.reason);
+  caller.addEventListener("abort", abort, { once: true });
+  if (caller.aborted) abort();
   processing.value = true;
   cancelling.value = false;
-  preview.value?.pause();
+  preview.value?.pause(); localSettings.value?.pause();
   const outputs = requiredTypes.map(type => {
     const id = crypto.randomUUID();
     const audio = type === "remote-audioNode";
@@ -335,6 +351,8 @@ async function process(signal?: AbortSignal, toolCall = false) {
   let committed = false;
   try {
     workspace = files.getWorkspaceFiles();
+    const sourceRevision = await workspace.stat?.(source, current.signal);
+    if (["crop","speed"].includes(operation) && localSettings.value?.revision && localSettings.value.revision !== sourceRevision?.revision) throw new Error(translate("原视频已变化，请重新处理"));
     const ffmpeg = await loadFfmpeg(current.signal);
     current.signal.throwIfAborted();
     for (const output of outputs) {
@@ -349,7 +367,7 @@ async function process(signal?: AbortSignal, toolCall = false) {
       audioPath: outputs.find(output => output.audio)?.path,
       videoPath: outputs.find(output => !output.audio)?.path,
       start: clipStart,
-      end: clipEnd,
+      end: clipEnd, crop: crop.value ? { ...crop.value } : undefined, speed: speed.value,
     }, current.signal);
     current.signal.throwIfAborted();
     for (const output of outputs) {
@@ -357,6 +375,8 @@ async function process(signal?: AbortSignal, toolCall = false) {
       if (!result) throw new Error("媒体输出缺失");
       output.path = result.path;
     }
+    const latestSource = sourceRevision ? await workspace.stat?.(source, current.signal) : undefined;
+    if (latestSource?.revision !== sourceRevision?.revision || JSON.stringify(node.data.outputs?.video) !== sourceState) throw new Error(translate("原视频已变化，请重新处理"));
     // 处理期间旧素材可能尚未重新解码，不能把占位尺寸当作最终尺寸。
     const aspect = media.width && media.height ? media.width / media.height : 16 / 9;
     const videoWidth = Math.min(640, Math.max(240, 240 * aspect));
@@ -379,13 +399,13 @@ async function process(signal?: AbortSignal, toolCall = false) {
       position: { x, y: y + sizes.slice(0, index).reduce((total, size) => total + size.height + 40, 0) },
       data: {
         mediaExportSize: sizes[index],
-        label: `${node.data.label || "视频"} · ${output.audio ? "音轨" : operation === "separate" ? "静音视频" : `${media.start.toFixed(2)}–${media.end.toFixed(2)} 秒`}`,
+        label: `${node.data.label || "视频"} · ${output.audio ? "音轨" : operation === "separate" ? "静音视频" : operation === "crop" ? "画面裁剪" : operation === "speed" ? `${speed.value.toFixed(2)}×` : `${media.start.toFixed(2)}–${media.end.toFixed(2)} 秒`}`,
         outputs: { [output.audio ? "audio" : "video"]: { dataType: output.audio ? "AUDIO" : "VIDEO", value: { url: output.path, mimeType: (output.audio ? media.audio : media.video)!.mimeType } } },
       },
     }));
     await batchHistory(async () => {
       current.signal.throwIfAborted();
-      if (findNode(node.id) !== node || requiredTypes.some(type => !nodeTypes?.value?.[type])) throw new Error("画布节点已变化，请重新处理");
+      if (JSON.stringify(node.data.outputs?.video) !== sourceState || findNode(node.id) !== node || requiredTypes.some(type => !nodeTypes?.value?.[type])) throw new Error("画布节点已变化，请重新处理");
       addNodes(nodes);
       committed = true;
     });
@@ -402,19 +422,21 @@ async function process(signal?: AbortSignal, toolCall = false) {
     }
     if (current.signal.aborted) visible.value = false;
     processing.value = cancelling.value = false;
-    signal?.removeEventListener("abort", abort);
+    caller.removeEventListener("abort", abort);
     controller = undefined;
   }
 }
 
 nodeTools.register({
   name: 'processVideo',
-  description: '对当前视频执行 trim 截取、extractAudio 提取音轨或 separate 分离音视频，复用界面处理，生成新的画布节点并保留原片，不调用生成模型。截取按所选起止精确到帧（本机重新编码为高画质 H.264 MP4）；提取音轨与分离保持原音视频流不重新编码。',
-  parameters: z.strictObject({ action: z.enum(['trim', 'extractAudio', 'separate']), start: z.number().finite().min(0).optional(), end: z.number().finite().positive().optional() }),
+  description: '对当前视频执行 trim 截取、extractAudio 提取音轨、separate 分离音视频、crop 画面裁剪或 speed 音画同步变速（0.1–4倍，保持音高），复用界面处理，生成新的画布节点并保留原片，不调用生成模型。截取按所选起止精确到帧（本机重新编码为高画质 H.264 MP4）；提取音轨与分离保持原音视频流不重新编码。',
+  parameters: z.strictObject({ action: z.enum(['trim', 'extractAudio', 'separate', 'crop', 'speed']), start: z.number().finite().min(0).optional(), end: z.number().finite().positive().optional(), crop: z.strictObject({ x: z.number().int().min(0), y: z.number().int().min(0), width: z.number().int().min(2), height: z.number().int().min(2) }).optional(), speed: z.number().finite().min(0.1).max(4).optional() }),
   async execute(args, { signal }) {
     if (processing.value || props.disabled || !props.file) throw new Error('视频尚未就绪或正在处理');
     if (args.action === 'trim' && (args.start === undefined || args.end === undefined || args.end <= args.start)) throw new Error('结束时间必须晚于开始时间');
-    action.value = args.action;
+    if (args.action === "crop" && !args.crop) throw new Error("画面裁剪需要裁剪坐标");
+    if (args.action === "speed" && args.speed === undefined) throw new Error("视频变速需要速度倍数");
+    action.value = args.action; crop.value = args.crop; speed.value = args.speed ?? 1;
     start.value = args.action === 'trim' ? args.start : 0;
     end.value = args.action === 'trim' ? args.end : 0;
     const pending = process(signal, true); job = pending.then(() => {}, () => {});

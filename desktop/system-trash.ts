@@ -14,7 +14,7 @@ const folderName = (name: string) => String(name || '').replace(/[\\/:*?"<>|\x00
 export function createSystemTrash({ directory, trashItem }: { directory: string; trashItem?: (path: string) => Promise<void> }) {
   const root = join(directory, 'system-trash')
 
-  function stage(name: string, entries: readonly TrashEntry[], read: (path: string) => TrashSource): StagedTrash {
+  async function stage(name: string, entries: readonly TrashEntry[], read: (path: string) => TrashSource | Promise<TrashSource>): Promise<StagedTrash> {
     const holder = join(root, randomUUID()), target = join(holder, folderName(name))
     try {
       mkdirSync(target, { recursive: true, mode: 0o700 })
@@ -26,7 +26,7 @@ export function createSystemTrash({ directory, trashItem }: { directory: string;
         // already gone; there is nothing left to put in the system Trash for
         // that row, so skip only the missing item and continue the transaction.
         let file: TrashSource
-        try { file = read(entry.path) } catch (error) {
+        try { file = (await read(entry.path)) } catch (error) {
           if (error?.code === 'ENOENT' || error?.status === 404) {
             console.warn('[system-trash] MISSING_SOURCE_SKIPPED', entry.path)
             continue

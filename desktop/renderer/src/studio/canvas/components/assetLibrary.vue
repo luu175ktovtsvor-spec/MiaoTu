@@ -218,9 +218,9 @@ function nodeLabel(nodeId: string) {
 }
 
 function localTime(value?: string) {
-  if (!value) return "时间未知";
+  if (!value) return translate("时间未知");
   const date = new Date(value);
-  return Number.isNaN(date.valueOf()) ? "时间未知" : new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", hour12: false }).format(date);
+  return Number.isNaN(date.valueOf()) ? translate("时间未知") : new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", hour12: false }).format(date);
 }
 
 function mediaLabel(entry: AssetEntry) {

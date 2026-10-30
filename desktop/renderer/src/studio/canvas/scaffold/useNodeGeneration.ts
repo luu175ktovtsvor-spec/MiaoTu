@@ -5,7 +5,7 @@ import type { NodeOutputs } from "./values";
 
 export type NodeGenerationOutcome = "idle" | "running" | "pending" | "succeeded" | "failed";
 
-export function useNodeGeneration(outputs: Readonly<Ref<NodeOutputs>>, cancel: () => void, projectOutputs?: (value: NodeOutputs) => unknown, progress?: () => { phase: string; message: string; requestId?: string }) {
+export function useNodeGeneration(outputs: Readonly<Ref<NodeOutputs>>, cancel: () => void, projectOutputs?: (value: NodeOutputs) => unknown, progress?: () => { phase: string; message: string; requestId?: string }, initial?: () => { status: NodeGenerationOutcome; phase?: string; message?: string; requestId?: string } | undefined) {
   const status = ref<NodeGenerationOutcome>("idle");
   const error = ref("");
   const pendingRequestId = ref<string>();
@@ -13,7 +13,7 @@ export function useNodeGeneration(outputs: Readonly<Ref<NodeOutputs>>, cancel: (
   // without that confirmation retains a resumable pending task.
   const cancelled = ref(false);
   const generating = computed(() => status.value === "running");
-  const getStatus = () => ({ status: status.value, outputs: projectOutputs ? projectOutputs(outputs.value) : outputs.value, ...(generating.value || status.value === "pending" ? progress?.() : {}), ...(status.value === "pending" && pendingRequestId.value ? { requestId: pendingRequestId.value } : {}), ...(cancelled.value ? { cancelled: true } : {}), ...(error.value ? { error: error.value } : {}) });
+  const getStatus = () => { const restored = status.value === "idle" ? initial?.() : undefined; if (restored) return { ...restored, outputs: projectOutputs ? projectOutputs(outputs.value) : outputs.value }; return ({ status: status.value, outputs: projectOutputs ? projectOutputs(outputs.value) : outputs.value, ...(generating.value || status.value === "pending" ? progress?.() : {}), ...(status.value === "pending" && pendingRequestId.value ? { requestId: pendingRequestId.value } : {}), ...(cancelled.value ? { cancelled: true } : {}), ...(error.value ? { error: error.value } : {}) }); };
 
   nodeTools.register({
     name: "getGenerationStatus",

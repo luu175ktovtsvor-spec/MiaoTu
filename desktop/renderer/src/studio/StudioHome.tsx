@@ -2,6 +2,8 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import { ArrowRight, DotsThree, FolderSimple, House, MagnifyingGlass, Plus } from '@phosphor-icons/react'
 import './studioHome.css'
 import { systemTrashName } from '../lib/systemTrash'
+import { useLang } from '../i18n'
+import FeedbackNotice from '../components/FeedbackNotice'
 
 const InspirationLibrary = lazy(() => import('../library/InspirationLibrary'))
 
@@ -17,21 +19,22 @@ type StudioHomeProps = {
   onRemoved?(id: string): void
 }
 
-function stamp(value?: string | null) {
+function stamp(value: string | null | undefined, locale: string) {
   if (!value) return ''
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
-  return new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit' }).format(date)
+  return new Intl.DateTimeFormat(locale, { month: '2-digit', day: '2-digit' }).format(date)
 }
 
-function uniqueName(projects: ProjectItem[]) {
+function uniqueName(projects: ProjectItem[], base: string) {
   const names = new Set(projects.map(item => item.name))
-  if (!names.has('未命名')) return '未命名'
-  for (let index = 2; index < 80; index += 1) if (!names.has(`未命名 ${index}`)) return `未命名 ${index}`
-  return `未命名 ${new Date().getHours()}${new Date().getMinutes()}`
+  if (!names.has(base)) return base
+  for (let index = 2; index < 80; index += 1) if (!names.has(`${base} ${index}`)) return `${base} ${index}`
+  return `${base} ${new Date().getHours()}${new Date().getMinutes()}`
 }
 
 export default function StudioHome({ csrf, owner, active = 'home', initialSection = 'home', sectionRequest = 0, onOpen, onRemoved }: StudioHomeProps) {
+  const { t, locale } = useLang()
   const [pane, setPane] = useState<'home' | 'projects'>(active === 'projects' ? 'projects' : 'home')
   const [projects, setProjects] = useState<ProjectItem[]>([])
   const [previews, setPreviews] = useState<Record<string, string>>({})
@@ -49,8 +52,9 @@ export default function StudioHome({ csrf, owner, active = 'home', initialSectio
       cache: 'no-store',
     })
     const data = await response.json().catch(() => ({}))
-    if (!response.ok || !Array.isArray(data.projects)) throw new Error(data.error || '项目列表读取失败')
+    if (!response.ok || !Array.isArray(data.projects)) throw new Error(data.error || t('studio.home.error.load'))
     setProjects(data.projects)
+    setError('')
     setStatus('ready')
     const headers = { ...(csrf ? { 'x-csrf-token': csrf } : {}), ...(owner ? { 'x-workspace-owner': owner } : {}) }
     const found: Record<string, string> = {}
@@ -86,7 +90,7 @@ export default function StudioHome({ csrf, owner, active = 'home', initialSectio
       body: JSON.stringify(body),
     })
     const data = await response.json().catch(() => ({}))
-    if (!response.ok) throw new Error(data.error || '项目操作失败')
+    if (!response.ok) throw new Error(data.error || t('studio.home.error.action'))
     return data
   }
 
@@ -95,12 +99,12 @@ export default function StudioHome({ csrf, owner, active = 'home', initialSectio
     setBusy(true)
     setError('')
     try {
-      const data = await mutate('/api/imagine/workspace/projects', { name: uniqueName(projects) })
+      const data = await mutate('/api/imagine/workspace/projects', { name: uniqueName(projects, t('studio.home.untitled')) })
       const id = data.project?.id
-      if (!id) throw new Error('没有拿到新项目')
+      if (!id) throw new Error(t('studio.home.error.noProject'))
       onOpen(id)
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : '新建失败')
+      setError(failure instanceof Error ? failure.message : t('studio.home.error.create'))
     } finally { setBusy(false) }
   }
 
@@ -112,7 +116,7 @@ export default function StudioHome({ csrf, owner, active = 'home', initialSectio
     if (!name || name === item.name) return
     setBusy(true)
     try { await mutate('/api/imagine/workspace/projects/rename', { id: item.id, name }); await load() }
-    catch (failure) { setError(failure instanceof Error ? failure.message : '重命名失败') }
+    catch (failure) { setError(failure instanceof Error ? failure.message : t('studio.home.error.rename')) }
     finally { setBusy(false) }
   }
 
@@ -127,14 +131,14 @@ export default function StudioHome({ csrf, owner, active = 'home', initialSectio
 
   async function remove(item: ProjectItem) {
     setMenuFor(null)
-    const bin = systemTrashName()
-    if (!window.confirm(`删除「${item.name}」？\n\n项目里的画布、素材和文档会移到电脑的${bin}。想彻底释放空间，在${bin}里清空即可。`)) return
+    const bin = t(systemTrashName() === '废纸篓' ? 'studio.home.trashMac' : 'studio.home.trashWin')
+    if (!window.confirm(t('studio.home.confirmDelete', { name: item.name, bin }))) return
     setBusy(true)
     try {
       await mutate('/api/imagine/workspace/projects/remove', { id: item.id })
       onRemoved?.(item.id)
       await load()
-    } catch (failure) { setError(failure instanceof Error ? failure.message : '删除失败') }
+    } catch (failure) { setError(failure instanceof Error ? failure.message : t('studio.home.error.delete')) }
     finally { setBusy(false) }
   }
 
@@ -144,51 +148,52 @@ export default function StudioHome({ csrf, owner, active = 'home', initialSectio
 
   return (
     <div className="studio-home">
-      <nav aria-label="项目">
-        <button type="button" aria-current={pane === 'home' ? 'page' : undefined} onClick={() => setPane('home')}><House size={18} />首页</button>
-        <button type="button" aria-current={pane === 'projects' ? 'page' : undefined} onClick={() => { setPane('projects'); document.getElementById('studio-projects')?.scrollIntoView({ block: 'start' }) }}><FolderSimple size={18} />项目</button>
-        <button type="button" onClick={() => document.getElementById('studio-inspiration')?.scrollIntoView({ block: 'start' })}>创作精选</button>
+      <FeedbackNotice message={error} onClose={() => setError('')} />
+      <nav aria-label={t('studio.home.navLabel')}>
+        <button type="button" aria-current={pane === 'home' ? 'page' : undefined} onClick={() => setPane('home')}><House size={18} />{t('studio.home.home')}</button>
+        <button type="button" aria-current={pane === 'projects' ? 'page' : undefined} onClick={() => { setPane('projects'); document.getElementById('studio-projects')?.scrollIntoView({ block: 'start' }) }}><FolderSimple size={18} />{t('studio.home.projects')}</button>
+        <button type="button" onClick={() => document.getElementById('studio-inspiration')?.scrollIntoView({ block: 'start' })}>{t('studio.home.featured')}</button>
       </nav>
       <div className="studio-home__main">
-        <section className="studio-home__hero" aria-label="新建画布创作">
+        <section className="studio-home__hero" aria-label={t('studio.home.newCanvas')}>
           <button type="button" onClick={() => void createAndOpen()} disabled={busy}>
             <span><Plus size={22} /></span>
-            新建画布创作
+            {t('studio.home.newCanvas')}
           </button>
         </section>
         <section className="studio-home__section" id="studio-projects">
           <header>
-            <h2>{pane === 'projects' ? '全部项目' : '最近项目'}</h2>
-            {pane === 'home' ? <button type="button" onClick={() => setPane('projects')}>查看全部 <ArrowRight size={14} /></button>
-              : <label className="studio-home__search"><MagnifyingGlass size={15} /><input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="搜索项目" aria-label="搜索项目" /></label>}
+            <h2>{pane === 'projects' ? t('studio.home.all') : t('studio.home.recent')}</h2>
+            {pane === 'home' ? <button type="button" onClick={() => setPane('projects')}>{t('studio.home.viewAll')} <ArrowRight size={14} /></button>
+              : <label className="studio-home__search"><MagnifyingGlass size={15} /><input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder={t('studio.home.search')} aria-label={t('studio.home.search')} /></label>}
           </header>
-          {status === 'error' && <button type="button" className="studio-home__retry" onClick={() => { setStatus('loading'); load().catch(failure => { setStatus('error'); setError(failure.message) }) }}>{error || '读取失败，点击重试'}</button>}
+          {status === 'error' && <button type="button" className="studio-home__retry" onClick={() => { setStatus('loading'); load().catch(failure => { setStatus('error'); setError(failure.message) }) }}>{t('studio.home.retry')}</button>}
           {status === 'loading' && <div className="studio-home__grid">{[0, 1, 2, 3].map(item => <div className="studio-home__card is-loading" key={item} />)}</div>}
           {status === 'ready' && <div className="studio-home__grid">
             {shown.map(item => (
               <article key={item.id}>
                 {renaming === item.id ? <div className="studio-home__card">
-                  <span className="studio-home__mark">{previews[item.id] ? <img src={previews[item.id]} alt="" /> : Array.from(item.name || '项')[0]}</span>
-                  <input className="studio-home__rename" autoFocus value={draftName} maxLength={40} aria-label="项目名称" onChange={event => setDraftName(event.target.value)}
+                  <span className="studio-home__mark">{previews[item.id] ? <img src={previews[item.id]} alt="" /> : Array.from(String(item.name || t('studio.home.initial')))[0]}</span>
+                  <input className="studio-home__rename" autoFocus value={draftName} maxLength={40} aria-label={t('studio.home.projectName')} onChange={event => setDraftName(event.target.value)}
                     onBlur={() => void rename(item)} onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur(); if (event.key === 'Escape') setRenaming(null) }} />
                 </div> : <button type="button" className="studio-home__card" onClick={() => onOpen(item.id)}>
-                  <span className="studio-home__mark">{previews[item.id] ? <img src={previews[item.id]} alt="" /> : Array.from(item.name || '项')[0]}</span>
-                  <span><strong>{item.name}</strong><small>{stamp(item.lastOpenedAt || item.createdAt) || '打开项目'}</small></span>
+                  <span className="studio-home__mark">{previews[item.id] ? <img src={previews[item.id]} alt="" /> : Array.from(String(item.name || t('studio.home.initial')))[0]}</span>
+                  <span><strong>{item.name}</strong><small>{stamp(item.lastOpenedAt || item.createdAt, locale) || t('studio.home.openProject')}</small></span>
                 </button>}
-                {renaming !== item.id && <button type="button" className="studio-home__more" aria-label={`${item.name} 更多操作`} aria-haspopup="menu" aria-expanded={menuFor === item.id} disabled={busy} onClick={() => setMenuFor(menuFor === item.id ? null : item.id)}><DotsThree size={18} weight="bold" /></button>}
+                {renaming !== item.id && <button type="button" className="studio-home__more" aria-label={t('studio.home.moreActions', { name: item.name })} aria-haspopup="menu" aria-expanded={menuFor === item.id} disabled={busy} onClick={() => setMenuFor(menuFor === item.id ? null : item.id)}><DotsThree size={18} weight="bold" /></button>}
                 {menuFor === item.id && <div className="studio-home__menu" role="menu">
-                  <button type="button" role="menuitem" onClick={() => { setMenuFor(null); onOpen(item.id) }}>打开</button>
-                  <button type="button" role="menuitem" onClick={() => startRename(item)}>重命名</button>
-                  <button type="button" role="menuitem" className="is-danger" onClick={() => remove(item)}>删除项目</button>
+                  <button type="button" role="menuitem" onClick={() => { setMenuFor(null); onOpen(item.id) }}>{t('studio.home.open')}</button>
+                  <button type="button" role="menuitem" onClick={() => startRename(item)}>{t('studio.home.rename')}</button>
+                  <button type="button" role="menuitem" className="is-danger" onClick={() => remove(item)}>{t('studio.home.delete')}</button>
                 </div>}
               </article>
             ))}
-            {!shown.length && <button type="button" className="studio-home__card is-empty" onClick={() => void createAndOpen()} disabled={busy}><span className="studio-home__mark"><Plus size={18} /></span><span><strong>开始创作</strong><small>新建一个项目</small></span></button>}
+            {!shown.length && <button type="button" className="studio-home__card is-empty" onClick={() => void createAndOpen()} disabled={busy}><span className="studio-home__mark"><Plus size={18} /></span><span><strong>{t('studio.home.startCreating')}</strong><small>{t('studio.home.newProject')}</small></span></button>}
           </div>}
         </section>
-        <section className="studio-home__library" id="studio-inspiration" aria-label="创作精选">
-          <header><h2>创作精选</h2></header>
-          <Suspense fallback={<p className="studio-home__retry">正在打开创作精选…</p>}>
+        <section className="studio-home__library" id="studio-inspiration" aria-label={t('studio.home.featured')}>
+          <header><h2>{t('studio.home.featured')}</h2></header>
+          <Suspense fallback={<p className="studio-home__retry">{t('studio.home.featuredOpening')}</p>}>
             <InspirationLibrary embedded />
           </Suspense>
         </section>

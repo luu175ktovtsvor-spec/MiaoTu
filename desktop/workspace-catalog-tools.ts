@@ -1,3 +1,4 @@
+import { filterAsync, mapAsync } from '../server/async-collections.ts'
 import type { LocalStore } from './store.ts'
 import type { DesktopWorkspaceFiles } from './workspace-files.ts'
 
@@ -7,21 +8,20 @@ const MAX_CANVAS_BYTES = 8 * 1024 * 1024
 const MAX_NODES = 160
 const MAX_DATA_CHARS = 24_000
 
-function canvasEntries(files: DesktopWorkspaceFiles, project: string) {
-  return files.list('local', project)
-    .filter(entry => entry.mime !== 'inode/directory' && /\.json$/i.test(entry.path) && !/^(agent|assets|skills|settings)\//i.test(entry.path))
-    .filter(entry => {
-      try { return files.isCanvasFile('local', entry.path, project) } catch { return false }
-    })
+async function canvasEntries(files: DesktopWorkspaceFiles, project: string) {
+  return (await filterAsync((await files.list('local', project))
+    .filter(entry => entry.mime !== 'inode/directory' && /\.json$/i.test(entry.path) && !/^(agent|assets|skills|settings)\//i.test(entry.path)), async entry => {
+      try { return (await files.isCanvasFile('local', entry.path, project)) } catch { return false }
+    }))
 }
 
 // 列表只给概要：一张过大或损坏的画布只标出来，不能让整个列表失败。
-function canvasSummary(files: DesktopWorkspaceFiles, project: string, entry: { path: string; revision?: string; updatedAt?: string; size?: number }) {
+async function canvasSummary(files: DesktopWorkspaceFiles, project: string, entry: { path: string; revision?: string; updatedAt?: string; size?: number }) {
   const base = { id: entry.path, name: entry.path.replace(/\.json$/i, ''), revision: entry.revision || null, updatedAt: entry.updatedAt || null, size: Number(entry.size) || null }
   if (Number(entry.size) > MAX_CANVAS_BYTES) return { ...base, nodeCount: null, edgeCount: null, note: '画布较大，未统计节点数；用 readProjectCanvas 读取' }
   let bytes: Buffer, canvas: any
   try {
-    bytes = files.read('local', entry.path, project).bytes
+    bytes = (await files.read('local', entry.path, project)).bytes
     canvas = JSON.parse(bytes.toString('utf8'))
   } catch { return { ...base, nodeCount: null, edgeCount: null, note: '画布文件读取失败' } }
   if (!Array.isArray(canvas?.nodes) || !Array.isArray(canvas?.edges)) return { ...base, nodeCount: null, edgeCount: null, note: '画布文件无效' }
@@ -56,8 +56,8 @@ export function createWorkspaceCatalogTools({ store, files }: { store: LocalStor
         },
       },
       async execute(args: Record<string, unknown> = {}) {
-        const projects = store.projects().slice(0, MAX_PROJECTS).map(project => {
-          const canvases = canvasEntries(files, project.id).slice(0, MAX_CANVASES)
+        const projects = (await mapAsync((await store.projects()).slice(0, MAX_PROJECTS), async project => {
+          const canvases = (await canvasEntries(files, project.id)).slice(0, MAX_CANVASES)
           return {
             id: project.id,
             name: project.name,
@@ -65,10 +65,10 @@ export function createWorkspaceCatalogTools({ store, files }: { store: LocalStor
             createdAt: project.createdAt,
             lastOpenedAt: project.lastOpenedAt,
             canvasCount: canvases.length,
-            ...(args.includeCanvases === true ? { canvases: canvases.map(entry => canvasSummary(files, project.id, entry)) } : {}),
+            ...(args.includeCanvases === true ? { canvases: (await mapAsync(canvases, async entry => (await canvasSummary(files, project.id, entry)))) } : {}),
           }
-        })
-        return { projects, truncated: store.projects().length > MAX_PROJECTS }
+        }))
+        return { projects, truncated: (await store.projects()).length > MAX_PROJECTS }
       },
     },
     {
@@ -83,9 +83,9 @@ export function createWorkspaceCatalogTools({ store, files }: { store: LocalStor
         },
       },
       async execute(args: Record<string, unknown>) {
-        const project = store.project(String(args.projectId || ''))
-        const canvases = canvasEntries(files, project.id)
-        return { project, canvases: canvases.slice(0, MAX_CANVASES).map(entry => canvasSummary(files, project.id, entry)), truncated: canvases.length > MAX_CANVASES }
+        const project = (await store.project(String(args.projectId || '')))
+        const canvases = (await canvasEntries(files, project.id))
+        return { project, canvases: (await mapAsync(canvases.slice(0, MAX_CANVASES), async entry => (await canvasSummary(files, project.id, entry)))), truncated: canvases.length > MAX_CANVASES }
       },
     },
     {
@@ -103,10 +103,10 @@ export function createWorkspaceCatalogTools({ store, files }: { store: LocalStor
         },
       },
       async execute(args: Record<string, unknown>) {
-        const project = store.project(String(args.projectId || ''))
+        const project = (await store.project(String(args.projectId || '')))
         const canvasId = String(args.canvasId || '')
-        if (!/\.json$/i.test(canvasId) || !files.isCanvasFile('local', canvasId, project.id)) throw new Error('指定路径不是当前项目中的画布')
-        const file = files.read('local', canvasId, project.id)
+        if (!/\.json$/i.test(canvasId) || !(await files.isCanvasFile('local', canvasId, project.id))) throw new Error('指定路径不是当前项目中的画布')
+        const file = (await files.read('local', canvasId, project.id))
         if (!file.bytes || file.bytes.length > MAX_CANVAS_BYTES) throw new Error('画布文件过大，已拒绝一次读取；请先用 listProjectCanvases 确认目标')
         const canvas = JSON.parse(file.bytes.toString('utf8'))
         if (!Array.isArray(canvas.nodes) || !Array.isArray(canvas.edges)) throw new Error('画布文件结构无效')

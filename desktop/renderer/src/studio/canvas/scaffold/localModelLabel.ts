@@ -23,3 +23,12 @@ export function nodeModelValueLabel(value: unknown) {
   } catch { /* 不是模型对 */ }
   return typeof value === 'string' ? value : '';
 }
+
+// 已存模型在离线或加载中仍按模型 ID 识别 Logo。
+export function nodeModelValueId(value: unknown): string {
+  try {
+    const pair = typeof value === 'string' ? JSON.parse(value) : undefined;
+    if (Array.isArray(pair) && typeof pair[1] === 'string') return pair[1];
+  } catch { /* 不是模型对 */ }
+  return typeof value === 'string' ? value : '';
+}

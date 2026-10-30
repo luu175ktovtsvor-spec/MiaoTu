@@ -49,7 +49,7 @@
     <span class="indexBadge" :class="{ roleBadge: label }" aria-hidden="true">{{ label || index }}</span>
     <div v-if="(item.dataType === 'VIDEO' && previewUrl && !previewError) || (item.dataType === 'AUDIO' && duration)" class="videoInfo" aria-hidden="true">
       <icon-player-play v-if="item.dataType === 'VIDEO'" :size="12" />
-      <span v-if="duration">{{ duration }}</span>
+      <span v-if="displayDuration">{{ displayDuration }}</span>
     </div>
     <el-image-viewer v-if="previewVisible && item.dataType === 'IMAGE' && (originalUrl || previewUrl)" :urlList="[originalUrl || previewUrl]" teleported @close="previewVisible = false" />
     <el-dialog :modelValue="previewVisible && item.dataType !== 'IMAGE' && item.dataType !== 'AUDIO'" :title="title" :width="item.dataType === 'VIDEO' ? 'min(800px, calc(100vw - 32px))' : 'min(520px, calc(100vw - 32px))'" alignCenter appendToBody destroyOnClose @update:modelValue="previewVisible = false">
@@ -72,11 +72,12 @@ import { useNodeFiles } from "../workspaceFiles";
 import { translate } from "@miaoimg/i18n/vue";
 import type { NodeInputValue } from "../values";
 
-const props = defineProps<{ item: NodeInputValue; index: number; label?: string }>();
+const props = defineProps<{ item: NodeInputValue; index: number; label?: string; durationSeconds?: number }>();
 const emit = defineEmits<{ remove: []; preview: [url: string] }>();
 const previewVisible = ref(false);
 const previewError = ref("");
 const duration = ref("");
+const displayDuration = computed(() => props.durationSeconds && props.durationSeconds > 0 ? translate("{0}s", {0: props.durationSeconds.toFixed(1)}) : duration.value);
 const videoThumbnail = ref("");
 const originalPreview = ref(false);
 const playbackError = ref("");

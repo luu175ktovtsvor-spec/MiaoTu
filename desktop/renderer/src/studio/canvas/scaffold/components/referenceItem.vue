@@ -14,6 +14,7 @@
       :item="item"
       :index="index + 1"
       :label="labels?.[JSON.stringify([item.source, item.sourceHandle])]"
+      :duration-seconds="durations?.[JSON.stringify([item.source, item.sourceHandle])]"
       tabindex="0"
       aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight"
       @keydown.alt.left.stop.prevent="moveReference(index, index - 1)"
@@ -30,7 +31,7 @@ import type { NodeInputValue } from "../values";
 import referenceCard from "./referenceCard.vue";
 
 const items = defineModel<NodeInputValue[]>({ required: true });
-defineProps<{ labels?: Record<string, string> }>();
+defineProps<{ labels?: Record<string, string>; durations?: Record<string, number> }>();
 const emit = defineEmits<{ remove: [item: NodeInputValue]; preview: [item: NodeInputValue, url: string] }>();
 
 function moveReference(from: number, index: number) {

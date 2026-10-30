@@ -22,7 +22,7 @@
           </section>
         </div>
         <div class="messageSpace" :style="{ height: `${messageVirtualizer.getTotalSize()}px` }">
-          <el-button v-if="nativeMode && historyCursor" class="loadEarlierMessages" text size="small" :loading="olderLoading" @click="loadOlderMessages">{{ translate('加载更早的消息') }}</el-button>
+          <el-button v-if="historyCursor" class="loadEarlierMessages" text size="small" :loading="olderLoading" @click="loadOlderMessages">{{ translate('加载更早的消息') }}</el-button>
           <div
             v-for="{ item, row } in visibleMessages"
             :key="item.id"
@@ -86,10 +86,9 @@
             <div class="pendingMeta">
               <el-icon v-if="item.status === 'sending'" class="is-loading" aria-hidden="true"><icon-loader-2 :size="12" /></el-icon>
               <span :role="item.status === 'failed' ? 'alert' : undefined">{{ pendingStatus(item) }}</span>
-              <el-button v-if="item.status === 'failed'" text size="small" :disabled="locked || pendingInputAction === item.id" @click="nativeMode ? guidePendingInput(item) : sendSupplement(item)">{{ translate('重试') }}</el-button>
-              <el-button v-else-if="!nativeMode && item.status === 'waiting'" text size="small" :disabled="locked" @click="sendSupplement(item)">{{ translate('立即发送') }}</el-button>
+              <el-button v-if="item.status === 'failed'" text size="small" :disabled="locked || pendingInputAction === item.id" @click="guidePendingInput(item)">{{ translate('重试') }}</el-button>
               <el-button v-if="item.status === 'cancelled'" text size="small" :disabled="locked || hasDraft || pendingInputAction === item.id" @click="updatePendingInput(item, 'edit')">{{ translate('移回输入框') }}</el-button>
-              <el-button v-if="nativeMode && ['queued', 'failed'].includes(item.status)" text size="small" :disabled="locked || pendingInputAction === item.id" @click="updatePendingInput(item, 'withdraw')">{{ translate('撤回') }}</el-button>
+              <el-button v-if="['queued', 'failed'].includes(item.status)" text size="small" :disabled="locked || pendingInputAction === item.id" @click="updatePendingInput(item, 'withdraw')">{{ translate('撤回') }}</el-button>
             </div>
           </div>
         </div>
@@ -100,7 +99,7 @@
       </div>
       <el-button v-if="messages.length && !atLatestMessage" class="scrollBottom" circle :aria-label="translate('回到最新消息')" :title="translate('回到最新消息')" @click="messageVirtualizer.scrollToEnd()"><icon-arrow-down :size="18" /></el-button>
     </div>
-    <div v-if="nativeMode && nativeConnection === 'reconnecting'" class="compactionStatus" role="status"><el-icon class="is-loading"><icon-loader-2 :size="14" /></el-icon><span>{{ translate('正在恢复任务状态，已提交的任务仍在后台执行…') }}</span></div>
+    <div v-if="nativeConnection === 'reconnecting'" class="compactionStatus" role="status"><el-icon class="is-loading"><icon-loader-2 :size="14" /></el-icon><span>{{ translate('正在恢复任务状态，已提交的任务仍在后台执行…') }}</span></div>
     <div v-if="compacting || retrying" class="compactionStatus" role="status">
       <el-icon class="is-loading" aria-hidden="true"><icon-loader-2 :size="14" /></el-icon>
       <span>{{ retrying ? translate(retrying.source === 'compaction' ? '上下文整理正在重试（第 {0} 次）…' : '连接恢复中（第 {0} 次）…', { 0: retrying.attempt || 1 }) : translate('正在压缩上下文…') }}</span>
@@ -108,7 +107,7 @@
     <div v-if="lastCompaction?.status === 'failed' && !compacting" class="compactionStatus" role="alert">
       <span>{{ translate('上下文整理未完成，原始记录已保留，可以重试') }}</span>
     </div>
-    <div v-if="nativeMode && lastFailure && !turnRunning" class="compactionStatus" role="alert"><span>{{ translate(lastFailure.message) }}</span></div>
+    <div v-if="lastFailure && !turnRunning" class="compactionStatus" role="alert"><span>{{ translate(lastFailure.message) }}</span></div>
     <div class="messageInput">
       <div v-if="editingId" class="editingBanner"><span>{{ translate('编辑消息') }}</span><el-button text size="small" :disabled="busy" @click="cancelEdit">{{ translate('取消') }}</el-button></div>
       <div
@@ -134,6 +133,10 @@
       <teleport v-for="target in draftMentionTargets" :key="target.key" :to="target.element"><mentionThumbnail v-bind="mentionThumbnailProps(target.mention)" :directory="directory"><icon-photo :size="14" /></mentionThumbnail></teleport>
       <mentionContent ref="draftMentionPreview" :mentions="draftMentions" :directory="directory" removable @remove="removeDraftMention" />
       <div class="senderActions">
+        <input ref="attachmentInput" type="file" multiple accept="image/*,video/*,text/plain" hidden :disabled="locked" @change="selectAttachments" />
+        <el-button class="attachmentButton" text circle :disabled="locked" :aria-label="translate('添加文件')" :title="translate('添加文件')" @click="attachmentInput?.click()">
+          <icon-paperclip :size="16" aria-hidden="true" />
+        </el-button>
         <modelPopover :model-value="selectedModel" :reasoningEffort="reasoningEffort" @update:model-value="selectModel" @update:reasoningEffort="selectReasoningEffort" :active="active" :disabled="disabled || turnRunning" />
         <mentionMenu ref="mentionMenuRef" :directory="directory" :active="active" :disabled="locked || !directory" :query="mentionQuery" :editor="senderElement" :currentCanvasId="createCanvasContext?.()?.id" @open="captureMentionPosition" @select="insertMentions" @dismiss="mentionQuery = undefined" />
         <skillMenu ref="skillMenuRef" :directory="directory" :session-file="nativeFile || sessionFile" :active="active" :disabled="locked || !directory" :query="skillQuery" :editor="senderElement" @select="selectSkill" @dismiss="skillQuery = undefined" />
@@ -189,7 +192,7 @@ import axios from "axios";
 import {
   IconArrowUp, IconArrowDown, IconAtom, IconCopy, IconChevronRight,
   IconCircleDashed, IconPencil, IconPlayerStopFilled, IconX, IconLoader2,
-  IconTrash, IconDots, IconLayoutGrid, IconMovie, IconPhoto, IconArrowUpRight, IconUsersGroup,
+  IconTrash, IconDots, IconLayoutGrid, IconMovie, IconPhoto, IconArrowUpRight, IconUsersGroup, IconPaperclip,
 } from "@tabler/icons-vue";
 import { ElDropdown, ElDropdownItem, ElDropdownMenu, ElMessage } from "element-plus";
 import logoUrl from "@miaoimg/assets/logo.svg";
@@ -206,21 +209,19 @@ import { createPastedTextFile, readTextAttachment } from "./textAttachments";
 import useWorkspaceFiles from "@/lib/workspaceFiles";
 import { assertWorkspaceScope, captureWorkspaceScope } from "@/lib/workspaceRemote";
 import { writeClipboardText } from "@/lib/clipboard";
-import anonymousData from "@/lib/anonymousData";
 import { modelChoices, textModelSettings, updateTextModelSettings, personalizationSettings } from "@/stores/settings";
 import { useWorkspaceStore } from "@/stores/workspace";
 import type { AgentAttachment, AgentConversation, AgentDraft, AgentMessage, AgentPendingInput } from "./types";
 import type { AgentToolCall } from "@miaoimg/server/agent/types";
 import type { AgentEvent, AgentMention, AgentCompaction } from "@miaoimg/server/agent/types";
 import { applyImmutable, type Op } from "@earendil-works/chord/delta";
-import { createConversationStream, readAgentEvents } from "./replyStream";
+import { createConversationStream } from "./replyStream";
 import { clearEndedQuestionDrafts, clearQuestionToolDrafts, questionDraftsKey } from "./questionDraft";
 import type { CanvasContext } from "@miaoimg/tool-canvas/runtime";
 import { messageMarkdown } from "./messageRenderer";
 import xSender, { type AnyTagProps } from "x-sender";
 import "x-sender/lib/XSender.css";
 
-const nativeMode = Boolean((window as any).miaoDesktop);
 const props = defineProps<{ active: boolean; initialSession: AgentConversation | null; initialDraft?: AgentDraft; sessionFile?: string; disabled: boolean }>();
 const emit = defineEmits<{ session: [file: string]; "open-sub-agent": [file: string]; draft: [value: AgentDraft]; sent: [prompt: string]; event: [event: AgentEvent]; running: [value: boolean]; admitting: [value: boolean] }>();
 const workspaceStore = useWorkspaceStore();
@@ -259,14 +260,13 @@ const compacting = ref(false);
 const turnRunning = computed(() => busy.value || remoteRunning.value || compacting.value);
 watch(turnRunning, value => emit('running', value), { immediate: true, flush: 'sync' });
 const stopping = ref(false);
-const manualCompacting = ref(false);
 const retrying = ref<Extract<AgentEvent, { type: 'retry' }>>();
 const lastCompaction = ref<AgentCompaction | undefined>(props.initialSession?.lastCompaction);
 const lastFailure = ref(props.initialSession?.lastFailure);
 const deletingId = ref<string>();
 const restoringAttachment = ref(false);
 // 生成期间仍允许编辑；补充交给 pi 的 steering，在安全步骤边界进入同一任务。
-const locked = computed(() => props.disabled || deletingId.value !== undefined || restoringAttachment.value || (nativeMode && stopping.value));
+const locked = computed(() => props.disabled || deletingId.value !== undefined || restoringAttachment.value || stopping.value);
 type QueuedAgentMessage = AgentPendingInput;
 const queuedMessages = ref<QueuedAgentMessage[]>((props.initialSession?.pendingInputs || []).map(item => ({ id: item.entryId || item.id, submissionId: item.submissionId, prompt: item.content, attachments: item.attachments || [], mentions: item.mentions || [], status: 'queued', mode: item.mode || 'steer' })));
 for (const item of props.initialDraft?.pendingInputs || []) if (!queuedMessages.value.some(current => current.id === item.id)) queuedMessages.value.push({ ...item, status: item.status === 'sending' ? 'failed' : item.status });
@@ -277,7 +277,7 @@ const acknowledgedInputs = new Map<string, 'queued' | 'applied' | 'cancelled'>()
 for (const item of queuedMessages.value) if (item.status === 'cancelled') acknowledgedInputs.set(item.id, 'cancelled');
 const draftRevision = ref(0);
 const hasDraft = computed(() => { draftRevision.value; return hasDraftToSend(); });
-const savedEditing = nativeMode && !pendingMessage ? props.initialDraft?.editing : undefined;
+const savedEditing = !pendingMessage ? props.initialDraft?.editing : undefined;
 const editingSource = shallowRef<AgentMessage | undefined>(savedEditing?.message);
 const editingId = computed(() => editingSource.value?.id);
 const draftMentions = ref<AgentMention[]>([]);
@@ -304,7 +304,7 @@ const messageVirtualizer = useVirtualizer<HTMLDivElement, HTMLDivElement>(comput
     getItemKey: (index: number) => keys[index]!,
     estimateSize: () => 240,
     overscan: 3,
-    paddingStart: nativeMode && historyCursor.value ? 52 : 12,
+    paddingStart: historyCursor.value ? 52 : 12,
     anchorTo: "end" as const,
     followOnAppend: true,
     scrollEndThreshold: 48,
@@ -337,7 +337,6 @@ watch([() => props.active, messageList], async ([active, element]) => {
 let sender: xSender | undefined;
 onBeforeUnmount(() => {
   questionDraftOwnerActive = false;
-  if (!nativeMode) return;
   emit('draft', {
     content: sender ? getDraftContent() : props.initialDraft?.content || '',
     attachments: sender ? draftAttachments.value.map(item => ({ ...item })) : props.initialDraft?.attachments || [],
@@ -361,8 +360,8 @@ watch(locale, () => {
     if (tag.type === "Mention") tag.$el.setAttribute("aria-label", t`预览 ${tag.name}`);
   }
 });
-let controller: AbortController | undefined;
 const senderElement = ref<HTMLElement>();
+const attachmentInput = ref<HTMLInputElement>();
 const skillMenuRef = ref<InstanceType<typeof skillMenu>>();
 const skillQuery = ref<string>();
 const mentionMenuRef = ref<InstanceType<typeof mentionMenu>>();
@@ -491,7 +490,8 @@ watch(() => turnRunning.value && !compacting.value, running => {
 }, { immediate: true });
 onScopeDispose(() => window.clearInterval(workingTimer));
 function formatWorkingTime(seconds: number) {
-  return seconds < 60 ? translate('{0} 秒', { 0: seconds }) : translate('{0} 分 {1} 秒', { 0: Math.floor(seconds / 60), 1: seconds % 60 });
+  // 和 Codex 一样写「已处理 {时间}」。
+  return translate('已处理 {0}', { 0: seconds < 60 ? translate('{0} 秒', { 0: seconds }) : translate('{0} 分 {1} 秒', { 0: Math.floor(seconds / 60), 1: seconds % 60 }) });
 }
 const workingStatus = computed(() => {
   const streaming = [...messages.value].reverse().find(item => item.streaming);
@@ -561,31 +561,24 @@ function applyEvent(event: AgentEvent) {
 function reconcileConversation(conversation: AgentConversation) {
   if (questionDraftOwnerActive) clearEndedQuestionDrafts(questionDrafts, conversation);
   stream.finish();
-  if (nativeMode) {
-    reconcileModelSettings(conversation);
-    currentSubAgents.value = conversation.subAgents || [];
-    compacting.value = !!conversation.compacting;
-    retrying.value = conversation.retrying ? { type: 'retry', active: true, ...conversation.retrying } : undefined;
-    for (const agent of conversation.subAgents || []) emit('event', { type: 'subAgent', agent });
+  reconcileModelSettings(conversation);
+  currentSubAgents.value = conversation.subAgents || [];
+  compacting.value = !!conversation.compacting;
+  retrying.value = conversation.retrying ? { type: 'retry', active: true, ...conversation.retrying } : undefined;
+  for (const agent of conversation.subAgents || []) emit('event', { type: 'subAgent', agent });
+  if ((conversation.historyRevision || 0) !== historyRevision) olderMessages.value = [];
+  else if (olderMessages.value.length || olderLoading.value) {
+    const start = messages.value.findIndex(message => message.id === conversation.messages[0]?.id);
+    // Retain the moving window while an earlier page is in flight. If a
+    // reconnect skipped the whole window, restart pagination at the new one
+    // instead of presenting two disjoint ranges as continuous history.
+    olderMessages.value = start >= 0 ? messages.value.slice(0, start) : [];
   }
-  if (nativeMode) {
-    if ((conversation.historyRevision || 0) !== historyRevision) olderMessages.value = [];
-    else if (olderMessages.value.length || olderLoading.value) {
-      const start = messages.value.findIndex(message => message.id === conversation.messages[0]?.id);
-      // Retain the moving window while an earlier page is in flight. If a
-      // reconnect skipped the whole window, restart pagination at the new one
-      // instead of presenting two disjoint ranges as continuous history.
-      olderMessages.value = start >= 0 ? messages.value.slice(0, start) : [];
-    }
-    historyRevision = conversation.historyRevision || 0;
-    const present = new Set(conversation.messages.map(message => message.id));
-    olderMessages.value = olderMessages.value.filter(message => !present.has(message.id));
-    messages.value = olderMessages.value.length ? [...olderMessages.value, ...conversation.messages] : conversation.messages;
-    if (!olderMessages.value.length) historyCursor.value = conversation.historyCursor;
-  }
-  else {
-    messages.value = hydrateMessages(conversation.messages);
-  }
+  historyRevision = conversation.historyRevision || 0;
+  const present = new Set(conversation.messages.map(message => message.id));
+  olderMessages.value = olderMessages.value.filter(message => !present.has(message.id));
+  messages.value = olderMessages.value.length ? [...olderMessages.value, ...conversation.messages] : conversation.messages;
+  if (!olderMessages.value.length) historyCursor.value = conversation.historyCursor;
   stats.value = conversation.stats;
   contextUsage.value = conversation.contextUsage;
   lastCompaction.value = conversation.lastCompaction;
@@ -597,10 +590,10 @@ function reconcileConversation(conversation: AgentConversation) {
     if (applied.has(item.id)) acknowledgedInputs.set(item.id, 'applied');
     else if (pendingIds.has(item.id) && !acknowledgedInputs.has(item.id)) acknowledgedInputs.set(item.id, 'queued');
   }
-  queuedMessages.value = queuedMessages.value.filter(item => !applied.has(item.id) && (!nativeMode || acknowledgedInputs.get(item.id) !== 'applied'));
+  queuedMessages.value = queuedMessages.value.filter(item => !applied.has(item.id) && acknowledgedInputs.get(item.id) !== 'applied');
   // An input leaving the inbox may have been cancelled, or may be outside the
   // visible history window. Resolve its native receipt before discarding it.
-  if (nativeMode) for (const item of queuedMessages.value) {
+  for (const item of queuedMessages.value) {
     if (item.status === 'queued' && !pendingIds.has(item.id)) void refreshPendingReceipt(item);
   }
   for (const item of conversation.pendingInputs || []) {
@@ -672,7 +665,7 @@ async function loadOlderMessages() {
     historyCursor.value = page.historyCursor;
     await nextTick();
     messageVirtualizer.value.scrollToOffset(offset + messageVirtualizer.value.getTotalSize() - height);
-  } catch (error) { ElMessage.error((error as any)?.response?.data?.message || '读取历史未完成，请重试'); }
+  } catch (error) { ElMessage.error((error as any)?.response?.data?.message || translate('读取历史未完成，请重试')); }
   finally { olderLoading.value = false; }
 }
 
@@ -681,16 +674,49 @@ let nativeObserver: AbortController | undefined;
 let nativeObservation = 0;
 let nativeObservedFile = '';
 let nativeDisposed = false;
+const nativeStaging = new Set<AbortController>();
+let nativeObserverReady: { file: string; promise: Promise<string> } | undefined;
 const nativeConnection = ref<'connected' | 'reconnecting'>('connected');
-onScopeDispose(() => { nativeDisposed = true; nativeObservation++; nativeObserver?.abort(); });
+const disconnectedError = () => new Error(translate('对话连接已断开，请重新连接后再发送'));
+function disconnectNative() {
+  nativeObserver?.abort();
+  for (const staging of nativeStaging) staging.abort(disconnectedError());
+}
+const onlineNative = () => { if (props.active && nativeFile.value) void observeNative(nativeFile.value); };
+window.addEventListener('offline', disconnectNative);
+window.addEventListener('online', onlineNative);
+onScopeDispose(() => {
+  nativeDisposed = true; nativeObservation++; disconnectNative();
+  window.removeEventListener('offline', disconnectNative); window.removeEventListener('online', onlineNative);
+});
 watch([() => props.active, () => props.sessionFile], ([active, file]) => {
+  const changed = nativeFile.value !== file;
   nativeFile.value = file;
-  if (!nativeMode) return;
-  nativeObserver?.abort(); nativeObservation++;
+  // Adopting the file just created by this send is not a view switch.
+  if (!active || changed) { disconnectNative(); nativeObservation++; }
   if (active && file && props.initialSession?.nativeId) void observeNative(file);
 }, { immediate: true });
+async function connectedNativeObserver(file: string, signal: AbortSignal) {
+  signal.throwIfAborted();
+  if (nativeDisposed || !props.active || navigator.onLine === false) throw disconnectedError();
+  void observeNative(file);
+  const ready = nativeObserverReady;
+  if (!ready || ready.file !== file) throw disconnectedError();
+  let abort!: () => void;
+  const interrupted = new Promise<never>((_resolve, reject) => {
+    abort = () => reject(signal.reason || disconnectedError());
+    signal.addEventListener('abort', abort, { once: true });
+    if (signal.aborted) abort();
+  });
+  try {
+    const id = await Promise.race([ready.promise, interrupted]);
+    signal.throwIfAborted();
+    if (nativeDisposed || !props.active || nativeObserverReady !== ready) throw disconnectedError();
+    return id;
+  } finally { signal.removeEventListener('abort', abort); }
+}
 async function observeNative(file: string) {
-  if (nativeDisposed || !props.active) return;
+  if (nativeDisposed || !props.active || navigator.onLine === false) return;
   if (nativeObservedFile === file && nativeObserver && !nativeObserver.signal.aborted) return;
   nativeObserver?.abort();
   const observer = new AbortController(), revision = ++nativeObservation;
@@ -698,10 +724,16 @@ async function observeNative(file: string) {
   nativeObservedFile = file;
   let delay = 500;
   while (!observer.signal.aborted && props.active && revision === nativeObservation) {
+    const observerId = crypto.randomUUID();
+    let connected!: (id: string) => void, disconnected!: (error: Error) => void;
+    const ready = { file, promise: new Promise<string>((resolve, reject) => { connected = resolve; disconnected = reject; }) };
+    void ready.promise.catch(() => {});
+    nativeObserverReady = ready;
     try {
       assertWorkspaceScope(conversationScope);
-      const response = await fetch(`/api/agent/observe?sessionFile=${encodeURIComponent(file)}`, { headers: { 'x-miaoimg-workspace': '1' }, signal: observer.signal });
+      const response = await fetch(`/api/agent/observe?sessionFile=${encodeURIComponent(file)}&observerId=${observerId}`, { headers: { 'x-miaoimg-workspace': '1' }, signal: observer.signal });
       if (!response.ok || !response.body) throw new Error(`读取任务失败（${response.status}）`);
+      connected(observerId);
       const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
       let pending = '', value: AgentConversation | undefined;
       try {
@@ -720,6 +752,7 @@ async function observeNative(file: string) {
         }
       } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
     } catch (error) { if (observer.signal.aborted) return; console.warn('Agent 状态连接正在恢复', error); }
+    finally { disconnected(disconnectedError()); if (nativeObserverReady === ready) nativeObserverReady = undefined; }
     if (!observer.signal.aborted) {
       nativeConnection.value = 'reconnecting';
       await new Promise<void>(resolve => { const done = () => { clearTimeout(timer); observer.signal.removeEventListener('abort', done); resolve(); }; const timer = setTimeout(done, delay); observer.signal.addEventListener('abort', done, { once: true }); });
@@ -729,7 +762,6 @@ async function observeNative(file: string) {
 }
 let nativeAdmission = Promise.resolve();
 let nativeAdmissions = 0;
-const nativeStaging = new Set<AbortController>();
 async function sendNative(input: QueuedAgentMessage, resendFrom = input.resendFrom, action?: 'compact') {
   const model = selectedModelChoice.value;
   if (!directory || !model || locked.value || input.status === 'sending' || input.status === 'cancelled') return;
@@ -757,8 +789,11 @@ async function sendNative(input: QueuedAgentMessage, resendFrom = input.resendFr
       file = data.data.file; nativeFile.value = file; emit('session', file!);
     }
     staging.signal.throwIfAborted(); assertWorkspaceScope(conversationScope);
-    void observeNative(file!);
-    const response = await axios.post('/api/agent/submit', { directory, sessionFile: file, inputId: input.id, prompt: input.prompt, mentions: input.mentions, attachments: input.attachments.map(({ name, path, mimeType }) => ({ name, path, mimeType })), providerId: model.providerId, modelId: model.modelId, thinkingLevel, memoryEnabled, canvas: { id: canvasId }, resendFrom, action }, { headers: { 'x-miaoimg-workspace': '1', 'Accept-Language': locale.value } });
+    // The server must have the observing connection before text admission; a
+    // refresh between these steps then rejects or stops this exact submission.
+    const observerId = await connectedNativeObserver(file!, staging.signal);
+    assertWorkspaceScope(conversationScope);
+    const response = await axios.post('/api/agent/submit', { directory, sessionFile: file, observerId, inputId: input.id, prompt: input.prompt, mentions: input.mentions, attachments: input.attachments.map(({ name, path, mimeType }) => ({ name, path, mimeType })), providerId: model.providerId, modelId: model.modelId, thinkingLevel, memoryEnabled, canvas: { id: canvasId }, resendFrom, action }, { headers: { 'x-miaoimg-workspace': '1', 'Accept-Language': locale.value } });
     if (response.data?.code !== 200) throw new Error(response.data?.message || '发送失败');
     const receipt = response.data.data;
     // A successful HTTP response alone does not confirm admission. Keep the
@@ -793,7 +828,7 @@ async function sendNative(input: QueuedAgentMessage, resendFrom = input.resendFr
       input.error = receipt === 'cancelled' ? translate('这条提交已结束，移回输入框后可重新发送') : undefined;
       return;
     }
-    input.status = 'failed'; input.error = (error as any)?.response?.data?.message || (error instanceof Error ? error.message : '发送结果待确认，可用同一条消息重试');
+    input.status = 'failed'; input.error = (error as any)?.response?.data?.message || (error instanceof Error ? error.message : translate('发送结果待确认，可用同一条消息重试'));
     if (action === 'compact') {
       ElMessage.error(input.error);
       if (nativeFile.value) void observeNative(nativeFile.value);
@@ -805,7 +840,7 @@ async function guidePendingInput(item: QueuedAgentMessage) {
   if (item.status === 'cancelled') return updatePendingInput(item, 'edit');
   if (item.status === 'queued') return updatePendingInput(item, 'steer');
   if (item.submissionId !== undefined) return refreshPendingReceipt(item);
-  return sendSupplement(item);
+  return sendNative(item);
 }
 async function updatePendingInput(item: QueuedAgentMessage, action: 'steer' | 'followUp' | 'withdraw' | 'edit') {
   if (pendingInputAction.value || item.status === 'sending' || locked.value) return;
@@ -848,7 +883,7 @@ async function updatePendingInput(item: QueuedAgentMessage, action: 'steer' | 'f
       await fillPrompt(item.prompt, item.mentions);
     }
     queuedMessages.value = queuedMessages.value.filter(input => input.id !== item.id);
-  } catch (error) { ElMessage.error((error as any)?.response?.data?.message || (error instanceof Error ? error.message : '补充消息操作未完成')); }
+  } catch (error) { ElMessage.error((error as any)?.response?.data?.message || (error instanceof Error ? error.message : translate('补充消息操作未完成'))); }
   finally { pendingInputAction.value = undefined; }
 }
 
@@ -953,76 +988,15 @@ function queueDraftMessage() {
   draftAttachments.value = [];
   draftMentions.value = [];
   void instance.reset();
-  void sendSupplement(queuedMessages.value[queuedMessages.value.length - 1]!);
-}
-
-async function sendSupplement(item: QueuedAgentMessage) {
-  if (nativeMode) return sendNative(item);
-  if (locked.value || !props.active || item.status === 'sending' || item.status === 'queued') return;
-  if (manualCompacting.value) return;
-  if (!turnRunning.value) {
-    if (!sender || !selectedModelChoice.value || editingId.value !== undefined) return;
-    queuedMessages.value = queuedMessages.value.filter(input => input.id !== item.id);
-    return sendMessage(undefined, item);
-  }
-  if (!props.sessionFile) return;
-  item.status = 'sending'; item.error = undefined;
-  try {
-    await uploadAttachments(item.attachments, directory!, new AbortController().signal);
-    const { data } = await axios.post('/api/agent/input', {
-      directory, sessionFile: props.sessionFile, inputId: item.id, prompt: item.prompt, mentions: item.mentions,
-      attachments: item.attachments.map(({ name, path, mimeType }) => ({ name, path, mimeType })),
-    }, { headers: { 'x-miaoimg-workspace': '1' }, signal: AbortSignal.timeout(15000) });
-    if (data.data?.status === 'applied') {
-      queuedMessages.value = queuedMessages.value.filter(input => input.id !== item.id);
-      if (data.data.conversation && !busy.value) reconcileConversation(data.data.conversation);
-    }
-    else if (data.data?.status === 'idle') {
-      // 接受补充时原回合恰好结束：沿用同一消息编号接着发，服务端幂等处理。
-      item.status = 'waiting';
-      if (!turnRunning.value) void sendSupplement(item);
-    }
-    else if (!turnRunning.value) { item.status = 'failed'; item.error = translate('本轮已结束，这条补充尚未处理'); }
-    else item.status = 'queued';
-  } catch (error) {
-    item.status = 'failed';
-    item.error = (error as any)?.response?.data?.message || (error instanceof Error ? error.message : translate('补充未发送，请重试'));
-  }
+  void sendNative(queuedMessages.value[queuedMessages.value.length - 1]!);
 }
 
 async function compactContext() {
-  if (nativeMode) {
-    contextMenuVisible.value = false;
-    return sendNative({ id: crypto.randomUUID(), prompt: '', attachments: [], mentions: [], status: 'waiting' }, undefined, 'compact');
-  }
-  const model = selectedModelChoice.value;
-  if (!model || !props.sessionFile || busy.value || remoteRunning.value || locked.value) return;
-  const requestController = new AbortController();
-  controller = requestController;
-  busy.value = true; manualCompacting.value = true;
   contextMenuVisible.value = false;
-  try {
-    const response = await fetch('/api/agent', {
-      method: 'POST', signal: requestController.signal,
-      headers: { 'Accept-Language': locale.value, 'Content-Type': 'application/json', 'x-miaoimg-workspace': '1' },
-      body: JSON.stringify({ action: 'compact', directory, sessionFile: props.sessionFile, providerId: model.providerId, modelId: model.modelId, thinkingLevel: reasoningEffort.value || undefined }),
-    });
-    for await (const event of readAgentEvents(response, requestController.signal)) {
-      if (event.type === 'compaction' || event.type === 'retry' || event.type === 'stats') applyEvent(event);
-      if (event.type === 'status') ElMessage.info(translate(event.message));
-      if (event.type === 'error') throw new Error(translate(event.message));
-    }
-  } catch (error) {
-    ElMessage.error(requestController.signal.aborted ? translate('上下文整理已停止，原始记录已保留') : error instanceof Error ? error.message : translate('上下文整理未完成，原始记录已保留，可以重试'));
-  } finally {
-    busy.value = false; compacting.value = false; manualCompacting.value = false; retrying.value = undefined;
-    controller = undefined;
-    const next = queuedMessages.value.find(item => item.status === 'waiting');
-    if (next && props.active && !locked.value) void sendSupplement(next);
-  }
+  return sendNative({ id: crypto.randomUUID(), prompt: '', attachments: [], mentions: [], status: 'waiting' }, undefined, 'compact');
 }
 
-watch(() => props.sessionFile, () => { if (busy.value) for (const item of queuedMessages.value) if (item.status === 'waiting') void sendSupplement(item); });
+watch(() => props.sessionFile, () => { if (busy.value) for (const item of queuedMessages.value) if (item.status === 'waiting') void sendNative(item); });
 
 async function selectSkill(name: string) {
   const instance = sender;
@@ -1100,8 +1074,7 @@ async function deleteMessage(item: AgentMessage) {
         headers: { "x-miaoimg-workspace": "1" },
       });
       if (data.code !== 200) throw new Error(data.message || "删除消息失败");
-      if (nativeMode) { reconcileConversation(data.data); void observeNative(props.sessionFile!); }
-      else { stats.value = data.data.stats; contextUsage.value = data.data.contextUsage; }
+      reconcileConversation(data.data); void observeNative(props.sessionFile!);
     }
     messages.value = messages.value.filter(message => message.id !== item.id);
   } catch (error) {
@@ -1137,31 +1110,20 @@ function stopSenderResize(event: PointerEvent) {
 }
 
 async function stopMessage() {
-  if (nativeMode) {
-    if (stopping.value) return;
-    stopping.value = true;
-    // Cancel uploads and sends which have not reached admission. An already
-    // submitted request keeps its receipt; stop it after admission settles so
-    // a late acknowledgement cannot start work after the Stop response.
-    for (const staging of nativeStaging) staging.abort(new Error(translate('发送已取消，可重试或撤回')));
-    try {
-      await nativeAdmission;
-      if (!nativeFile.value) return;
-      assertWorkspaceScope(conversationScope);
-      await axios.post('/api/agent/native/stop', { directory, sessionFile: nativeFile.value }, { headers: { 'x-miaoimg-workspace': '1' } });
-    }
-    catch (error) { ElMessage.error((error as any)?.response?.data?.message || '停止未完成，请重试'); }
-    finally { stopping.value = false; }
-    return;
-  }
-  if (controller) { controller.abort(); return; }
-  if (!remoteRunning.value || !props.sessionFile || stopping.value) return;
+  if (stopping.value) return;
   stopping.value = true;
+  // Cancel uploads and sends which have not reached admission. An already
+  // submitted request keeps its receipt; stop it after admission settles so
+  // a late acknowledgement cannot start work after the Stop response.
+  for (const staging of nativeStaging) staging.abort(new Error(translate('发送已取消，可重试或撤回')));
   try {
-    await axios.post('/api/agent/stop', { directory, sessionFile: props.sessionFile }, { headers: { 'x-miaoimg-workspace': '1' } });
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : translate('停止未完成，请重试'));
-  } finally { stopping.value = false; }
+    await nativeAdmission;
+    if (!nativeFile.value) return;
+    assertWorkspaceScope(conversationScope);
+    await axios.post('/api/agent/native/stop', { directory, sessionFile: nativeFile.value }, { headers: { 'x-miaoimg-workspace': '1' } });
+  }
+  catch (error) { ElMessage.error((error as any)?.response?.data?.message || translate('停止未完成，请重试')); }
+  finally { stopping.value = false; }
 }
 
 async function uploadAttachments(attachments: AgentAttachment[], directory: string, signal: AbortSignal) {
@@ -1184,30 +1146,6 @@ async function uploadAttachments(attachments: AgentAttachment[], directory: stri
   }
 }
 
-async function sendCanvasResult(event: Extract<AgentEvent, { type: "canvasCall" }>, canvasContext: CanvasContext | undefined, signal: AbortSignal) {
-  let body: string;
-  try {
-    if (!canvasContext) throw new Error(translate("当前页面没有激活的画布"));
-    const result = await canvasContext.call(event, signal);
-    body = JSON.stringify({ directory, callId: event.callId, result: result ?? null });
-  } catch (error) {
-    body = JSON.stringify({ directory, callId: event.callId, error: (error instanceof Error && error.message ? error.message : translate("画布操作失败")).slice(0, 8000) });
-  }
-  const cancelled = signal.aborted;
-  if (cancelled) body = JSON.stringify({ directory, callId: event.callId, error: translate("画布操作已取消") });
-  const response = await fetch("/api/agent/canvasResult", {
-    method: "POST",
-    headers: { "Accept-Language": locale.value, "Content-Type": "application/json", "x-miaoimg-workspace": "1" },
-    body,
-    keepalive: cancelled,
-    signal: cancelled ? AbortSignal.timeout(5000) : signal,
-  });
-  if (!response.ok) {
-    const error = await response.json().catch(() => null);
-    throw new Error(error?.message || translate("画布操作结果回传失败"));
-  }
-}
-
 async function sendMessage(source?: AgentMessage, queued?: QueuedAgentMessage) {
   const instance = sender;
   const editing = source && editingId.value === source.id;
@@ -1220,144 +1158,18 @@ async function sendMessage(source?: AgentMessage, queued?: QueuedAgentMessage) {
   if (mentionedIds.some(id => !mentions.some(mention => mention.id === id))) return ElMessage.warning(translate("存在无法读取的提及，请删除后重新选择"));
   if (!source && editingId.value !== undefined) return;
   const resendIndex = source ? messages.value.findIndex(item => item.id === source.id) : -1;
-  if (source && (source.role !== "user" || resendIndex < 0 && !(nativeMode && editing && source === editingSource.value))) return;
+  if (source && (source.role !== "user" || resendIndex < 0 && !(editing && source === editingSource.value))) return;
   if (source && turnRunning.value) return ElMessage.warning(translate("当前任务仍在执行，请先停止再重发编辑内容"));
-  const resendFrom = source ? source.entryId ?? messages.value.slice(resendIndex + 1).find(item => item.role === "user" && item.entryId)?.entryId : undefined;
   if (locked.value || busy.value || !instance || (!prompt && !attachments.length)) return;
-  const model = selectedModelChoice.value;
   if (!directory) return ElMessage.warning(translate("请先打开项目"));
-  if (!model) return ElMessage.warning(translate("请先选择模型"));
-
-  if (nativeMode) {
-    if (!createCanvasContext?.()?.id) return ElMessage.warning(translate("画布正在打开，请稍候再发送"));
-    const input: QueuedAgentMessage = { id: queued?.id || crypto.randomUUID(), prompt, attachments, mentions, status: 'waiting', ...(source ? { resendFrom: source.entryId || source.id } : {}) };
-    if (!queuedMessages.value.some(item => item.id === input.id)) queuedMessages.value.push(input);
-    const pending = sendNative(input);
-    if (!source) { draftAttachments.value = []; draftMentions.value = []; await instance.reset(); }
-    else await restoreEditingDraft();
-    return pending;
-  }
-  const requestController = new AbortController();
-  const canvasContext = createCanvasContext?.();
-  const childCanvasContexts = new Map<string, CanvasContext | undefined>();
-  controller = requestController;
-  busy.value = true;
-  compacting.value = false;
-  const reply = reactive<AgentMessage>({ id: crypto.randomUUID(), role: "assistant", content: "", parts: [], streaming: true });
-  const userMessage = reactive<AgentMessage>({ id: crypto.randomUUID(), role: "user", content: prompt, attachments, mentions });
-  let ownsStream = !remoteRunning.value;
-  let receivedError = false;
-  if (!source) {
-    messages.value.push(userMessage);
-    if (ownsStream) messages.value.push(reply);
-    draftAttachments.value = [];
-    draftMentions.value = [];
-  }
-  let accepted = false;
-  if (ownsStream) stream.begin(reply);
-  const handledCanvasCalls = new Set<string>();
-  const pendingQuestions = new Map<string, string>();
-  const activeChildFiles = new Set<string>();
-  const finishStats = anonymousData.startAgent();
-  try {
-    if (!source) await instance.reset();
-    requestController.signal.throwIfAborted();
-    await uploadAttachments(attachments, directory, requestController.signal);
-    const response = await fetch("/api/agent", {
-      method: "POST",
-      headers: { "Accept-Language": locale.value, "Content-Type": "application/json", "x-miaoimg-workspace": "1" },
-      body: JSON.stringify({ prompt, mentions, attachments: attachments.map(({ name, path, mimeType }) => ({ name, path, mimeType })), directory, providerId: model.providerId, modelId: model.modelId, thinkingLevel: reasoningEffort.value || undefined, memoryEnabled: personalizationSettings.value.memoryEnabled, sessionFile: props.sessionFile, resendFrom, inputId: queued?.id || userMessage.id, canvas: canvasContext ? { id: canvasContext.id, tools: canvasContext.tools } : undefined }),
-      signal: requestController.signal,
-    });
-    for await (const event of readAgentEvents(response, requestController.signal)) {
-      // Each child gets its own canvas binding. Switching/creating a canvas
-      // inside one child must not redirect its siblings or the parent.
-      let toolEvent: AgentEvent = event;
-      let scope = "";
-      let toolCanvasContext = canvasContext;
-      while (toolEvent.type === "subAgentEvent") {
-        if (toolEvent.event.type === "done" || toolEvent.event.type === "error") activeChildFiles.delete(toolEvent.file);
-        else activeChildFiles.add(toolEvent.file);
-        scope += `${toolEvent.file}/`;
-        if (!childCanvasContexts.has(scope)) childCanvasContexts.set(scope, toolCanvasContext?.fork?.() ?? toolCanvasContext);
-        toolCanvasContext = childCanvasContexts.get(scope);
-        toolEvent = toolEvent.event;
-      }
-      if (toolEvent.type === "question") pendingQuestions.set(`${scope}${toolEvent.toolCallId}`, toolEvent.callId);
-      if (toolEvent.type === "tool" && toolEvent.tool.status !== "running") pendingQuestions.delete(`${scope}${toolEvent.tool.id}`);
-      if (toolEvent.type === "canvasCall") {
-        if (handledCanvasCalls.has(toolEvent.callId)) throw new Error(translate("收到重复的画布调用"));
-        handledCanvasCalls.add(toolEvent.callId);
-        await sendCanvasResult(toolEvent, toolCanvasContext, requestController.signal);
-        continue;
-      }
-      switch (event.type) {
-        case "sessionSnapshot":
-          accepted = true;
-          applyEvent(event);
-          break;
-        case "accepted":
-          if (!ownsStream) {
-            stream.finish(); messages.value.push(reply); stream.begin(reply); ownsStream = true;
-          }
-          break;
-        case "userMessage":
-          queuedMessages.value = queuedMessages.value.filter(item => item.id !== event.id);
-          if (accepted) { applyEvent(event); break; }
-          if (!ownsStream) {
-            messages.value.push(reply);
-            stream.begin(reply);
-          }
-          userMessage.entryId = event.id;
-          reply.replyTo = event.id;
-          if (source && !accepted) {
-            messages.value.splice(resendIndex, messages.value.length - resendIndex, userMessage, reply);
-            stats.value = undefined;
-            contextUsage.value = undefined;
-            await restoreEditingDraft();
-          }
-          accepted = true;
-          ownsStream = true;
-          applyEvent(event);
-          break;
-        case "error": receivedError = true; applyEvent(event); break;
-        case "stats":
-          if (source && !accepted) break;
-          applyEvent(event);
-          break;
-        default: applyEvent(event);
-      }
-    }
-    if (source && !accepted) throw new Error(translate("重发没有确认成功，请重新打开这段对话后再试"));
-    finishStats("success");
-    emit("sent", mentionPlainText(prompt, mentions) || attachments[0]?.name || "新对话");
-  } catch (error) {
-    finishStats(requestController.signal.aborted ? "cancelled" : "failed");
-    const responseMessage = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
-    const message = requestController.signal.aborted ? translate("已停止生成") : responseMessage || (error instanceof Error ? error.message : "发送失败，请重试");
-    if ((source && !accepted) || !ownsStream) { userMessage.error = message; ElMessage.error(message); }
-    else if (!receivedError) stream.receive({ type: 'error', message });
-    if (ownsStream && props.initialSession?.parentFile && props.sessionFile) {
-      emit("event", { type: "subAgentEvent", file: props.sessionFile, event: { type: "error", message } });
-    }
-  } finally {
-    for (const file of activeChildFiles) emit("event", { type: "subAgentEvent", file, event: { type: "error", message: "委派连接已结束，请重新打开子会话查看结果" } });
-    // ACT: Bun 的流断开事件可能不触发；主动结束仍在等待的提问，不依赖断开通知。
-    for (const callId of pendingQuestions.values()) {
-      void fetch("/api/agent/answer", {
-        method: "POST", headers: { "Accept-Language": locale.value, "Content-Type": "application/json", "x-miaoimg-workspace": "1" },
-        body: JSON.stringify({ directory, callId, cancelled: true }), keepalive: true,
-      }).catch(() => {});
-    }
-    if (ownsStream) stream.finish();
-    compacting.value = false;
-    retrying.value = undefined;
-    busy.value = false;
-    controller = undefined;
-    for (const item of queuedMessages.value) if (item.status === 'queued') { item.status = 'failed'; item.error = translate('本轮已结束，这条补充尚未处理'); }
-    const next = queuedMessages.value.find(item => item.status === 'waiting');
-    if (next && props.active && !locked.value) void sendSupplement(next);
-  }
+  if (!selectedModelChoice.value) return ElMessage.warning(translate("请先选择模型"));
+  if (!createCanvasContext?.()?.id) return ElMessage.warning(translate("画布正在打开，请稍候再发送"));
+  const input: QueuedAgentMessage = { id: queued?.id || crypto.randomUUID(), prompt, attachments, mentions, status: 'waiting', ...(source ? { resendFrom: source.entryId || source.id } : {}) };
+  if (!queuedMessages.value.some(item => item.id === input.id)) queuedMessages.value.push(input);
+  const pending = sendNative(input);
+  if (!source) { draftAttachments.value = []; draftMentions.value = []; await instance.reset(); }
+  else await restoreEditingDraft();
+  return pending;
 }
 
 async function restoreTextAttachment(index: number) {
@@ -1378,22 +1190,7 @@ async function restoreTextAttachment(index: number) {
   }
 }
 
-function pasteAttachments(event: ClipboardEvent) {
-  const files = Array.from(event.clipboardData?.files ?? []);
-  if (!files.length) {
-    try {
-      const file = createPastedTextFile(event.clipboardData?.getData("text/plain") ?? "");
-      if (file) files.push(file);
-    } catch (error) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      ElMessage.warning(error instanceof Error ? error.message : translate("无法添加文本附件"));
-      return;
-    }
-  }
-  if (!files.length) return;
-  event.preventDefault();
-  event.stopImmediatePropagation();
+function appendAttachments(files: File[]) {
   if (locked.value) return;
   for (const file of files) {
     if (!/^(image|video)\//.test(file.type) && file.type !== "text/plain") {
@@ -1416,6 +1213,31 @@ function pasteAttachments(event: ClipboardEvent) {
   }
 }
 
+function selectAttachments(event: Event) {
+  const input = event.target as HTMLInputElement;
+  appendAttachments(Array.from(input.files ?? []));
+  input.value = "";
+}
+
+function pasteAttachments(event: ClipboardEvent) {
+  const files = Array.from(event.clipboardData?.files ?? []);
+  if (!files.length) {
+    try {
+      const file = createPastedTextFile(event.clipboardData?.getData("text/plain") ?? "");
+      if (file) files.push(file);
+    } catch (error) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      ElMessage.warning(error instanceof Error ? error.message : translate("无法添加文本附件"));
+      return;
+    }
+  }
+  if (!files.length) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  appendAttachments(files);
+}
+
 watch(senderElement, (element, _previous, onCleanup) => {
   if (!element) return;
   const instance = new xSender(element, {
@@ -1431,7 +1253,7 @@ watch(senderElement, (element, _previous, onCleanup) => {
   void instance.nextTick(async () => {
     if (sender !== instance) return;
     const draft = props.initialDraft;
-    if (nativeMode && draft && !pendingMessage) {
+    if (draft && !pendingMessage) {
       draftAttachments.value = draft.attachments.map(item => ({ ...item }));
       draftMentions.value = draft.mentions.map(item => ({ ...item }));
       await instance.reset({ clearHistory: false, chatNode: promptModel(draft.content, draft.mentions) });
@@ -1479,7 +1301,6 @@ watch(senderElement, (element, _previous, onCleanup) => {
   editor.addEventListener("keyup", updateCursor);
   editor.addEventListener("compositionend", updateCursor);
   onCleanup(() => {
-    controller?.abort();
     draftMentionTargets.value = [];
     sender = undefined;
     senderResize = undefined;
@@ -1946,6 +1767,13 @@ watch(() => !props.initialSession?.parentFile && !!workspaceStore.pendingAgentMe
 
       > .el-button {
         margin-left: 0;
+      }
+
+      .attachmentButton {
+        width: 28px;
+        height: 28px;
+        margin-right: 2px;
+        padding: 0;
       }
 
       .modelPopover {

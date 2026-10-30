@@ -1,10 +1,13 @@
 import Hls from 'hls.js/light'
 import { useEffect, useRef, useState } from 'react'
+import { useLang } from '../i18n'
+import { studioText } from '../studio/studioText'
 import adaptive from './adaptive.json'
 import prepared from './playback.json'
 
 export default function VideoPlayer({ source, poster, title }: { source: string; poster: string; title: string }) {
   const ref = useRef<HTMLVideoElement>(null)
+  const { lang } = useLang()
   const [error, setError] = useState(false)
   const [attempt, setAttempt] = useState(0)
   useEffect(() => {
@@ -67,6 +70,6 @@ export default function VideoPlayer({ source, poster, title }: { source: string;
   }, [source, attempt])
   return <div className="inspiration-player">
     <video ref={ref} poster={poster} aria-label={title} controls playsInline preload="none" />
-    {error && <button className="inspiration-player-error" onClick={() => setAttempt(value => value + 1)}>播放失败 · 点击重试 / Retry</button>}
+    {error && <button className="inspiration-player-error" onClick={() => setAttempt(value => value + 1)}>{studioText('播放失败 · 点击重试', lang)}</button>}
   </div>
 }

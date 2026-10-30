@@ -229,7 +229,7 @@ export const modelChoices = computed(() => {
     reasoningEfforts: undefined as string[] | undefined, contextWindow: model.contextWindow,
   })));
   const choices = [...serverTextModels.value, ...own].map(model => ({ value: JSON.stringify([model.providerId, model.modelId]), ...model }));
-  const preferred = choices.find(model => model.modelId === serverDefaultTextModel.value);
+  const preferred = choices.find(model => model.providerId === 'miaoimg' && model.modelId === serverDefaultTextModel.value);
   return preferred ? [preferred, ...choices.filter(model => model !== preferred)] : choices;
 });
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { assertLegacySQLiteMaintenance } from './legacy-sqlite-maintenance.ts'
 // 媒体字节内容寻址化（把工作区文件与生成结果的字节合并成一份 blob 存储）。
 //
 //   node scripts/migrate-media-blobs.ts                # 只报账（默认）
@@ -38,6 +39,8 @@ import { MEDIA_LAYOUT_BLOB, MEDIA_LAYOUT_PATH, BlobStore, blobDirectory, hashByt
 import { DEFAULT_PROJECT_ID, ensureWorkspaceBlobColumn, ensureWorkspaceSchema, tableColumns } from '../server/projects.ts'
 import { ensureArtifactSchema } from '../server/artifact-files.ts'
 
+assertLegacySQLiteMaintenance()
+
 const args = process.argv.slice(2)
 const has = flag => args.includes(flag)
 const option = (name, fallback) => {
@@ -57,16 +60,16 @@ const number = value => Number(value || 0).toLocaleString('en-US')
 const step = title => console.log(`\n[${title}]`)
 const isDirectoryMime = mime => mime === 'inode/directory'
 
-function openStore(readOnly) {
+async function openStore(readOnly) {
   const db = new DatabaseSync(maintenance, readOnly ? { readOnly: true } : {})
-  if (!readOnly) db.exec('PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000')
+  if (!readOnly) await db.exec('PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000')
   return {
     db,
-    all: (sql, ...values) => db.prepare(sql).all(...values),
-    get: (sql, ...values) => db.prepare(sql).get(...values),
-    run: (sql, ...values) => db.prepare(sql).run(...values),
-    transaction(fn) { db.exec('BEGIN IMMEDIATE'); try { const result = fn(); db.exec('COMMIT'); return result } catch (error) { db.exec('ROLLBACK'); throw error } },
-    close: () => db.close(),
+    all: async (sql, ...values) => (await (await db.prepare(sql)).all(...values)),
+    get: async (sql, ...values) => (await (await db.prepare(sql)).get(...values)),
+    run: async (sql, ...values) => (await (await db.prepare(sql)).run(...values)),
+    async transaction(fn) { await db.exec('BEGIN IMMEDIATE'); try { const result = (await fn()); await db.exec('COMMIT'); return result } catch (error) { await db.exec('ROLLBACK'); throw error } },
+    close: async () => (await db.close()),
   }
 }
 
@@ -81,15 +84,15 @@ const statOrNull = path => { try { const info = lstatSync(path); return info.isF
 // ---- 字节来源清单 ----
 // 三种来源：路径树上的文件、_artifacts/ 里的文件、还留在数据库 bytes 列里的老行。
 // 只列位置、不读内容（库内 bytes 在读的时候才取），所以清单本身很小。
-function collect(store) {
-  const columns = new Set(tableColumns(store, 'workspace_files'))
+async function collect(store) {
+  const columns = new Set((await tableColumns(store, 'workspace_files')))
   const scoped = columns.has('project_id')
   const storage = columns.has('storage') ? 'storage' : "'db' AS storage"
   const blob = columns.has('blob') ? 'blob' : 'NULL AS blob'
   const project = scoped ? 'project_id' : `'${DEFAULT_PROJECT_ID}' AS project_id`
   const size = columns.has('size') ? 'size' : 'length(bytes) AS size'
   const items = []
-  for (const row of store.all(`SELECT user_id,${project},path,mime,${size},${storage},${blob} FROM workspace_files ORDER BY user_id,path`)) {
+  for (const row of (await store.all(`SELECT user_id,${project},path,mime,${size},${storage},${blob} FROM workspace_files ORDER BY user_id,path`))) {
     if (isDirectoryMime(row.mime)) continue                 // 目录行没有字节
     if (row.blob as string) continue                                  // 已经搬过（重跑时跳过）
     const userRoot = resolve(root, String(row.user_id))
@@ -100,14 +103,14 @@ function collect(store) {
       to: from,   // 回收/回滚要用的落点
     })
   }
-  const artifactColumns = new Set(tableColumns(store, 'artifacts'))
+  const artifactColumns = new Set((await tableColumns(store, 'artifacts')))
   if (artifactColumns.size) {
-    for (const row of store.all(`SELECT a.id AS id,a.request_id AS request_id,a.mime AS mime,
+    for (const row of (await store.all(`SELECT a.id AS id,a.request_id AS request_id,a.mime AS mime,
         ${artifactColumns.has('size') ? 'a.size' : 'length(a.bytes)'} AS size,
         ${artifactColumns.has('storage') ? 'a.storage' : "'db'"} AS storage,
         ${artifactColumns.has('blob') ? 'a.blob' : 'NULL'} AS blob,
         g.user_id AS user_id
-      FROM artifacts a LEFT JOIN generations g ON g.id=a.request_id`)) {
+      FROM artifacts a LEFT JOIN generations g ON g.id=a.request_id`))) {
       if (row.blob as string) continue
       items.push({
         kind: 'artifact', id: row.id, requestId: row.request_id, userId: row.user_id || '', mime: row.mime,
@@ -120,10 +123,10 @@ function collect(store) {
   return items
 }
 
-function sourceBytes(store, item, scoped) {
-  if (item.kind === 'artifact') return store.get('SELECT bytes FROM artifacts WHERE id=?', item.id)?.bytes
-  return store.get(scoped ? 'SELECT bytes FROM workspace_files WHERE user_id=? AND project_id=? AND path=?' : 'SELECT bytes FROM workspace_files WHERE user_id=? AND path=?',
-    ...(scoped ? [item.userId, item.project, item.path] : [item.userId, item.path]))?.bytes
+async function sourceBytes(store, item, scoped) {
+  if (item.kind === 'artifact') return (await store.get('SELECT bytes FROM artifacts WHERE id=?', item.id))?.bytes
+  return (await store.get(scoped ? 'SELECT bytes FROM workspace_files WHERE user_id=? AND project_id=? AND path=?' : 'SELECT bytes FROM workspace_files WHERE user_id=? AND path=?',
+    ...(scoped ? [item.userId, item.project, item.path] : [item.userId, item.path])))?.bytes
 }
 
 // 逐项算出内容哈希。这一趟是只读的：读不到字节就停下来、一行都不往下动
@@ -133,7 +136,7 @@ function sourceBytes(store, item, scoped) {
 // 那不是「搬不动」，是索引该被这一轮修正——回填时写进去的就是真实长度。
 // 把它当成错误拦下来会让整个迁移因为几行陈旧的 size 卡死，而那几行的字节其实好好的。
 async function scan(store, items, { log = () => {} }: Record<string, any> = {}) {
-  const scoped = tableColumns(store, 'workspace_files').includes('project_id')
+  const scoped = (await tableColumns(store, 'workspace_files')).includes('project_id')
   const scanned = []
   const missing = []
   const resized = []
@@ -145,7 +148,7 @@ async function scan(store, items, { log = () => {} }: Record<string, any> = {}) 
       let sha
       let size = item.size
       if (item.inDatabase) {
-        const bytes = sourceBytes(store, item, scoped)
+        const bytes = (await sourceBytes(store, item, scoped))
         if (!bytes) { missing.push({ ...item, reason: '数据库里的 bytes 是空的' }); continue }
         size = bytes.length
         sha = hashBytes(Buffer.from(bytes))
@@ -223,12 +226,12 @@ function assertMissing(missing, verb) {
 }
 
 async function report() {
-  const store = openStore(true)
+  const store = (await openStore(true))
   try {
-    const layout = mediaLayout(store)
-    const items = collect(store)
-    const already = tableColumns(store, 'workspace_files').includes('blob')
-      ? store.get('SELECT COUNT(*) AS n FROM workspace_files WHERE blob IS NOT NULL').n
+    const layout = (await mediaLayout(store))
+    const items = (await collect(store))
+    const already = (await tableColumns(store, 'workspace_files')).includes('blob')
+      ? (await store.get('SELECT COUNT(*) AS n FROM workspace_files WHERE blob IS NOT NULL')).n
       : 0
     console.log(`媒体内容寻址迁移报告\n  数据库 ${maintenance}\n  媒体根目录 ${root}\n  当前布局 ${layout === MEDIA_LAYOUT_BLOB ? 'blob（已经是内容寻址）' : 'path（路径树，还没迁移）'}`)
     console.log(`  工作区索引里已经有 blob 的 ${number(already)} 行（之前跑过一部分）`)
@@ -260,7 +263,7 @@ async function report() {
       if (missing.length > 30) console.log(`    …… 其余 ${missing.length - 30} 项省略`)
       console.log('    确认这些是迁移前就缺失的孤儿索引后，加 --allow-missing 放行。')
     }
-  } finally { store.close() }
+  } finally { await store.close() }
 }
 
 // 建 blob：走 BlobStore 的实现（它负责权限、属主、已存在时的长度校验），
@@ -269,7 +272,7 @@ async function link(store, items, blobs) {
   const { scanned, missing, resized } = await scan(store, items, { log: console.log })
   assertMissing(missing, '链接')
   reportResized(resized)
-  const scoped = tableColumns(store, 'workspace_files').includes('project_id')
+  const scoped = (await tableColumns(store, 'workspace_files')).includes('project_id')
   let created = 0
   let reused = 0
   let done = 0
@@ -278,7 +281,7 @@ async function link(store, items, blobs) {
     if (batch > 0 && done % batch === 0) console.log(`    已处理 ${done} / ${scanned.length} 项，新建 ${created} 个 blob……`)
     const action = item.from
       ? blobs.linkFromFile(item.userId || '', item.from, item.sha)
-      : (blobs.put(item.userId || '', Buffer.from(sourceBytes(store, item, scoped))) ? 'linked' : 'linked')
+      : ((await blobs.put(item.userId || '', Buffer.from((await sourceBytes(store, item, scoped))))) ? 'linked' : 'linked')
     if (action === 'reused') reused += 1
     else created += 1
   }
@@ -308,16 +311,16 @@ async function verify(scanned) {
 }
 
 async function apply() {
-  const store = openStore(false)
+  const store = (await openStore(false))
   try {
-    const layout = mediaLayout(store)
-    const items = collect(store)
+    const layout = (await mediaLayout(store))
+    const items = (await collect(store))
     console.log(`媒体内容寻址迁移 ${linkOnly ? '--link-only' : '--apply'}\n  数据库 ${maintenance}\n  媒体根目录 ${root}\n  当前布局 ${layout}`)
     if (!items.length) {
       console.log('\n没有需要搬的字节。')
       if (!linkOnly && layout !== MEDIA_LAYOUT_BLOB) {
         step('只有布局标记要翻')
-        setMediaLayout(store, MEDIA_LAYOUT_BLOB)
+        await setMediaLayout(store, MEDIA_LAYOUT_BLOB)
         console.log('  已把布局标记翻成 blob：之后的写入落 _blobs/，不再写路径树。')
       }
       return
@@ -341,18 +344,18 @@ async function apply() {
     // 先把两处结构补齐（老库的 bytes 还是 NOT NULL、还没有 storage/size/blob）：复用服务端
     // 启动时用的同一份结构升级函数，不在这里另写一套 DDL——artifacts 那张表带 ON DELETE CASCADE
     // 的子表，重建流程有讲究（先关外键、事务里重建、foreign_key_check 验完再打开），抄一遍必错。
-    ensureWorkspaceSchema(store)
-    ensureWorkspaceBlobColumn(store)
-    ensureArtifactSchema(store)
-    const scoped = tableColumns(store, 'workspace_files').includes('project_id')
+    await ensureWorkspaceSchema(store)
+    await ensureWorkspaceBlobColumn(store)
+    await ensureArtifactSchema(store)
+    const scoped = (await tableColumns(store, 'workspace_files')).includes('project_id')
     let backfilled = 0
-    store.transaction(() => {
+    await store.transaction(async () => {
       for (const item of scanned) {
         if (item.kind === 'workspace') {
-          store.run(`UPDATE workspace_files SET blob=?,storage='blob',size=? WHERE user_id=?${scoped ? ' AND project_id=?' : ''} AND path=?`,
+          await store.run(`UPDATE workspace_files SET blob=?,storage='blob',size=? WHERE user_id=?${scoped ? ' AND project_id=?' : ''} AND path=?`,
             item.sha, item.size, item.userId, ...(scoped ? [item.project] : []), item.path)
         } else {
-          store.run("UPDATE artifacts SET blob=?,storage='blob',size=?,bytes=NULL WHERE id=?", item.sha, item.size, item.id)
+          await store.run("UPDATE artifacts SET blob=?,storage='blob',size=?,bytes=NULL WHERE id=?", item.sha, item.size, item.id)
         }
         backfilled += 1
       }
@@ -360,7 +363,7 @@ async function apply() {
     console.log(`  回填 ${number(backfilled)} 行索引（工作区 + 生成结果）`)
 
     step('4/5 翻布局标记')
-    setMediaLayout(store, MEDIA_LAYOUT_BLOB)
+    await setMediaLayout(store, MEDIA_LAYOUT_BLOB)
     console.log('  之后的写入直接落 _blobs/，不再写路径树。')
 
     step('5/5 回收旧位置')
@@ -389,7 +392,7 @@ async function apply() {
     console.log(`  其中重复内容的 ${number(facts.logical - facts.unique)} 字节是**真正省下来的空间**，其余是与 blob 共享 inode 的旧名字。`)
     console.log('\n--apply 完成。跑 node server/media-reconcile.ts 核对一遍：')
     console.log('  「引用在、字节没了」必须是 0；「无引用的字节」应当是 0 或只有刚写入的少数几个。')
-  } finally { store.close() }
+  } finally { await store.close() }
 }
 
 function pruneUpTo(directory, stopAt) {
@@ -401,17 +404,17 @@ function pruneUpTo(directory, stopAt) {
 }
 
 async function rollback() {
-  const store = openStore(false)
+  const store = (await openStore(false))
   try {
-    const layout = mediaLayout(store)
-    const workspaceColumns = tableColumns(store, 'workspace_files')
+    const layout = (await mediaLayout(store))
+    const workspaceColumns = (await tableColumns(store, 'workspace_files'))
     const scoped = workspaceColumns.includes('project_id')
     const rows = workspaceColumns.includes('blob')
-      ? store.all(`SELECT user_id,${scoped ? 'project_id' : `'${DEFAULT_PROJECT_ID}' AS project_id`},path,mime,size,blob FROM workspace_files WHERE blob IS NOT NULL`)
+      ? (await store.all(`SELECT user_id,${scoped ? 'project_id' : `'${DEFAULT_PROJECT_ID}' AS project_id`},path,mime,size,blob FROM workspace_files WHERE blob IS NOT NULL`))
       : []
-    const artifactColumns = tableColumns(store, 'artifacts')
+    const artifactColumns = (await tableColumns(store, 'artifacts'))
     const artifactRows = artifactColumns.includes('blob')
-      ? store.all(`SELECT a.id AS id,a.size AS size,a.blob AS blob,g.user_id AS user_id FROM artifacts a LEFT JOIN generations g ON g.id=a.request_id WHERE a.blob IS NOT NULL`)
+      ? (await store.all(`SELECT a.id AS id,a.size AS size,a.blob AS blob,g.user_id AS user_id FROM artifacts a LEFT JOIN generations g ON g.id=a.request_id WHERE a.blob IS NOT NULL`))
       : []
     console.log(`媒体内容寻址迁移 --rollback\n  数据库 ${maintenance}\n  媒体根目录 ${root}\n  当前布局 ${layout}`)
     console.log(`  需要放回路径树的：工作区 ${number(rows.length)} 行、生成结果 ${number(artifactRows.length)} 行`)
@@ -442,10 +445,10 @@ async function rollback() {
     console.log(`  放回 ${number(linked)} 个文件（硬链接，不额外占空间）`)
 
     step('2/3 退回索引与布局标记')
-    store.transaction(() => {
-      store.run("UPDATE workspace_files SET blob=NULL,storage='disk' WHERE blob IS NOT NULL")
-      store.run("UPDATE artifacts SET blob=NULL,storage='disk' WHERE blob IS NOT NULL")
-      setMediaLayout(store, MEDIA_LAYOUT_PATH)
+    await store.transaction(async () => {
+      await store.run("UPDATE workspace_files SET blob=NULL,storage='disk' WHERE blob IS NOT NULL")
+      await store.run("UPDATE artifacts SET blob=NULL,storage='disk' WHERE blob IS NOT NULL")
+      await setMediaLayout(store, MEDIA_LAYOUT_PATH)
     })
     console.log('  索引里的 blob 已清空、布局标记退回 path：旧镜像可以直接读这一份数据了。')
 
@@ -468,7 +471,7 @@ async function rollback() {
       console.log('  blob 桶保留着（路径树上的文件是它的硬链接，不额外占空间）。确认一切正常后可以手动清，或下次加 --drop-blobs。')
     }
     console.log('\n--rollback 完成。')
-  } finally { store.close() }
+  } finally { await store.close() }
 }
 
 try {

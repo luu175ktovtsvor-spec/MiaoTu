@@ -29,28 +29,28 @@ export function createTextMeter({ management, session, source, operationId, fetc
     // This is only a hold estimate. It does not set a model output limit.
     const estimateInput = Math.ceil(JSON.stringify(payload).length / 4)
     const output = payload.max_output_tokens || payload.max_completion_tokens || payload.max_tokens
-    management.reserveText({ session, model:model.id, requestId:id, operationId:operation, source, inputTokens:estimateInput, outputTokens:output })
+    await management.reserveText({ session, model:model.id, requestId:id, operationId:operation, source, inputTokens:estimateInput, outputTokens:output })
     let httpStatus = 0, upstreamRequestId = '', responseId = '', firstTokenMs: number = null
     let receipt = null, rejected = false, ended = false, invocationStatus = 'unknown', providerError = ''
     const safeId = value => typeof value === 'string' && /^[A-Za-z0-9_.:-]{1,200}$/.test(value) ? value : ''
-    const finish = (error?: any) => {
+    const finish = async (error?: any) => {
       if (ended) return
       ended = true
-      try { management.textBilling.metadata(id, { upstreamRequestId,responseId,httpStatus,durationMs:Date.now()-started,firstTokenMs }) }
+      try { await management.textBilling.metadata(id, { upstreamRequestId,responseId,httpStatus,durationMs:Date.now()-started,firstTokenMs }) }
       catch { console.error('[text] Request metadata write pending',id) }
       try {
-      if (receipt) management.textBilling.settle(id,{ ...receipt,invocationStatus })
-      else if (rejected) management.textBilling.fail(id,providerError || `上游拒绝 HTTP ${httpStatus}`)
+      if (receipt) await management.textBilling.settle(id,{ ...receipt,invocationStatus })
+      else if (rejected) await management.textBilling.fail(id,providerError || `上游拒绝 HTTP ${httpStatus}`)
       else {
         const unsubmitted = !httpStatus && ['UND_ERR_CONNECT_TIMEOUT','ECONNREFUSED','ENOTFOUND','EAI_AGAIN'].includes(error?.cause?.code || error?.code)
-        if (unsubmitted) management.textBilling.fail(id,'连接建立前失败，已退还预扣')
-        else management.textBilling.review(id, error?.name === 'AbortError' ? '调用取消，未取得最终用量，待核对' : providerError || '未取得可核对的最终用量，待核对')
+        if (unsubmitted) await management.textBilling.fail(id,'连接建立前失败，已退还预扣')
+        else await management.textBilling.review(id, error?.name === 'AbortError' ? '调用取消，未取得最终用量，待核对' : providerError || '未取得可核对的最终用量，待核对')
       }
       } catch {
         // Preserve delivered model bytes and the original hold on a DB failure.
         // Never turn an accounting failure into an implicit refund or retry.
         console.error('[text] Settlement write pending',id)
-        try { management.textBilling.review(id,'用量结算写入未完成，保留预扣待核对') } catch {}
+        try { await management.textBilling.review(id,'用量结算写入未完成，保留预扣待核对') } catch {}
       }
     }
     let anthropic: Record<string,any> = {}
@@ -80,12 +80,12 @@ export function createTextMeter({ management, session, source, operationId, fetc
       // This explicit identifier can be matched by gateway usage, without
       // passing a user's email or the full local conversation to the gateway.
       request.headers.set('X-Session-ID',id)
-      management.textBilling.dispatched(id)
+      await management.textBilling.dispatched(id)
       const upstream = await fetchImpl(request)
       httpStatus=upstream.status
       upstreamRequestId=safeId(upstream.headers.get('x-request-id') || upstream.headers.get('request-id'))
       rejected=httpStatus>=400 && httpStatus<500 && ![408,409].includes(httpStatus)
-      if (!upstream.body) { finish(); return upstream }
+      if (!upstream.body) { await finish(); return upstream }
       const isSse = /text\/event-stream/i.test(upstream.headers.get('content-type') || '')
       const reader=upstream.body.getReader(),decoder=new TextDecoder()
       let buffer='', overflow=false
@@ -107,16 +107,16 @@ export function createTextMeter({ management, session, source, operationId, fetc
         async pull(controller) {
           try {
             const next=await reader.read()
-            if(next.done){consume(undefined,true);finish();controller.close();reader.releaseLock()}
+            if(next.done){consume(undefined,true);await finish();controller.close();reader.releaseLock()}
             else {consume(next.value);controller.enqueue(next.value)}
-          } catch(error){try{finish(error)}finally{controller.error(error);reader.releaseLock()}}
+          } catch(error){try{await finish(error)}finally{controller.error(error);reader.releaseLock()}}
         },
-        async cancel(reason){try{finish(reason)}finally{await reader.cancel(reason);reader.releaseLock()}},
+        async cancel(reason){try{await finish(reason)}finally{await reader.cancel(reason);reader.releaseLock()}},
       })
       const headers=new Headers(upstream.headers)
       headers.set('x-miao-text-request-id',id)
       return new Response(body,{status:upstream.status,statusText:upstream.statusText,headers})
-    } catch(error){finish(error);throw error}
+    } catch(error){await finish(error);throw error}
   }
-  return { fetch:requestFetch,operationId:operation,summary:()=>management.textBilling.operation(operation) }
+  return { fetch:requestFetch,operationId:operation,summary:async ()=>(await management.textBilling.operation(operation)) }
 }

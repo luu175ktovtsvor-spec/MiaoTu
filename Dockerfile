@@ -22,8 +22,8 @@ WORKDIR /app
 
 FROM base AS verification
 
-# 构建这一步（vite build）实测峰值 RSS 约 5.5GB：21344 个模块在同一张图里渲染 chunk。
-# 默认 4096 的上限会在这里反复 mark-compact 然后 OOM（exit 134），5120 实测可通过。
+# 网页画布下线后，官网 + 管理后台的 vite build 只剩约 4.6k 个模块，几秒完成；
+# 5120 的堆上限是旧网页画布时代留下的余量，保留不影响构建。
 ENV NODE_OPTIONS=--max-old-space-size=5120
 
 # The public deployment prefers pre-generated WebP previews, with the existing
@@ -100,7 +100,7 @@ RUN npm ci --omit=dev && npm --prefix web ci \
     && npm --prefix web/runtime ci --omit=dev --ignore-scripts --no-audit --no-fund \
     && npm cache clean --force
 COPY web/src/admin ./web/src/admin
-COPY web/src/i18n.ts web/src/LangProvider.tsx web/src/LanguageControl.tsx web/src/shellLanguage.ts web/src/shellText.ts web/src/shellCatalog.ts web/src/siteOrigins.ts ./web/src/
+COPY web/src/i18n.ts web/src/LangProvider.tsx web/src/LanguageControl.tsx web/src/shellLanguage.ts web/src/siteOrigins.ts ./web/src/
 COPY web/admin.html web/admin.config.ts ./web/
 RUN cd web && node node_modules/vite/bin/vite.js build --config admin.config.ts
 

@@ -1,5 +1,4 @@
 export async function writeClipboard(text) {
-  if (window.miaoDesktop) return window.miaoDesktop.writeClipboardText(text)
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(text)
     return
@@ -14,12 +13,4 @@ export async function writeClipboard(text) {
   const copied = document.execCommand('copy')
   textarea.remove()
   if (!copied) throw new Error('copy failed')
-}
-
-export const writeClipboardText = writeClipboard
-
-export async function readClipboardText() {
-  if (window.miaoDesktop) return window.miaoDesktop.readClipboardText()
-  if (navigator.clipboard?.readText) return navigator.clipboard.readText()
-  return ''
 }

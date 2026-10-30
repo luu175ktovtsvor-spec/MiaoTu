@@ -1,3 +1,4 @@
+import { filterAsync, mapAsync, someAsync } from './async-collections.ts'
 import { isWorkspaceRequest } from './canvas-document.ts'
 // External agents call the canvas connected to this runtime. Desktop serves a
 // loopback endpoint; hosted deployments serve HTTPS. Both require an MCP token.
@@ -84,7 +85,7 @@ function toolResult(value) {
 }
 
 export function createMcpApi({ management, workspaceFiles, showcaseRoot = '', showcaseAssetFetch, webTools, webToolsForUser, ensureMediaTools, additionalTools,
-  assertProjectAccess = (userId, project) => workspaceFiles.projectRoot(userId, project),
+  assertProjectAccess = async (userId, project) => (await workspaceFiles.projectRoot(userId, project)),
 }: Record<string, any>) {
   const activeCalls = new Set<any>()
   type RequestAccess = { userId: string; projectId: string; revoked?: Error; abort(reason: Error): void }
@@ -94,15 +95,15 @@ export function createMcpApi({ management, workspaceFiles, showcaseRoot = '', sh
   const assertRunning = () => { if (stopping) throw failure('MCP 服务正在关闭，请稍后重试', 503) }
   const removingProjects = new Set<string>()
   const projectKey = (userId, projectId) => JSON.stringify([userId, projectId])
-  function assertProjectAvailable(userId, projectId) {
-    assertProjectAccess(userId, projectId)
+  async function assertProjectAvailable(userId, projectId) {
+    await assertProjectAccess(userId, projectId)
     if (removingProjects.has(projectKey(userId, projectId))) throw failure('项目正在关闭，请稍后重试', 409)
   }
   const connections = new Map()
   // A transport disconnect is not an editor close. Keep path metadata for the
   // normal reconnect window and unresolved execution IDs until confirmation.
   const disconnectedViews = new Map<string, any>()
-  const workspaceScope = (userId, projectId = requestProject()) => JSON.stringify([userId, projectId, workspaceFiles.referenceOwner?.(userId) || String(userId)])
+  const workspaceScope = async (userId, projectId = requestProject()) => JSON.stringify([userId, projectId, (await workspaceFiles.referenceOwner?.(userId)) || String(userId)])
   function forgetDisconnectedView(key) {
     const view = disconnectedViews.get(key)
     clearTimeout(view?.timer)
@@ -114,8 +115,8 @@ export function createMcpApi({ management, workspaceFiles, showcaseRoot = '', sh
     view.timer = setTimeout(() => { if (disconnectedViews.get(key) === view) forgetDisconnectedView(key) }, RECONNECT_PROTECTION_MS)
     view.timer.unref?.()
   }
-  function reconnectingViews(userId, projectId = requestProject()) {
-    const scope = workspaceScope(userId, projectId)
+  async function reconnectingViews(userId, projectId = requestProject()) {
+    const scope = (await workspaceScope(userId, projectId))
     const views: any[] = []
     for (const [key, view] of disconnectedViews) {
       if (view.expires <= Date.now()) forgetDisconnectedView(key)
@@ -123,28 +124,28 @@ export function createMcpApi({ management, workspaceFiles, showcaseRoot = '', sh
     }
     return views
   }
-  const unconfirmedWork = (userId, projectId = requestProject()) => reconnectingViews(userId, projectId).some(view => view.executingCalls.length)
-  function connectionReady(connection) {
+  const unconfirmedWork = async (userId, projectId = requestProject()) => (await reconnectingViews(userId, projectId)).some(view => view.executingCalls.length)
+  async function connectionReady(connection) {
     return Boolean(connection.state) && !connection.state.executingCalls?.some(id => id !== connection.pending?.callId)
-      && !unconfirmedWork(connection.userId, connection.projectId)
+      && !(await unconfirmedWork(connection.userId, connection.projectId))
   }
   const connectionForUser = userId => [...connections.values()].filter(item => item.userId === userId && !item.closed)
-  const projectConnections = userId => {
-    const scope = workspaceScope(userId)
+  const projectConnections = async userId => {
+    const scope = (await workspaceScope(userId))
     return connectionForUser(userId).filter(item => item.scope === scope)
   }
-  const enabled = userId => { const info = management.mcpTokenInfo(userId); return info.enabled ?? info.hasToken }
+  const enabled = async userId => { const info = (await management.mcpTokenInfo(userId)); return info.enabled ?? info.hasToken }
 
   // Serialize UI operations. A cancelled call keeps its lease until the page
   // acknowledges completion, so the next write cannot race a late save.
-  function callCanvas(userId, name, args, signal) {
-    const matches = projectConnections(userId)
+  async function callCanvas(userId, name, args, signal) {
+    const matches = (await projectConnections(userId))
     if (!matches.length) throw failure(connectionForUser(userId).length
       ? '当前打开的项目与 MCP 配置不一致，请打开配置对应的项目，或重新复制 MCP 配置'
       : '请先打开妙图画布并在设置中开启 MCP，保持应用运行', 409)
     if (matches.length > 1) throw failure('检测到多个画布页面，请只保留一个再试', 409)
     const connection = matches[0]
-    if (!connectionReady(connection)) throw failure('画布正在同步状态或等待旧操作结束，请稍后重新读取应用状态', 409)
+    if (!(await connectionReady(connection))) throw failure('画布正在同步状态或等待旧操作结束，请稍后重新读取应用状态', 409)
     if (connection.queue.length >= 32) throw failure('画布待处理命令较多，请等待当前操作完成', 429)
     const notDispatched = t`操作尚未下发到画布，未执行`
     const unconfirmed = t`已下发操作的结果待确认，可能已经保存；请先读取画布、节点或任务状态，不要直接重复执行`
@@ -217,11 +218,11 @@ export function createMcpApi({ management, workspaceFiles, showcaseRoot = '', sh
     connection.idleWaiters.clear()
     connection.response.end()
   }
-  function authorize(request) {
+  async function authorize(request) {
     const header = String(request.headers.authorization || '')
     const token = header.startsWith('Bearer ') ? header.slice(7).trim() : ''
-    const userId = token ? management.userByMcpToken(token) : null
-    if (!userId || !enabled(userId)) throw failure('MCP 访问令牌无效，请在设置 → MCP 里重新生成', 401)
+    const userId = token ? (await management.userByMcpToken(token)) : null
+    if (!userId || !(await enabled(userId))) throw failure('MCP 访问令牌无效，请在设置 → MCP 里重新生成', 401)
     return userId
   }
 
@@ -244,15 +245,15 @@ export function createMcpApi({ management, workspaceFiles, showcaseRoot = '', sh
 
   const fileGuard = toolWorkspaceFiles(workspaceFiles)
   const guardedFiles = fileGuard.files
-  const isCanvasFile = (userId, entry) => fileGuard.isCanvasFile(userId, entry)
-  fileGuard.addViews((userId, project) => {
-    const scope = workspaceScope(userId, project)
+  const isCanvasFile = async (userId, entry) => (await fileGuard.isCanvasFile(userId, entry))
+  fileGuard.addViews(async (userId, project) => {
+    const scope = (await workspaceScope(userId, project))
     return [
       ...connectionForUser(userId).filter(connection => connection.scope === scope).map(connection => ({
         paths: statePaths(connection.state), uncertain: !connection.state,
         busy: Boolean(connection.pending || connection.state?.executingCalls?.length),
       })),
-      ...reconnectingViews(userId, project).map(view => ({ paths: view.paths, uncertain: view.uncertain })),
+      ...(await reconnectingViews(userId, project)).map(view => ({ paths: view.paths, uncertain: view.uncertain })),
     ]
   })
 
@@ -265,31 +266,31 @@ export function createMcpApi({ management, workspaceFiles, showcaseRoot = '', sh
   const libraryTools = createLibraryTools({ workspaceFiles: guardedFiles, showcaseRoot, showcaseAssetFetch, userId: call => call.userId })
 
   function serverTool(name) {
-    if (name === 'getAppState') return (_args, userId) => {
-      const pages = projectConnections(userId)
+    if (name === 'getAppState') return async (_args, userId) => {
+      const pages = (await projectConnections(userId))
       const canvasFiles = []
-      for (const entry of guardedFiles.list(userId)) {
+      for (const entry of (await guardedFiles.list(userId))) {
         try {
           // 与前端canvasFile.ts一致：靠文件头标记，不按画布中文名或JSON后缀猜测。
-          if (isCanvasFile(userId, entry)) canvasFiles.push(entry.path)
+          if ((await isCanvasFile(userId, entry))) canvasFiles.push(entry.path)
           if (canvasFiles.length >= 50) break
         } catch (error) {
           if (![400, 404].includes(error?.status) && error?.code !== 'ENOENT') throw error
         }
       }
       return {
-        connections: pages.map(connection => ({
+        connections: (await mapAsync(pages, async connection => ({
           id: connection.id,
           projectId: connection.projectId,
-          ready: connectionReady(connection),
+          ready: (await connectionReady(connection)),
           directory: connection.state?.directory ?? null,
           canvasId: connection.state?.canvasId ?? null,
           panel: connection.state?.panel ?? 'canvas',
-          busy: Boolean(connection.pending || connection.state?.executingCalls?.length || unconfirmedWork(connection.userId, connection.projectId)), queued: connection.queue.length,
+          busy: Boolean(connection.pending || connection.state?.executingCalls?.length || (await unconfirmedWork(connection.userId, connection.projectId))), queued: connection.queue.length,
           tools: (Array.isArray(connection.state?.tools) && connection.state.tools.length
             ? connection.state.tools
             : connection.state?.canvasId ? CANVAS_TOOLS : []).map(tool => (tool && typeof tool === 'object' && 'name' in tool ? tool.name : String(tool))),
-        })),
+        }))),
         canvasFiles,
         hint: pages.length ? undefined : '现在没有连接的妙图画布：请打开目标画布，在设置中开启 MCP，并保持应用运行。',
       }
@@ -302,7 +303,7 @@ export function createMcpApi({ management, workspaceFiles, showcaseRoot = '', sh
     const library = libraryTools.find(tool => tool.name === name)
     if (library) return (args, userId, signal) => library.execute(args, { userId, signal })
     if (name !== 'workspaceFiles') return null
-    return (args, userId) => {
+    return async (args, userId) => {
       const action = String(args.action || '')
       const rawPath = String(args.path || '')
       const path = action === 'list' && !rawPath ? '' : workspaceFiles.path(rawPath)
@@ -310,7 +311,7 @@ export function createMcpApi({ management, workspaceFiles, showcaseRoot = '', sh
         throw failure('该文件包含供应商密钥，MCP 不能读取或修改', 403)
       }
       if (action === 'list') {
-        const page = workspaceFileTools.list(userId, { pathPrefix: path ? path + '/' : '', limit: args.limit, offset: args.offset })
+        const page = (await workspaceFileTools.list(userId, { pathPrefix: path ? path + '/' : '', limit: args.limit, offset: args.offset }))
         return {
           ...page,
           entries: page.entries
@@ -319,13 +320,13 @@ export function createMcpApi({ management, workspaceFiles, showcaseRoot = '', sh
       }
       // readText / writeText 与 Agent 的 readWorkspaceFile / writeWorkspaceFile 是同一份实现。
       if (action === 'readText') {
-        const result = workspaceFileTools.read(userId, args)
+        const result = (await workspaceFileTools.read(userId, args))
         if (result.encoding !== 'utf8') throw failure('这个文件需要二进制读取，请使用 readBinary', 422)
         return result
       }
-      if (action === 'writeText') return workspaceFileTools.write(userId, { path, content: args.content, mime: args.mime })
+      if (action === 'writeText') return (await workspaceFileTools.write(userId, { path, content: args.content, mime: args.mime }))
       if (action === 'readBinary') {
-        const file = guardedFiles.locate(userId, path)
+        const file = (await guardedFiles.locate(userId, path))
         let bytes: Buffer
         try { bytes = readWorkspaceRange(file, { limit: MEDIA_LIMIT_BYTES, maxSize: MEDIA_LIMIT_BYTES }).bytes }
         catch (error) { if (error.status === 413) throw failure('文件超过 20MB，无法通过 MCP 传输', 413); throw error }
@@ -338,29 +339,29 @@ export function createMcpApi({ management, workspaceFiles, showcaseRoot = '', sh
         if (bytes.toString('base64') !== encoded) throw failure('base64 内容不完整或格式无效', 422)
         if (!bytes.length) throw failure('写入二进制需要 base64 内容', 422)
         if (bytes.length > MEDIA_LIMIT_BYTES) throw failure('文件不能超过 20MB', 413)
-        const current = workspaceFiles.list(userId).find(entry => entry.path === path)
+        const current = (await workspaceFiles.list(userId)).find(entry => entry.path === path)
         const mime = typeof args.mime === 'string' && /^[\w.+-]+\/[\w.+-]+$/.test(args.mime) ? args.mime : 'application/octet-stream'
-        guardedFiles.writeBytes(userId, { path, mime, bytes, revision: args.exclusive === false && current ? current.revision : null })
+        await guardedFiles.writeBytes(userId, { path, mime, bytes, revision: args.exclusive === false && current ? current.revision : null })
         return { path, bytes: bytes.length }
       }
       if (action === 'mkdir') {
-        if (workspaceFiles.list(userId).some(entry => entry.path === path)) throw failure('目标已存在', 409)
-        guardedFiles.upsert(userId, path, 'inode/directory', Buffer.alloc(0))
+        if ((await workspaceFiles.list(userId)).some(entry => entry.path === path)) throw failure('目标已存在', 409)
+        await guardedFiles.upsert(userId, path, 'inode/directory', Buffer.alloc(0))
         return { path, created: true }
       }
       if (action === 'copy' || action === 'rename' || action === 'remove') {
-        const entries = workspaceFiles.list(userId)
+        const entries = (await workspaceFiles.list(userId))
         const current = entries.find(entry => entry.path === path)
         if (action === 'copy') {
           if (!current || current.mime === 'inode/directory') throw failure('copy 只支持单个文件；画布请使用 duplicateCanvas', 422)
-          if (isCanvasFile(userId, current)) throw failure('画布副本必须独立，请使用 duplicateCanvas', 409)
+          if ((await isCanvasFile(userId, current))) throw failure('画布副本必须独立，请使用 duplicateCanvas', 409)
         }
         // 目录可以只有后代文件而没有目录行；共用原生树操作判断是否存在。
         // This tool call begins the operation. Preserve its one synchronous
         // inventory through the atomic commit rather than re-reading later.
         const sourceEntries = entries.filter(entry => entry.path === path || entry.path.startsWith(path + '/'))
           .map(({ path, revision }) => ({ path, revision }))
-        guardedFiles.mutate(userId, { operation: action, path, target: args.target, revision: current?.revision ?? null, sourceEntries })
+        await guardedFiles.mutate(userId, { operation: action, path, target: args.target, revision: current?.revision ?? null, sourceEntries })
         return action === 'remove' ? { path, removed: true } : { path, target: String(args.target || '') }
       }
       throw failure('不支持的文件操作', 422)
@@ -373,18 +374,18 @@ export function createMcpApi({ management, workspaceFiles, showcaseRoot = '', sh
     const { json, readJson, sameOrigin } = helpers
     const incoming = incomingRequests.begin(request, response)
     try {
-    if (url.pathname !== '/api/mcp/control/settled') assertProjectAccess(session.userId, requestProject())
+    if (url.pathname !== '/api/mcp/control/settled') await assertProjectAccess(session.userId, requestProject())
     if (url.pathname === '/api/mcp/status' && request.method === 'GET') {
       json(response, 200, {
         ok: true,
-        enabled: management.mcpTokenInfo(session.userId).enabled ?? management.mcpTokenInfo(session.userId).hasToken,
-        connections: projectConnections(session.userId).map(item => ({
+        enabled: (await management.mcpTokenInfo(session.userId)).enabled ?? (await management.mcpTokenInfo(session.userId)).hasToken,
+        connections: (await mapAsync((await projectConnections(session.userId)), async item => ({
           id: item.id,
-          ready: connectionReady(item),
+          ready: (await connectionReady(item)),
           directory: item.state?.directory ?? null,
           canvasId: item.state?.canvasId ?? null, panel: item.state?.panel ?? 'canvas', projectId: item.projectId,
-          busy: Boolean(item.pending || item.state?.executingCalls?.length || unconfirmedWork(item.userId, item.projectId)), queued: item.queue.length,
-        })),
+          busy: Boolean(item.pending || item.state?.executingCalls?.length || (await unconfirmedWork(item.userId, item.projectId))), queued: item.queue.length,
+        }))),
       })
       return true
     }
@@ -399,11 +400,11 @@ export function createMcpApi({ management, workspaceFiles, showcaseRoot = '', sh
       const { viewId, callId, projectId, owner } = payload
       if (![viewId, callId].every(value => typeof value === 'string' && value.length > 0 && value.length <= 64)
         || typeof projectId !== 'string' || !projectId || projectId.length > 256) throw failure('操作完成标识无效', 422)
-      const currentOwner = workspaceFiles.referenceOwner?.(session.userId) || management.publicUser?.(session.userId)?.workspaceKey || String(session.userId)
+      const currentOwner = (await workspaceFiles.referenceOwner?.(session.userId)) || (await management.publicUser?.(session.userId))?.workspaceKey || String(session.userId)
       if (owner !== currentOwner) throw failure('工作区账号已切换，原操作状态未修改', 409)
-      try { assertProjectAccess(session.userId, projectId) }
+      try { await assertProjectAccess(session.userId, projectId) }
       catch (error) { if (error.status !== 404) throw error; json(response, 200, { ok: true }); return true }
-      const scope = workspaceScope(session.userId, projectId), key = JSON.stringify([scope, viewId])
+      const scope = (await workspaceScope(session.userId, projectId)), key = JSON.stringify([scope, viewId])
       // Completion can arrive before the stream's close event. Remember it on
       // that connection too, so close cannot resurrect an already settled ID.
       for (const connection of connectionForUser(session.userId)) if (connection.viewKey === key
@@ -423,13 +424,13 @@ export function createMcpApi({ management, workspaceFiles, showcaseRoot = '', sh
       // non-simple header and validate Origin whenever the browser sends it.
       if (!isWorkspaceRequest(request.headers)) throw failure('请求被拒绝，请刷新页面后重试', 403)
       if (request.headers.origin) sameOrigin(request)
-      assertProjectAvailable(session.userId, requestProject())
-      if (!enabled(session.userId)) throw failure('MCP 已关闭，请在设置中开启', 403)
+      await assertProjectAvailable(session.userId, requestProject())
+      if (!(await enabled(session.userId))) throw failure('MCP 已关闭，请在设置中开启', 403)
       const connectionId = String(url.searchParams.get('connectionId') || '').slice(0, 64)
       if (!connectionId) throw failure('缺少连接标识', 422)
       const connectionKey = `${session.userId}:${requestProject()}:${connectionId}`
       if (connections.has(connectionKey)) throw failure('控制连接已存在，请使用新的连接标识', 409)
-      const scope = workspaceScope(session.userId)
+      const scope = (await workspaceScope(session.userId))
       const viewId = String(url.searchParams.get('viewId') || connectionId).slice(0, 64)
       const documentId = String(request.headers['x-miaoimg-document'] || '')
       if (documentId.length > 64) throw failure('页面标识无效', 422)
@@ -450,9 +451,9 @@ export function createMcpApi({ management, workspaceFiles, showcaseRoot = '', sh
       mutate()
       const payload = await readJson(request, undefined, incoming.signal)
       assertRunning()
-      assertProjectAccess(session.userId, requestProject())
+      await assertProjectAccess(session.userId, requestProject())
       const connection = connections.get(`${session.userId}:${requestProject()}:${String(payload.connectionId || '')}`)
-      if (!enabled(session.userId)) throw failure('MCP 已关闭，请在设置中开启', 403)
+      if (!(await enabled(session.userId))) throw failure('MCP 已关闭，请在设置中开启', 403)
       if (!connection || connection.userId !== session.userId) throw failure('控制连接不存在', 404)
       if (connection.projectId !== requestProject()) throw failure('控制连接所属项目已切换，请重新连接', 409)
       updateConnectionState(connection, payload)
@@ -463,9 +464,9 @@ export function createMcpApi({ management, workspaceFiles, showcaseRoot = '', sh
       mutate()
       const payload = await readJson(request, undefined, incoming.signal)
       assertRunning()
-      assertProjectAccess(session.userId, requestProject())
+      await assertProjectAccess(session.userId, requestProject())
       const connection = connections.get(`${session.userId}:${requestProject()}:${String(payload.connectionId || '')}`)
-      if (!enabled(session.userId)) throw failure('MCP 已关闭，请在设置中开启', 403)
+      if (!(await enabled(session.userId))) throw failure('MCP 已关闭，请在设置中开启', 403)
       if (!connection || connection.userId !== session.userId) throw failure('控制连接不存在', 404)
       if (connection.projectId !== requestProject()) throw failure('控制连接所属项目已切换，请重新连接', 409)
       if (connection.pending?.callId !== payload.callId) throw failure('控制命令已取消或不存在', 404)
@@ -487,9 +488,9 @@ export function createMcpApi({ management, workspaceFiles, showcaseRoot = '', sh
   // The official SDK owns both current per-request MCP and legacy initialize,
   // JSON-RPC validation, JSON Schema validation, streaming and discovery.
   const definitions = MCP_TOOLS.map(tool => ({ ...tool, schema: fromJsonSchema(tool.parameters) }))
-  const sdkHandler = createMcpHandler(({ authInfo, requestInfo }: Record<string, any>) => {
+  const sdkHandler = createMcpHandler(async ({ authInfo, requestInfo }: Record<string, any>) => {
     const assertAuthorized = authInfo.extra.assertAuthorized
-    assertAuthorized()
+    await assertAuthorized()
     const userId = authInfo.clientId
     // Resolve host capabilities per authenticated request and again at execution,
     // so a desktop permission revocation cannot leave a callable cached tool.
@@ -510,14 +511,14 @@ export function createMcpApi({ management, workspaceFiles, showcaseRoot = '', sh
       activeCalls.add(pending)
       try {
         signal.throwIfAborted()
-        assertAuthorized()
+        await assertAuthorized()
         const handler = serverTool(tool.name)
         const hostTool = hostNames.has(tool.name) ? additionalTools?.(userId, { signal })?.find(entry => entry.name === tool.name) : null
         if (hostNames.has(tool.name) && !hostTool) throw failure('本机操作尚未开启或授权已撤销，请在设置中开启后重试', 403)
-        let result = await fileGuard.run(() => hostTool ? hostTool.execute(args, { signal, toolCallId: String(context.mcpReq.id) })
-          : handler ? handler(args, userId, signal) : callCanvas(userId, tool.name, args, signal))
+        let result = await fileGuard.run(async () => hostTool ? hostTool.execute(args, { signal, toolCallId: String(context.mcpReq.id) })
+          : handler ? handler(args, userId, signal) : (await callCanvas(userId, tool.name, args, signal)))
         signal.throwIfAborted()
-        assertAuthorized()
+        await assertAuthorized()
         if (tool.name === 'inspectDocument' || (tool.name === 'nodeTools' && args.name === 'node:inspectScene')) result = directorPreviewContent(result)
         return toolResult(result)
       } catch (error) {
@@ -539,8 +540,8 @@ export function createMcpApi({ management, workspaceFiles, showcaseRoot = '', sh
     try {
       assertRunning()
       if (request.headers.origin) helpers.sameOrigin(request)
-      userId = authorize(request)
-      assertProjectAvailable(userId, requestProject())
+      userId = (await authorize(request))
+      await assertProjectAvailable(userId, requestProject())
     } catch (error) {
       rejectAccess(error)
       return true
@@ -550,11 +551,13 @@ export function createMcpApi({ management, workspaceFiles, showcaseRoot = '', sh
     const incoming = incomingRequests.begin(request, response)
     const access: RequestAccess = { userId, projectId: requestProject(), abort: incoming.abort }
     activeRequests.add(access)
-    const assertAuthorized = () => {
+    const assertAuthorized = async () => {
       assertRunning()
       if (access.revoked) throw access.revoked
-      if (authorize(request) !== userId) throw failure('MCP 授权已关闭或更新，请重新连接', 401)
-      assertProjectAvailable(userId, access.projectId)
+      if ((await authorize(request)) !== userId) throw failure('MCP 授权已关闭或更新，请重新连接', 401)
+      await assertProjectAvailable(userId, access.projectId)
+      assertRunning()
+      if (access.revoked) throw access.revoked
     }
     try {
       let payload
@@ -562,11 +565,11 @@ export function createMcpApi({ management, workspaceFiles, showcaseRoot = '', sh
         try { payload = await readJsonRequest(request, { maxBytes: MCP_BODY_BYTES, objectOnly: false, signal: incoming.signal }) }
         catch (error) {
           if (incoming.signal.aborted) rejectAccess(incoming.signal.reason)
-          else if (!response.destroyed && !response.writableEnded) helpers.json(response, error.status || 400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: error.status === 413 ? 'MCP 请求过大' : 'Parse error' } })
+          else if (!response.destroyed && !response.writableEnded) await helpers.json(response, error.status || 400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: error.status === 413 ? 'MCP 请求过大' : 'Parse error' } })
           return true
         }
       }
-      try { assertAuthorized() } catch (error) { rejectAccess(error); return true }
+      try { await assertAuthorized() } catch (error) { rejectAccess(error); return true }
       // The SDK owns protocol cancellation. Stateless HTTP request IDs cannot
       // identify another exchange, even when only one matching call is active.
       const handler = toNodeHandler({ fetch: (req, options) => sdkHandler.fetch(req, { ...options, authInfo: { clientId: userId, token: '', scopes: [], extra: { assertAuthorized } } }) }, { maxRequestBodySize: MCP_BODY_BYTES })
@@ -584,18 +587,18 @@ export function createMcpApi({ management, workspaceFiles, showcaseRoot = '', sh
     for (const connection of connectionForUser(userId)) closeConnection(connection, 'MCP 授权已关闭或更新，请重新连接')
   }
   async function withProjectRemoval(userId, projectId, remove) {
-    assertProjectAvailable(userId, projectId)
-    const assertNoDetachedWork = () => {
-      if (unconfirmedWork(userId, projectId) || connectionForUser(userId).some(page => page.scope === workspaceScope(userId, projectId)
-        && page.state?.executingCalls?.some(id => id !== page.pending?.callId))) {
+    await assertProjectAvailable(userId, projectId)
+    const assertNoDetachedWork = async () => {
+      if ((await unconfirmedWork(userId, projectId)) || (await someAsync(connectionForUser(userId), async page => page.scope === (await workspaceScope(userId, projectId))
+        && page.state?.executingCalls?.some(id => id !== page.pending?.callId)))) {
         throw failure('项目仍有断线前的操作待确认，项目未删除；请等待原页面操作结束并重新连接后再试', 409)
       }
     }
-    assertNoDetachedWork()
+    await assertNoDetachedWork()
     const key = projectKey(userId, projectId)
     removingProjects.add(key)
     const calls = [...activeCalls].filter(call => call.userId === userId && call.projectId === projectId)
-    const pages = connectionForUser(userId).filter(page => page.scope === workspaceScope(userId, projectId))
+    const pages = (await filterAsync(connectionForUser(userId), async page => page.scope === (await workspaceScope(userId, projectId))))
     const waiters = pages.filter(page => page.pending).map(page => {
       const waiter = Promise.withResolvers<void>()
       page.idleWaiters.add(waiter)
@@ -616,11 +619,11 @@ export function createMcpApi({ management, workspaceFiles, showcaseRoot = '', sh
       ])
       clearTimeout(timeout)
       timeout = undefined
-      assertProjectAccess(userId, projectId)
-      assertNoDetachedWork()
+      await assertProjectAccess(userId, projectId)
+      await assertNoDetachedWork()
       for (const page of pages) closeConnection(page, '项目正在删除，画布连接已关闭')
       const result = await remove()
-      const scope = workspaceScope(userId, projectId)
+      const scope = (await workspaceScope(userId, projectId))
       for (const [key, view] of disconnectedViews) if (view.scope === scope) forgetDisconnectedView(key)
       return result
     } finally {

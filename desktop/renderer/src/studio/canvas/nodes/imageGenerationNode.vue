@@ -16,12 +16,16 @@
     :style="{ width: previewUrl && imageWidth ? `${imageWidth + 2}px` : undefined }">
     <template v-if="editor?.mode" #top><div ref="paintToolbar" /></template>
     <template #topActions>
+      <imageIntentMenu v-if="previewUrl" :controller="imageIntents" :disabled="imageOutpaint.busy || imageOutpaint.state.visible || imageGeometry.state.visible || imageGeometry.busy || imageBusy" />
+      <imageGeometryMenu v-if="previewUrl" :controller="imageGeometry" :disabled="imageOutpaint.busy || imageOutpaint.state.visible || imageBusy || imageIntents.busy || imageIntents.state.visible" />
+      <imageOutpaintMenu v-if="previewUrl" :controller="imageOutpaint" :disabled="imageBusy || imageIntents.busy || imageIntents.state.visible || imageGeometry.busy || imageGeometry.state.visible" />
+      <el-button v-if="layerEntryAvailable" :icon="IconLayersSubtract" text :loading="creatingLayerEntry" :disabled="generating || deleting || uploading || uploadingDrag || gridSplit?.splitting" :title="translate('图层分离')" :aria-label="translate('图层分离')" @click.stop="createLayerEntry">{{ translate('图层分离') }}</el-button>
       <el-button :icon="IconPanoramaHorizontal" :disabled="imageBusy || !previewUrl" text :title="translate('720度全景图')" :aria-label="translate('720度全景图')" @click.stop="panorama?.open($event)" />
       <el-button v-if="selectedModel?.regionEdit" :icon="IconBrush" :disabled="generating || deleting || uploading || !previewUrl || gridSplit?.splitting" text :title="translate('重绘')" :aria-label="translate('重绘')" @click.stop="editor?.start('inpaint')" />
       <el-button :icon="IconSun" :disabled="imageBusy || !previewUrl" text :title="translate('打光')" :aria-label="translate('打光')" @click.stop="openLighting" />
       <el-button :icon="IconCameraRotate" :disabled="imageBusy || !previewUrl" text :title="translate('多角度')" :aria-label="translate('多角度')" @click.stop="openMultiAngle" />
       <el-button :icon="IconLayoutGrid" :disabled="generating || deleting || uploading || !previewUrl" :loading="gridSplit?.splitting" text :title="translate('宫格切分')" :aria-label="translate('宫格切分')" @click.stop="gridSplit?.open($event)" />
-      <imagePresetMenu v-if="previewUrl" :disabled="imageBusy || !previewUrl" :loadModels="() => ai.getMediaModels()" />
+      <imagePresetMenu v-if="previewUrl" ref="presetMenu" :disabled="imageBusy || !previewUrl" :loadModels="() => ai.getMediaModels()" />
       <span ref="historyTarget" />
       <el-button :icon="IconTransfer" :loading="uploading || uploadingDrag" :disabled="generating || deleting" text :title="translate('替换图片')" :aria-label="translate('替换图片')" @click.stop="fileInput?.click()" />
       <input ref="fileInput" type="file" accept="image/*" hidden :aria-label="translate('选择替换图片')" :disabled="generating || deleting || uploading || uploadingDrag" @change="replaceOutput" />
@@ -82,6 +86,7 @@
             v-model="refList"
             @preview="setReferencePreview"
             @remove="removeReference" />
+          <imageReferenceRoles v-if="editor?.mode !== 'inpaint'" v-model="data.imageReferenceRoles" :references="refList" :model="selectedModel" :disabled="generating || deleting" />
           <promptInput
             v-if="editor?.mode === 'inpaint'"
             v-model="data.inpaintPromptModel"
@@ -117,11 +122,13 @@
             :noDataText="modelsNeedSignIn ? translate('登录后可选择模型') : translate('请先在设置中添加图片模型')"
             placement="top-start"
             @visible-change="(visible) => visible && loadModels().catch((error) => showNodeError(error, translate('模型读取失败')))">
-            <template #prefix><icon-sparkles :size="17" /></template>
+            <template #prefix><modelIcon :model="selectedModel?.modelId || nodeModelValueId(data.model)" :size="17" /></template>
             <el-option v-if="data.model && !models.some(item => JSON.stringify([item.providerId, item.modelId]) === data.model)" class="savedModelOption" disabled :label="nodeModelValueLabel(data.model)" :value="data.model" />
             <el-option-group v-for="group in groupNodeModels(models)" :key="group.id" :label="group.label">
               <el-option v-for="item in group.models" :key="JSON.stringify([item.providerId, item.modelId])"
-                :label="nodeModelOptionLabel(item)" :value="JSON.stringify([item.providerId, item.modelId])" />
+                :label="nodeModelOptionLabel(item)" :value="JSON.stringify([item.providerId, item.modelId])" >
+                <span class="modelOptionContent"><modelIcon :model="item.modelId" :size="16" /><span class="modelOptionText" :title="nodeModelOptionLabel(item)">{{ nodeModelOptionLabel(item) }}</span></span>
+              </el-option>
             </el-option-group>
           </el-select>
           <el-popover :persistent="false" v-if="['doubao-local', 'dola-local'].includes(selectedModel?.providerId || '')" trigger="click" placement="top-start" :width="360">
@@ -186,14 +193,16 @@
 </template>
 
 <script setup lang="ts">
+import { modelIcon } from "@miaoimg/model-icons";
 import feedbackNotice from "../components/feedbackNotice.vue";
 import { fitsCustomSize, groupNodeModels } from "../scaffold/nodeAi";
 import { controlPayload } from "../scaffold/mediaParameters";
-import { nodeLocalModelLabel, nodeModelOptionLabel, nodeModelValueLabel } from '../scaffold/localModelLabel';
+import { nodeLocalModelLabel, nodeModelValueId, nodeModelOptionLabel, nodeModelValueLabel } from '../scaffold/localModelLabel';
 import { useImagePreviewTools } from '../scaffold/useImagePreviewTools';
 import { computed, inject, nextTick, onMounted, onScopeDispose, ref, watch, watchEffect } from "vue";
+import { useVueFlow } from "@vue-flow/core";
 import { ElButton, ElCard, ElSelect, ElOption, ElOptionGroup, ElLoading, ElImageViewer, ElMessage } from "element-plus";
-import { IconBolt, IconPhotoAi, IconSparkles, IconArrowUp, IconPlayerStop, IconTransfer, IconLayoutGrid, IconBrush, IconPencil, IconUpload, IconWriting, IconPhotoPlus, IconLayersLinked, IconSun, IconCameraRotate, IconPanoramaHorizontal } from "@tabler/icons-vue";
+import { IconBolt, IconPhotoAi, IconArrowUp, IconPlayerStop, IconTransfer, IconLayoutGrid, IconBrush, IconPencil, IconUpload, IconWriting, IconPhotoPlus, IconLayersLinked, IconSun, IconCameraRotate, IconPanoramaHorizontal, IconLayersSubtract } from "@tabler/icons-vue";
 import { nodeSkeleton, nodeTools, showNodeError, isSignInRequired, useGenerationProgress, useNode, useNodeGeneration, useNodeReferences, useNodeUpload, z, type NodeMediaModel, type NodeHandle } from "@miaoimg/nodes-scaffold/runtime";
 import { assertPromptReferencesConnected, isPromptModel } from "../scaffold/promptModel";
 import promptInput from "@miaoimg/nodes-scaffold/promptInput";
@@ -204,13 +213,23 @@ import imageGridSplit from "@miaoimg/nodes-scaffold/imageGridSplit";
 import generationProgress from "@miaoimg/nodes-scaffold/generationProgress";
 import uploadProgress from "../components/uploadProgress.vue";
 import { beginUpload } from "../uploadStatus";
-import { assetFileType, ASSET_MAX_BYTES } from "../assetFile";
+import { assetFileType } from "../assetFile";
 import generationSettings from "./generationSettings.vue";
 import { localReferenceRejection } from '../../../../../local-media/catalog.ts';
 import { getTargetValues } from "../scaffold/nodeInputs";
 import { translate } from "@miaoimg/i18n/vue";
 import { useMediaTaskDelivery } from "../scaffold/useMediaTaskDelivery";
 import { useImageTools } from "./imageTools/useImageTools";
+import { useImageLayerEntry } from "./imageTools/useImageLayerEntry";
+import { useImageIntentActions } from "./imageTools/useImageIntentActions";
+import imageIntentMenu from "./imageTools/components/imageIntentMenu.vue";
+import { useImageGeometryActions } from "./imageTools/useImageGeometryActions";
+import imageGeometryMenu from "./imageTools/components/imageGeometryMenu.vue";
+import { useImageOutpaintActions } from "./imageTools/useImageOutpaintActions";
+import imageOutpaintMenu from "./imageTools/components/imageOutpaintMenu.vue";
+import imageReferenceRoles from "./imageTools/components/imageReferenceRoles.vue";
+import { imageReferenceRoles as collectImageReferenceRoles } from "./imageTools/imageReferenceRoles";
+import { useImagePaletteActions, combineCanvasToolExtensions } from "../useMediaPaletteActions";
 import imageLighting from "./imageTools/components/imageLighting.vue";
 import imageMultiAngle from "./imageTools/components/imageMultiAngle.vue";
 import imagePanorama from "./imageTools/components/imagePanorama.vue";
@@ -231,7 +250,7 @@ const { id, node, nodeProps, nodeEvent, outputs, files, ai, updateNodeInternals 
 });
 const delivery = useMediaTaskDelivery(node, outputs, "image");
 type PromptModel = NonNullable<InstanceType<typeof promptInput>["$props"]["modelValue"]>;
-const data = computed(() => node.data as { prompt: string; promptModel: PromptModel; inpaintPrompt: string; inpaintPromptModel: PromptModel; model: string; size: string; ratio: string; format?: string; background?: string; quality?: string; inputFidelity?: string; count?: number; layerDecomposition?: boolean; optimizePrompt?: string; parameters: Record<string, unknown>; taskRequestId?: string; taskExtraNodeIds?: string[] });
+const data = computed(() => node.data as { prompt: string; promptModel: PromptModel; inpaintPrompt: string; inpaintPromptModel: PromptModel; model: string; size: string; ratio: string; format?: string; background?: string; quality?: string; inputFidelity?: string; count?: number; layerDecomposition?: boolean; optimizePrompt?: string; imageReferenceRoles: Record<string, string>; parameters: Record<string, unknown>; taskRequestId?: string; taskExtraNodeIds?: string[] });
 if (!data.value.parameters) data.value.parameters = {};
 data.value.prompt ??= "";
 data.value.promptModel ??= [];
@@ -247,6 +266,7 @@ data.value.inputFidelity ??= "";
 data.value.count ??= 1;
 data.value.layerDecomposition ??= false;
 data.value.optimizePrompt ??= "";
+data.value.imageReferenceRoles ??= {};
 const { refList, referenceMentions, canvasReferenceMentions, referenceKinds, connectReference, referenceHistory, preparePromptReferences, setReferencePreview, removeReference } = useNodeReferences();
 const promptEditor = ref<InstanceType<typeof promptInput>>();
 const models = ref<NodeMediaModel[]>([]);
@@ -262,6 +282,7 @@ const variationMode = ref<"lighting" | "angle">();
 const lighting = ref<InstanceType<typeof imageLighting>>();
 const multiAngle = ref<InstanceType<typeof imageMultiAngle>>();
 const panorama = ref<InstanceType<typeof imagePanorama>>();
+const presetMenu = ref<InstanceType<typeof imagePresetMenu>>();
 const paintToolbar = ref<HTMLElement>();
 let disposed = false;
 const deleting = ref(false);
@@ -410,6 +431,7 @@ const canGenerate = computed(() => {
   return Boolean(generationPrompt.value) || Boolean(data.value.layerDecomposition);
 });
 const outputFile = computed(() => outputs.value.image?.dataType === "IMAGE" ? outputs.value.image.value : undefined);
+const imageRolePayload = computed(() => editor.value?.mode === "inpaint" ? undefined : collectImageReferenceRoles(refList.value, data.value.imageReferenceRoles, selectedModel.value));
 const imageEstimateKey = computed(() => JSON.stringify({
   provider: selectedModel.value?.providerId || "",
   model: selectedModel.value?.modelId || "",
@@ -422,6 +444,7 @@ const imageEstimateKey = computed(() => JSON.stringify({
   inputFidelity: data.value.inputFidelity,
   count: data.value.count,
   layerDecomposition: data.value.layerDecomposition,
+  referenceRoles: imageRolePayload.value,
   optimizePrompt: data.value.optimizePrompt,
   editMode: editor.value?.mode || "",
   output: outputFile.value?.url || "",
@@ -438,9 +461,47 @@ const imageBusy = computed(() => generating.value || deleting.value || uploading
   || Boolean(editor.value?.busy) || Boolean(lighting.value?.generating) || Boolean(multiAngle.value?.generating)
   || Boolean(panorama.value?.busy) || Boolean(gridSplit.value?.splitting));
 useImageTools(() => Boolean(outputFile.value) && !imageBusy.value);
+const { available: layerEntryAvailable, creating: creatingLayerEntry, create: createLayerEntry } = useImageLayerEntry({
+  node, hasImage: () => Boolean(outputFile.value), disabled: () => imageBusy.value || Boolean(gridSplit.value?.splitting),
+  loadModels: () => ai.getMediaModels(), onError: error => showNodeError(error, translate("新建节点失败")),
+});
+const imageIntents = useImageIntentActions({
+  node, hasImage: () => Boolean(outputFile.value?.url),
+  disabled: () => imageBusy.value || imageOutpaint.busy || imageOutpaint.state.visible || imageGeometry.busy || imageGeometry.state.visible || Boolean(editor.value?.busy || panorama.value?.busy || creatingLayerEntry.value),
+  loadModels: () => ai.getMediaModels(true), onError: error => showNodeError(error, translate("新建节点失败")),
+  async prepareErase(input, signal) {
+    const current = (await ai.getMediaModels(true)).find(model => model.providerId === input.providerId && model.modelId === input.modelId && model.regionEdit);
+    signal.throwIfAborted();
+    if (!current || !editor.value) throw new Error(translate("图片编辑器尚未就绪，请确认原图已加载"));
+    if (!models.value.some(model => model.providerId === current.providerId && model.modelId === current.modelId)) models.value = [...models.value, current];
+    data.value.model = JSON.stringify([input.providerId, input.modelId]); data.value.size = input.size; data.value.ratio = input.ratio;
+    data.value.inpaintPrompt = input.prompt; data.value.inpaintPromptModel = input.prompt.split("\n").map(text => [{ type: "Write", text }]);
+    await nextTick(); signal.throwIfAborted(); await editor.value.start("inpaint");
+  },
+});
+const imageGeometry = useImageGeometryActions({
+  node, disabled: () => imageBusy.value || imageOutpaint.busy || imageOutpaint.state.visible || imageIntents.busy || imageIntents.state.visible || Boolean(gridSplit.value?.splitting || editor.value?.busy || panorama.value?.busy || creatingLayerEntry.value),
+  onError: error => showNodeError(error, translate("图片处理失败")),
+});
+const imageOutpaint = useImageOutpaintActions({
+  node, disabled: () => imageBusy.value || imageIntents.busy || imageIntents.state.visible || imageGeometry.busy || imageGeometry.state.visible || Boolean(gridSplit.value?.splitting || editor.value?.busy || panorama.value?.busy || creatingLayerEntry.value),
+  loadModels: () => ai.getMediaModels(true), onError: error => showNodeError(error, translate("新建节点失败")),
+});
+useImagePaletteActions({
+  node, hasImage: () => Boolean(outputFile.value?.url),
+  busy: () => imageBusy.value || imageOutpaint.busy || imageOutpaint.state.visible || imageIntents.busy || imageIntents.state.visible || imageGeometry.busy || imageGeometry.state.visible || Boolean(editor.value?.busy || panorama.value?.busy || creatingLayerEntry.value),
+  inpaintAllowed: () => Boolean(selectedModel.value?.regionEdit),
+  ready: tool => ["image:lighting", "image:angle", "image:layers"].includes(tool) ? true
+    : tool === "image:mark" || tool === "image:inpaint" ? Boolean(editor.value)
+      : tool === "image:grid" ? Boolean(gridSplit.value) : tool.startsWith("image:preset:") ? Boolean(presetMenu.value) : Boolean(panorama.value),
+  lighting: openLighting, angle: openMultiAngle, mark: () => editor.value?.start("mark"), inpaint: () => editor.value?.start("inpaint"),
+  grid: event => gridSplit.value?.open(event), panorama: command => panorama.value?.selectAction(command),
+  layers: createLayerEntry, preset: preset => presetMenu.value?.apply(preset), extension: combineCanvasToolExtensions(imageIntents.extension, imageGeometry.extension, imageOutpaint.extension),
+});
 const composerVisible = ref(false);
 const composerExpanded = ref(false);
-watchEffect(() => { composerVisible.value = composerExpanded.value || node.selected || !previewUrl.value; });
+const { addSelectedNodes, removeSelectedElements } = useVueFlow();
+watchEffect(() => { composerVisible.value = composerExpanded.value || autoEstimateVisible.value; });
 
 const displayPreviewUrl = files.useFileUrl(outputFile, () => {}, true);
 // A thumbnail only determines layout. Read the original dimensions on demand
@@ -510,6 +571,7 @@ async function refreshImageEstimate(sequence: number, signal?: AbortSignal) {
       prompt: generationPrompt.value,
       outputDirectory: "assets/" + id,
       images,
+      referenceRoles: imageRolePayload.value,
       size: data.value.size,
       ratio: data.value.ratio,
       format: data.value.format || undefined,
@@ -543,7 +605,7 @@ function replaceOutput(event: Event) {
   input.value = "";
   if (!file || imageBusy.value || disposed) return;
   if (assetFileType(file).kind !== "image") return void showNodeError(translate("请选择图片文件"), translate("图片替换失败"));
-  if (!file.size || file.size > ASSET_MAX_BYTES) return void showNodeError(translate("图片为空或超过当前工作区允许的大小"), translate("图片替换失败"));
+  if (!file.size) return void showNodeError(translate("图片为空或超过当前工作区允许的大小"), translate("图片替换失败"));
   // 和「拖文件进画布」、以及基础媒体节点的「替换」走同一条通道：真上传进度的环形、
   // 失败可重试、写回 outputs 都在 useNodeUpload 里，别再退回一个没有百分比的转圈。
   // ACT: 保留历史输出文件，避免破坏撤销记录和复制节点的引用。
@@ -714,6 +776,7 @@ async function startGeneration(signal?: AbortSignal) {
     modelId: choice.modelId,
     prompt: generationPrompt.value,
     referenceHistory: inpaintEditor ? [{ index: 1, name: String(node.data.label || ""), kind: "IMAGE" }] : referenceHistory(),
+    referenceRoles: imageRolePayload.value,
     size: data.value.size,
     ratio: data.value.ratio,
     format: data.value.format || undefined,
@@ -855,9 +918,26 @@ nodeTools.register({
     data.value.model = JSON.stringify([choice.providerId, choice.modelId]);
     if (args.size !== undefined) data.value.size = args.size;
     if (args.ratio !== undefined) data.value.ratio = args.ratio;
+    // Most image models encode the ratio in `size` (only Grok keeps them independent),
+    // so keep the pair consistent like the settings panel does, preferring the same tier.
+    const sizeMeta = (choice.sizes || []) as { value: string; ratio?: string; label?: string }[];
+    if (sizeMeta.some(item => item.ratio)) {
+      if (args.size !== undefined) {
+        const mapped = sizeMeta.find(item => item.value === args.size)?.ratio;
+        if (mapped) data.value.ratio = mapped;
+      } else if (args.ratio !== undefined) {
+        const current = sizeMeta.find(item => item.value === data.value.size);
+        const target = sizeMeta.find(item => item.ratio === args.ratio && item.label === current?.label) ?? sizeMeta.find(item => item.ratio === args.ratio);
+        if (target && sizes.includes(target.value)) data.value.size = target.value;
+      }
+    }
     for (const field of ['format', 'background', 'quality', 'inputFidelity', 'count', 'layerDecomposition', 'optimizePrompt'] as const) {
       if (args[field] !== undefined) Reflect.set(data.value, field, args[field]);
     }
+    // Same official limits the model watcher applies: transparency needs png, layer decomposition 1K–2K/auto.
+    if (data.value.background === "transparent" && args.format === undefined && data.value.format !== "png" && (choice.formats || []).includes("png")) data.value.format = "png";
+    const layerSizes = choice.layerSizes || [];
+    if (data.value.layerDecomposition && layerSizes.length && !layerSizes.includes(data.value.size || "")) data.value.size = layerSizes.includes("1.5K") ? "1.5K" : layerSizes[0]!;
     return await getConfigWithEstimate(signal);
   },
 });
@@ -891,9 +971,17 @@ nodeTools.register({
 
 // "+ 参考" picks local media; the canvas imports it and wires it into this node.
 function requestReference() {
+  selectComposerNode();
   window.dispatchEvent(new CustomEvent("miao-canvas-add-reference", { detail: { nodeId: id } }));
 }
-function focusPrompt() {
+function selectComposerNode() {
+  if (documentContext?.targets.has(id)) return;
+  removeSelectedElements();
+  addSelectedNodes([node]);
+}
+async function focusPrompt() {
+  selectComposerNode();
+  await nextTick();
   document.querySelector<HTMLElement>(`.vue-flow__node[data-id="${CSS.escape(id)}"] .promptInput [contenteditable="true"]`)?.focus();
 }
 </script>

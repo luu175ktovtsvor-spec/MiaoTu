@@ -115,12 +115,12 @@ export function createMediaPreviews({ ensureTools = async () => {}, cacheDirecto
     async read(path: string, source: string | Buffer, { video = false, maxDimension = PREVIEW_MAX_DIMENSION, beforeCommit = () => {} } = {}, signal?: AbortSignal) {
       path = resolve(path)
       jobs.signal.throwIfAborted(); signal?.throwIfAborted()
-      if (existing(path)) { beforeCommit(); return path }
+      if (existing(path)) { await beforeCommit(); return path }
       return jobs.run(path, async (taskSignal, validateReaders) => {
-        if (existing(path)) { validateReaders(); return path }
+        if (existing(path)) { await validateReaders(); return path }
         await waitForMedia(ensureTools(), taskSignal); taskSignal.throwIfAborted()
         const preview = await createMediaPreview(source, { video, maxDimension, signal: taskSignal })
-        taskSignal.throwIfAborted(); validateReaders()
+        taskSignal.throwIfAborted(); await validateReaders()
         mkdirSync(dirname(path), { recursive: true, mode: mediaPermissions().directory })
         writeFileAtomic(path, preview)
         void sweep(false)

@@ -96,7 +96,7 @@ export class ImageReceiptFiles {
   // A completed private checkpoint may survive a crash before its final
   // rename. Publish those original files only; never reconstruct a provider
   // request or replace a readable checkpoint from the same task.
-  async recover(id: string, binding: Binding, active: () => boolean): Promise<StoredImageReceipt | undefined> {
+  async recover(id: string, binding: Binding, active: () => boolean | Promise<boolean>): Promise<StoredImageReceipt | undefined> {
     const previous = await this.load(id, binding, true)
     if (previous) return previous
     if (!await this.checkRoot()) return
@@ -107,7 +107,7 @@ export class ImageReceiptFiles {
     for (const entry of entries) {
       if (temporaryId(entry.name) !== id || !entry.isDirectory() || entry.isSymbolicLink()) continue
       const path = join(this.root, entry.name)
-      if (this.writing.has(path) || active()) throw problem('原图暂存仍在写入', 'IMAGE_RECEIPT_BUSY')
+      if (this.writing.has(path) || (await active())) throw problem('原图暂存仍在写入', 'IMAGE_RECEIPT_BUSY')
       try {
         const receipt = await this.loadAt(path, id, binding)
         if (!receipt) continue
@@ -116,7 +116,7 @@ export class ImageReceiptFiles {
           if (source.kind === 'inline' && !artifact) throw problem('暂存原图缺失，请保留原任务等待核对')
         }
         this.checkLive(receipt)
-        if (this.writing.has(path) || active()) throw problem('原图暂存仍在写入', 'IMAGE_RECEIPT_BUSY')
+        if (this.writing.has(path) || (await active())) throw problem('原图暂存仍在写入', 'IMAGE_RECEIPT_BUSY')
         try { await rename(path, this.path(id)); await syncDirectory(this.root) }
         catch (error) {
           if (!['ENOENT', 'EEXIST', 'ENOTEMPTY'].includes(error.code)) throw error
@@ -250,7 +250,7 @@ export class ImageReceiptFiles {
     try { info = await lstat(this.path(id)) } catch (error) { if (error.code === 'ENOENT') return false; throw error }
     return info.isDirectory() && !info.isSymbolicLink() && info.mtimeMs + ttlMs <= Date.now()
   }
-  async pruneTemporary(ttlMs: number, active: (id: string) => boolean) {
+  async pruneTemporary(ttlMs: number, active: (id: string) => boolean | Promise<boolean>) {
     if (!await this.checkRoot()) return
     let entries
     try { entries = await readdir(this.root, { withFileTypes: true }) } catch (error) { if (error.code === 'ENOENT') return; throw error }
@@ -258,11 +258,11 @@ export class ImageReceiptFiles {
     for (const entry of entries) {
       const id = temporaryId(entry.name)
       const path = join(this.root, entry.name)
-      if (!id || !entry.isDirectory() || entry.isSymbolicLink() || this.writing.has(path) || active(id)) continue
+      if (!id || !entry.isDirectory() || entry.isSymbolicLink() || this.writing.has(path) || (await active(id))) continue
       if ((await lstat(path)).mtimeMs < cutoff) await rm(path, { recursive: true, force: true })
     }
     for (const id of await this.list()) {
-      if (active(id)) continue
+      if ((await active(id))) continue
       const images = join(this.path(id), 'images')
       let children
       try {
@@ -273,7 +273,7 @@ export class ImageReceiptFiles {
       for (const entry of children) {
         if (!entry.isDirectory() || entry.isSymbolicLink() || !/^\.[0-9]+\.tmp-[a-f0-9-]{36}$/.test(entry.name)) continue
         const path = join(images, entry.name)
-        if (!active(id) && (await lstat(path)).mtimeMs < cutoff) await rm(path, { recursive: true, force: true })
+        if (!(await active(id)) && (await lstat(path)).mtimeMs < cutoff) await rm(path, { recursive: true, force: true })
       }
     }
   }

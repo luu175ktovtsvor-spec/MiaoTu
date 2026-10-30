@@ -1,7 +1,5 @@
-import { mediaSizeLabel, sizeTier } from "../../../server/media-size-label";
 import {
   sectionEnglish,
-  sectionDescriptionEnglish,
   adminText,
   opsStatusText,
   statusLabel,
@@ -38,31 +36,38 @@ import {
   CaretDown,
   SquaresFour,
   ArrowSquareOut,
+  X,
 } from "@phosphor-icons/react";
 import { useLang } from "../i18n";
 import LanguageControl from "../LanguageControl";
 import "./admin.css";
+import AdminOverviewSummary from "./AdminOverviewSummary";
+import AdminSettingsSection from "./AdminSettingsSection";
+import { adminNavigationGroups, adminSectionDescriptions } from "./adminNavigation";
 import { version as APP_VERSION } from "../../../package.json";
 import AdminGenerationDetail from "./AdminGenerationDetail";
 import AdminTextCharges, { TextChargeSummary } from "./AdminTextCharges";
 import AdminTextConsole from "./AdminTextConsole";
 import "./console.css";
+import "./admin-saas.css";
 import AdminFeedback from "./AdminFeedback";
 import AdminModelsSection from "./AdminModelsSection";
 import AdminPricingEditor from "./AdminPricingEditor";
-import { buildPricingDraft, withSizeKey, type AdminModelRow } from "./modelPricing";
+import { buildPricingDraft, adminMediaTierLabel, type AdminModelRow } from "./modelPricing";
 const sections = [
   ["overview", "运营概览", ChartBar],
   ["operations", "系统运维", Database],
   ["users", "用户管理", Users],
   ["models", "模型与价格", SlidersHorizontal],
-  ["upstream", "上游用量", Database],
-  ["text", "文本用量与计费", ChatCircleText],
-  ["generations", "生成记录", Images],
-  ["payments", "充值管理", Receipt],
+  ["upstream", "采购与对账", Database],
+  ["text", "文本服务", ChatCircleText],
+  ["generations", "生成任务", Images],
+  ["payments", "充值订单", Receipt],
   ["feedback", "用户反馈", ChatCircleText],
-  ["audit", "操作记录", ListChecks],
+  ["audit", "操作日志", ListChecks],
+  ["settings", "运营设置", ShieldCheck],
 ];
+const adminLogoUrl = `${import.meta.env.BASE_URL}miaoimg-logo.png`;
 const externalDestinationGroups = [
   {
     "id": "upstream",
@@ -213,18 +218,10 @@ export default function AdminPage() {
     [quickLinksOpen, setQuickLinksOpen] = useState(false),
     [listLoading, setListLoading] = useState(false);
   const quickLinksRef = useRef<HTMLDivElement>(null);
-  const navigationGroups = [
-    {
-      label: lang === "en" ? "Workspace" : "业务管理",
-      keys: ["overview", "users", "feedback", "generations", "payments"],
-    },
-    {
-      label: lang === "en" ? "Configuration" : "配置与运维",
-      keys: ["models", "text", "upstream", "operations", "audit"],
-    },
-  ];
+  const navigationGroups = adminNavigationGroups.map(group => ({ ...group, label: adminText(group.label, lang) }));
   function navigate(key) {
     setSection(key);
+    window.scrollTo(0, 0);
     setSearch("");
     setFilter("");
     setUserFilter("");
@@ -264,6 +261,14 @@ export default function AdminPage() {
     if (window.location.hash === `#${key}`) navigate(key);
     else window.location.hash = key;
   }
+  useEffect(() => {
+    if (!mobileNav) return;
+    const close = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileNav(false);
+    };
+    document.addEventListener("keydown", close);
+    return () => document.removeEventListener("keydown", close);
+  }, [mobileNav]);
   const priceBaseline = useRef(null);
   const [form, setForm] = useState<Record<string, any>>({}),
     [copied, setCopied] = useState(false),
@@ -556,14 +561,6 @@ export default function AdminPage() {
           } : { delta: Number(form.delta), reason: form.reason });
         if (type === "permissions")
           await api(`users/${data.id}`, "PATCH", form);
-        if (type === "rotate") {
-          const r = await api(`users/${data.id}/code`, "POST", {});
-          setModal({
-            type: "code",
-            data: { name: data.name, accessCode: r.accessCode },
-          });
-          return;
-        }
         if (type === "password") {
           const oneTimePassword = String(form.password || "");
           await api(`users/${data.id}/password`, "POST", {
@@ -692,20 +689,11 @@ export default function AdminPage() {
   async function copySecret() {
     const token = capture();
     try {
-      await navigator.clipboard.writeText(
-        modal.data.password || modal.data.accessCode,
-      );
+      await navigator.clipboard.writeText(modal.data.password);
       if (isCurrent(token)) setCopied(true);
     } catch {
       if (isCurrent(token))
-        setError(
-          adminText(
-            modal.data.password
-              ? "复制失败，请选中密码手动复制"
-              : "复制失败，请选中登录码手动复制",
-            lang,
-          ),
-        );
+        setError(adminText("复制失败，请选中密码手动复制", lang));
     }
   }
   function exportPage() {
@@ -732,7 +720,7 @@ export default function AdminPage() {
         <div className="admin-login-shell">
           <aside className="admin-login-intro">
             <div className="admin-login-brand">
-              <img src="/miaoimg-logo.png" alt="" />
+              <img src={adminLogoUrl} alt="" />
               <span>
                 {adminText("妙图", lang)}
                 <small>MIAOIMG · ADMIN</small>
@@ -780,7 +768,7 @@ export default function AdminPage() {
             </label>
             {error && (
               <p role="alert" className="admin-error">
-                {error}
+                {adminText(error, lang)}
               </p>
             )}
             <button className="primary" disabled={busy}>
@@ -803,7 +791,7 @@ export default function AdminPage() {
       ...videoList.map((model) => ({ ...model, kind: "video" })),
       ...textModels.map((model) => ({ ...model, kind: "text" })),
     ],
-    current = sections.find((s) => s[0] === section),
+    current = sections.find((s) => s[0] === section) || sections[0],
     visibleUsers = users.items || [];
   function openPricing(modelId = "") {
     if (!overview) return;
@@ -826,7 +814,7 @@ export default function AdminPage() {
       label: m.label,
       kind: m.video ? "video" : "image",
       // 档位名按“比例 · 清晰度”显示（如 9:16 · 4K），保存键仍是原始尺寸值。
-      tiers: list.map((v) => ({ key: v, label: v === "default" ? v : withSizeKey(m.video ? sizeTier(v) || v : mediaSizeLabel(v, m.sizes?.find((x) => x.value === v)?.ratio, lang === "en" ? "Auto" : "自动"), v) })),
+      tiers: list.map((v) => ({ key: v, label: adminText(adminMediaTierLabel(m, v, lang === "en" ? "Auto" : "自动"), lang) })),
     };
   });
   function buildPriceForm() {
@@ -1031,6 +1019,11 @@ export default function AdminPage() {
       : "";
     return { current, legacy };
   };
+  function storedTierLabel(row) {
+    if (!row.tier) return "—";
+    const model = allModelRows.find(model => model.id === row.model || model.upstreamModelId === row.model);
+    return adminText(adminMediaTierLabel(model || { kind: row.kind === "video" ? "video" : "image" }, String(row.tier), lang === "en" ? "Auto" : "自动"), lang);
+  }
   return (
     <div
       className={`admin-app ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${mobileNav ? "mobile-nav-open" : ""}`}
@@ -1044,8 +1037,15 @@ export default function AdminPage() {
         />
       )}
       <aside className="admin-sidebar" id="admin-navigation">
+        <button
+          className="admin-nav-close"
+          aria-label={lang === "en" ? "Close menu" : "关闭菜单"}
+          onClick={() => setMobileNav(false)}
+        >
+          <X size={20} />
+        </button>
         <a className="admin-brand" href="#overview">
-          <img src="/miaoimg-logo.png" alt="" />
+          <img src={adminLogoUrl} alt="" />
           <span>
             {adminText("妙图", lang)}
             <small>MIAOIMG · ADMIN</small>
@@ -1125,46 +1125,16 @@ export default function AdminPage() {
             <List size={22} />
           </button>
           <div className="admin-top-copy">
-            <span className="admin-breadcrumb">
-              {lang === "en" ? "Admin console" : "管理控制台"} /{" "}
-              {lang === "en" ? sectionEnglish[section] : current[1]}
-            </span>
+            <nav className="admin-breadcrumb" aria-label={adminText("当前位置", lang)}>
+              <button onClick={() => selectSection("overview")}>{adminText("管理后台", lang)}</button>
+              <span aria-hidden="true">/</span>
+              <span>{navigationGroups.find(group => group.keys.includes(section))?.label}</span>
+            </nav>
             <h1>{lang === "en" ? sectionEnglish[section] : current[1]}</h1>
-            <p>
-              {lang === "en"
-                ? sectionDescriptionEnglish[section]
-                : section === "overview"
-                  ? adminText("查看账号、生成与费用概况。", lang)
-                  : section === "operations"
-                    ? adminText("查看存储、数据同步和服务配置。", lang)
-                    : section === "users"
-                      ? adminText("管理账号、权限与积分。", lang)
-                      : section === "text"
-                      ? adminText("管理文本调用、收费规则与用户赠送。", lang)
-                      : section === "models"
-                        ? adminText("管理模型开关、参数价格与采购成本。", lang)
-                        : section === "generations"
-                          ? adminText(
-                              "查看生成结果、任务状态与积分消耗。",
-                              lang,
-                            )
-                          : section === "payments"
-                            ? adminText(
-                                "查看订单和支付状态，支付成功后积分到账。",
-                                lang,
-                              )
-                            : section === "upstream"
-                              ? adminText(
-                                  "查看上游调用、成本估算与余额记录。",
-                                  lang,
-                                )
-                              : section === "feedback"
-                                ? "查看并回复桌面端用户提交的问题和建议。"
-                                : adminText("查看账号、支付与管理操作。", lang)}
-            </p>
-            <span className="admin-timezone-note">
+            <p>{adminText(adminSectionDescriptions[section] || "", lang)}</p>
+            {["overview", "generations", "payments", "upstream", "text"].includes(section) && <span className="admin-timezone-note">
               {adminText("时间按本地时区显示；统计范围按 UTC。", lang)}
-            </span>
+            </span>}
           </div>
           <div className="admin-top-actions">
             <LanguageControl compact />
@@ -1238,21 +1208,36 @@ export default function AdminPage() {
         )}
         {error && (
           <div role="alert" className="admin-message error">
-            {error}
+            {adminText(error, lang)}
           </div>
         )}
         {notice && (
           <div role="status" className="admin-message">
             <Check size={16} />
-            {notice}
+            {adminText(notice, lang)}
           </div>
         )}
         {section === "text" && <AdminTextConsole api={api} lang={lang} />}
+        {section === "settings" && (!overview ? <Empty>{adminText("正在读取运营数据…", lang)}</Empty> : <AdminSettingsSection
+          lang={lang} settings={overview.settings || {}} payments={overview.payments || {}}
+          onOpenServiceSettings={() => open("settings", { ...overview.settings })}
+          onOpenPrices={() => openPricing()} onNavigate={selectSection}
+        />)}
         {section === "overview" &&
           (!overview ? (
             <Empty>{adminText("正在读取运营数据…", lang)}</Empty>
           ) : (
             <>
+              <AdminOverviewSummary lang={lang} stats={stats} payments={overview.payments || {}}
+                onCreateUser={() => open("create")} onOpenPrices={() => openPricing()}
+                onNavigate={(key, status) => {
+                  window.history.pushState(null, "", `#${key}`);
+                  navigate(key);
+                  if (status) setFilter(status);
+                }}
+              />
+              <details className="admin-overview-details">
+                <summary><span>{adminText("详细运营数据", lang)}</span><small>{adminText("用户、积分与成本明细", lang)}</small></summary>
               <section
                 className="admin-metrics"
                 aria-label={adminText("运营统计", lang)}
@@ -1294,11 +1279,11 @@ export default function AdminPage() {
                   ],
                   [
                     adminText("成本估算（元）", lang),
-                    `¥${displayNumber(stats.upstreamCostRmb)}`,
+                    stats.upstreamCostRmb == null ? adminText("未知", lang) : `¥${displayNumber(stats.upstreamCostRmb)}`,
                   ],
                   [
                     adminText("估算差额（有成本记录）", lang),
-                    `¥${displayNumber(stats.marginRmb)}`,
+                    stats.marginRmb == null ? adminText("未知", lang) : `¥${displayNumber(stats.marginRmb)}`,
                   ],
                   [adminText("成功但缺成本记录", lang), stats.missingCostRows],
                 ].map(([k, v]) => (
@@ -1334,6 +1319,9 @@ export default function AdminPage() {
                   <TextChargeSummary summary={stats.textCharges} lang={lang} />
                 </p>
               </details>
+              </details>
+              <details className="admin-overview-details">
+                <summary><span>{adminText("积分余额与账本核对", lang)}</span><small>{adminText("查看余额一致性与差额", lang)}</small></summary>
               <section className="admin-panel admin-balance-panel">
                 <header>
                   <h2>{adminText("积分余额与账本核对", lang)}</h2>
@@ -1389,12 +1377,13 @@ export default function AdminPage() {
                   </p>
                 )}
               </section>
+              </details>
               <div className="admin-overview-grid">
                 <section className="admin-panel">
                   <header>
                     <h2>{adminText("生成服务", lang)}</h2>
                     <button
-                      onClick={() => open("settings", { ...overview.settings })}
+                      onClick={() => selectSection("settings")}
                       disabled={!overview}
                     >
                       {adminText("运行设置", lang)}
@@ -2505,13 +2494,7 @@ export default function AdminPage() {
                                   ).map(([tier, value]) => (
                                     <div key={tier}>
                                       <span>
-                                        {tier === "default" && !m.video
-                                          ? lang === "en"
-                                            ? "Other sizes"
-                                            : "其他尺寸"
-                                          : withSizeKey(m.video
-                                            ? sizeTier(tier) || tier
-                                            : mediaSizeLabel(tier, "", lang === "en" ? "Auto" : "自动"), tier)}
+                                        {adminText(adminMediaTierLabel(m, tier, lang === "en" ? "Auto" : "自动"), lang)}
                                       </span>
                                       <strong>
                                         {value == null
@@ -2573,8 +2556,8 @@ export default function AdminPage() {
                                 <strong>{model?.label || id}</strong>
                                 <small>{id}</small>
                               </td>
-                              <td>{model?.providerLabel || model?.provider || "—"}</td>
-                              <td>{value?.label || adminText("未登记", lang)}</td>
+                              <td>{adminText(model?.providerLabel || model?.provider || "—", lang)}</td>
+                              <td>{adminText(value?.label || "未登记", lang)}</td>
                             </tr>
                           );
                         },
@@ -2888,7 +2871,7 @@ export default function AdminPage() {
                             )}
                           </td>
                           <td>
-                            {row.tier || "—"}
+                            {storedTierLabel(row)}
                             <small>
                               {adminText(
                                 row.has_input_video
@@ -2999,7 +2982,7 @@ export default function AdminPage() {
                             )}
                           </td>
                           <td>
-                            {row.tier || "—"}
+                            {storedTierLabel(row)}
                             {row.seconds
                               ? ` · ${row.seconds}${adminText("秒", lang)}`
                               : ""}
@@ -3510,7 +3493,7 @@ export default function AdminPage() {
             />
             {error && (
               <p role="alert" className="admin-error">
-                {error}
+                {adminText(error, lang)}
               </p>
             )}
             <footer>
@@ -3546,21 +3529,17 @@ export default function AdminPage() {
                       })
                     : modal.type === "passwordResult"
                       ? adminText("一次性密码", lang)
-                      : modal.type === "code"
-                        ? adminText("用户登录码", lang)
-                        : modal.type === "rotate"
-                          ? adminText("更换用户登录码", lang)
-                          : modal.type === "settings"
-                            ? adminText("生成服务设置", lang)
-                            : modal.type === "ledger"
-                              ? adminText("{name} 的积分账本", lang, {
-                                  name: modal.data.name,
-                                })
-                              : modal.type === "stats"
-                                ? adminText("{name} 的账号统计", lang, {
-                                    name: modal.data.name,
-                                  })
-                                : adminText("生成详情", lang)
+                      : modal.type === "settings"
+                        ? adminText("生成服务设置", lang)
+                        : modal.type === "ledger"
+                          ? adminText("{name} 的积分账本", lang, {
+                              name: modal.data.name,
+                            })
+                          : modal.type === "stats"
+                            ? adminText("{name} 的账号统计", lang, {
+                                name: modal.data.name,
+                              })
+                            : adminText("生成详情", lang)
           }
           onClose={close}
         >
@@ -3569,7 +3548,6 @@ export default function AdminPage() {
             "points",
             "permissions",
             "settings",
-            "rotate",
             "password",
             "prices",
           ].includes(modal.type) && (
@@ -3935,15 +3913,6 @@ export default function AdminPage() {
                   </fieldset>
                 </>
               )}
-              {modal.type === "rotate" && (
-                <p>
-                  {adminText(
-                    "为 {name} 生成新登录码。旧登录码和现有登录会立即失效。",
-                    lang,
-                    { name: modal.data.name },
-                  )}
-                </p>
-              )}
               {modal.type === "password" && (
                 <>
                   <p>
@@ -3969,7 +3938,7 @@ export default function AdminPage() {
               )}
               {error && (
                 <p role="alert" className="admin-error">
-                  {error}
+                  {adminText(error, lang)}
                 </p>
               )}
               <footer>
@@ -3981,13 +3950,11 @@ export default function AdminPage() {
                     ? adminText("正在保存…", lang)
                     : modal.type === "create"
                       ? adminText("创建用户", lang)
-                      : modal.type === "rotate"
-                        ? adminText("生成新登录码", lang)
-                        : modal.type === "password"
-                          ? adminText("重置密码", lang)
-                          : modal.type === "prices"
-                            ? adminText("保存价格", lang)
-                            : adminText("保存修改", lang)}
+                      : modal.type === "password"
+                        ? adminText("重置密码", lang)
+                        : modal.type === "prices"
+                          ? adminText("保存价格", lang)
+                          : adminText("保存修改", lang)}
                 </button>
               </footer>
             </form>
@@ -4025,37 +3992,6 @@ export default function AdminPage() {
                 {copied
                   ? adminText("已复制", lang)
                   : adminText("复制密码", lang)}
-              </button>
-            </div>
-          )}
-          {modal.type === "code" && (
-            <div className="admin-code">
-              <ShieldCheck size={32} />
-              <p>
-                {adminText("{name} 的登录码已生成。", lang, {
-                  name: modal.data.name,
-                })}
-              </p>
-              <label>
-                {adminText("登录码", lang)}
-                <input
-                  type="password"
-                  readOnly
-                  value={modal.data.accessCode}
-                  aria-label={adminText("用户登录码", lang)}
-                />
-              </label>
-              <p className="admin-muted">
-                {adminText(
-                  "登录码仅本次显示；需重新生成时使用管理接口。",
-                  lang,
-                )}
-              </p>
-              <button className="primary" onClick={copySecret}>
-                <Copy size={17} />
-                {copied
-                  ? adminText("已复制", lang)
-                  : adminText("复制登录码", lang)}
               </button>
             </div>
           )}

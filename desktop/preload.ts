@@ -70,3 +70,12 @@ contextBridge.exposeInMainWorld('miaoDesktop', {
 const saveReady = () => { void ipcRenderer.invoke('desktop:save-ready').catch(() => {}) }
 if (document.readyState === 'loading') window.addEventListener('DOMContentLoaded', saveReady, { once: true })
 else saveReady()
+
+// 原生菜单和弹框跟随工作台的界面语言。只发送代码，正文由主进程自己的词典决定。
+const publishLanguage = () => { void ipcRenderer.invoke('desktop:language', document.documentElement.lang).catch(() => {}) }
+const observeLanguage = () => {
+  publishLanguage()
+  new MutationObserver(publishLanguage).observe(document.documentElement, { attributes: true, attributeFilter: ['lang'] })
+}
+if (document.readyState === 'loading') window.addEventListener('DOMContentLoaded', observeLanguage, { once: true })
+else observeLanguage()

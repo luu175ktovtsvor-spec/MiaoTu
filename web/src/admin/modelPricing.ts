@@ -1,8 +1,4 @@
-import { mediaSizeLabel, sizeTier } from "../../../server/media-size-label.ts";
-// 价格按原始尺寸键保存；不同像素可能显示成同一“比例 · 清晰度”，后台标签附上原始值，避免改错行。
-export function withSizeKey(label: string, key: string) {
-  return label && label !== key && /\d\s*[x×*]\s*\d/i.test(key) ? `${label}（${key}）` : label || key;
-}
+import { mediaSizeLabel, sizeRatio, sizeTier, videoSizeLabel } from "../../../server/media-size-label.ts";
 export type AdminModelKind = "image" | "video" | "text";
 
 export type AdminModelRow = {
@@ -23,7 +19,7 @@ export type AdminModelRow = {
   }>;
   paused?: boolean;
   video?: boolean;
-  sizes?: Array<{ value: string; label?: string }>;
+  sizes?: Array<{ value: string; label?: string; ratio?: string }>;
   [key: string]: unknown;
 };
 
@@ -53,6 +49,21 @@ export type PricingDraft = {
   videoPricing: Record<string, unknown>;
 };
 
+// Labels follow the client; original pixel strings remain only the saved keys.
+export function adminMediaTierLabel(model: Pick<AdminModelRow, 'kind' | 'video' | 'sizes'>, key: string, autoText = '自动') {
+  if (key === 'default') return '其他尺寸';
+  if (key === 'auto') return autoText;
+  if (model.kind === 'video' || model.video) {
+    const pixels = /^(\d+)\s*[x×*]\s*(\d+)$/i.exec(key);
+    return pixels ? videoSizeLabel(Number(pixels[1]), Number(pixels[2])) : sizeTier(key) || key;
+  }
+  const metadata = model.sizes?.find(size => size.value === key);
+  if (metadata?.label) {
+    return [metadata.ratio || sizeRatio(key), sizeTier(key, metadata.label)].filter(Boolean).join(' · ');
+  }
+  return mediaSizeLabel(key, metadata?.ratio || '', autoText);
+}
+
 export function buildMediaPriceSections(
   models: AdminModelRow[],
   costPolicy: Record<string, any> = {},
@@ -71,8 +82,7 @@ export function buildMediaPriceSections(
         kind,
         tiers: tiers.map((key) => ({
           key,
-          label:
-            key === "default" ? "其他尺寸" : key === "auto" ? "自动" : withSizeKey(kind === "video" ? sizeTier(key) || key : mediaSizeLabel(key), key),
+          label: adminMediaTierLabel(model, key),
         })),
         pricingMode:
           costPolicy?.models?.[model.id]?.pricingMode === "cost_plus"
@@ -141,6 +151,18 @@ export function buildPricingDraft(
   };
 }
 
+export function hasManualTierPrice(settings: Record<string, any>, id: string, kind: 'image' | 'video', tier: string) {
+  const override = settings?.prices?.[id]?.[kind];
+  if (typeof override === 'number') return Number.isFinite(override);
+  if (!override || typeof override !== 'object') return false;
+  const value = override[tier] ?? override.default;
+  return value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
+}
+
+export function manualPriceTierCount(settings: Record<string, any>, section: MediaPriceSection | undefined) {
+  return section ? section.tiers.filter(tier => hasManualTierPrice(settings, section.id, section.kind, tier.key)).length : 0;
+}
+
 export function mediaPriceValues(
   model: AdminModelRow,
   rate: Record<string, any> = {},
@@ -163,6 +185,6 @@ export function pricingModeLabel(
 ) {
   if (model.kind === "text") return "按 token 用量";
   return costPolicy?.models?.[model.id]?.pricingMode === "cost_plus"
-    ? "成本加成自动价"
+    ? "自动报价"
     : "固定积分价";
 }

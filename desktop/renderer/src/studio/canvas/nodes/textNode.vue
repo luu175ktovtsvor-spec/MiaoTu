@@ -42,7 +42,7 @@
       </el-card>
     </template>
     <template #topActions>
-      <storyboardAction :text="outputs.text.value" :label="nodeProps.label || ''" :disabled="generating || !textReady || !!documentError" :loadModels="() => ai.getMediaModels()" />
+      <storyboardAction ref="storyboardMenu" :text="outputs.text.value" :label="nodeProps.label || ''" :disabled="generating || !textReady || !!documentError" :loadModels="() => ai.getMediaModels()" />
     </template>
     <div class="textContent" :class="{ empty: !outputs.text.value.trim() && !inlineEditing, tinted: !!backgroundColor }" :style="backgroundColor ? { '--textNodeTint': backgroundColor } : undefined" @dblclick.stop="startInlineEdit">
       <el-alert v-if="documentError" :title="documentError" type="error" :closable="false" showIcon>
@@ -68,11 +68,14 @@
             @remove="removeReference" />
         </div>
         <promptInput v-model="promptModel" v-model:text="prompt" :references="referenceMentions" :canvas-references="canvasReferenceMentions" :reference-kinds="referenceKinds" :connect-reference="connectReference" placeholder="写下你想讲的故事、场景或角色设定。例如：一个来自未来的机器人，在城市屋顶看星星。" />
+        <p v-if="model && !modelsLoading && !selectedModel && !data.pendingLocalTextTask" role="alert" class="modelUnavailable">{{ translate('原模型已不可用，请确认模型后重试') }}</p>
         <div class="promptFooter">
           <el-select v-model="model" class="modelSelect" popper-class="modelSelectPopper" filterable :loading="modelsLoading" :disabled="generating" :placeholder="translate('选择模型')" :aria-label="translate('生成模型')" :noDataText="translate('暂无可用模型')" placement="top-start" @visible-change="visible => visible && loadModels()">
-            <template #prefix><icon-sparkles :size="17" /></template>
+            <template #prefix><modelIcon :model="selectedModel?.modelId || nodeModelValueId(model)" :size="17" /></template>
             <el-option-group v-for="group in groupNodeModels(models)" :key="group.id" :label="group.label">
-              <el-option v-for="item in group.models" :key="JSON.stringify([item.providerId, item.modelId])" :label="nodeModelOptionLabel(item)" :value="JSON.stringify([item.providerId, item.modelId])" />
+              <el-option v-for="item in group.models" :key="JSON.stringify([item.providerId, item.modelId])" :label="nodeModelOptionLabel(item)" :value="JSON.stringify([item.providerId, item.modelId])" >
+                <span class="modelOptionContent"><modelIcon :model="item.modelId" :size="16" /><span class="modelOptionText" :title="nodeModelOptionLabel(item)">{{ nodeModelOptionLabel(item) }}</span></span>
+              </el-option>
             </el-option-group>
           </el-select>
           <div class="promptActions">
@@ -100,8 +103,9 @@
 </template>
 
 <script setup lang="ts">
+import { modelIcon } from "@miaoimg/model-icons";
 import { groupNodeModels, pendingMediaTaskError } from '../scaffold/nodeAi';
-import { nodeLocalModelLabel, nodeModelOptionLabel } from '../scaffold/localModelLabel';
+import { nodeLocalModelLabel, nodeModelValueId, nodeModelOptionLabel } from '../scaffold/localModelLabel';
 import { isNodeOutput, type NodeOutput } from "@miaoimg/nodes-scaffold/values";
 import { computed, inject, nextTick, onMounted, onBeforeUnmount, ref, watch } from "vue";
 import { useVueFlow } from '@vue-flow/core';
@@ -109,6 +113,7 @@ import { ElAlert, ElButton, ElCard, ElSelect, ElOption, ElMessage, ElMessageBox,
 import { IconEdit, IconFileText, IconPhotoAi, IconVideo, IconSparkles, IconArrowUp, IconTypography, IconChevronDown, IconCheck, IconBold, IconItalic, IconMinus, IconArrowsDiagonal, IconMinimize } from "@tabler/icons-vue";
 import { nodeSkeleton, nodeTools, useNodeGeneration, useNode, useNodeReferences, z, type NodeAiModel, type NodeHandle } from "@miaoimg/nodes-scaffold/runtime";
 import storyboardAction from "./textNode/storyboardAction.vue";
+import { useRegisterCanvasTools } from "../canvasToolRegistry";
 import { STORYBOARD_MAX_SHOTS, splitShots, useStoryboard } from "./textNode/useStoryboard";
 import referenceItem from "@miaoimg/nodes-scaffold/referenceItem";
 import promptInput from "@miaoimg/nodes-scaffold/promptInput";
@@ -139,6 +144,7 @@ const { node, nodeProps, outputs, ai, files, nodeEvent, previewReady } = useNode
 });
 const { refList, referenceMentions, canvasReferenceMentions, referenceKinds, connectReference, preparePromptReferences, setReferencePreview, removeReference } = useNodeReferences();
 const flow = useVueFlow();
+const storyboardMenu = ref<InstanceType<typeof storyboardAction>>();
 const persistTaskBinding = inject<(() => Promise<void>) | undefined>('persistCanvasTaskBinding', undefined);
 const getCanvasSignal = inject<(() => AbortSignal) | undefined>('canvasOperationSignal', undefined);
 const editing = ref(false);
@@ -212,6 +218,13 @@ const selectedModel = computed(() => models.value.find(item => JSON.stringify([i
 const textReady = ref(false);
 const textReloading = ref(false);
 const documentError = ref("");
+useRegisterCanvasTools(node, {
+  available: tool => tool === "text:storyboard" && textReady.value && !documentError.value && !generating.value
+    && !storyboardMenu.value?.creating && Boolean(splitShots(outputs.value.text.value).length),
+  beforeOpen: () => { inlineEditing.value = false; },
+  ready: () => Boolean(storyboardMenu.value),
+  run: () => storyboardMenu.value?.open(),
+});
 const textPath = `assets/${node.id}/content.md`;
 function markExternalTextOutputs() {
   if (!Object.hasOwn(outputs.value, "toJSON")) Object.defineProperty(outputs.value, "toJSON", {
@@ -436,7 +449,7 @@ function loadModels(silent = false): Promise<boolean> {
     const available = await ai.getModels();
     if (disposed) return false;
     models.value = available;
-    if (!available.some(item => JSON.stringify([item.providerId, item.modelId]) === model.value)) {
+    if (!model.value) {
       const first = models.value[0];
       model.value = first ? JSON.stringify([first.providerId, first.modelId]) : "";
     }
@@ -608,7 +621,13 @@ nodeTools.register({
 });
 nodeTools.register({
   name: 'getConfig', description: '读取文本节点当前模型、提示词与真实可选文本模型，不调用模型。', parameters: z.strictObject({}),
-  async execute() { await loadModels(); return { config: { providerId: selectedModel.value?.providerId ?? '', modelId: selectedModel.value?.modelId ?? '', prompt: prompt.value }, models: models.value }; },
+  async execute() {
+    await loadModels();
+    let saved: unknown;
+    try { saved = JSON.parse(model.value || '[]'); } catch { /* Preserve an unrecognized legacy selection without guessing a provider. */ }
+    const pair = Array.isArray(saved) && saved.length === 2 && saved.every(value => typeof value === 'string') ? saved : [];
+    return { config: { providerId: selectedModel.value?.providerId ?? pair[0] ?? '', modelId: selectedModel.value?.modelId ?? pair[1] ?? '', prompt: prompt.value }, modelAvailable: Boolean(selectedModel.value), models: models.value };
+  },
 });
 nodeTools.register({
   name: 'setConfig', description: '设置文本节点模型和提示词，模型必须来自 getConfig 的实时目录；不发起生成。',
@@ -729,6 +748,12 @@ nodeTools.register({
     display: flex;
     align-items: flex-start;
     gap: 12px;
+  }
+
+  .modelUnavailable {
+    margin: 8px 0;
+    color: var(--el-color-warning);
+    font-size: 12px;
   }
 
   .promptFooter {

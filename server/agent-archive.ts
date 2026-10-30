@@ -30,7 +30,7 @@ export function createAgentArchive({ host, metadataDoc, snapshot, read, revision
     if (!metadata?.file) return
     if (metadata.parentId) dirty.add(metadata.parentId)
     if (metadata.deleted) {
-      await writeScope(() => { remove(metadata.file); cleanupSource?.(metadata.sourceSessionFile) })
+      await writeScope(async () => { await remove(metadata.file); cleanupSource?.(metadata.sourceSessionFile) })
       return
     }
     const live = await host.harness.snapshot(LiveDoc, id, context), inbox = await host.harness.snapshot(InboxDoc, id, context)
@@ -59,8 +59,8 @@ export function createAgentArchive({ host, metadataDoc, snapshot, read, revision
     const currentTail = (await conversation.entries({ order: 'descending' }, 1, undefined, context)).items[0]?.id || 0
     const currentActivity = await readAgentActivity(host.harness, id, currentMetadata, currentLive, context)
     if (currentMetadata.deleted || currentLive?.run || currentLive?.compactions?.length || currentInbox?.items.length || currentTail !== tail || JSON.stringify(currentMetadata) !== JSON.stringify(metadata) || JSON.stringify(currentActivity) !== JSON.stringify(activity)) { dirty.add(id); return }
-    const saved = await writeScope(() => {
-      const current = read(metadata.file)
+    const saved = await writeScope(async () => {
+      const current = await read(metadata.file)
       if (current?.messages) {
         const hash = agentArchiveHash(current.messages)
         const own = current.nativeCheckpoint?.timelineId === (metadata.timelineId || '') && current.nativeCheckpoint?.uiHash === hash
@@ -69,18 +69,18 @@ export function createAgentArchive({ host, metadataDoc, snapshot, read, revision
           // Preserve concurrent changes from another installation before
           // replacing our generated projection. Recovery copies are idempotent.
           const recoveredPath = `agent/recovered-${agentArchiveHash([metadata.file,current]).slice(0,32)}.json`
-          if (!read(recoveredPath)) {
+          if (!(await read(recoveredPath))) {
             const recovered = { ...current, name: `${current.name || metadata.name}（同步记录）`, parentFile: '', recoveredFrom: metadata.file }
             delete recovered.agentSessionFile; delete recovered.agentSessionSeeded
             if (recovered.nativeCheckpoint?.uiHash !== hash) delete recovered.nativeCheckpoint
-            write(recoveredPath, recovered)
+            await write(recoveredPath, recovered)
           }
         }
       }
       const archive = { ...(current || {}), ...full, task: metadata.task || '', createdAt: metadata.createdAt, updatedAt: metadata.updatedAt || metadata.createdAt, messages, running: false, pendingInputs: [], nativeCheckpoint: checkpoint }
       delete archive.nativeId; delete archive.historyCursor; delete archive.agentSessionFile; delete archive.agentSessionSeeded
-      write(metadata.file, archive)
-      return { revision: revision?.(metadata.file) }
+      await write(metadata.file, archive)
+      return { revision: await revision?.(metadata.file) }
     })
     if (saved) await host.harness.commit(async tx => { const state = await tx.doc(Archive, id); state.tail = tail; state.header = header; if (revision) state.revision = saved.revision }, context)
   }

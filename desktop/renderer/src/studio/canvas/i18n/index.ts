@@ -1,46 +1,18 @@
-// 妙图画布的多语言词典。文案以中文原文为 key，其它语言查对应语言包，查不到就回落中文原文。
+// 妙图画布的多语言词典。文案以中文原文为 key，中文系回落中文，其它语言优先回落英文。
 // 语言列表由本模块维护，语言包由
 // 词典随源码维护，scripts/check-canvas-locales.ts 校验键与覆盖率。
 import { IntlMessageFormat } from 'intl-messageformat'
 import en from './en.json'
 import { escapeMessageText } from './messageText'
+import { normalizeLocale } from './locales'
+import { numericMessageValues } from '../../../../../../server/numeric-messages.ts'
+import type { Locale, LocaleSetting } from './locales'
 
 export { escapeMessageText } from './messageText'
-
-export type Locale =
-  | 'zh-CN' | 'zh-TW' | 'en' | 'ja' | 'ru' | 'vi' | 'th' | 'ko' | 'hi'
-  | 'id' | 'ms' | 'fil' | 'bn' | 'ur' | 'ta' | 'te' | 'mr' | 'pa' | 'ar' | 'fa' | 'tr'
-
-// ACT: 只有中英双语时本地存的是 'zh'，读设置时必须继续认这个旧值，
-// 否则老用户的语言设置会被判为无效而掉回默认。
-export type LocaleSetting = Locale | 'zh'
+export { detectLocale, isRtlLocale, normalizeLocale, supportedLocales } from './locales'
+export type { Locale, LocaleSetting } from './locales'
 
 export interface MessageDescriptor { id: string; values?: Record<string, unknown> }
-
-// 名称用各自语言的原生写法，语言选择器直接显示。
-export const supportedLocales: { code: Locale; name: string }[] = [
-  { code: 'zh-CN', name: '简体中文' },
-  { code: 'zh-TW', name: '繁體中文' },
-  { code: 'en', name: 'English' },
-  { code: 'ja', name: '日本語' },
-  { code: 'ru', name: 'Русский' },
-  { code: 'vi', name: 'Tiếng Việt' },
-  { code: 'th', name: 'ไทย' },
-  { code: 'ko', name: '한국어' },
-  { code: 'hi', name: 'हिन्दी' },
-  { code: 'id', name: 'Bahasa Indonesia' },
-  { code: 'ms', name: 'Bahasa Melayu' },
-  { code: 'fil', name: 'Filipino' },
-  { code: 'bn', name: 'বাংলা' },
-  { code: 'ur', name: 'اردو' },
-  { code: 'ta', name: 'தமிழ்' },
-  { code: 'te', name: 'తెలుగు' },
-  { code: 'mr', name: 'मराठी' },
-  { code: 'pa', name: 'ਪੰਜਾਬੀ' },
-  { code: 'ar', name: 'العربية' },
-  { code: 'fa', name: 'فارسی' },
-  { code: 'tr', name: 'Türkçe' },
-]
 
 // zh-CN 没有字典：中文原文就是 key，直接返回即可。en 静态进主包，
 // 19 个非中英语言包（合计约 2.3MB）走动态 import，切到哪种语言才加载哪种。
@@ -71,44 +43,8 @@ const loading = new Map<Locale, Promise<void>>()
 let activeLocale: Locale = 'zh-CN'
 const listeners = new Set<(locale: Locale) => void>()
 const catalogListeners = new Set<() => void>()
-
-function maximizeScript(tag: string): string | undefined {
-  try { return new Intl.Locale(tag).maximize().script } catch { return undefined }
-}
-
-export function normalizeLocale(value: unknown): Locale | undefined {
-  if (typeof value !== 'string') return undefined
-  const tag = value.trim().replaceAll('_', '-')
-  if (!tag) return undefined
-  const lower = tag.toLowerCase()
-  const base = lower.split('-')[0]!
-  if (base === 'zh') {
-    // 简繁之分看文字体系；老环境没有 Intl.Locale 时按地区码兜底。
-    const script = maximizeScript(tag) ?? (/hant|-(tw|hk|mo)($|-)/.test(lower) ? 'Hant' : 'Hans')
-    return script === 'Hant' ? 'zh-TW' : 'zh-CN'
-  }
-  // 上游的别名：tl → fil、in → id。
-  const code = base === 'tl' ? 'fil' : base === 'in' ? 'id' : base
-  const supported = supportedLocales.find(item => item.code === code)
-  if (!supported) return undefined
-  // ACT: 每种语言只提供一种文字体系；pa-Arab（旁遮普语阿拉伯字母）等不能误用 Gurmukhi 译文。
-  const script = maximizeScript(tag)
-  const own = maximizeScript(supported.code)
-  return script && own && script !== own ? undefined : supported.code
-}
-
-export function detectLocale(languages: readonly string[] = []): Locale {
-  for (const language of languages) {
-    const locale = normalizeLocale(language)
-    if (locale) return locale
-  }
-  return 'zh-CN'
-}
-
-// ACT: 这三种语言的界面要从右往左排；其它语言都是从左到右。
-export function isRtlLocale(locale: LocaleSetting = activeLocale): boolean {
-  return locale === 'ar' || locale === 'fa' || locale === 'ur'
-}
+let catalogRevision = 0
+export function getCatalogRevision() { return catalogRevision }
 
 export function getLocale(): Locale { return activeLocale }
 
@@ -116,16 +52,17 @@ export function isCatalogLoaded(locale: Locale): boolean {
   return locale === 'zh-CN' || Object.hasOwn(catalogs, locale)
 }
 
-// 切换语言时调用：先把包拉起来，界面先用中文原文渲染，包到了再通知重渲染。
+// 切换语言时先加载目标包，过渡期按 lookupMessage 的中英文回落规则渲染。
 export function loadCatalog(locale: Locale): Promise<void> {
   if (isCatalogLoaded(locale)) return Promise.resolve()
   const load = catalogLoaders[locale]
   if (!load) return Promise.resolve()
   let task = loading.get(locale)
   if (!task) {
-    // 拉包失败就静默回落中文原文：界面仍然可用，不需要把错误抛到用户面前。
+    // 拉包失败沿用中英文回落规则，保留重试机会。
     task = load().then(module => {
       catalogs[locale] = module.default
+      catalogRevision += 1
       loading.delete(locale)
       if (locale === activeLocale) for (const listener of catalogListeners) listener()
     }, () => { loading.delete(locale) })
@@ -196,6 +133,11 @@ function lookupMessage(language: Locale, id: string): string {
     if (english && Object.hasOwn(english, id) && typeof english[id] === 'string') return english[id]
   }
   return id
+}
+
+// 只认应用词典译文及其受控数字参数，用于保留安全错误；任意英文诊断不在信任范围。
+export function isKnownTranslation(text: string, language: Locale = activeLocale): boolean {
+  return [catalogs[language], catalogs.en].some(catalog => catalog && Object.values(catalog).some(value => value === text || numericMessageValues(value, text)))
 }
 
 export function translate(message: string | MessageDescriptor, values?: Record<string, unknown>, language: Locale = activeLocale): string {

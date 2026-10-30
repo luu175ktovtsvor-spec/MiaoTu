@@ -4,7 +4,7 @@ import type { useVueFlow } from "@vue-flow/core";
 import { nextTick } from "vue";
 import useWorkspaceFiles from "@/lib/workspaceFiles";
 import { beginUpload, dismissUpload } from "./uploadStatus";
-import { assetFileType, ASSET_MAX_BYTES } from "./assetFile";
+import { assetFileType } from "./assetFile";
 import { nodeMediaCopyPath, readWorkspaceAsset } from './scaffold/workspaceFiles';
 import { isInternalAssetPath } from '../../../../../server/workspace-path';
 
@@ -88,7 +88,6 @@ export async function importCanvasFiles(droppedFiles: File[], position: { x: num
     const at = { x: position.x + index * 32, y: position.y + index * 32 };
     try {
       if (!file.size) throw new Error(translate("{0}：文件不能为空", { 0: file.name }));
-      if (file.size > ASSET_MAX_BYTES) throw new Error(translate("{0}：文件不能超过 100 MB", { 0: file.name }));
       const { mimeType, kind } = assetFileType(file);
       if (!kind) throw new Error(translate("{0}：该文件类型暂不支持导入画布", { 0: file.name }));
       const type = `remote-${kind}Node`;
@@ -132,7 +131,6 @@ export async function importReferenceFiles(
     const id = crypto.randomUUID();
     try {
       if (!file.size) throw new Error(translate("{0}：文件不能为空", { 0: file.name }));
-      if (file.size > ASSET_MAX_BYTES) throw new Error(translate("{0}：文件不能超过 100 MB", { 0: file.name }));
       const { mimeType, kind } = assetFileType(file);
       if (!kind || !["image", "video", "audio"].includes(kind) || !target.accepts.includes(kind.toUpperCase())) {
         throw new Error(translate("{0}：这个节点不能用它作参考", { 0: file.name }));

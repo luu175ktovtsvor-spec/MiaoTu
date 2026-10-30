@@ -3,7 +3,7 @@ name: 妙图 macOS 打包
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [ChineseMain]
     paths:
       - .github/workflows/desktop-macos-package.yml
       - package.json
@@ -11,6 +11,7 @@ on:
       - scripts/compile-desktop.ts
       - scripts/desktop-resources.ts
       - scripts/third-party-notices.ts
+      - deploy/verify-update-metadata.py
       - docs/compatibility/**
       - LICENSE
       - desktop/**
@@ -26,28 +27,53 @@ concurrency:
 jobs:
   package:
     runs-on: macos-15
-    timeout-minutes: 45
+    environment: macos-signing
+    timeout-minutes: 120
     env:
       MIAO_DESKTOP_NO_GENERATION: '1'
       ENABLE_MODEL_CALLS: 'false'
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
-      - name: 检查原生验收所需配置
+      - name: 检查 G2 签名、公证和原生验收配置
         env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           MIAO_ACCEPT_EMAIL: ${{ secrets.MIAO_ACCEPT_EMAIL }}
           MIAO_ACCEPT_PASSWORD: ${{ secrets.MIAO_ACCEPT_PASSWORD }}
-        run: node --input-type=module -e "if (!process.env.MIAO_ACCEPT_EMAIL || !process.env.MIAO_ACCEPT_PASSWORD) throw new Error('Existing authorized acceptance credentials are required before packaging')"
+        run: node desktop/scripts/macos-signing.ts preflight
       - name: 安装依赖
         run: |
           npm ci
           npm --prefix desktop/renderer ci
           npm --prefix desktop ci
-      - name: 打包 macOS 两种架构
-        run: npm --prefix desktop run package:mac
+      - name: 将精确 G2 身份和公证凭据导入临时钥匙串
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          MIAO_ACCEPT_EMAIL: ${{ secrets.MIAO_ACCEPT_EMAIL }}
+          MIAO_ACCEPT_PASSWORD: ${{ secrets.MIAO_ACCEPT_PASSWORD }}
+        run: node desktop/scripts/macos-signing.ts prepare
+      - name: 准备明确提交的应用内容
+        run: |
+          npm --prefix desktop run verify:release-notes
+          npm run verify:mcp
+          npm --prefix desktop run prepare:app
+      - name: G2 签名、公证 App 并打包两种架构
+        run: node desktop/scripts/macos-signing.ts build
+      - name: 公证 DMG、核对两架构 App 与 ZIP 并重建最终更新元数据
+        run: node desktop/scripts/macos-signing.ts finalize
       - name: 实际启动匹配架构安装包并验收
         env:
           MIAO_ACCEPT_EMAIL: ${{ secrets.MIAO_ACCEPT_EMAIL }}
@@ -55,27 +81,28 @@ jobs:
         run: |
           if [ "$(uname -m)" = arm64 ]; then bundle=desktop/release/mac-arm64; else bundle=desktop/release/mac; fi
           node desktop/scripts/accept-login.ts "$bundle/妙图.app/Contents/MacOS/妙图" "$RUNNER_TEMP/desktop-proof"
+      - name: 清理临时钥匙串和所有签名私密文件
+        if: always()
+        run: node desktop/scripts/macos-signing.ts cleanup
+      - name: 生成仅含允许字段的脱敏证据
+        if: always()
+        run: node desktop/scripts/macos-signing.ts proof
       - name: 保存脱敏验收结果
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
-          PROOF_TAG: desktop-mac-proof-${{ github.run_id }}
+          PROOF_TAG: desktop-mac-proof-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
-          if [ -f "$RUNNER_TEMP/desktop-proof/result.json" ]; then
-            gh release create "$PROOF_TAG" "$RUNNER_TEMP/desktop-proof/result.json" --target "$GITHUB_SHA" --latest=false --title "临时 macOS 验收 $GITHUB_SHA" --notes 'Sanitized temporary acceptance result; delete after retrieval.'
+          if [ -f "$RUNNER_TEMP/desktop-proof/sanitized/macos-signing.json" ]; then
+            gh release create "$PROOF_TAG" "$RUNNER_TEMP/desktop-proof/sanitized/"*.json --target "$GITHUB_SHA" --latest=false --title "临时 macOS 验收 $GITHUB_SHA" --notes 'Sanitized signing and acceptance result only; no private files or failed packages. Delete after retrieval.'
           fi
       - name: 保存安装包到临时 Release
-        if: always() && hashFiles('desktop/release/latest-mac.yml') != ''
+        if: success()
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: desktop-mac-build-${{ github.run_id }}
+          RELEASE_TAG: desktop-mac-build-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
-          mkdir -p desktop/release/publish
-          for path in desktop/release/妙图-*.dmg desktop/release/妙图-*.zip; do
-            name=$(basename "$path")
-            cp "$path" "desktop/release/publish/${name/妙图/MiaoImg}"
-          done
-          sed 's/妙图-/MiaoImg-/g' desktop/release/latest-mac.yml > desktop/release/publish/latest-mac.yml
+          node --input-type=module -e "import fs from 'node:fs'; const signing=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+'/desktop-proof/macos-signing.json')); const acceptance=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+'/desktop-proof/result.json')); if (!signing.complete || !signing.cleanup || signing.failure || !acceptance.ok) throw new Error('Verified signing, cleanup and native acceptance are all required')"
           gh release create "$RELEASE_TAG" desktop/release/publish/* \
             --target "$GITHUB_SHA" --latest=false \
             --title "临时 macOS 构建 $GITHUB_SHA" \

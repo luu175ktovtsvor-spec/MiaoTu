@@ -47,10 +47,10 @@ const panels = [
   { id: "skills", get label() { return translate("创作技能"); }, get description() { return translate("选择 Agent 可以使用的创作方法。"); }, icon: IconSparkles, component: defineAsyncComponent({ loader: () => import("./panels/skills.vue"), loadingComponent: loadingPanel, delay: 0 }) },
   { id: "languageModel", get label() { return translate("文本模型"); }, get description() { return translate("选择 Agent 和文本节点默认使用的模型。"); }, icon: IconMessageChatbot, component: defineAsyncComponent({ loader: () => import("./panels/languageModel/index.vue"), loadingComponent: loadingPanel, delay: 0 }) },
   { id: "mediaModel", get label() { return translate("图片与视频"); }, get description() { return translate("查看模型支持的尺寸、时长、参考素材和积分。"); }, icon: IconPhotoVideo, component: defineAsyncComponent({ loader: () => import("./panels/mediaModel/index.vue"), loadingComponent: loadingPanel, delay: 0 }) },
-  ...(window.miaoDesktop ? [{ id: "doubao", get label() { return translate("豆包 与 Dola"); }, get description() { return translate("连接豆包或 Dola 账号，在文本、图片与视频节点中直接使用，并查看用量。"); }, icon: IconWorld, component: defineAsyncComponent({ loader: () => import("./panels/localMedia.vue"), loadingComponent: loadingPanel, delay: 0 }) }] : []),
+  { id: "doubao", get label() { return translate("豆包 与 Dola"); }, get description() { return translate("连接豆包或 Dola 账号，在文本、图片与视频节点中直接使用，并查看用量。"); }, icon: IconWorld, component: defineAsyncComponent({ loader: () => import("./panels/localMedia.vue"), loadingComponent: loadingPanel, delay: 0 }) },
   { id: "personalization", get label() { return translate("创作偏好"); }, get description() { return translate("告诉 Agent 你的习惯，让后续创作更合心意。"); }, icon: IconUserCog, component: defineAsyncComponent({ loader: () => import("./panels/personalization.vue"), loadingComponent: loadingPanel, delay: 0 }) },
   { id: "mcp", get label() { return "MCP"; }, get description() { return translate("允许外部 Agent 连接妙图，读取和操作当前画布。"); }, icon: IconPlugConnected, component: defineAsyncComponent({ loader: () => import("./panels/mcp/index.vue"), loadingComponent: loadingPanel, delay: 0 }) },
-  ...(window.miaoDesktop ? [{ id: "computer", get label() { return translate("本机操作"); }, get description() { return translate("让 Agent 帮你处理电脑上的文件和任务。"); }, icon: IconDeviceDesktop, component: defineAsyncComponent({ loader: () => import("./panels/computer.vue"), loadingComponent: loadingPanel, delay: 0 }) }] : []),
+  { id: "computer", get label() { return translate("本机操作"); }, get description() { return translate("让 Agent 帮你处理电脑上的文件和任务。"); }, icon: IconDeviceDesktop, component: defineAsyncComponent({ loader: () => import("./panels/computer.vue"), loadingComponent: loadingPanel, delay: 0 }) },
   { id: "about", get label() { return translate("关于妙图"); }, get description() { return translate("应用版本和官网。"); }, icon: IconInfoCircle, component: defineAsyncComponent({ loader: () => import("./panels/about.vue"), loadingComponent: loadingPanel, delay: 0 }) },
 ];
 // 左侧按用途分组，组内顺序与上面的列表一致；只在桌面端出现的面板没有时自动跳过。
@@ -92,9 +92,9 @@ const visible = defineModel<boolean>({ default: false });
   background: var(--canvas-surface, #262626);
   backdrop-filter: none; -webkit-backdrop-filter: none;
   box-shadow: var(--canvas-shadow, 0 4px 10px rgba(0, 0, 0, .28)); overflow: hidden;
-  .el-dialog__header { margin: 0; padding: 18px 56px 18px 24px; border-bottom: 0; }
+  .el-dialog__header { margin: 0; padding-block: 18px; padding-inline: 24px 56px; border-bottom: 0; }
   .el-dialog__title { color: var(--el-text-color-primary); font-size: 16px; font-weight: 600; }
-  .el-dialog__headerbtn { top: 12px; right: 12px; width: 36px; height: 36px; border-radius: 10px; }
+  .el-dialog__headerbtn { top: 12px; left: auto; right: auto; inset-inline-end: 12px; width: 36px; height: 36px; border-radius: 10px; }
   .el-dialog__headerbtn:hover { background: var(--canvas-hover, rgba(255, 255, 255, .06)); }
   .el-card { --el-card-bg-color: var(--canvas-soft, rgba(255, 255, 255, .035)); --el-card-border-color: transparent; border-radius: 12px; box-shadow: none; }
   .el-input__wrapper, .el-textarea__inner { background: var(--canvas-field, #1f1f1f); }
@@ -157,13 +157,14 @@ const visible = defineModel<boolean>({ default: false });
     height: 54px;
     align-items: center;
     box-sizing: border-box;
-    padding: 0 24px;
+    padding-block: 0;
+    padding-inline: 24px 66px;
     border-bottom: .5px solid var(--canvas-line, #363636);
   }
   .el-dialog__title { margin: 0; }
   .el-dialog__headerbtn {
     top: 50%;
-    right: 18px;
+    inset-inline-end: 18px;
     transform: translateY(-50%);
   }
   .settings {
@@ -176,7 +177,7 @@ const visible = defineModel<boolean>({ default: false });
   .sidebar {
     gap: 2px;
     padding: 18px 14px 24px;
-    border-right: .5px solid var(--canvas-line, #363636);
+    border-inline-end: .5px solid var(--canvas-line, #363636);
     background: transparent;
   }
   .navItem { min-height: 36px; padding: 0 12px; border-radius: 9px; }
@@ -188,7 +189,7 @@ const visible = defineModel<boolean>({ default: false });
 }
 @media (max-width: 860px) {
   .settingsDialog.embeddedSettings .settings { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
-  .settingsDialog.embeddedSettings .sidebar { flex-direction: row; overflow-x: auto; padding: 10px 14px; border-right: 0; border-bottom: .5px solid var(--canvas-line, #363636); }
+  .settingsDialog.embeddedSettings .sidebar { flex-direction: row; overflow-x: auto; padding: 10px 14px; border-inline-end: 0; border-bottom: .5px solid var(--canvas-line, #363636); }
   .settingsDialog.embeddedSettings .navGroup { display: none; }
   .settingsDialog.embeddedSettings .navItem { white-space: nowrap; }
 }
@@ -236,7 +237,7 @@ body[data-miaoimg-canvas-ui] .settingsDialog.embeddedSettings {
 }
 body[data-miaoimg-canvas-ui] .settingsDialog.embeddedSettings .sidebar {
   border-bottom: 0 !important;
-  border-right: .5px solid var(--canvas-line, #363636) !important;
+  border-inline-end: .5px solid var(--canvas-line, #363636) !important;
 }
 .settingsSubdialog {
   // 弹层被 teleport 到 body，拿不到设置页内嵌主题的作用域。这里必须重新映射同一套

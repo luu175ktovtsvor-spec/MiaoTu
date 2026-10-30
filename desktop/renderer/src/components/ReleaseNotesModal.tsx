@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useLang } from '../i18n'
+import { contentLang } from '../shellLanguage'
 import { RELEASE_NOTES, RELEASE_NOTE_SECTIONS, type ReleaseNotes } from '../releaseNotes'
 import './releaseNotes.css'
 
@@ -7,22 +8,23 @@ type DesktopUpdateStatus = { currentVersion?: string }
 type DesktopBridge = { updateStatus?: () => Promise<DesktopUpdateStatus> }
 
 function ReleaseNotesModal({ version, notes, onClose }: { version: string; notes: ReleaseNotes; onClose: () => void }) {
-  const { lang } = useLang()
-  const text = (value: { zh: string; en: string }) => value[lang === 'en' ? 'en' : 'zh']
-  const sections = RELEASE_NOTE_SECTIONS.map(section => [section.zh, section.en, notes[section.key]] as const)
+  const { lang, t } = useLang()
+  // 更新说明正文只有中/英两份（服务端维护），按内容语言二选一；界面文字走词典。
+  const text = (value: { zh: string; en: string }) => value[contentLang(lang)]
+  const sections = RELEASE_NOTE_SECTIONS.map(section => [section.zh, notes[section.key]] as const)
   return <div className="release-notes-mask" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
     <section className="release-notes-modal" role="dialog" aria-modal="true" aria-labelledby="release-notes-title">
-      <button className="release-notes-close" type="button" aria-label={lang === 'en' ? 'Close release notes' : '关闭更新说明'} onClick={onClose}>×</button>
+      <button className="release-notes-close" type="button" aria-label={t('关闭更新说明')} onClick={onClose}>×</button>
       <div className="release-notes-kicker">MiaoImg · v{version}</div>
       <h2 id="release-notes-title">{text(notes.title)}</h2>
-      <p className="release-notes-intro">{lang === 'en' ? 'New features, improvements and bug fixes in this version.' : '这次更新的新增功能、优化改进和问题修复。'}</p>
+      <p className="release-notes-intro">{t('这次更新的新增功能、优化改进和问题修复。')}</p>
       <div className="release-notes-sections">
-        {sections.filter(([, , items]) => items.length > 0).map(([zh, en, items]) => <section key={zh} className="release-notes-section">
-          <h3>{lang === 'en' ? en : zh}</h3>
+        {sections.filter(([, items]) => items.length > 0).map(([zh, items]) => <section key={zh} className="release-notes-section">
+          <h3>{t(zh)}</h3>
           <ul>{items.map(item => <li key={item.zh}>{text(item)}</li>)}</ul>
         </section>)}
       </div>
-      <button className="release-notes-confirm" type="button" onClick={onClose}>{lang === 'en' ? 'Start using MiaoImg' : '开始使用妙图'}</button>
+      <button className="release-notes-confirm" type="button" onClick={onClose}>{t('开始使用妙图')}</button>
     </section>
   </div>
 }

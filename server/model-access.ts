@@ -10,23 +10,24 @@ export function modelSessionUnexpired(expires: unknown, now = Date.now()): boole
   return typeof expires === 'number' && Number.isFinite(expires) && expires > now
 }
 
-export function requireModelUser(session: any, service = '文本模型'): string {
+export async function requireModelUser(session: any, service = '文本模型'): Promise<string> {
   if (session?.role !== 'user' || typeof session.userId !== 'string' || !session.userId) deny(`请先登录后使用${service}`, 401)
   if (session.expires !== undefined && !modelSessionUnexpired(session.expires)) deny('登录已过期，请重新登录', 401)
   const current = session[MODEL_SESSION_CURRENT]
-  if (current !== undefined && (typeof current !== 'function' || !current())) deny('登录已失效，请重新登录', 401)
+  if (current !== undefined && (typeof current !== 'function' || !(await current()))) deny('登录已失效，请重新登录', 401)
+  if (session.expires !== undefined && !modelSessionUnexpired(session.expires)) deny('登录已过期，请重新登录',401)
   return session.userId
 }
 
-export function assertModelIdentity({ management, session, service = '文本模型' }: Record<string, any>) {
-  const userId = requireModelUser(session, service)
-  const user = management?.user?.(userId)
+export async function assertModelIdentity({ management, session, service = '文本模型' }: Record<string, any>) {
+  const userId = (await requireModelUser(session, service))
+  const user = (await management?.user?.(userId))
   if (!user || user.status !== 'active') deny('账号已停用', 403)
   return user
 }
 
-export function assertModelAccess(options: Record<string, any>) {
-  const user = assertModelIdentity(options)
+export async function assertModelAccess(options: Record<string, any>) {
+  const user = (await assertModelIdentity(options))
   if (!(Number(user.points) > 0)) deny(`积分不足，请先充值后使用${options.service || '文本模型'}`, 402)
   return user
 }

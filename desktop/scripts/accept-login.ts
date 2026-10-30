@@ -234,6 +234,7 @@ async function canvasReview() {
     await call('selectNodes', { nodeIds: [A, B] });
     const g1 = await call('groupNodes', { nodeIds: [A, B], label: 'Review group A' });
     const g2 = await call('groupNodes', { nodeIds: [C, D], label: 'Review group B' });
+    await call('estimateGroup', { groupId: g1.groupId });
     await call('moveNodes', { moves: [{ nodeId: A, position: { x: 220, y: 260 } }] });
     await call('resizeGroups', { sizes: [{ nodeId: g1.groupId, width: 800, height: 400, position: { x: 50, y: 60 } }] });
     const before = await call('getCanvasNodes', { nodeIds: [B], fields: ['position'] });

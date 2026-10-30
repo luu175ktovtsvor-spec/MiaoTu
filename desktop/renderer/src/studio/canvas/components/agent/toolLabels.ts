@@ -20,6 +20,9 @@ Object.assign(nodeActions, { 'node:setDirectorEditor': '打开或关闭导演台
 Object.assign(nodeActions, { 'node:generateImage': '生成图片', 'node:generateVideo': '生成视频', 'node:generateText': '生成文本', 'node:setPrompt': '写入提示词', 'node:getGenerationStatus': '查看生成进度', 'node:createStoryboard': '生成分镜', 'node:listImagePresets': '查看图片快捷预设', 'node:applyImagePreset': '使用图片快捷预设', 'node:getText': '读取文本' });
 Object.assign(nodeActions, { 'node:focusNode': '聚焦节点', 'node:setImagePreview': '查看图片大图', 'node:setTextEditor': '打开或关闭文本编辑器' });
 
+Object.assign(toolLabels, { readCameras:'读取机位', editCameras:'编辑机位草稿', readStage:'读取灯光与环境', editStage:'修改灯光与环境', getStageLibrary: '读取布景库', addStageAsset: '添加布景', applyActorPose: '设置人偶姿势', inspectDocument: '检查场景画面', applyDirectorCandidate: '保存导演台修改' });
+Object.assign(nodeActions, { 'node:getDirectorAssets': '读取布景库', 'node:addDirectorAsset': '添加布景与道具', 'node:applyDirectorPose': '设置人偶姿势', 'node:restoreDirectorHistory': '撤销或重做布景', 'node:manageDirectorPlans':'管理导演方案', 'node:editDirectorTimeline':'编辑动画时间轴', 'node:createDirectorCameraMotion': '创建机位运镜', 'node:setDirectorMode': '切换导演助手任务', 'node:stopDirectorTask': '停止导演助手', 'node:inspectScene': '检查场景画面', 'node:exportDirectorVideo': '导出预演视频' });
+
 export function parsedToolArgs(value: unknown): Record<string, any> {
   if (typeof value === "string") { try { return JSON.parse(value); } catch { return {}; } }
   return value && typeof value === "object" ? value as Record<string, any> : {};
@@ -27,5 +30,10 @@ export function parsedToolArgs(value: unknown): Record<string, any> {
 
 // 未翻译的动作名，调用方按界面语言 translate。
 export function toolActionLabel(tool: Pick<AgentToolCall, "name" | "args">): string {
+  const args = parsedToolArgs(tool.args);
+  if (tool.name === 'updateStageAsset' || tool.name === 'nodeTools' && args.name === 'node:updateDirectorAsset') { const action = tool.name === 'nodeTools' ? parsedToolArgs(args.args).action : args.action; return action === 'copy' ? '复制整体道具' : action === 'remove' ? '删除整体道具' : action === 'ungroup' ? '拆开道具' : '调整整体道具'; }
+  if (tool.name === 'readDocument' && ['scene', 'plan', 'history', 'schema'].includes(args.section)) return ({ scene: '读取场景', plan: '读取动画方案', history: '读取历史方案', schema: '读取可编辑参数' } as Record<string, string>)[args.section]!;
+  if (tool.name === 'editDocument' && Array.isArray(args.operations) && args.operations.some((op: any) => ['scene','plan'].includes(op.section))) return args.operations.every((op: any) => op.section === 'scene') ? '修改场景草稿' : '修改动画草稿';
+  if (tool.name === 'addStageAsset') return args.kind === 'actor' ? '添加人偶' : args.kind === 'set' ? '搭建场景' : '添加道具';
   return (tool.name === "nodeTools" && nodeActions[parsedToolArgs(tool.args).name]) || toolLabels[tool.name] || "操作工具";
 }

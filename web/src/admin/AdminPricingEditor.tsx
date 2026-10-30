@@ -1,6 +1,6 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import { adminText } from "./i18n";
-import { buildMediaPriceSections, type AdminModelRow } from "./modelPricing";
+import { buildMediaPriceSections, hasManualTierPrice, manualPriceTierCount, type AdminModelRow } from "./modelPricing";
 
 type Props = {
   lang: string;
@@ -105,7 +105,7 @@ export default function AdminPricingEditor({
           <h2>{t("全部模型积分")}</h2>
           <p>
             {t(
-              "图片、视频和文本模型统一调价。成本加成视频保留自动报价；只有你改动过的档位才会保存为手动固定积分价。",
+              "图片、视频和文本模型统一调价。自动报价档位保留自动计算；只有你改动过的档位才会保存为手动固定积分价。",
             )}
           </p>
         </div>
@@ -169,10 +169,9 @@ export default function AdminPricingEditor({
           <div className="pricing-card-grid">
             {visibleSections.map((section) => {
               const automatic = section.pricingMode === "cost_plus";
-              const manual = Boolean(
-                settings?.prices?.[section.id]?.image ||
-                  settings?.prices?.[section.id]?.video,
-              );
+              const manualCount = manualPriceTierCount(settings, section);
+              const manual = manualCount > 0;
+              const partiallyManual = manual && manualCount < section.tiers.length;
               return (
                 <fieldset className="pricing-card" key={section.id}>
                   <legend>{section.label}</legend>
@@ -181,13 +180,16 @@ export default function AdminPricingEditor({
                     <span
                       className={`model-policy ${automatic ? "automatic" : ""} ${manual ? "manual" : ""}`}
                     >
-                      {manual
+                      {partiallyManual
+                        ? t("部分手动价")
+                        : manual
                         ? t("手动固定价")
                         : automatic
-                          ? t("成本加成自动价")
+                          ? t("自动报价")
                           : t("固定积分价")}
                     </span>
                   </div>
+                  {automatic && partiallyManual && <p className="pricing-note">{t("部分档位为手动价，其余档位继续自动报价。")}</p>}
                   {automatic && !manual && (
                     <p className="pricing-note">
                       {t(
@@ -198,14 +200,14 @@ export default function AdminPricingEditor({
                   <div className="pricing-tier-list">
                     {section.tiers.map((tier) => (
                       <label className="pricing-field" key={tier.key}>
-                        <span>{tier.label}</span>
+                        <span className="pricing-tier-name"><span>{t(tier.label)}</span>{automatic && <small className={`pricing-tier-policy ${hasManualTierPrice(settings, section.id, section.kind, tier.key) ? 'manual' : ''}`}>{hasManualTierPrice(settings, section.id, section.kind, tier.key) ? t("手动价") : t("自动价")}</small>}</span>
                         <input
-                          aria-label={`${section.label} ${tier.label}`}
+                          aria-label={`${section.label} ${t(tier.label)}`}
                           type="number"
                           required
                           min="0.01"
                           max="10000"
-                          step="any"
+                          step={section.kind === "video" ? "0.0001" : "any"}
                           value={
                             form.prices?.[section.id]?.[section.kind]?.[
                               tier.key
@@ -326,9 +328,10 @@ export default function AdminPricingEditor({
 
       <details className="pricing-costs">
         <summary>
-          <span>{t("采购成本与默认加价")}</span>
+          <span>{t("自动报价规则与成本参数")}</span>
           <small>{t("不分摊服务器费用")}</small>
         </summary>
+        <p className="pricing-note">{t("Grok 每秒自动售价 = 网关美元单价 × 售价倍率 × 美元汇率 + 每输出秒加价；人工档位价优先。")}</p>
         <div className="pricing-cost-grid">
           <label className="pricing-field">
             <span>{t("秘塔每积分成本（元）")}</span>
@@ -343,6 +346,19 @@ export default function AdminPricingEditor({
                 updateCost("metasoRmbPerCredit", event.target.value)
               }
             />
+          </label>
+          <label className="pricing-field">
+            <span>{t("Grok 视频售价倍率")}</span>
+            <input
+              type="number"
+              required
+              min="0"
+              max="100"
+              step="0.0001"
+              value={form.videoPricing?.grokCustomerMultiplier ?? 0.2}
+              onChange={(event) => updateCost("grokCustomerMultiplier", event.target.value)}
+            />
+            <small>{t("只影响 Grok 客户自动价，不修改实际采购成本；人工档位价优先。")}</small>
           </label>
           <label className="pricing-field">
             <span>{t("其他视频每输出秒加价（元）")}</span>

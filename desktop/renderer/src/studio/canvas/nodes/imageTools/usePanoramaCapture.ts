@@ -3,6 +3,7 @@ import { useNode, useVueFlow, type Node } from "@vue-flow/core";
 import { ElMessage } from "element-plus";
 import { uploadNodeFile, useNodeFiles } from "@miaoimg/nodes-scaffold/runtime";
 import { showNodeError } from "../../scaffold/showNodeError";
+import { translate } from "@miaoimg/i18n/vue";
 import type { PanoramaCapture } from "./imagePanorama";
 
 export function usePanoramaCapture(source: () => string) {
@@ -100,16 +101,16 @@ export function usePanoramaCapture(source: () => string) {
           throw error;
         }
       });
-      if (!toolCall) ElMessage.success(grouped ? `已创建 ${createdNodes.length} 张截图并成组连线` : "已创建截图并连接原节点");
+      if (!toolCall) ElMessage.success(grouped ? translate("已创建 {0} 张截图并成组连线", { 0: createdNodes.length }) : translate("已创建截图并连接原节点"));
       return { nodeIds: createdNodes.map(node => node.id), groupId: groupId ?? null, count: payload.count };
     } catch (error) {
       if (toolCall) throw error;
-      if (!controller.signal.aborted) showNodeError(error, "全景截图保存失败");
+      if (!controller.signal.aborted) showNodeError(error, translate("全景截图保存失败"));
     } finally {
       if (!committed && workspace) {
         const cleanup = await Promise.allSettled(pendingIds.map(id => workspace!.remove(`assets/${id}`, true)));
         const failure = cleanup.find(result => result.status === "rejected" && result.reason?.response?.data?.data?.code !== "ENOENT");
-        if (failure?.status === "rejected") showNodeError(failure.reason, "全景截图中断，临时图片清理失败");
+        if (failure?.status === "rejected") showNodeError(failure.reason, translate("全景截图中断，临时图片清理失败"));
       }
       saving.value = false;
       signal?.removeEventListener("abort", abort);

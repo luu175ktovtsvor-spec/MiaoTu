@@ -11,6 +11,9 @@ export class CloudGateway {
   declare onSessionRetiring: () => void
   declare authenticationExpired: boolean
   private sessionChanges = 0
+  // 界面语言：渲染进程每个请求都带 Accept-Language（= 当前界面语言），本机运行时记下来，转发云端时原样带上，
+  // 云端的用户可见文案才会跟界面语言一致，而不是跟系统语言走。
+  private language = ''
   declare storage: SessionStorage
   declare file: any
   declare cookie: string
@@ -157,6 +160,10 @@ export class CloudGateway {
     const nextRevision = this.authRevision
     return this.confirmPersistence(persistence, nextRevision)
   }
+  setLanguage(value: unknown) {
+    const tag = String(Array.isArray(value) ? value[0] : value ?? '').split(',')[0].split(';')[0].trim()
+    if (/^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(tag)) this.language = tag
+  }
   async request(path, { method = 'GET', body, rawBody, headers = {}, signal, anonymous = false, updateCookie = true }: Record<string, any> = {}) {
     const url = new URL(path, this.origin)
     if (url.origin !== this.origin || !url.pathname.startsWith('/api/')) throw new Error('请求地址无效，请重新打开妙图')
@@ -166,8 +173,8 @@ export class CloudGateway {
     if (!anonymous && this.sessionChanging) throw Object.assign(new Error('账号正在切换，请稍后重试'), { status: 409 })
     const authRevision = this.authRevision
     const sentCookie = this.cookie
-    const response = await this.fetch(url, { method, redirect: 'error', signal: AbortSignal.any([this.lifetime.signal, signal || AbortSignal.timeout(/^\/api\/imagine\/(login-password|register|email\/|password\/reset)/.test(url.pathname) ? 20000 : 120000)]),
-      headers: { origin: this.origin, ...(sentCookie ? { cookie: sentCookie } : {}), ...(body !== undefined ? { 'content-type': 'application/json' } : {}), ...(this.session?.csrf ? { 'x-csrf-token': this.session.csrf } : {}), ...headers },
+    const response = await this.fetch(url, { method, redirect: 'error', signal: AbortSignal.any([this.lifetime.signal, signal || AbortSignal.timeout(/^\/api\/imagine\/(login-password|email\/|password\/reset)/.test(url.pathname) ? 20000 : 120000)]),
+      headers: { origin: this.origin, ...(this.language ? { 'accept-language': this.language } : {}), ...(sentCookie ? { cookie: sentCookie } : {}), ...(body !== undefined ? { 'content-type': 'application/json' } : {}), ...(this.session?.csrf ? { 'x-csrf-token': this.session.csrf } : {}), ...headers },
       body: rawBody ?? (body === undefined ? undefined : JSON.stringify(body)) })
     try { this.assertAuthRevision(authRevision) } catch (error) { await response.body?.cancel().catch(() => {}); throw error }
     if (response.status === 401 && !anonymous) {
@@ -212,7 +219,7 @@ export class CloudGateway {
     await this.publishSession(value.session, cookie, revision)
     return this.session
   }
-  login(payload, register = false) { return this.authenticate(register ? '/api/imagine/register' : '/api/imagine/login-password', payload) }
+  login(payload) { return this.authenticate('/api/imagine/login-password', payload) }
   loginWithEmailCode(payload) { return this.authenticate('/api/imagine/email/verify-code', payload) }
   resetPassword(payload) { return this.authenticate('/api/imagine/password/reset', payload) }
   async refresh({ signal }: { signal?: AbortSignal } = {}) {
@@ -246,7 +253,7 @@ export class CloudGateway {
     const archiveMedia = /^\/(images|previews|thumbs|_oip\/sessions|showcase)\//.test(url.pathname)
     const showcasePoster = /^\/landing\/film-[\w-]+\.webp$/.test(url.pathname)
     if (url.origin !== this.origin || !['GET','HEAD'].includes(method) || !(archiveMedia || showcasePoster)) throw new Error('灵感库文件地址无效')
-    return this.fetch(url, { method, headers, redirect: 'error', signal: AbortSignal.any([this.lifetime.signal, signal || AbortSignal.timeout(/^\/api\/imagine\/(login-password|register|email\/|password\/reset)/.test(url.pathname) ? 20000 : 120000)]) })
+    return this.fetch(url, { method, headers, redirect: 'error', signal: AbortSignal.any([this.lifetime.signal, signal || AbortSignal.timeout(/^\/api\/imagine\/(login-password|email\/|password\/reset)/.test(url.pathname) ? 20000 : 120000)]) })
   }
   async archiveVideo(tweetId, index, { method = 'GET', range, signal }: Record<string, any> = {}) {
     if (!/^\d{10,24}$/.test(tweetId) || !Number.isInteger(index) || index < 1 || index > 20 || !['GET', 'HEAD'].includes(method)) throw Object.assign(new Error('视频地址无效'), { status: 400 })

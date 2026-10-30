@@ -4,6 +4,7 @@ After=miaoimg.service
 
 [Service]
 Type=oneshot
+EnvironmentFile=/etc/miaoimg/main.env
 ExecStart=/usr/bin/python3 /opt/miaoimg-ops/native/backup.py
 UMask=0077
 Nice=10

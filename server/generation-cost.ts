@@ -1,3 +1,4 @@
+import { IMAGE_LAYER_PRICING_VERSION, IMAGE_LAYER_UNCONFIRMED_BASIS, hasImageLayerPricing, isImageLayerPricing, imageLayerReservation } from './image-layer-pricing.ts'
 import { costPlusVideoCost, costPlusVideoEstimate, isCostPlusVideo, adminVideoPricing, videoExpenses } from './video-pricing.ts'
 import { modelCatalog } from './image-models.ts'
 import { suiheCost, SUIHE_CUSTOMER_MARKUP, SUIHE_IMAGE_MARKUP } from './suihe-pricing.ts'
@@ -35,6 +36,7 @@ const IMAGE_CREDIT_RULES = Object.freeze({
   'gpt-image-2.5-flare': 0.1,
   'grok-imagine-image': 0.1,
   'grok-imagine-image-2.0': 0.1,
+  'grok-imagine-image-quality': 0.1,
 })
 // 豆包图片：官方原价 + 0.1（每张只赚一毛）。
 export const ARK_IMAGE_CREDIT_MARKUP = 0.1
@@ -136,6 +138,7 @@ export const VIDEO_CREDIT_RATES = Object.freeze({
   'seedance-2.0': { '480p': 0.55, '720p': 1.06, '1080p': 2.49, '4k': 4.97, '4K': 4.97, '1280x720': 1.06, '720x1280': 1.06, default: 1.06 },
   'grok-imagine-video': { '480p': 0.2, '720p': 0.4, default: 0.4 },
   'grok-imagine-video-1.5': { '480p': 0.2, '720p': 0.4, '1080p': 0.9, default: 0.4 },
+  'grok-imagine-video-1.5-lite': { '480p': 0.2, '720p': 0.4, '1080p': 0.9, default: 0.4 },
 })
 
 // 秘塔的输入素材计费（官方价目）：参考视频按输入时长 × 最终生成分辨率单价计费；
@@ -170,6 +173,7 @@ export const VIDEO_INPUT_PRICING = Object.freeze({
   // 输入保守折算，并在编辑/续写时强制采集输入视频真实时长，避免漏收。
   'grok-imagine-video': { billReferenceVideoSeconds: true, inputCreditsPerSecond: { default: 0.1 }, freeReferenceImages: 0, extraImageCredits: 0.1 },
   'grok-imagine-video-1.5': { billReferenceVideoSeconds: true, inputCreditsPerSecond: { default: 0.1 }, freeReferenceImages: 0, extraImageCredits: 0.1 },
+  'grok-imagine-video-1.5-lite': { billReferenceVideoSeconds: true, inputCreditsPerSecond: { default: 0.1 }, freeReferenceImages: 0, extraImageCredits: 0.1 },
 })
 
 // 火山方舟 Seedance 2.0 fast 的官方按量刊例以 token 计费，查询任务会返回
@@ -247,13 +251,13 @@ function usageBasedVideoCredits({ model, provider, usage, hasInputVideo, resolut
 export function videoCreditsPerSecond(model, resolution) {
   const id = String(model?.publicId || model?.id || model || '')
   const isSuihe = model?.provider === 'suihe'
-  const withSuiheMarkup = (value) => Math.round((Number(value) + (isSuihe ? SUIHE_CUSTOMER_MARKUP : 0)) * 1000) / 1000
+  const withSuiheMarkup = (value) => Math.round((Number(value) + (isSuihe ? SUIHE_CUSTOMER_MARKUP : 0)) * 10000) / 10000
   const override = overrideVideo(id, resolution)
   // An administrator-entered rate is already the customer-facing value.
-  if (override !== undefined && Number.isFinite(override)) return Math.round(Number(override) * 1000) / 1000
+  if (override !== undefined && Number.isFinite(override)) return Math.round(Number(override) * 10000) / 10000
   if (isSuihe) {
     const cost = suiheCost(model, { duration: 5, billableDuration: 5, resolution, ratio: '16:9' }, { seconds: 5 })
-    return cost ? Math.round((cost.rmb / 5 + SUIHE_CUSTOMER_MARKUP) * 1000) / 1000 : null
+    return cost ? Math.round((cost.rmb / 5 + SUIHE_CUSTOMER_MARKUP) * 10000) / 10000 : null
   }
   if (isCostPlusVideo(id)) {
     const policy = adminVideoPricing(); const tier = policy.metasoTiers[id];
@@ -437,6 +441,11 @@ export function estimateGenerationCost({ model, generation, referenceCount = 0, 
       usageBased: Boolean(estimate.usageBased),
     }
   }
+  if (isImageLayerPricing(generation?.imageLayerPricing)) {
+    const snapshot = generation.imageLayerPricing
+    const count = Math.min(snapshot.maxOutputs, Math.max(1, Math.floor(Number(generation.count) || 1)))
+    return { points: imageLayerReservation(snapshot, count), count, breakdown: { perImage: Math.max(snapshot.small.customerCredits, snapshot.large.customerCredits), referenceCredits: snapshot.referenceCredits, layerPricing: 'frozen_pixel_tiers' }, policyVersion: POLICY_VERSION + ':' + IMAGE_LAYER_PRICING_VERSION, usageBased: false }
+  }
   const count = Math.max(1, Math.floor(Number(generation?.count) || 1))
   const perImage = imageCreditsPerImage(model, { size: generation?.size, pricing: price, layer: Boolean(generation?.layerDecomposition) })
   // 5.0 Pro 的输入图费按次原价转嫁，不加价；后台手动定价时不另加。
@@ -512,10 +521,18 @@ const YUNSHU_IMAGE_USD = Object.freeze({
   'gpt-image-2.5-flare': 0.201,
   'gpt-image-2.5-sunburst': 0.201,
 })
-const GROK_IMAGE_USD = 0.04
+// xAI 官方按分辨率/质量列价；auto 生成用 low、编辑用 medium。
+const GROK_IMAGE_USD = Object.freeze({
+  'grok-imagine-image': { low: { '1k': 0.02, '1.5k': 0.02, '2k': 0.02 }, input: 0.002 },
+  'grok-imagine-image-2.0': { low: { '1k': 0.04, '1.5k': 0.05, '2k': 0.06 }, medium: { '1k': 0.06, '1.5k': 0.07, '2k': 0.08 }, input: 0.01 },
+  'grok-imagine-image-quality': { low: { '1k': 0.05, '1.5k': 0.06, '2k': 0.07 }, input: 0.01 },
+})
 const GROK_VIDEO_USD_PER_SECOND = Object.freeze({
   'grok-imagine-video': { '480p': 0.05, '720p': 0.07, default: 0.07 },
   'grok-imagine-video-1.5': { '480p': 0.08, '720p': 0.14, '1080p': 0.25, default: 0.14 },
+  // xAI 官方按分辨率价目（2026-10-29）。
+  // 当前网关按 1.5 价族 fallback；官网 0.02/0.03/0.14 不是当前渠道价。
+  'grok-imagine-video-1.5-lite': { '480p': 0.08, '720p': 0.14, '1080p': 0.25, default: 0.14 },
 })
 
 // 火山智能尺寸按边长档位出图：1K≈1024²、1.5K≈1536²、2K≈2048²。auto 只用于图层拆分，
@@ -627,6 +644,13 @@ export function upstreamImageCostRmb({ model, count = 1, parameters = {} }: Reco
   const policy = UPSTREAM_COST_POLICY
   const images = Math.max(1, Math.floor(Number(count) || 1))
   if (provider==='suihe') return suiheCost(model,parameters,{count:images})
+  if (provider === 'ark' && hasImageLayerPricing(parameters.imageLayerPricing)) {
+    const snapshot = parameters.imageLayerPricing
+    const settled = parameters.imageLayerSettlement
+    if (!isImageLayerPricing(snapshot) || settled?.status === 'unconfirmed') return { rmb: null, basis: IMAGE_LAYER_UNCONFIRMED_BASIS, detail: { status: 'unconfirmed', reason: settled?.reason || 'invalid_snapshot', pricingSnapshot: snapshot } }
+    if (settled?.version === IMAGE_LAYER_PRICING_VERSION && settled.status === 'confirmed' && Number.isFinite(settled.supplierRmb)) return { rmb: settled.supplierRmb, basis: 'volcengine_image_layer_actual_pixels', detail: { status: 'confirmed', source: 'actual_image_dimensions', layers: settled.layers, images: settled.count, pricingSnapshot: snapshot } }
+    return { rmb: Math.round((Math.max(snapshot.small.supplierRmb, snapshot.large.supplierRmb) * images + snapshot.referenceRmb) * 10000) / 10000, basis: 'volcengine_image_layer_reservation', detail: { source: 'parameter_estimate', images, pricingSnapshot: snapshot } }
+  }
   const frozen=parameters.upstreamImagePricing
   if (frozen?.version === 'image-cost-snapshot-2026-10-08' && frozen.model === id && Number.isFinite(frozen.unitRmb)) {
     // 参考图费按次收，不随张数翻倍；旧快照没有 referenceRmb，按 0 算。
@@ -641,14 +665,19 @@ export function upstreamImageCostRmb({ model, count = 1, parameters = {} }: Reco
     const referenceRmb = arkReferenceRmb(price, parameters.referenceCount)
     return { rmb: Math.round((unit * images + referenceRmb) * 10000) / 10000, basis: 'volcengine_image_list_price', detail: { unit, images, pixels: px, referenceRmb, layerDecomposition: Boolean(parameters.layerDecomposition) } }
   }
-  const usd = provider === 'grok' ? GROK_IMAGE_USD : YUNSHU_IMAGE_USD[id]
+  const grokPrice = provider === 'grok' ? GROK_IMAGE_USD[id] : null
+  const referenceCount = Math.max(0, Math.floor(Number(parameters.referenceCount) || 0))
+  const quality = parameters.quality === 'medium' || (!parameters.quality || parameters.quality === 'auto') && referenceCount > 0 ? 'medium' : 'low'
+  const grokTier = grokPrice && (grokPrice[quality] || grokPrice.low)
+  const resolution = String(parameters.size || '1k').toLowerCase()
+  const usd = grokTier ? grokTier[resolution] || Math.max(...Object.values(grokTier).map(Number)) : YUNSHU_IMAGE_USD[id]
   if (!usd) return null
   // Grok 走渠道倍率，云枢是实测账单本身，不再乘倍率。
   const billedUsd = usd * (provider === 'grok' ? policy.grokMultiplier : 1)
   return {
-    rmb: Math.round(billedUsd * policy.rmbPerUsd * images * 10000) / 10000,
+    rmb: Math.round((billedUsd * images + referenceCount * (grokPrice?.input || 0) * policy.grokMultiplier) * policy.rmbPerUsd * 10000) / 10000,
     basis: provider === 'grok' ? 'xai_image_usd_with_channel_multiplier' : 'yunshu_measured_usd_per_image',
-    detail: { usdPerImage: billedUsd, usdListPrice: usd, images, rmbPerUsd: policy.rmbPerUsd, ...(provider === 'grok' ? { multiplier: policy.grokMultiplier } : {}) },
+    detail: { usdPerImage: billedUsd, usdListPrice: usd, images, rmbPerUsd: policy.rmbPerUsd, ...(provider === 'grok' ? { multiplier: policy.grokMultiplier, resolution, quality, referenceCount, referenceRmb: referenceCount * grokPrice.input * policy.grokMultiplier * policy.rmbPerUsd } : {}) },
   }
 }
 
@@ -667,12 +696,32 @@ export function metasoResolutionTierRmb(model, resolution) {
   return hit == null ? null : hit
 }
 
+// Freeze only while admitting a new layer request; never reconstruct this for
+// old jobs from today's prices. A selected manual price remains a fixed unit.
+export function imageLayerPricingSnapshot(model, parameters: Record<string, any> = {}) {
+  const id = String(model?.publicId || model?.id || '')
+  const price = model?.provider === 'ark' && model?.supportsLayerDecomposition ? ARK_IMAGE_RMB[id] : null
+  if (!price) return null
+  const manual = overrideImage(id, parameters.size)
+  const supplierSmall = price.layerSmall ?? price.small
+  const supplierLarge = price.layerLarge ?? price.large
+  const value = {
+    version: IMAGE_LAYER_PRICING_VERSION, model: id, thresholdPixels: 2610000, maxOutputs: 17,
+    small: { supplierRmb: supplierSmall, customerCredits: manual ?? imageCreditsPerImage(model, { size: '1.5K', layer: true }) },
+    large: { supplierRmb: supplierLarge, customerCredits: manual ?? imageCreditsPerImage(model, { size: '2K', layer: true }) },
+    referenceRmb: arkReferenceRmb(price, parameters.referenceCount),
+    referenceCredits: PRICING_OVERRIDES[id]?.image !== undefined ? 0 : arkReferenceRmb(price, parameters.referenceCount),
+    customerPriceMode: manual !== undefined ? 'manual_fixed' : 'pixel_tiers',
+  }
+  return isImageLayerPricing(value) ? value : null
+}
+
 // Created from server-normalized parameters, never accepted from client input.
 export function imagePricingSnapshot(model, parameters: Record<string, any> = {}) {
-  const cost=upstreamImageCostRmb({model,count:1,parameters:{...parameters,referenceCount:0}})
+  const cost=upstreamImageCostRmb({model,count:1,parameters})
   const price=model?.provider==='ark'?ARK_IMAGE_RMB[String(model.publicId||model.id||'')]:null
-  const referenceRmb=price?arkReferenceRmb(price,parameters.referenceCount):0
-  return cost ? {version:'image-cost-snapshot-2026-10-08',model:model.publicId||model.id,unitRmb:cost.rmb,referenceRmb,basis:cost.basis,detail:cost.detail,...(videoExpenses().serverAllocationMode==='all_media_requests'?{expenses:videoExpenses()}: {})} : null
+  const referenceRmb=price?arkReferenceRmb(price,parameters.referenceCount):Number(cost?.detail?.referenceRmb)||0
+  return cost ? {version:'image-cost-snapshot-2026-10-08',model:model.publicId||model.id,unitRmb:Math.round((cost.rmb-referenceRmb)*10000)/10000,referenceRmb,basis:cost.basis,detail:cost.detail,...(videoExpenses().serverAllocationMode==='all_media_requests'?{expenses:videoExpenses()}: {})} : null
 }
 
 export function estimateUpstreamCostRmb(input: Record<string, any> = {}) {
@@ -704,7 +753,7 @@ export function publicCostPolicy(catalog = modelCatalog()) {
         return [id, { creditsPerImage: imageCreditsPerImage(model), creditsPerImageBySize: bySize }]
       }
       const perSecond = Object.fromEntries((model.sizes || []).map((size) => [size.value, videoCreditsPerSecond(model, size.value)]))
-      if (isCostPlusVideo(id)) return [id, { durations:model.durations, sizes:(model.sizes||[]).map(x=>x.value), creditsPerSecond:perSecond, defaultCreditsPerSecond:videoCreditsPerSecond(model,''), inputPricing:{billReferenceVideoSeconds:true,...(id==='MiniMax-H3'?{freeReferenceImages:5,extraImageCredits:5.7*adminVideoPricing().metasoRmbPerCredit}:{} )}, billingMode:model.provider==='grok'?'parameter_estimate':'upstream_usage', minimumCredits:0.0001, rounding:'round-0.0001', pricingMode:'cost_plus', settlesActualUsage:model.provider!=='grok', pricingNotice:model.provider==='suihe'?'参考价按5秒、16:9、原生档计算；实际按所选参数询价':id==='MiniMax-H3'?'基础秒价不含提示词处理及参考素材；16–30秒按长视频档询价':'按所选时长与参考素材询价' }]
+      if (isCostPlusVideo(id)) return [id, { durations:model.durations, sizes:(model.sizes||[]).map(x=>x.value), creditsPerSecond:perSecond, defaultCreditsPerSecond:videoCreditsPerSecond(model,''), inputPricing:{billReferenceVideoSeconds:model.provider!=='grok',...(id==='MiniMax-H3'?{freeReferenceImages:5,extraImageCredits:5.7*adminVideoPricing().metasoRmbPerCredit}:{} )}, billingMode:model.provider==='grok'?'parameter_estimate':'upstream_usage', minimumCredits:0.0001, rounding:'round-0.0001', pricingMode:'cost_plus', settlesActualUsage:model.provider!=='grok', pricingNotice:model.provider==='suihe'?'参考价按5秒、16:9、原生档计算；实际按所选参数询价':id==='MiniMax-H3'?'基础秒价不含提示词处理及参考素材；16–30秒按长视频档询价':'按所选时长与参考素材询价' }]
       return [id, {
         durations: model.durations || [],
         sizes: (model.sizes || []).map((size) => size.value),

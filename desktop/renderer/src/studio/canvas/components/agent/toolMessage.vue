@@ -6,6 +6,7 @@
       <span class="toolHeader" :data-status="tool.status">
         <component :is="statusIcon" :size="15" class="statusIcon" :class="{ spinning: tool.status === 'running' }" />
         <span class="toolName">{{ toolLabel }}</span>
+        <span v-if="presentation?.durationMs !== undefined" class="toolDuration">{{ translate('{0} 秒', { 0: (presentation.durationMs / 1000).toFixed(1) }) }}</span>
         <span class="toolState">{{ tool.outcomeUnknown ? translate('结果待确认') : tool.name === 'subAgent' && tool.status === 'success' ? translate('调用已返回') : toolStatusLabels[tool.status] }}</span>
         <icon-chevron-right :size="14" class="detailArrow" :class="{ expanded: !collapsed }" />
       </span>
@@ -36,7 +37,7 @@ import { loadToolComponent } from "@miaoimg/tools-scaffold/client";
 import { IconCopy, IconTool, IconLoader2, IconCheck, IconAlertCircle, IconPlayerStop, IconChevronRight } from "@tabler/icons-vue";
 import type { AgentSubAgent, AgentToolCall } from "@miaoimg/server/agent/types";
 import { translate } from "@miaoimg/i18n/vue";
-const { tool, directory, subAgents } = defineProps<{ tool: AgentToolCall; directory?: string; subAgents?: AgentSubAgent[] }>();
+const { tool, directory, subAgents, presentation } = defineProps<{ tool: AgentToolCall; directory?: string; subAgents?: AgentSubAgent[]; presentation?: { label?: string; target?: string; outcome?: string; details?: string[]; durationMs?: number } }>();
 const emit = defineEmits<{ copy: [content: string]; openChild: [file: string] }>();
 const renderer = shallowRef<Component>();
 const rendererError = ref("");
@@ -67,19 +68,21 @@ const collapsed = defineModel<boolean>("collapsed", { default: true });
 const toolStatusLabels = computed<Record<string, string>>(() => ({
   running: translate("调用中…"), success: translate("已完成"), error: translate("调用失败"), interrupted: translate("已中断"),
 }));
-const toolLabel = computed(() => translate(toolActionLabel(tool)));
+const toolLabel = computed(() => presentation?.label ?? translate(toolActionLabel(tool)));
 const statusIcon = computed(() => ({ running: IconLoader2, success: IconCheck, error: IconAlertCircle, interrupted: IconPlayerStop })[tool.status] || IconTool);
 function parsed(value: unknown): Record<string, any> {
   if (typeof value === "string") { try { return JSON.parse(value); } catch { return {}; } }
   return value && typeof value === "object" ? value as Record<string, any> : {};
 }
 const toolTarget = computed(() => {
+  if (presentation?.target !== undefined) return presentation.target;
   const value = parsed(tool.args);
   const target = value.query || value.url || value.source || value.path || value.pattern || value.command || value.label || value.name || value.nodeId || (Array.isArray(value.nodeIds) ? translate("{0} 个节点", { 0: value.nodeIds.length }) : undefined);
   return typeof target === "string" ? target.slice(0, 180) : "";
 });
 const outcome = computed(() => {
   if (tool.outcomeUnknown) return translate("操作可能已经完成或部分执行，请先核对文件、画布或任务状态。");
+  if (presentation?.outcome !== undefined) return presentation.outcome;
   const value = parsed(tool.result);
   if (tool.status === "error") {
     const raw = typeof tool.result === "string" ? tool.result.trim() : "";
@@ -100,6 +103,7 @@ const childTasks = computed(() => {
   return Array.isArray(tasks) ? tasks.filter((item: any) => typeof item.file === 'string').map((item: any) => ({ file: item.file, name: String(item.name || '子任务'), status: String(subAgents?.find(child => child.file === item.file)?.status || item.status || 'running') })) : [];
 });
 const detailLines = computed(() => {
+  if (presentation?.details) return [...(toolTarget.value ? [`${translate("目标")}：${toolTarget.value}`] : []), ...presentation.details];
   const lines: string[] = [];
   const args = parsed(tool.args);
   const result = parsed(tool.result);
@@ -129,6 +133,7 @@ const detailLines = computed(() => {
 
 <style scoped lang="scss">
 .toolCall {
+  flex-shrink: 0;
   min-width: 0;
   max-width: 100%;
   margin: 0;
@@ -164,6 +169,8 @@ const detailLines = computed(() => {
       white-space: nowrap;
     }
 
+    .toolDuration { flex-shrink: 0; margin-left: auto; font-size: 10px; color: var(--el-text-color-secondary); font-variant-numeric: tabular-nums; }
+    .toolDuration + .toolState { margin-left: 0; }
     .toolState {
       flex-shrink: 0;
       margin-left: auto;

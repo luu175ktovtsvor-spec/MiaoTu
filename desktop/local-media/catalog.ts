@@ -72,7 +72,7 @@ export const LOCAL_MEDIA_PARAMETER_PRESETS: Readonly<Record<string, LocalMediaPa
   },
 })
 export function localModelSelection(model: unknown) { return [...DOUBAO_MODELS, ...DOLA_MODELS].find(item => item.id === model) }
-const LOCAL_MEDIA_ID = /^(doubao-local|dola-local)-(image|video|text)(?:-[a-z0-9.]{1,64})?$/
+const LOCAL_MEDIA_ID = /^(doubao-local|dola-local)-(image|video|text)(?:-[a-z0-9.-]{1,64})?$/
 export function localMediaSite(model: unknown, provider?: unknown) {
   const known = typeof model === 'string' && localModelSelection(model)
   const match = typeof model === 'string' ? LOCAL_MEDIA_ID.exec(model) : undefined
@@ -209,6 +209,9 @@ function presentLocalModel(site: LocalMediaSite, id: string, kind: 'image' | 'vi
   }
 }
 export function localMediaModels(site: LocalMediaSite, status: DoubaoStatus) {
+  // Same rule as text: the platform's models only appear while its account is
+  // signed in. A menu read earlier can outlive a sign-out done inside the page.
+  if (!status.connected) return []
   if (status.menu?.loaded && status.menu.models.length) {
     return status.menu.models.filter((item): item is LiveMenuModel & { kind: 'image' | 'video' } => item.kind === 'image' || item.kind === 'video').map(item => {
       const id = liveModelId(site, item)
@@ -228,6 +231,12 @@ export function localMediaModels(site: LocalMediaSite, status: DoubaoStatus) {
   return []
 }
 export function localTextModels(site: LocalMediaSite, status?: DoubaoStatus) {
+  // Text routes belong to the signed-in platform page just like image/video
+  // routes. Returning presets while disconnected makes an unauthenticated
+  // desktop show selectable 豆包/Dola models and lets the text node silently
+  // choose one as its default. Keep them out until the platform session is
+  // actually connected.
+  if (!status?.connected) return []
   const base = localTextModel(site)
   const live = status?.menu?.loaded ? status.menu.models.filter(item => item.kind === 'text') : []
   if (live.length) return live.map(item => {
@@ -235,6 +244,9 @@ export function localTextModels(site: LocalMediaSite, status?: DoubaoStatus) {
     const known = localModelSelection(id)
     return { ...base, modelId: id, label: item.label || (known && 'label' in known ? known.label : item.key) }
   })
+  // A successfully loaded account menu is authoritative, including an empty
+  // text section. Presets are only a bridge while the menu is still loading.
+  if (status.menu?.loaded) return []
   return (site.id === 'doubao' ? DOUBAO_MODELS : DOLA_MODELS).filter(item => item.kind === 'text').map(item => ({ ...base, modelId: item.id, label: item.label }))
 }
 export function localTextModel(site: LocalMediaSite) {

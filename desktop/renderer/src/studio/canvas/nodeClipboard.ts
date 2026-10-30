@@ -103,7 +103,7 @@ export async function readClipboardNodes(command: string, directory: string, sig
     }
     path.forEach(id => checked.add(id));
   }
-  let hasWorkspaceFile = nodes.some(node => Object.values(node.data.outputs ?? {}).some(output => isNodeOutput(output)
+  let hasWorkspaceFile = nodes.some(node => { const panorama = node.data.panorama as { url?: unknown } | undefined; return typeof panorama?.url === 'string' && Boolean(workspaceFileReference(panorama.url)); }) || nodes.some(node => Object.values(node.data.outputs ?? {}).some(output => isNodeOutput(output)
     && typeof output.value === "object" && (workspaceFileReference(output.value.url)
       || !/^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(output.value.url))));
   if (!hasWorkspaceFile && entry.directory !== directory) {

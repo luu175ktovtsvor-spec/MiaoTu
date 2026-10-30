@@ -19,6 +19,32 @@ export function canvasFileReferences(nodes: readonly { id: string; data?: unknow
     if (!node || typeof node.id !== 'string' || !node.data || typeof node.data !== 'object') continue
     const data = node.data as Record<string, unknown>
     add(node.id, data.textPath, 'text'); add(node.id, data.modelPath, 'model')
+    if (data.panorama && typeof data.panorama === 'object') add(node.id, Reflect.get(data.panorama, 'url'), 'media')
+    if (data.preparedOutpaint && typeof data.preparedOutpaint === 'object' && Reflect.get(data.preparedOutpaint, 'version') === 1) {
+      for (const field of ['imagePath', 'maskPath', 'sourcePath']) add(node.id, Reflect.get(data.preparedOutpaint, field), 'media')
+    }
+    const media = (value: unknown) => {
+      if (value && typeof value === 'object') add(node.id, Reflect.get(value, 'url'), 'media')
+    }
+    const sourceMedia = (value: unknown) => {
+      if (value && typeof value === 'object') media(Reflect.get(value, 'file'))
+    }
+    if (data.segmentRemakeDraft && typeof data.segmentRemakeDraft === 'object') sourceMedia(Reflect.get(data.segmentRemakeDraft, 'source'))
+    const runMedia = (value: unknown) => {
+      if (!value || typeof value !== 'object') return
+      const run = value as Record<string, unknown>
+      sourceMedia(run.source); media(run.result)
+      if (Array.isArray(run.parts)) for (const part of run.parts) {
+        if (!part || typeof part !== 'object') continue
+        media(Reflect.get(part, 'input')); media(Reflect.get(part, 'output'))
+      }
+      if (run.references && typeof run.references === 'object') for (const kind of ['images', 'audios']) {
+        const references = Reflect.get(run.references, kind)
+        if (Array.isArray(references)) references.forEach(media)
+      }
+    }
+    runMedia(data.segmentRemakeRun)
+    if (Array.isArray(data.segmentRemakeHistory)) data.segmentRemakeHistory.forEach(runMedia)
     const path = isWorkspacePath(data.textPath) ? data.textPath : `assets/${node.id}/content.md`
     const sources = typeof data.textSnapshot === 'string' ? [{ path: isWorkspacePath(data.textSnapshotPath) ? data.textSnapshotPath : path, text: data.textSnapshot }] : []
     if (data.outputs && typeof data.outputs === 'object') for (const output of Object.values(data.outputs)) {

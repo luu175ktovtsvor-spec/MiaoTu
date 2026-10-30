@@ -1,3 +1,4 @@
+import { filterAsync } from './async-collections.ts'
 import { isWorkspaceRequest } from './canvas-document.ts'
 // 浏览器 FFmpeg 执行链路：MiaoImg 的 POST /api/ffmpeg/execute 契约在妙图里的实现。
 //
@@ -558,12 +559,12 @@ async function putFile(sandbox, workspaceFiles, userId, state, path) {
   if (state.files.has(path)) return
   if (isProtectedWorkspacePath(path)) throw failure('该文件包含供应商密钥，媒体工具不能读取', 403)
   let info
-  try { info = workspaceFiles.stat(userId, path) } catch { throw failure(`FFmpeg 参数里引用的文件不在当前工作区：${path}`, 404) }
+  try { info = (await workspaceFiles.stat(userId, path)) } catch { throw failure(`FFmpeg 参数里引用的文件不在当前工作区：${path}`, 404) }
   if (!workspaceFiles.localLargeFiles && state.bytes + info.size > FFMPEG_LIMITS.sandboxMaxBytes) throw failure('FFmpeg 任务的素材总量超过上限', 413)
   const target = safeJoin(sandbox, path)
   await mkdir(dirname(target), { recursive: true })
   if (workspaceFiles.copyTo) await workspaceFiles.copyTo(userId, path, target)
-  else await writeFile(target, Buffer.from(workspaceFiles.read(userId, path).bytes))
+  else await writeFile(target, Buffer.from((await workspaceFiles.read(userId, path)).bytes))
   const written = await stat(target)
   state.bytes += written.size
   state.files.set(path, { size: written.size, mtimeMs: written.mtimeMs })
@@ -597,10 +598,10 @@ async function walkFiles(root, current = root, found = []) {
 
 async function writeBack(sandbox, workspaceFiles, userId, state, signal) {
   signal?.throwIfAborted()
-  const candidates = (await walkFiles(sandbox)).filter(item => {
-    const known = state.files.get(item.path)
+  const candidates = (await filterAsync((await walkFiles(sandbox)), async item => {
+    const known = (await state.files.get(item.path))
     return !known || known.size !== item.size || known.mtimeMs !== item.mtimeMs
-  })
+  }))
   if (candidates.length > FFMPEG_LIMITS.maxOutputFiles) throw failure('FFmpeg 产物文件数超过上限', 413)
   const total = candidates.reduce((sum, item) => sum + item.size, 0)
   if (!workspaceFiles.localLargeFiles && total > FFMPEG_LIMITS.sandboxMaxBytes) throw failure('FFmpeg 产物总量超过上限', 413)
@@ -685,7 +686,7 @@ export async function runFfmpegTask({ workspaceFiles, userId, request, signal, e
     // The right to replace an output comes from before processing began, not
     // from a fresh revision observed after the user edited it during encoding.
     // Read-only probes need no output snapshot.
-    if (!queryNames.has(operation.method)) state.outputRevisions = new Map(workspaceFiles.list(userId).map(entry => [entry.path, entry.revision]))
+    if (!queryNames.has(operation.method)) state.outputRevisions = new Map((await workspaceFiles.list(userId)).map(entry => [entry.path, entry.revision]))
 
     // 1. options.source 等价于 fluent 构造时的第一个输入，必须先落地，
     //    否则 factory(path).native() 这类“先配置输入选项”的写法会找不到当前输入。
@@ -697,18 +698,18 @@ export async function runFfmpegTask({ workspaceFiles, userId, request, signal, e
 
     // 2. 落素材：显式输入 + 参数里出现且真实存在的工作区文件。
     const files = new Map()
-    const add = path => {
+    const add = async path => {
       let value
       try { value = workspaceFiles.path(path.trim()) } catch { return }
       if (!value || files.has(value)) return
       if (isProtectedWorkspacePath(value)) throw failure('该文件包含供应商密钥，媒体工具不能读取或修改', 403)
-      try { workspaceFiles.stat(userId, value); files.set(value, true) } catch { /* 不是工作区文件，按字面参数处理 */ }
+      try { await workspaceFiles.stat(userId, value); files.set(value, true) } catch { /* 不是工作区文件，按字面参数处理 */ }
     }
     collectInputs(request.calls, request.operation, state, add)
     // 显式输入必须是工作区里真实存在的文件：图片序列、清单文件这类通配或间接写法在这里就说清楚，
     // 不用等 ffmpeg 报一句难懂的 No such file or directory。
     for (const input of state.inputs) {
-      try { workspaceFiles.stat(userId, input.source) } catch {
+      try { await workspaceFiles.stat(userId, input.source) } catch {
         throw failure(`FFmpeg 输入文件不在当前工作区：${input.source}（图片序列、清单文件这类通配或间接引用不会自动带进沙箱，请改用工作区里实际存在的直接路径）`, 404)
       }
     }

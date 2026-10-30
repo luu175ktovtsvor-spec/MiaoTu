@@ -33,7 +33,12 @@ export interface NodeMediaModelExtensions {
   formats?: string[];
   quality?: string[];
   inputFidelity?: string[];
+  supportsEdit?: boolean;
   supportsTransparent?: boolean;
+  transparentInput?: "any-image" | "alpha-png" | null;
+  // Reference purposes are compiled into the existing image prompt, not sent
+  // as invented vendor-native request fields.
+  referenceRoles?: { value: string; label: string }[];
   supportsLayerDecomposition?: boolean;
   // 区域编辑通道：mask = 传透明蒙版（GPT 图片编辑），annotation = 传归一化标注框（Seedream 5.0）。
   // 为空表示该模型没有区域编辑通道，画布不给局部重绘入口。
@@ -45,6 +50,9 @@ export interface NodeMediaModelExtensions {
   durations?: number[];
   defaultDuration?: number;
   keyframes?: number;
+  // 参考生视频可选的预设声音（voice_id）与数量上限。
+  referenceVoices?: string[];
+  maxReferenceVoices?: number;
   // 图片模型的每张积分（前端只展示积分，不展示任何价格）。
   // 豆包按像素分两档计价，所以还要给出「每个尺寸对应多少积分」的映射。
   creditsPerImage?: number;

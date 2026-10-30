@@ -14,7 +14,6 @@ type Entry = { name: string; path: string; type: 'file' | 'directory'; mime?: st
 const revisions = new Map<string, string | null>()
 const revisionListeners = new Map<string, Set<() => void>>()
 const queues = new Map<string, Promise<unknown>>()
-const uploadIds = new WeakMap<Blob, Map<string, string>>()
 const endpoint = './api/imagine/workspace/files'
 function fileError(message: string, status = 404) {
   // Retain the upstream canvas menu's ENOENT/EEXIST recovery contract.
@@ -43,12 +42,6 @@ function receiptEntries(value: unknown) {
   }
   return value as Array<Record<string, any> & WorkspaceSourceEntry>
 }
-function uploadReceipt(value: Record<string, any>, total: number) {
-  if (!Number.isSafeInteger(value.offset) || value.offset < 0 || value.offset > total
-    || ('total' in value && value.total !== total)
-    || ('result' in value && (!plain(value.result) || !validRevision(value.result.revision) || value.offset !== total))) throw incompleteReceipt()
-  return value
-}
 async function responseRevision(response: Response) {
   const revision = response.headers.get('x-workspace-revision')
   if (!validRevision(revision)) {
@@ -72,13 +65,11 @@ async function putWithProgress(url: string, headers: Record<string, string>, bod
       error ? reject(error) : resolve(value!)
     }
     request.open('PUT', url, true)
-    request.timeout = window.miaoDesktop ? 0 : 120000
     for (const [name, value] of Object.entries(headers)) request.setRequestHeader(name, value)
     if (epoch) request.setRequestHeader('x-miaoimg-document', epoch)
     request.upload.onprogress = event => { if (event.lengthComputable && event.total > 0) onProgress(Math.round(event.loaded / event.total * 100)) }
     request.onload = () => finish(undefined, { ok: request.status >= 200 && request.status < 300, status: request.status, text: request.responseText })
     request.onerror = () => finish(new Error(shellT('上传连接中断，请重试')))
-    request.ontimeout = () => finish(new Error(shellT('上传连接较慢，请重试')))
     request.onabort = () => finish(Object.assign(new Error('aborted'), { name: 'AbortError' }))
     if (signal?.aborted) return abort()
     signal?.addEventListener('abort', abort, { once: true })
@@ -367,7 +358,7 @@ export default function useWorkspaceFiles(source: string | (() => string | undef
       })
     },
     async readJson<T = unknown>(path: string, signal?: AbortSignal) { return JSON.parse(await files.readText(path, undefined, signal)) as T },
-    async write(path: string, content: Blob | ArrayBuffer | string, exclusive = false, signal?: AbortSignal, onProgress?: (percent: number) => void) {
+    async write(path: string, content: Blob | ArrayBuffer | string, exclusive = false, signal?: AbortSignal, onProgress?: (percent: number) => void): Promise<any> {
       const blob = content instanceof Blob ? content : new Blob([content])
       const text = typeof content === 'string'
       if (text) return mutate({ operation: 'write', path, exclusive, content, encoding: 'text', mime: path.endsWith('.json') ? 'application/json' : 'text/plain' }, undefined, signal)
@@ -377,56 +368,6 @@ export default function useWorkspaceFiles(source: string | (() => string | undef
         const params = withProject(new URLSearchParams({ path, exclusive: exclusive ? '1' : '0' }))
         if (revision) params.set('revision', revision)
         const url = `${endpoint}?${params}`
-        // 大文件统一分块续传，画布上传可额外报告进度。
-        if (!window.miaoDesktop && (onProgress || blob.size > 1024 * 1024)) {
-          const reportProgress = onProgress || (() => {})
-          let ids = uploadIds.get(blob)
-          if (!ids) { ids = new Map(); uploadIds.set(blob, ids) }
-          const key = revisionKey(path)
-          const id = ids.get(key) || crypto.randomUUID()
-          ids.set(key, id)
-          const segmentParams = new URLSearchParams(params)
-          segmentParams.set('upload', id)
-          segmentParams.set('total', String(blob.size))
-          const statusUrl = `${endpoint}?${segmentParams}`
-          const readStatus = async () => {
-            signal?.throwIfAborted()
-            return uploadReceipt(await readResponse(await fetch(statusUrl, { headers: headersForScope(), cache: 'no-store', signal })), blob.size)
-          }
-          let state = await readStatus()
-          const chunkSize = 1024 * 1024
-          let failures = 0
-          while (!state.result) {
-            signal?.throwIfAborted()
-            const offset = state.offset
-            // 完整字节已接收但保存响应丢失时，重发末块：服务器按同一个上传编号确认结果。
-            const start = offset === blob.size ? Math.max(0, blob.size - chunkSize) : offset
-            const end = Math.min(start + chunkSize, blob.size)
-            segmentParams.set('offset', String(start))
-            try {
-              const result = await putWithProgress(`${endpoint}?${segmentParams}`, headers, blob.slice(start, end, blob.type), signal,
-                percent => reportProgress(Math.min(99, Math.round((start + (end - start) * percent / 100) / blob.size * 100))))
-              const data = uploadReceipt(readReceipt(result.text, result.ok, result.status), blob.size)
-              if (!data.result && (data.offset < end || data.offset === blob.size)) throw incompleteReceipt()
-              state = data
-              failures = 0
-            } catch (error) {
-              signal?.throwIfAborted()
-              const status = (error as { response?: { status?: number } }).response?.status
-              if ((status && status < 500 && status !== 429) || ++failures > 3) throw error
-              await new Promise<void>((resolve, reject) => {
-                const abort = () => { clearTimeout(timer); reject(signal?.reason) }
-                const timer = window.setTimeout(() => { signal?.removeEventListener('abort', abort); resolve() }, failures * 750)
-                signal?.addEventListener('abort', abort, { once: true })
-              })
-              state = await readStatus()
-            }
-          }
-          remember(path, requireRevision(state.result.revision))
-          ids.delete(key)
-          reportProgress(100)
-          return state.result
-        }
         const result = onProgress ? await putWithProgress(url, headers, blob, signal, percent => onProgress(Math.min(99, percent))) : null
         const response = result ? new Response(result.text, { status: result.status, headers: { 'content-type': 'application/json' } }) : await fetch(url, { method: 'PUT', headers, body: blob, signal })
         const data = await readResponse(response)

@@ -4,6 +4,7 @@ import { createSaveBarrier } from './save-barrier.ts'
 import { createWindowActions } from './window-actions.ts'
 import { createSessionView } from './session-view.ts'
 import { LocalMediaHost } from './local-media/host.ts'
+import { resolveRequestLocale, runWithLocale, translate } from '../server/i18n.ts'
 import { LOCAL_MEDIA_SITES } from './local-media/catalog.ts'
 import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, mkdtempSync, createWriteStream, rmSync, chmodSync, accessSync, constants as fsConstants } from 'node:fs'
 import { copyFile } from 'node:fs/promises'
@@ -61,6 +62,8 @@ else {
   }
   clearAutofillProfile()
   let window, runtime
+  let nativeLanguage = 'zh-CN'
+  const nativeText = (text: string, values?: Record<string, unknown>) => String(runWithLocale(nativeLanguage, () => translate(text, values)))
   let saveBarrier: ReturnType<typeof createSaveBarrier> | undefined
   let windowActions: ReturnType<typeof createWindowActions> | undefined
   let sessionView: ReturnType<typeof createSessionView> | undefined
@@ -349,12 +352,12 @@ restore_previous
       if (!isWindows || !window || window.isDestroyed()) return
       dialog.showMessageBox(window, {
         type: 'info',
-        buttons: ['立即重启更新', '稍后'],
+        buttons: [nativeText('立即重启更新'), nativeText('稍后')],
         defaultId: 0,
         cancelId: 1,
-        title: '更新已下载',
-        message: `妙图 ${info.version} 已下载完成`,
-        detail: '重启应用后完成更新。',
+        title: nativeText('更新已下载'),
+        message: nativeText('妙图 {version} 已下载完成', { version: info.version }),
+        detail: nativeText('重启应用后完成更新。'),
       }).then(result => { if (result.response === 0) return requestQuit(() => instance.quitAndInstall()) }).catch(() => {})
     })
     instance.on('error', error => {
@@ -429,6 +432,7 @@ restore_previous
   function openUpdatePage() { shell.openExternal(updateUrl).catch(() => {}) }
   app.on('second-instance', () => { if (window) { if (window.isMinimized()) window.restore(); window.show(); window.focus() } })
   app.whenReady().then(async () => {
+  nativeLanguage = resolveRequestLocale(app.getLocale() + ',en;q=0.5')
   app.on('child-process-gone', (_event, details) => console.error('应用子进程退出：' + JSON.stringify({ name: details.name, reason: details.reason, exitCode: details.exitCode })))
   const standardWorkspace = join(app.getPath('userData'), 'workspace')
   const directory = resolve(process.env.MIAO_DESKTOP_DATA_DIR || standardWorkspace)
@@ -475,7 +479,7 @@ restore_previous
     profile.setPermissionCheckHandler((web, permission, origin, details) => allowPointerLock(web, permission, details.requestingUrl || origin, details.isMainFrame))
     profile.setPermissionRequestHandler((web, permission, done, details) => done(allowPointerLock(web, permission, details.requestingUrl, details.isMainFrame)))
     const icon = join(root, '../web/miaoimg-logo.png')
-    window = new BrowserWindow({ ...bounds, minWidth: 900, minHeight: 600, title: '妙图', icon, backgroundColor: '#0b0b0c', titleBarStyle: 'hidden', trafficLightPosition: { x: 14, y: 20 }, show: false,
+    window = new BrowserWindow({ ...bounds, minWidth: 900, minHeight: 600, title: nativeText('妙图'), icon, backgroundColor: '#0b0b0c', titleBarStyle: 'hidden', trafficLightPosition: { x: 14, y: 20 }, show: false,
       webPreferences: { preload: join(root, 'preload.cjs'), partition: 'persist:miao-desktop', nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true },
     })
     saveBarrier = createSaveBarrier(window.webContents)
@@ -484,19 +488,19 @@ restore_previous
     windowActions = createWindowActions({ window, save: saveBarrier, stop: () => runtime.stop(), quit: () => app.quit(),
       onSaveError: error => {
         console.warn('妙图页面保存未完成：' + ((error as any)?.code || (error as any)?.status || 'unknown'))
-        dialog.showErrorBox('工作区尚未保存，已取消操作', (error as any)?.code === 'WORKSPACE_UNRESPONSIVE'
-          ? '工作区页面暂无响应，请等待恢复后再保存。'
+        dialog.showErrorBox(nativeText('工作区尚未保存，已取消操作'), (error as any)?.code === 'WORKSPACE_UNRESPONSIVE'
+          ? nativeText('工作区页面暂无响应，请等待恢复后再保存。')
           : (error as any)?.code === 'WORKSPACE_SAVE_TIMEOUT'
-            ? '保存等待超时，已取消退出。当前窗口仍可继续使用，请确认画布保存状态后重试。'
-          : '请查看当前画布或文档的保存状态，保存完成后重试。')
+            ? nativeText('保存等待超时，已取消退出。当前窗口仍可继续使用，请确认画布保存状态后重试。')
+          : nativeText('请查看当前画布或文档的保存状态，保存完成后重试。'))
       },
-      onReloadError: () => dialog.showErrorBox('工作区重新加载未完成', '请检查当前工作区的状态后重试。'),
+      onReloadError: () => dialog.showErrorBox(nativeText('工作区重新加载未完成'), nativeText('请检查当前工作区的状态后重试。')),
       onStopError: error => console.error('妙图退出清理失败：' + String((error as any)?.message || error)),
     })
     window.webContents.on('did-frame-navigate', (_event, _url, _code, _status, isMainFrame) => { if (isMainFrame) runtime.renderer.committed() })
     window.webContents.on('render-process-gone', () => runtime.renderer.retire())
     window.webContents.on('destroyed', () => runtime.renderer.retire())
-    if (previewArchiveOrigin) window.on('page-title-updated', (event, title) => { event.preventDefault(); window.setTitle(`妙图预览 · ${title}`) })
+    if (previewArchiveOrigin) window.on('page-title-updated', (event, title) => { event.preventDefault(); window.setTitle(nativeText('妙图预览 · {title}', { title })) })
     function openExternal(url) {
       const parsed = new URL(url)
       if (!['https:', 'http:'].includes(parsed.protocol)) return
@@ -504,7 +508,7 @@ restore_previous
     }
     window.webContents.setWindowOpenHandler(({ url }: Record<string, any>) => {
       if (new URL(url).origin === runtime.address) {
-        const media = new BrowserWindow({ parent: window, title: '妙图 · 预览', width: 1080, height: 760, backgroundColor: '#0b0b0c', webPreferences: { partition: 'persist:miao-desktop', nodeIntegration: false, contextIsolation: true, sandbox: true } })
+        const media = new BrowserWindow({ parent: window, title: nativeText('妙图 · 预览'), width: 1080, height: 760, backgroundColor: '#0b0b0c', webPreferences: { partition: 'persist:miao-desktop', nodeIntegration: false, contextIsolation: true, sandbox: true } })
         media.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
         media.webContents.on('will-navigate', (event, target) => { if (new URL(target).origin !== runtime.address) event.preventDefault() })
         media.loadURL(url); return { action: 'deny' }
@@ -547,7 +551,7 @@ restore_previous
         const account = runtime.cloud.account
         if (!account) throw new Error('请先登录。')
         if (runtime.computer.status().enabled) return runtime.computer.status()
-        const result = await dialog.showMessageBox(window, { type: 'question', title: '开启本机操作', message: '允许 Agent 帮你操作这台电脑？', detail: '开启后，当前账号的 Agent 可以按你的要求读取、创建和修改这台电脑上的文件，运行命令，并使用已安装的软件。任务需要的文件内容会发送给模型处理。授权持续有效，可随时在“设置 → 本机操作”关闭。访问范围受系统权限限制。', buttons: ['暂不开启', '允许并开启'], defaultId: 0, cancelId: 0, noLink: true })
+        const result = await dialog.showMessageBox(window, { type: 'question', title: nativeText('开启本机操作'), message: nativeText('允许 Agent 帮你操作这台电脑？'), detail: nativeText('开启后，当前账号的 Agent 可以按你的要求读取、创建和修改这台电脑上的文件，运行命令，并使用已安装的软件。任务需要的文件内容会发送给模型处理。授权持续有效，可随时在“设置 → 本机操作”关闭。访问范围受系统权限限制。'), buttons: [nativeText('暂不开启'), nativeText('允许并开启')], defaultId: 0, cancelId: 0, noLink: true })
         return result.response === 1 ? runtime.computer.grant(account) : runtime.computer.status()
       })()
       try { return await computerConsent } finally { computerConsent = null }
@@ -555,25 +559,37 @@ restore_previous
     ipcMain.handle('desktop:computer-directory', fromWorkbench(async () => {
       const account = runtime.cloud.account
       if (!account) throw new Error('请先登录。')
-      const result = await dialog.showOpenDialog(window, { title: '选择默认工作文件夹', defaultPath: runtime.computer.status().directory, properties: ['openDirectory'] })
+      const result = await dialog.showOpenDialog(window, { title: nativeText('选择默认工作文件夹'), defaultPath: runtime.computer.status().directory, properties: ['openDirectory'] })
       return result.canceled ? runtime.computer.status() : runtime.computer.setDirectory(result.filePaths[0], account)
     }))
     // Keep Electron's current label/accelerator, replacing only the direct
     // reload action. Passing click alongside a role would be ignored.
     const reloadDefaults = new electron.MenuItem({ role: 'reload' })
-    const reloadItem = { label: reloadDefaults.label, accelerator: reloadDefaults.accelerator,
+    const reloadItem = { label: nativeText('重新加载'), accelerator: reloadDefaults.accelerator,
       click: (_item, focused) => {
         const target = focused ? BrowserWindow.fromId(focused.id) : undefined
         if (target === window) void windowActions.reload()
         else target?.webContents.reload()
       },
     } satisfies Electron.MenuItemConstructorOptions
-    Menu.setApplicationMenu(Menu.buildFromTemplate([
-      ...(process.platform === 'darwin' ? [{ label: '妙图', submenu: [{ role: 'about' }, { role: 'hide' }, { role: 'hideOthers' }, { role: 'quit' }] } satisfies Electron.MenuItemConstructorOptions] : []),
-      { label: '文件', submenu: [{ label: '打开项目文件夹', click: () => shell.openPath(directory) }] },
-      { label: '编辑', submenu: [{ role: 'undo' }, { role: 'redo' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }] },
-      { label: '视图', submenu: [reloadItem, { role: 'togglefullscreen' }] },
-    ]))
+    function installNativeMenu() {
+      Menu.setApplicationMenu(Menu.buildFromTemplate([
+        ...(process.platform === 'darwin' ? [{ label: nativeText('妙图'), submenu: [{ role: 'about', label: nativeText('关于妙图') }, { role: 'hide', label: nativeText('隐藏妙图') }, { role: 'hideOthers', label: nativeText('隐藏其他应用') }, { role: 'quit', label: nativeText('退出妙图') }] } satisfies Electron.MenuItemConstructorOptions] : []),
+        { label: nativeText('文件'), submenu: [{ label: nativeText('打开项目文件夹'), click: () => shell.openPath(directory) }] },
+        { label: nativeText('编辑'), submenu: [{ role: 'undo', label: nativeText('撤销') }, { role: 'redo', label: nativeText('重做') }, { role: 'cut', label: nativeText('剪切') }, { role: 'copy', label: nativeText('复制') }, { role: 'paste', label: nativeText('粘贴') }, { role: 'selectAll', label: nativeText('全选') }] },
+        { label: nativeText('视图'), submenu: [{ ...reloadItem, label: nativeText('重新加载') }, { role: 'togglefullscreen', label: nativeText('切换全屏') }] },
+      ]))
+    }
+    ipcMain.handle('desktop:language', fromWorkbench(language => {
+      // 页面只提交语言代码，系统权限提示的正文始终从应用内词典读取。
+      if (typeof language !== 'string' || !/^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(language)) return
+      const next = resolveRequestLocale(language)
+      if (nativeLanguage === next) return
+      nativeLanguage = next
+      runtime.cloud.setLanguage(next)
+      installNativeMenu()
+    }))
+    installNativeMenu()
     window.on('close', event => {
       writeFileSync(boundsFile, JSON.stringify(window.getNormalBounds()), { mode: 0o600 })
       if (!windowActions.quitting) { event.preventDefault(); void requestQuit() }
@@ -589,7 +605,7 @@ restore_previous
     console.log('妙图：' + runtime.address)
   } catch (error) {
     console.error('妙图启动失败：' + error.message)
-    dialog.showErrorBox('妙图启动失败', error.message)
+    dialog.showErrorBox(nativeText('妙图启动失败'), nativeText('请重新打开妙图后重试。'))
     try { await runtime?.stop() } catch { console.error('妙图启动清理未能完成') }
     app.quit()
     return

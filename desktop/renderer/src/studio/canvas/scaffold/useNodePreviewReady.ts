@@ -1,15 +1,21 @@
 import { canvasInjectionKey } from '../../../../../../server/canvas-document.ts'
-import { inject, ref, watch, type Ref } from "vue";
+import { inject, provide, ref, toValue, watch, type MaybeRefOrGetter, type Ref } from "vue";
 import { useNode, useNodeId, useVueFlow } from "@vue-flow/core";
 import type { NodeDocumentContext } from "./nodeDocument";
 
 const previewObserverKey = canvasInjectionKey("miaoimg.nodePreviewObserver");
 type PreviewObserver = { observer: IntersectionObserver; targets: Map<Element, Set<Ref<boolean>>> };
 
+const previewVisibilityKey=Symbol('nodePreviewVisibility');
+/** A visible workbench or overlay may render media while its canvas card is offscreen. */
+export function provideNodePreviewVisibility(visible:MaybeRefOrGetter<boolean>){provide(previewVisibilityKey,visible);}
+
 export function useNodePreviewReady() {
   const nodeId = useNodeId();
   const documentContext = inject<NodeDocumentContext | undefined>("nodeDocument", undefined);
   const ready = ref(!nodeId || typeof IntersectionObserver === "undefined");
+  const visible=inject<MaybeRefOrGetter<boolean>|undefined>(previewVisibilityKey,undefined);
+  if(visible!==undefined)watch(()=>toValue(visible),value=>{if(value)ready.value=true;},{immediate:true,flush:'sync'});
   if (ready.value) return ready;
   // 节点界面被投射到文档面板时，画布里的 IntersectionObserver 不会触发，直接视为就绪。
   watch(() => documentContext?.targets.has(nodeId), visible => {

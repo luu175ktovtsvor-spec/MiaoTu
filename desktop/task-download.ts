@@ -1,3 +1,4 @@
+import { flatMapAsync } from '../server/async-collections.ts'
 export type TaskDownloadFile = { index: number; key: string; path: string; mime: string; revision: string; size: number; sha256: string }
 export type TaskDownload = { version: 1; requestId: string; source: Record<string, any>; files: TaskDownloadFile[] }
 type TaskTarget = { request_id: string; directory: string; kind: string; project_id: string }
@@ -35,8 +36,8 @@ export function publicTaskResult(value: Record<string, any>) {
 
 // A checkpoint only proves saved bytes when its original-item identity, target
 // path and immutable workspace index still agree. Never guess from filenames.
-export function savedTaskFile(row: TaskTarget, item: any, index: number, checkpoint: any,
-  locate: (path: string) => { revision: string; blob?: string; size: number; mime: string }) {
+export async function savedTaskFile(row: TaskTarget, item: any, index: number, checkpoint: any,
+  locate: (path: string) => { revision: string; blob?: string; size: number; mime: string } | Promise<{ revision: string; blob?: string; size: number; mime: string }>) {
   if (checkpoint?.version !== 1 || checkpoint.requestId !== row.request_id || !Array.isArray(checkpoint.files)) return
   const file = checkpoint.files.find((entry: any) => entry?.index === index) as TaskDownloadFile | undefined
   if (!file || file.key !== taskItemKey(item) || typeof file.mime !== 'string'
@@ -44,7 +45,7 @@ export function savedTaskFile(row: TaskTarget, item: any, index: number, checkpo
     || !isTaskDownloadPath(file.path, row.directory, row.request_id, index, file.mime)
     || typeof file.revision !== 'string' || !file.revision || !Number.isSafeInteger(file.size) || file.size <= 0 || !/^[a-f0-9]{64}$/.test(file.sha256)) return
   let current
-  try { current = locate(file.path) }
+  try { current = (await locate(file.path)) }
   catch (error) { if (error.status === 404) return; throw error }
   if (current.revision === file.revision && current.blob === file.sha256 && current.size === file.size && current.mime === file.mime) return file
 }
@@ -58,15 +59,15 @@ export function localTaskMedia(row: TaskTarget, item: any, file: TaskDownloadFil
 
 // Public recovery links are derived from currently indexed originals, never
 // accepted from a cloud receipt or replayed from a stale public snapshot.
-export function localTaskRecovery(row: TaskTarget, checkpoint: any,
-  locate: (path: string) => { revision: string; blob?: string; size: number; mime: string }) {
+export async function localTaskRecovery(row: TaskTarget, checkpoint: any,
+  locate: (path: string) => { revision: string; blob?: string; size: number; mime: string } | Promise<{ revision: string; blob?: string; size: number; mime: string }>) {
   if (checkpoint?.version !== 1 || checkpoint.requestId !== row.request_id || checkpoint.source?.requestId !== row.request_id || checkpoint.source?.status !== 'succeeded') return
   const source = checkpoint.source
   const items = taskResultItems(row.kind, source)
   if (!items.length || items.some(item => typeof item?.url !== 'string' || !item.url || source.parameters?.desktopDelivery === 1 && (typeof item.id !== 'string' || !item.id))) return
-  const saved = items.flatMap((item, index) => {
-    const file = savedTaskFile(row, item, index, checkpoint, locate)
+  const saved = (await flatMapAsync(items, async (item, index) => {
+    const file = (await savedTaskFile(row, item, index, checkpoint, locate))
     return file ? [{ ...localTaskMedia(row, item, file), index }] : []
-  })
+  }))
   if (saved.length) return { total: items.length, saved: saved.length, items: saved }
 }

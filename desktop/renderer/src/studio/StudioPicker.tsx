@@ -2,6 +2,8 @@ import { CaretDown, Check, SlidersHorizontal } from '@phosphor-icons/react'
 import { createPortal } from 'react-dom'
 import { useEffect, useId, useRef, useState } from 'react'
 import { useLang } from '../i18n'
+import { isChineseLang } from '../shellLanguage'
+import { studioText } from './studioText'
 
 export default function StudioPicker({ value, options, onChange, label, placeholder = '请选择', disabled = false, icon: Icon = SlidersHorizontal, compact = false }) {
   const { lang } = useLang()
@@ -11,7 +13,7 @@ export default function StudioPicker({ value, options, onChange, label, placehol
   const menuRef = useRef(null)
   const menuId = useId()
   const selected = options.find((option) => option.value === value)
-  const resolvedPlaceholder = placeholder === '请选择' && lang === 'en' ? 'Select' : placeholder
+  const resolvedPlaceholder = placeholder === '请选择' ? studioText('请选择', lang) : placeholder
 
   useEffect(() => {
     if (!open) return undefined
@@ -63,7 +65,7 @@ export default function StudioPicker({ value, options, onChange, label, placehol
   }
 
   return <div className="studio-picker">
-    <button ref={triggerRef} type="button" className={`studio-picker__button ${compact ? 'is-compact' : ''}`} aria-label={`${label}${lang === 'en' ? ': ' : '：'}${selected?.label || resolvedPlaceholder}`} aria-haspopup="listbox" aria-controls={menuId} aria-expanded={open} disabled={disabled || !options.length} onClick={() => setOpen(!open)} onKeyDown={(event) => { if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); setOpen(true) } }}>
+    <button ref={triggerRef} type="button" className={`studio-picker__button ${compact ? 'is-compact' : ''}`} aria-label={`${label}${isChineseLang(lang) ? '：' : ': '}${selected?.label || resolvedPlaceholder}`} aria-haspopup="listbox" aria-controls={menuId} aria-expanded={open} disabled={disabled || !options.length} onClick={() => setOpen(!open)} onKeyDown={(event) => { if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); setOpen(true) } }}>
       {selected?.leading ? selected.leading : !compact && <Icon size={17} className="studio-picker__icon" />}
       <span><strong>{selected?.label || resolvedPlaceholder}</strong>{!compact && selected?.detail && <small>{selected.detail}</small>}</span>
       <CaretDown size={14} className={open ? 'is-open' : ''} />

@@ -77,7 +77,7 @@ export function createAudioWaveforms({ ensureTools = async () => {}, ffmpeg = ()
     if (!file.diskPath || !file.mime.startsWith('audio/')) throw Object.assign(new Error('当前文件无法在本机提取音频波形'), { status: 422 })
     const key = JSON.stringify([scope, file.path, file.revision])
     const cached = cache.get(key)
-    if (cached) { beforeCommit(); cache.delete(key); cache.set(key, cached); return [...cached] }
+    if (cached) { await beforeCommit(); cache.delete(key); cache.set(key, cached); return [...cached] }
     if (!jobs.has(key) && jobs.size >= 32) throw Object.assign(new Error('音频波形正在排队，请稍后重试'), { status: 503 })
     const peaks = await jobs.run(key, async (taskSignal, validateReaders) => {
       taskSignal.throwIfAborted()
@@ -85,7 +85,7 @@ export function createAudioWaveforms({ ensureTools = async () => {}, ffmpeg = ()
       taskSignal.throwIfAborted()
       const peaks = await extract(file, ffmpeg(), ffprobe(), taskSignal)
       taskSignal.throwIfAborted()
-      validateReaders()
+      await validateReaders()
       cache.set(key, peaks)
       if (cache.size > 256) cache.delete(cache.keys().next().value!)
       return peaks

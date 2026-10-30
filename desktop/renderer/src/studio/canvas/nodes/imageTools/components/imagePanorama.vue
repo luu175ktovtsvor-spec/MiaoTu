@@ -12,7 +12,7 @@
   <el-dialog
     v-model="visible"
     class="panoramaDialog"
-    :title="`预览${mode === 'sphere' ? '720°全景图' : '360°环绕图'}`"
+    :title="translate(mode === 'sphere' ? '预览720°全景图' : '预览360°环绕图')"
     width="80%"
     alignCenter
     appendToBody
@@ -37,7 +37,7 @@
 
 <script setup lang="ts">
 import { translate } from "@miaoimg/i18n/vue";
-import { computed, nextTick, onScopeDispose, ref, watch } from "vue";
+import { computed, inject, nextTick, onScopeDispose, ref, watch } from "vue";
 import { ElDialog, ElDropdown, ElDropdownItem, ElDropdownMenu } from "element-plus";
 import { IconPanoramaHorizontal } from "@tabler/icons-vue";
 import { useNode } from "@vue-flow/core";
@@ -46,6 +46,7 @@ import { showNodeError } from "../../../scaffold/showNodeError";
 import { buildPanoramaPrompt, type PanoramaMode } from "../imagePanorama";
 import { usePanoramaCapture } from "../usePanoramaCapture";
 import { useImageVariationNode } from "../useImageVariationNode";
+import { imagePanoramaOutput } from "../imagePanoramaOutput";
 import { lazyPreview } from '../lazyPreview';
 const imagePanoramaPreview = lazyPreview(() => import('./imagePanoramaPreview.vue'));
 
@@ -59,13 +60,14 @@ const mode = ref<PanoramaMode>("sphere");
 const creating = ref(false);
 const createVariation = useImageVariationNode();
 const ai = useNodeAi();
+const getCanvasSignal = inject<(() => AbortSignal) | undefined>("canvasOperationSignal", undefined);
 const previewStage = ref<InstanceType<typeof imagePanoramaPreview>>();
 const { saving, saveCapture } = usePanoramaCapture(() => props.src);
 const busy = computed(() => creating.value || saving.value || !!previewStage.value?.capturing);
 let disposed = false;
 onScopeDispose(() => { disposed = true; });
 
-defineExpose({ open, busy, visible });
+defineExpose({ open, busy, visible, selectAction });
 
 watch(() => props.src, () => { visible.value = false; }, { flush: "sync" });
 
@@ -78,6 +80,8 @@ async function open(event: MouseEvent) {
 
 async function selectAction(command: string) {
   if (props.disabled || busy.value || !props.src) return;
+  const canvasSignal = getCanvasSignal?.();
+  if (canvasSignal?.aborted) return;
   emit("open");
   mode.value = command.endsWith("Sphere") ? "sphere" : "cylinder";
   if (command.startsWith("preview")) {
@@ -89,24 +93,26 @@ async function selectAction(command: string) {
   const src = props.src;
   const currentMode = mode.value;
   const assertAvailable = () => {
+    canvasSignal?.throwIfAborted();
     if (disposed || props.disabled || props.src !== src || JSON.stringify(props.source) !== source || mode.value !== currentMode) throw new Error(translate("原图片已变化或正在处理，请重新操作"));
   };
   creating.value = true;
   try {
     const ratio = currentMode === "sphere" ? "2:1" : "4:1";
-    const models = (await ai.getMediaModels()).filter(model => model.type === "image" && model.imageRatios?.includes(ratio));
+    const models = (await ai.getMediaModels()).filter(model => model.type === "image" && (model.maxReferences ?? 0) > 0 && imagePanoramaOutput(model, currentMode));
     assertAvailable();
     const model = models.find(model => JSON.stringify([model.providerId, model.modelId]) === node.data.model) || models[0];
     if (!model) throw new Error(translate("当前可用模型暂不支持 {0} 全景生成，可导入已有全景图进行预览和取景。", { 0: ratio }));
+    const output = imagePanoramaOutput(model, currentMode)!;
     await createVariation({
       label: currentMode === "sphere" ? "720°全景图" : "360°环绕图",
       prompt: buildPanoramaPrompt(currentMode),
       model: JSON.stringify([model.providerId, model.modelId]),
-      size: model.imageSizes?.[0] || "",
-      ratio,
-    }, undefined, assertAvailable);
+      size: output.size,
+      ratio: output.ratio,
+    }, canvasSignal, assertAvailable);
   } catch (error) {
-    if (!disposed) showNodeError(error, "全景节点创建失败");
+    if (!disposed && !canvasSignal?.aborted) showNodeError(error, translate("全景节点创建失败"));
   } finally {
     creating.value = false;
   }

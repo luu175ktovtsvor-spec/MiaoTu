@@ -118,7 +118,8 @@ export function getPromptText(value: AnyTagProps[][]) {
     }
     const content = document.createElement("template");
     content.innerHTML = tag.html;
-    for (const reference of content.content.querySelectorAll<HTMLElement>(".imageReference[data-value]")) {
+    content.content.querySelectorAll(".segmentSourceIntro").forEach(element => element.remove());
+    for (const reference of content.content.querySelectorAll<HTMLElement>(".imageReference[data-value], .segmentRangeReference[data-value]")) {
       reference.replaceWith(reference.dataset.value ?? "");
     }
     return content.content.textContent ?? "";

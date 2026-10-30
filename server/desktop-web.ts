@@ -7,15 +7,15 @@ import { assertTextAccess } from './text-access.ts'
 // these two public web tools here, using the same pinned-DNS checks as web Agent.
 export async function desktopWeb(request, response, session, url, { management, readJson, mutation }: Record<string, any>) {
   if (url.pathname !== '/api/imagine/desktop/web' || request.method !== 'POST') return false
-  assertTextAccess({ management, session, service: '联网工具' })
+  await assertTextAccess({ management, session, service: '联网工具' })
   mutation(request, session)
   const { tool, args = {} } = await readJson(request, 8192)
   if (!['webSearch', 'webFetch'].includes(tool)) throw failure('联网工具不存在', 422)
   // The peer may have gone away while the body was being read, before a close
   // listener existed. Check the current account before using the web service.
   if (response.destroyed || response.writableEnded) return true
-  assertTextAccess({ management, session, service: '联网工具' })
-  const web = createWebTools({ beforeRequest: () => assertTextAccess({ management, session, service: '联网工具' }) })
+  await assertTextAccess({ management, session, service: '联网工具' })
+  const web = createWebTools({ beforeRequest: async () => (await assertTextAccess({ management, session, service: '联网工具' })) })
   const controller = new AbortController()
   const close = () => controller.abort()
   response.on('close', close)

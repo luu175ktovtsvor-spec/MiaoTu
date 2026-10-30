@@ -1,10 +1,10 @@
+import { intlLocale } from '../shellLanguage'
 import { studioText } from './studioText'
 import { isLocalPlatformWaiting, type createProgressTracker, type ProgressPhase } from './generationProgressCore'
 import type { HistoryItem, HistoryProgress, LedgerEntry, Summary } from './studioState'
 
 export const STATUS_LABEL = { submitting: '正在提交…', confirming: '提交结果待确认', waiting: '等待平台处理', queued: '排队中', saving: '正在保存…', succeeded: '已完成', failed: '失败', running: '生成中', cancelled: '已取消', expired: '已过期' }
 export const ACTIVE_STATUSES = new Set(['submitting', 'confirming', 'queued', 'running', 'saving'])
-export const TERMINAL_STATUSES = new Set(['succeeded', 'failed', 'cancelled', 'expired'])
 export const HISTORY_PHASES: Record<string, ProgressPhase> = { submitting: 'submitting', confirming: 'confirming', waiting: 'confirming', queued: 'queued', running: 'running', saving: 'saving', succeeded: 'succeeded', failed: 'failed', cancelled: 'cancelled', expired: 'failed' }
 
 export function historyProgress(item: HistoryItem, tracker: ReturnType<typeof createProgressTracker>, now: number): HistoryProgress {
@@ -35,7 +35,7 @@ export function ledgerRow(row: LedgerEntry, lang: string) {
   // 订单号优先用接口给的 paymentOrderId；旧数据没有这个字段时再从 reason 里兜底抠出来。
   if (recharge) return { kind: 'recharge', text: studioText('充值到账', lang), sub: studioText('已到账', lang), order: String(row.paymentOrderId || recharge[1] || ''), delta }
   const grant = raw.match(/^(.*?)\s*注册初始额度$/)
-  if (grant) return { kind: 'grant', text: grant[1] ? studioText('{provider} 注册初始额度', lang, { provider: grant[1] }) : studioText('注册初始额度', lang), sub: '', order: '', delta }
+  if (grant) return { kind: 'grant', text: grant[1] ? studioText('{provider} 注册初始额度', lang, { provider: studioText(grant[1], lang) }) : studioText('注册初始额度', lang), sub: '', order: '', delta }
   if (/退还|退回/.test(raw)) return { kind: 'refund', text: studioText(raw, lang), sub: '', order: '', delta }
   if (raw === '生成预扣') return { kind: 'spend', text: studioText('生成预扣', lang), sub: '', order: '', delta }
   return { kind: delta > 0 ? 'refund' : 'spend', text: studioText(raw, lang), sub: '', order: '', delta }
@@ -57,7 +57,7 @@ export function relativeTime(value: string, lang: string, now = Date.now()) {
   const days = Math.floor(hours / 24)
   if (days === 1) return studioText('昨天', lang)
   if (days < 7) return studioText('{n} 天前', lang, { n: days })
-  return new Intl.DateTimeFormat(lang === 'en' ? 'en-US' : 'zh-CN', { month: 'short', day: 'numeric' }).format(new Date(time))
+  return new Intl.DateTimeFormat(intlLocale(lang), { month: 'short', day: 'numeric' }).format(new Date(time))
 }
 
 // 等待时长：秒→分钟→小时换着说，别在列表里甩一个 197401 秒出来。
@@ -71,7 +71,7 @@ export function historyTime(item: HistoryItem, locale: string, lang: string) {
   const date = new Date(item.created_at || '')
   if (Number.isNaN(date.getTime())) return ''
   const time = date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: false })
-  const day = new Intl.DateTimeFormat(lang === 'en' ? 'en-US' : 'zh-CN', { month: 'short', day: 'numeric' }).format(date)
+  const day = new Intl.DateTimeFormat(intlLocale(lang), { month: 'short', day: 'numeric' }).format(date)
   return `${day} ${time}`
 }
 

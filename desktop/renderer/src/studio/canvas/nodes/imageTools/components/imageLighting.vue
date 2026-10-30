@@ -23,7 +23,7 @@
             :disabled="busy"
             @selectLight="selectLight"
             @aspectRatio="sourceRatio = $event" />
-          <div class="directionButtons" role="group" :aria-label="`${activeLightLabel}方向`">
+          <div class="directionButtons" role="group" :aria-label="translate('{label}方向', { label: activeLightLabel })">
             <button v-for="direction in directions" :key="direction.label" type="button" :disabled="busy" :aria-pressed="activeAzimuth === direction.azimuth && activeElevation === direction.elevation" @click="setDirection(direction)">{{ translate(direction.label) }}</button>
           </div>
         </div>
@@ -32,12 +32,12 @@
             <button type="button" :aria-pressed="activeLight === 'key'" :disabled="busy" @click="selectLight('key')">{{ translate('主光源') }}</button>
             <button type="button" :aria-pressed="activeLight === 'rim'" :disabled="busy" @click="selectLight('rim')">{{ translate('轮廓光源') }}</button>
           </div>
-          <label class="rangeControl"><span>{{ translate('水平角') }} <b>{{ Math.round(activeAzimuth) }}°</b></span><input v-model.number="activeAzimuth" type="range" min="-180" max="180" :disabled="busy" :aria-label="`${activeLightLabel}水平角`" /></label>
-          <label class="rangeControl"><span>{{ translate('俯仰角') }} <b>{{ Math.round(activeElevation) }}°</b></span><input v-model.number="activeElevation" type="range" min="-90" max="90" :disabled="busy" :aria-label="`${activeLightLabel}俯仰角`" /></label>
-          <label class="rangeControl"><span>{{ translate('光照强度') }} <b>{{ activeBrightness }}%</b></span><input v-model.number="activeBrightness" type="range" min="0" max="100" :disabled="busy" :aria-label="`${activeLightLabel}亮度`" /></label>
+          <label class="rangeControl"><span>{{ translate('水平角') }} <b>{{ Math.round(activeAzimuth) }}°</b></span><input v-model.number="activeAzimuth" type="range" min="-180" max="180" :disabled="busy" :aria-label="translate('{label}水平角', { label: activeLightLabel })" /></label>
+          <label class="rangeControl"><span>{{ translate('俯仰角') }} <b>{{ Math.round(activeElevation) }}°</b></span><input v-model.number="activeElevation" type="range" min="-90" max="90" :disabled="busy" :aria-label="translate('{label}俯仰角', { label: activeLightLabel })" /></label>
+          <label class="rangeControl"><span>{{ translate('光照强度') }} <b>{{ activeBrightness }}%</b></span><input v-model.number="activeBrightness" type="range" min="0" max="100" :disabled="busy" :aria-label="translate('{label}亮度', { label: activeLightLabel })" /></label>
           <div class="colorControl">
             <span>{{ translate('光线色彩') }}</span>
-            <div><input type="color" :value="activeColor" :disabled="busy" :aria-label="`${activeLightLabel}颜色`" @input="activeColor = ($event.target as HTMLInputElement).value" /><el-button text size="small" :disabled="busy || activeColor.toLowerCase() === '#ffffff'" @click="activeColor = '#ffffff'">{{ activeColor.toLowerCase() === '#ffffff' ? translate('白光') : translate('还原') }}</el-button></div>
+            <div><input type="color" :value="activeColor" :disabled="busy" :aria-label="translate('{label}颜色', { label: activeLightLabel })" @input="activeColor = ($event.target as HTMLInputElement).value" /><el-button text size="small" :disabled="busy || activeColor.toLowerCase() === '#ffffff'" @click="activeColor = '#ffffff'">{{ activeColor.toLowerCase() === '#ffffff' ? translate('白光') : translate('还原') }}</el-button></div>
           </div>
           <div class="switchControl"><span>{{ translate('启用轮廓光') }}</span><el-switch v-model="settings.rimLight" :disabled="busy" :aria-label="translate('轮廓光')" /></div>
         </div>

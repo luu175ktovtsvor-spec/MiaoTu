@@ -4,10 +4,10 @@
       <settings-row :label="translate('开启 MCP')" :description="translate('允许 Claude Code、Codex 等外部编程工具操作画布。开启后把下面的配置填进对应工具。')">
         <el-switch :modelValue="mcpSettings.enabled" :loading="saving" :disabled="busy" :aria-label="translate('开启 MCP')" @change="(value) => setEnabled(value === true)" />
       </settings-row>
-      <p v-if="isDesktop" class="mcpNote">{{ translate('开启本机操作后，外部 Agent 还能把电脑上的素材导入画布、把项目文件导出到电脑；原件保留，不覆盖已有文件。') }}</p>
+      <p class="mcpNote">{{ translate('开启本机操作后，外部 Agent 还能把电脑上的素材导入画布、把项目文件导出到电脑；原件保留，不覆盖已有文件。') }}</p>
     </settings-section>
 
-    <settings-section :title="translate('访问令牌')" :description="isDesktop ? translate('令牌保存在这台电脑上，正常重启后继续有效。重新生成会使旧配置失效；只发给可信的客户端。') : translate('令牌只保存摘要，仅在生成时显示一次；配置里含访问凭证，只发给可信的客户端。')">
+    <settings-section :title="translate('访问令牌')" :description="translate('令牌保存在这台电脑上，正常重启后继续有效。重新生成会使旧配置失效；只发给可信的客户端。')">
       <template #actions>
         <el-button text size="small" :icon="IconRefresh" :loading="busy" :disabled="saving" @click="rotateToken">{{ hasToken ? translate('重新生成') : translate('生成令牌') }}</el-button>
         <el-button text size="small" :icon="IconCopy" :disabled="!token || busy || saving || !!statusError" @click="copyText(token, translate('MCP 访问令牌'), true)">{{ translate('复制') }}</el-button>
@@ -43,7 +43,7 @@
       </template>
     </settings-section>
 
-    <settings-section :title="translate('服务地址')" :description="isDesktop ? translate('供同一台电脑上的外部 Agent 连接。正常重启保留地址；切换项目或端口被占用后重新复制配置。') : translate('把这个地址填进支持远程 MCP 的客户端，鉴权用上面的访问令牌。')">
+    <settings-section :title="translate('服务地址')" :description="translate('供同一台电脑上的外部 Agent 连接。正常重启保留地址；切换项目或端口被占用后重新复制配置。')">
       <el-input :modelValue="endpoint" dir="ltr" readonly :aria-label="translate('MCP 服务地址')" />
     </settings-section>
 
@@ -80,7 +80,6 @@ import { captureWorkspaceScope, assertWorkspaceScope } from "@/lib/workspaceRemo
 import messageMarkdown from "@/studio/canvas/components/messageMarkdown.vue";
 
 type McpStatus = { enabled: boolean; connections: { id: string; directory?: string | null; panel?: string }[] };
-const isDesktop = Boolean(window.miaoDesktop);
 
 const binding = captureWorkspaceScope();
 const lifetime = new AbortController();
@@ -130,7 +129,7 @@ async function api(path: string, init?: RequestInit) {
 
 function readAccess(data: Record<string, unknown>): McpAccess {
   const access = parseMcpAccess(data);
-  if (!access || (isDesktop && access.desktop !== true)) throw new Error(translate("未收到有效的 MCP 响应，请刷新后重试"));
+  if (!access || access.desktop !== true) throw new Error(translate("未收到有效的 MCP 响应，请刷新后重试"));
   return access;
 }
 

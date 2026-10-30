@@ -2,31 +2,16 @@
   <div class="about">
     <div class="brand"><img src="/miaoimg-logo.png" :alt="translate('妙图 Logo')" /><div><h3>{{ translate('妙图') }}</h3><p>{{ translate('案例 · 创作画布') }}</p></div></div>
     <settings-section :title="translate('应用版本')">
-      <template v-if="desktop">
-        <p v-if="desktopVersion" class="version">v{{ desktopVersion }}</p>
-        <p v-if="canCheck" class="hint">{{ translate(desktopHint) }}</p>
-        <div v-if="canCheck" class="updateRow">
-          <el-button :icon="actionIcon" :loading="busy" :disabled="busy" :aria-label="translate(actionLabel)" @click="runAction">{{ translate(actionLabel) }}</el-button>
-          <p v-if="statusText" class="status" role="status">{{ statusText }}</p>
-        </div>
-      </template>
-      <template v-else>
-        <p class="version">v{{ APP_VERSION }}</p>
-        <p class="hint">{{ translate('网页版自动更新，重新打开或刷新页面即可使用最新界面。') }}</p>
-      </template>
+      <p v-if="desktopVersion" class="version">v{{ desktopVersion }}</p>
+      <p v-if="canCheck" class="hint">{{ translate(desktopHint) }}</p>
+      <div v-if="canCheck" class="updateRow">
+        <el-button :icon="actionIcon" :loading="busy" :disabled="busy" :aria-label="translate(actionLabel)" @click="runAction">{{ translate(actionLabel) }}</el-button>
+        <p v-if="statusText" class="status" role="status">{{ statusText }}</p>
+      </div>
     </settings-section>
-    <settings-section :title="translate('帮助与支持')" :description="translate('看使用手册，或直接联系负责人。')">
+    <settings-section :title="translate('帮助与支持')">
       <div class="supportActions">
         <el-button :icon="IconBook" tag="a" :href="manualUrl" target="_blank" rel="noopener noreferrer">{{ translate('打开使用手册') }}</el-button>
-        <el-button :icon="IconCopy" @click="copySupportPhone">{{ translate('复制联系电话') }}</el-button>
-        <span>18664434400</span>
-      </div>
-      <div class="supportWechat">
-        <img src="/wechat-qrcode.png" :alt="translate('微信扫码联系负责人')" width="112" height="112" />
-        <div>
-          <strong>{{ translate('微信扫码联系负责人') }}</strong>
-          <p>{{ translate('问题、建议和充值，都可以扫码直接联系。') }}</p>
-        </div>
       </div>
     </settings-section>
     <a class="website" href="https://miaoimg.cn/" target="_blank" rel="noopener noreferrer"><IconWorld :size="18" aria-hidden="true" /><span>{{ translate('妙图官网') }}</span><IconExternalLink :size="16" aria-hidden="true" /></a>
@@ -35,11 +20,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onBeforeUnmount, ref } from "vue";
 import { translate } from "@miaoimg/i18n/vue";
-import { IconWorld, IconExternalLink, IconRefresh, IconDownload, IconPower, IconBook, IconCopy } from "@tabler/icons-vue";
-import { ElMessage } from "element-plus";
-import { writeClipboardText } from "@/lib/clipboard";
+import { IconWorld, IconExternalLink, IconRefresh, IconDownload, IconPower, IconBook } from "@tabler/icons-vue";
 import { MIAO_MANUAL_URL as manualUrl } from "@/lib/productLinks";
-import { version as APP_VERSION } from "../../../../../../../package.json";
 import settingsSection from "../components/settingsSection.vue";
 
 type UpdateState = "idle" | "checking" | "latest" | "available" | "downloading" | "ready" | "failed" | "dev";
@@ -55,7 +37,6 @@ interface DesktopBridge {
 }
 
 const bridge = (window as unknown as { miaoDesktop?: DesktopBridge }).miaoDesktop;
-const desktop = !!bridge;
 const snapshot = ref<UpdateSnapshot | null>(null);
 const action = ref(false);
 let disposed = false;
@@ -109,25 +90,14 @@ onMounted(async () => {
   if (!bridge) return;
   try { const next = await bridge.updateStatus(); if (!disposed) snapshot.value = next; } catch {}
 });
-async function copySupportPhone() {
-  try { await writeClipboardText('18664434400'); ElMessage.success(translate('联系电话已复制')); }
-  catch { ElMessage.error(translate('复制失败，请手动复制')); }
-}
 </script>
 <style scoped lang="scss">
 .about { display: flex; flex-direction: column; gap: 28px; }
-.supportWechat {
-  display: flex; align-items: center; gap: 18px; margin-top: var(--settings-gap-block, 16px); padding-top: var(--settings-gap-block, 16px);
-  border-top: 1px solid var(--el-border-color-lighter);
-  img { flex: none; width: 112px; height: 112px; padding: 6px; border-radius: 14px; background: #fff; box-shadow: 0 0 0 1px rgb(76 157 255 / .35), 0 12px 32px -12px rgb(76 157 255 / .55); }
-  strong { display: block; color: var(--el-text-color-primary); font-size: 14px; font-weight: 600; letter-spacing: .02em; }
-  p { margin: 6px 0 0; color: var(--el-text-color-secondary); font-size: 13px; line-height: 1.8; }
-}
 .brand { display: flex; align-items: center; gap: 14px; img { width: 48px; height: 48px; object-fit: contain; } h3 { margin: 0; font-size: 18px; } p { margin: 6px 0 0; font-size: 13px; color: var(--el-text-color-secondary); } }
 .version { margin: 4px 0 8px; font-size: 22px; }
 .hint { margin: 0; color: var(--el-text-color-secondary); font-size: 13px; line-height: 1.7; }
 .updateRow { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 14px; }
 .status { margin: 0; color: var(--el-text-color-secondary); font-size: 13px; line-height: 1.7; }
-.supportActions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; span { color: var(--el-text-color-secondary); font-size: 13px; font-variant-numeric: tabular-nums; } }
+.supportActions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
 .website { display: flex; align-items: center; gap: 10px; width: fit-content; color: var(--el-text-color-primary); text-decoration: none; padding: 10px 14px; background: rgba(255, 255, 255, .035); border-radius: 10px; &:hover { background: rgba(255, 255, 255, .07); } &:focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: 2px; } }
 </style>

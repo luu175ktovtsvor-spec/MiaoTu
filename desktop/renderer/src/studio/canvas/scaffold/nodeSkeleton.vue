@@ -18,10 +18,10 @@
           <el-dropdown-item v-if="assetOutputs.length && saveNodeToAssets" command="saveAsset" :icon="IconFolderPlus">{{ translate('保存到素材库') }}</el-dropdown-item>
           <el-dropdown-item v-if="downloadUrl" command="download" :icon="IconDownload">{{ translate('下载') }}</el-dropdown-item>
           <el-dropdown-item :divided="!!((assetOutputs.length && saveNodeToAssets) || downloadUrl)" command="clipboard" :icon="IconClipboardCopy" :disabled="!copyNodeToClipboard || copyingToClipboard">
-            {{ translate('复制到剪贴板') }}<span v-if="shortcutHint('copy')" class="shortcutHint">{{ shortcutHint('copy') }}</span>
+            {{ translate('复制节点') }}<span v-if="shortcutHint('copy')" class="shortcutHint">{{ shortcutHint('copy') }}</span>
           </el-dropdown-item>
-          <el-dropdown-item command="copy" :icon="IconCopy">{{ translate('创建副本') }}</el-dropdown-item>
-          <el-dropdown-item command="duplicate" :icon="IconCopyPlus">{{ translate('创建副本（保留输入连线）') }}</el-dropdown-item>
+          <el-dropdown-item command="duplicate" :icon="IconCopyPlus" :title="translate('创建副本（保留输入连线）')">{{ translate('创建副本') }}<span v-if="shortcutHint('duplicate')" class="shortcutHint">{{ shortcutHint('duplicate') }}</span></el-dropdown-item>
+          <el-dropdown-item v-if="pasteCanvasClipboard && !documentTarget" command="paste" :icon="IconClipboard" :disabled="pasting || copyingToClipboard">{{ translate('粘贴') }}<span v-if="shortcutHint('paste')" class="shortcutHint">{{ shortcutHint('paste') }}</span></el-dropdown-item>
           <el-dropdown-item divided command="delete" :icon="IconTrash">{{ translate('删除') }}<span v-if="shortcutHint('delete')" class="shortcutHint">{{ shortcutHint('delete') }}</span></el-dropdown-item>
         </el-dropdown-menu>
       </template>
@@ -180,8 +180,8 @@ import {
   IconRefresh,
   IconX,
   IconTrash,
-  IconCopy,
   IconCopyPlus,
+  IconClipboard,
   IconClipboardCopy,
   IconFolderPlus,
   IconDownload,
@@ -294,6 +294,7 @@ const {
   zoomActivationKeyCode,
   zoomOnPinch,
   setViewport,
+  screenToFlowCoordinate,
   minZoom,
   maxZoom,
   viewport,
@@ -354,7 +355,7 @@ async function focusNode(event?: MouseEvent, duration = 300) {
   const origin = pointToRendererPoint({ x: left - flowRect.left, y: top - flowRect.top }, viewport.value);
   // Keep the selected node and its toolbar below workspace navigation and above canvas controls.
   const workspace = flowElement.closest(".workspacePage");
-  const navigationBottom = Math.max(flowRect.top, ...Array.from(workspace?.querySelectorAll<HTMLElement>(".workspaceMenu, .canvasMenuPanel, .panelSwitcher") ?? [])
+  const navigationBottom = Math.max(flowRect.top, ...Array.from(workspace?.querySelectorAll<HTMLElement>(".canvasMenuPanel, .panelSwitcher") ?? [])
     .filter(item => item.getClientRects().length && getComputedStyle(item).visibility !== "hidden")
     .map(item => item.getBoundingClientRect().bottom));
   const topInset = Math.max(12, navigationBottom - flowRect.top + 12);
@@ -456,7 +457,7 @@ function syncFloatingEditors() {
 function syncMobileToolbar() {
   const workspace = skeletonElement.value?.closest(".workspacePage");
   if (!workspace || !mobileSheet.value) return;
-  const menuBottom = Math.max(workspace.getBoundingClientRect().top, ...Array.from(workspace.querySelectorAll<HTMLElement>(".workspaceMenu, .canvasMenu, .panelSwitcher"))
+  const menuBottom = Math.max(workspace.getBoundingClientRect().top, ...Array.from(workspace.querySelectorAll<HTMLElement>(".canvasMenu, .panelSwitcher"))
     .filter(item => item.getClientRects().length && getComputedStyle(item).visibility !== "hidden")
     .map(item => item.getBoundingClientRect().bottom));
   mobileToolbarTop.value = menuBottom + 12;
@@ -566,6 +567,8 @@ async function deleteNode() {
 }
 
 const copyNodeToClipboard = inject<((node: Node, signal?: AbortSignal) => Promise<unknown>) | undefined>("copyNodeToClipboard", undefined);
+const pasteCanvasClipboard = inject<((position: { x: number; y: number }) => Promise<boolean>) | undefined>("pasteCanvasClipboard", undefined);
+const pasting = ref(false);
 const copyLifetime = new AbortController();
 onScopeDispose(() => copyLifetime.abort());
 const copyingToClipboard = ref(false);
@@ -613,6 +616,14 @@ function shortcutHint(action: CanvasShortcutAction) {
 }
 
 async function handleCommand(command: string) {
+  if (command === "paste" && pasteCanvasClipboard && !pasting.value && !documentTarget.value) {
+    const anchor = menuAnchor.value.getBoundingClientRect();
+    const position = screenToFlowCoordinate({ x: anchor.left, y: anchor.top });
+    pasting.value = true;
+    try { await pasteCanvasClipboard(position); }
+    finally { pasting.value = false; }
+    return;
+  }
   // 素材默认名会存进素材库，保持画布数据的原始节点名，不写翻译结果。
   if (command === "saveAsset") {
     try {

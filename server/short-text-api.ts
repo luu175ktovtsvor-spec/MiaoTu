@@ -25,39 +25,39 @@ export function createShortTextApi({ management, workspaceFiles, env = process.e
       response.once('error', disconnected)
       if (request.aborted || response.destroyed) disconnected()
       try {
-        assertTextIdentity({ management, session })
+        await assertTextIdentity({ management, session })
         const payload = await readJsonRequest(request, { maxBytes: 64000, signal: operation.signal, tooLargeMessage: '请求过大', invalidMessage: '请求格式错误' })
         operation.signal.throwIfAborted()
         if (!connected()) return true
         const providerId = String(payload?.providerId || '').trim()
         if (providerId && providerId !== 'miaoimg') {
-          assertTextIdentity({ management, session })
+          await assertTextIdentity({ management, session })
           if (env.ENABLE_MODEL_CALLS !== 'true') throw failure('模型调用开关未开启', 503)
           const providerResult = await completeProviderText(workspaceFiles, session.userId, payload, {
-            signal: operation.signal, beforeDispatch: () => assertTextIdentity({ management, session }),
+            signal: operation.signal, beforeDispatch: async () => (await assertTextIdentity({ management, session })),
           })
           operation.signal.throwIfAborted()
           if (connected()) json(response, 200, { ok: true, ...providerResult })
           return true
         }
         operation.continueAfterDisconnect(true)
-        assertTextAccess({ management, session })
-        const modelId = String(payload?.model || '').trim() || management.settings().defaultTextModel || 'gpt-6.1-sol'
-        const settings = management.settings()
+        await assertTextAccess({ management, session })
+        const modelId = String(payload?.model || '').trim() || (await management.settings()).defaultTextModel || 'gpt-6.1-sol'
+        const settings = (await management.settings())
         if (settings.models?.[modelId] === false) throw failure('这个文本模型已暂停', 403)
-        const allowed = management.user(session.userId)?.models
+        const allowed = (await management.user(session.userId))?.models
         if (Array.isArray(allowed) && allowed.length && !allowed.includes(modelId)) throw failure('这个文本模型未对你的账号开放', 403)
         const prepared = await operation.wait(validateTextRequest({ ...payload, model: modelId }, env))
         operation.signal.throwIfAborted()
         if (!connected()) return true
-        assertTextAccess({ management, session })
+        await assertTextAccess({ management, session })
         const meter = createTextMeter({ management,session,source:'short_text' })
         const result = await createTextCompletion(prepared, { signal:operation.signal, fetchImpl: async (input,init) => {
           if (request.aborted || response.destroyed) disconnected()
-          operation.dispatch(() => assertTextIdentity({ management,session }))
+          await operation.dispatch(async () => (await assertTextIdentity({ management,session })))
           return meter.fetch(input,init)
         } })
-        if (connected()) json(response,200,{ ok:true,...result,billing:meter.summary() })
+        if (connected()) json(response,200,{ ok:true,...result,billing:(await meter.summary()) })
       } catch (error) {
         if (connected()) json(response, error.status || 502, { ok: false, error: error.message || '文本生成失败' })
       } finally {

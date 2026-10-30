@@ -32,7 +32,7 @@ export async function prepareNodeReferences({ references = [], workspaceFiles, u
     if (!['IMAGE', 'VIDEO'].includes(ref?.dataType) || typeof ref.value?.url !== 'string') throw failure('引用素材格式无效', 422)
     const path = ref.value.url
     // locate validates both ownership and relative paths. Never fetch a URL supplied by a model.
-    const file = workspaceFiles.locate(userId, path)
+    const file = (await workspaceFiles.locate(userId, path))
     if (ref.dataType === 'IMAGE') {
       if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(file.mime) || file.size > 4 * 1024 * 1024) throw failure('参考图片须为 PNG、JPEG、WebP 或 GIF，且不超过 4 MB', 422)
       const data = file.diskPath ? await readFile(file.diskPath) : file.bytes

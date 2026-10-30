@@ -436,8 +436,6 @@
 .miao-desktop[data-client-scheme="dark"] .settingsDialog.embeddedSettings :is(.systemCard, .languageCard, .appearanceOptions button):not([aria-pressed="true"]):not([aria-checked="true"]) { box-shadow: var(--glow-rest-control); }
 
 /* 反馈页的微信联系卡：卡片同其他细线卡，二维码底座带一圈蓝光 */
-.miao-desktop[data-client-scheme="dark"] .feedback-contact { background: linear-gradient(180deg, rgb(255 255 255 / .03), transparent), var(--color-abyss); box-shadow: var(--glow-rest-card); }
-.miao-desktop[data-client-scheme="dark"] .feedback-contact img { box-shadow: 0 0 0 1px rgb(76 157 255 / .35), 0 10px 26px -10px rgb(76 157 255 / .55); }
 
 /* 登录：没有外框，只留底线；聚焦时底线变成发光的蓝线 */
 .miao-desktop[data-client-scheme="dark"] .desktop-account-panel.is-login .desktop-account-input { position: relative; border-width: 0 0 1px; border-radius: 0; background: transparent; box-shadow: none; outline: 0; }

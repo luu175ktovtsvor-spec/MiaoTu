@@ -100,6 +100,7 @@ export function ownTextModelById(id, env = process.env) {
 export function customTextModel(provider, model, config: Record<string, any> = {}) {
   return resolveTextModel({
     ...model,
+    input: Array.isArray(model.input) && model.input.length ? model.input : ['text'],
     provider: provider.id,
     protocol: provider.protocol,
     protocolSource: '账号供应商配置',

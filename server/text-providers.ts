@@ -2,11 +2,13 @@
 // 但配置按账号保存在服务端工作区（settings/providers.json），API Key 不回传浏览器。
 // 文本请求走服务端转发：节点与 Agent 只提交 providerId + modelId。
 import { failure } from './management-store.ts'
+import { withReplyLanguage } from './reply-language.ts'
 import { PROVIDER_PROTOCOLS, customTextModel } from './text-model-registry.ts'
 import { assertProviderRequestAllowed } from './provider-safety.ts'
 import { createCustomProviderFetch } from './provider-fetch.ts'
 import { readLimitedResponseText } from './network/read-text.ts'
 import { assertCompletionTerminal, completionText } from './text-response.ts'
+import { withProviderStoreAccess } from './workspace-provider-access.ts'
 
 export const PROVIDER_PATH = 'settings/providers.json'
 export { PROVIDER_PROTOCOLS }
@@ -34,6 +36,30 @@ export function normalizeBaseUrl(value) {
   // 本机供应商也共用这个配置格式；云端网络边界在实际请求时校验和固定 DNS。
   if (url.hostname === '169.254.169.254' || url.hostname === 'metadata.google.internal') throw failure('API 地址无效', 422)
   return raw
+}
+
+// A host-only API address uses the standard versioned base. Explicit paths
+// (coding/compatibility gateways, /v4, local relays) are preserved verbatim.
+export function providerRequestBaseUrl(value) {
+  const url = new URL(normalizeBaseUrl(value))
+  if (url.pathname === '/') url.pathname = '/v1'
+  return url.toString().replace(/\/+$/, '')
+}
+
+function assertStoredKeyOrigin(apiUrl: string, stored: any) {
+  if (new URL(normalizeBaseUrl(apiUrl)).origin !== new URL(normalizeBaseUrl(stored.apiUrl)).origin) {
+    throw failure('API 地址已更换，请重新填写 API Key', 422)
+  }
+}
+
+// Saved credentials are bound to their configured origin. A metadata request
+// cannot borrow a private key while directing it to another host or port.
+export function providerModelFetchSettings(payload: any, stored: any = null) {
+  const apiUrl = normalizeBaseUrl(payload?.apiUrl || stored?.apiUrl)
+  const protocol = String(payload?.protocol || stored?.protocol || 'openai-completions')
+  const providedKey = String(payload?.apiKey ?? '').trim()
+  if (!providedKey && stored?.apiKey) assertStoredKeyOrigin(apiUrl, stored)
+  return { apiUrl, protocol, apiKey: providedKey || stored?.apiKey || '' }
 }
 
 export function normalizeProviderId(value) {
@@ -89,6 +115,13 @@ function normalizeCompat(value) {
   const output: Record<string, string | number | boolean> = {}
   for (const [key, raw] of entries) {
     if (!/^[A-Za-z][A-Za-z0-9_.-]{0,63}$/.test(key)) throw failure('接口兼容参数名称无效', 422)
+    // Compatibility flags are public metadata, never a second credential store.
+    // Preserve SDK flags such as sendSessionAffinityHeaders while omitting
+    // legacy authentication/header fields at both save and public projection.
+    const field = key.replace(/[_.-]/g, '').toLowerCase()
+    if (/(?:apikey|authorization|credential|password|secret|cookie|bearer|authtoken)/.test(field)
+      || /^(?:auth|oauth|basicauth|digestauth|(?:http|request|custom|extra|additional|default)?headers?|(?:access|refresh|id|session|security|client)?token|(?:private|signing|session|client)?key)/.test(field)
+      || /[_.-](?:auth|headers?|token|key)(?:[_.-]|$)/i.test(key)) continue
     if (typeof raw !== 'string' && typeof raw !== 'boolean' && !(typeof raw === 'number' && Number.isFinite(raw))) throw failure('接口兼容参数只支持文字、数字和开关', 422)
     if (typeof raw === 'string' && raw.length > 200) throw failure('接口兼容参数内容过长', 422)
     output[key] = raw
@@ -129,27 +162,31 @@ function parseStore(bytes) {
 
 // 3.0.x 按画布项目各存一份；改成应用级后，第一次读取时把各项目里的旧配置合并进来
 // （同一 ID 以最近修改的那份为准），旧文件原样保留，读不了的旧文件跳过不影响其他项目。
-function adoptProjectStores(workspaceFiles, userId, project) {
+async function adoptProjectStores(workspaceFiles, userId, project) {
   if (!workspaceFiles.scoped) return []
-  const rows = workspaceFiles.store.all('SELECT project_id AS project FROM workspace_files WHERE user_id=? AND path=? AND project_id<>? ORDER BY updated_at DESC', userId, PROVIDER_PATH, project)
+  const rows = (await workspaceFiles.store.all('SELECT project_id AS project FROM workspace_files WHERE user_id=? AND path=? AND project_id<>? ORDER BY updated_at DESC', userId, PROVIDER_PATH, project))
   const merged = new Map()
   for (const { project: source } of rows) {
     try {
-      for (const provider of parseStore(workspaceFiles.read(userId, PROVIDER_PATH, source).bytes))
+      for (const provider of parseStore((await workspaceFiles.read(userId, PROVIDER_PATH, source)).bytes))
         if (!merged.has(provider.id)) merged.set(provider.id, provider)
     } catch {}
   }
   const providers = [...merged.values()]
-  if (providers.length) writeStore(workspaceFiles, userId, providers)
+  if (providers.length) await writeStore(workspaceFiles, userId, providers)
   return providers
 }
 
-function readStore(workspaceFiles, userId) {
+async function readStore(workspaceFiles, userId) {
+  return (await withProviderStoreAccess(workspaceFiles, async () => (await readPrivateStore(workspaceFiles, userId))))
+}
+
+async function readPrivateStore(workspaceFiles, userId) {
   const project = workspaceFiles.providerProject?.()
-  const entry = workspaceFiles.list(userId, project).find(item => item.path === PROVIDER_PATH)
-  if (!entry) return project ? adoptProjectStores(workspaceFiles, userId, project) : []
+  const entry = (await workspaceFiles.list(userId, project)).find(item => item.path === PROVIDER_PATH)
+  if (!entry) return project ? (await adoptProjectStores(workspaceFiles, userId, project)) : []
   try {
-    return parseStore(workspaceFiles.read(userId, PROVIDER_PATH, project).bytes)
+    return parseStore((await workspaceFiles.read(userId, PROVIDER_PATH, project)).bytes)
   } catch (cause) {
     // A damaged or temporarily unreadable file is not an empty configuration.
     // Reads and edits both stop, preserving every existing provider and key.
@@ -157,21 +194,44 @@ function readStore(workspaceFiles, userId) {
   }
 }
 
-function writeStore(workspaceFiles, userId, providers) {
-  workspaceFiles.upsert(userId, PROVIDER_PATH, 'application/json', Buffer.from(JSON.stringify({ providers }), 'utf8'), workspaceFiles.providerProject?.())
+async function writeStore(workspaceFiles, userId, providers) {
+  await withProviderStoreAccess(workspaceFiles, async () => {
+    await workspaceFiles.upsert(userId, PROVIDER_PATH, 'application/json', Buffer.from(JSON.stringify({ providers }), 'utf8'), workspaceFiles.providerProject?.())
+  })
+}
+
+// Project deletion is a trusted host operation. Adopt legacy project settings
+// before their source can be removed, including projects imported after the
+// application store was first created. Existing application IDs stay canonical.
+export async function preserveProvidersBeforeProjectRemoval(workspaceFiles, userId, project) {
+  const applicationProject = workspaceFiles.providerProject?.()
+  if (!applicationProject) return
+  await withProviderStoreAccess(workspaceFiles, async () => {
+    let source = []
+    if (project !== applicationProject && (await workspaceFiles.list(userId, project)).some(entry => entry.path === PROVIDER_PATH)) {
+      try { source = parseStore((await workspaceFiles.read(userId, PROVIDER_PATH, project)).bytes) }
+      catch (cause) { throw Object.assign(failure('供应商设置无法读取，原文件已保留，请修复设置后重试', 409), { cause }) }
+    }
+    const providers = (await readStore(workspaceFiles, userId))
+    const existing = new Set(providers.map(provider => provider.id))
+    const missing = source.filter(provider => !existing.has(provider.id))
+    if (missing.length) await writeStore(workspaceFiles, userId, [...providers, ...missing])
+  })
 }
 
 function publicProvider(provider) {
-  const clone = { id: provider.id, label: provider.label, apiUrl: provider.apiUrl, protocol: provider.protocol, ...(provider.compat ? { compat: provider.compat } : {}), models: provider.models }
+  // Project only supported model metadata, including for preserved legacy
+  // stores; unrecognized per-model fields must not escape a private file.
+  const clone = { id: provider.id, label: provider.label, apiUrl: provider.apiUrl, protocol: provider.protocol, ...(provider.compat ? { compat: normalizeCompat(provider.compat) } : {}), models: (provider.models || []).map(normalizeModel) }
   return { ...clone, hasKey: Boolean(provider.apiKey) }
 }
 
-export function listPublicProviders(workspaceFiles, userId) {
-  return readStore(workspaceFiles, userId).map(publicProvider)
+export async function listPublicProviders(workspaceFiles, userId) {
+  return (await readStore(workspaceFiles, userId)).map(publicProvider)
 }
 
-export function listPublicProviderModels(workspaceFiles, userId) {
-  return listPublicProviders(workspaceFiles, userId).flatMap(provider => (provider.models || []).map(model => ({
+export async function listPublicProviderModels(workspaceFiles, userId) {
+  return (await listPublicProviders(workspaceFiles, userId)).flatMap(provider => (provider.models || []).map(model => ({
     providerId: provider.id, providerLabel: provider.label, modelId: model.id, label: model.label,
     protocol: provider.protocol || 'openai-completions', configured: Boolean(provider.hasKey),
     ...(model.reasoning ? { reasoning: true } : {}),
@@ -184,46 +244,47 @@ export function listPublicProviderModels(workspaceFiles, userId) {
   })))
 }
 
-export function upsertProvider(workspaceFiles, userId, payload) {
-  const providers = readStore(workspaceFiles, userId)
+export async function upsertProvider(workspaceFiles, userId, payload) {
+  const providers = (await readStore(workspaceFiles, userId))
   const next = normalizeProviderPayload(payload)
   const exists = providers.find(item => item.id === next.id)
   if (!next.apiKey) {
     if (!exists || !exists.apiKey) throw failure('请填写 API Key', 422)
+    assertStoredKeyOrigin(next.apiUrl, exists)
     next.apiKey = exists.apiKey
   }
   if (!exists && providers.length >= MAX_PROVIDERS) throw failure('最多添加 ' + MAX_PROVIDERS + ' 个供应商', 422)
   const merged = exists ? providers.map(item => (item.id === next.id ? next : item)) : [...providers, next]
-  writeStore(workspaceFiles, userId, merged)
+  await writeStore(workspaceFiles, userId, merged)
   return publicProvider(next)
 }
 
-export function removeProvider(workspaceFiles, userId, id) {
+export async function removeProvider(workspaceFiles, userId, id) {
   const target = String(id || '').trim()
-  const providers = readStore(workspaceFiles, userId)
+  const providers = (await readStore(workspaceFiles, userId))
   const next = providers.filter(item => item.id !== target)
   if (next.length === providers.length) throw failure('供应商不存在', 404)
-  writeStore(workspaceFiles, userId, next)
+  await writeStore(workspaceFiles, userId, next)
   return { id: target }
 }
 
-export function providerById(workspaceFiles, userId, id) {
+export async function providerById(workspaceFiles, userId, id) {
   const target = String(id || '').trim()
   if (!target || target === OFFICIAL_PROVIDER_ID) return null
-  return readStore(workspaceFiles, userId).find(item => item.id === target) || null
+  return (await readStore(workspaceFiles, userId)).find(item => item.id === target) || null
 }
 
 // The legacy short-text endpoint is also hosted by the desktop. Resolve the
 // provider from that host's workspace; never send its private settings upstream.
 export async function completeProviderText(workspaceFiles, userId, payload, options: Record<string, any> = {}) {
   const providerId = String(payload?.providerId || '').trim()
-  const provider = providerById(workspaceFiles, userId, providerId)
+  const provider = (await providerById(workspaceFiles, userId, providerId))
   if (!provider) throw failure('供应商不存在，请在设置 → 文本模型里重新添加', 422)
   const prompt = String(payload?.prompt || '').trim()
   if (!prompt) throw failure('请先输入内容', 422)
   return createProviderCompletion(provider, {
     modelId: String(payload?.model || payload?.modelId || '').trim(), prompt,
-    systemPrompt: String(payload?.systemPrompt || '').trim(),
+    systemPrompt: withReplyLanguage(payload?.systemPrompt),
     maxTokens: payload?.maxTokens ?? payload?.max_tokens,
   }, options)
 }
@@ -231,11 +292,10 @@ export async function completeProviderText(workspaceFiles, userId, payload, opti
 // 与 MiaoImg 的 /api/providers/models 同构：按协议拉取上游模型列表。
 export async function fetchProviderModels({ apiUrl, protocol, apiKey }: Record<string, any>, { fetchImpl = fetch, allowPrivate = false, signal, beforeDispatch }: Record<string, any> = {}) {
   signal?.throwIfAborted()
-  const base = normalizeBaseUrl(apiUrl)
+  const base = providerRequestBaseUrl(apiUrl)
   assertProviderRequestAllowed('custom-text', base, process.env)
   const mode = PROVIDER_PROTOCOLS.includes(protocol) ? protocol : 'openai-completions'
   const url = new URL(base)
-  if (url.pathname === '/') url.pathname = '/v1'
   url.pathname = url.pathname.replace(/\/+$/, '') + '/models'
   const headers: Record<string, any> = { accept: 'application/json' }
   if (mode === 'anthropic-messages') {
@@ -265,8 +325,15 @@ export async function fetchProviderModels({ apiUrl, protocol, apiKey }: Record<s
       const id = String(item?.id || item?.name || '').trim()
       if (!id) continue
       const model: Record<string, any> = { id, label: String(item?.display_name || item?.displayName || '').trim() || id }
-      if (Number.isSafeInteger(item?.inputTokenLimit) && item.inputTokenLimit > 0) model.contextWindow = item.inputTokenLimit
-      if (Number.isSafeInteger(item?.outputTokenLimit) && item.outputTokenLimit > 0) model.maxOutputTokens = item.outputTokenLimit
+      const context = item?.context_window ?? item?.contextWindow ?? item?.context_length ?? item?.inputTokenLimit
+      const output = item?.max_output_tokens ?? item?.maxOutputTokens ?? item?.outputTokenLimit ?? item?.top_provider?.max_completion_tokens
+      if (Number.isSafeInteger(context) && context > 0 && context <= 100000000) model.contextWindow = context
+      if (Number.isSafeInteger(output) && output > 0 && output <= 10000000) model.maxOutputTokens = output
+      const modalities = item?.input_modalities ?? item?.input ?? item?.architecture?.input_modalities
+      if (Array.isArray(modalities)) {
+        const input = ['text', 'image'].filter(value => modalities.includes(value))
+        if (input.length) model.input = input
+      }
       models.set(id, model)
       if (models.size > MAX_MODELS) throw failure('模型数量超过 ' + MAX_MODELS, 422)
     }
@@ -281,8 +348,7 @@ export async function fetchProviderModels({ apiUrl, protocol, apiKey }: Record<s
 }
 
 function chatUrl(provider, suffix) {
-  const url = new URL(provider.apiUrl)
-  if (url.pathname === '/') url.pathname = '/v1'
+  const url = new URL(providerRequestBaseUrl(provider.apiUrl))
   url.pathname = url.pathname.replace(/\/+$/, '') + suffix
   return url.toString()
 }

@@ -107,7 +107,7 @@ type State = { available: boolean; connected: boolean; name: string; message: st
 const state = ref<State>(), error = ref(''), busy = ref(false);
 const platform = ref<'doubao' | 'dola'>('doubao');
 const site = computed(() => ({ id: platform.value, label: platform.value === 'doubao' ? '豆包' : 'Dola' }));
-const kinds = [{ id: 'text' as const, label: translate('文本对话') }, { id: 'image' as const, label: translate('图片生成') }, { id: 'video' as const, label: translate('视频生成') }];
+const kinds = computed(() => [{ id: 'text' as const, label: translate('文本对话') }, { id: 'image' as const, label: translate('图片生成') }, { id: 'video' as const, label: translate('视频生成') }]);
 const mediaModels = computed(() => state.value?.models || []);
 const textModels = computed(() => state.value?.textModels || []);
 const scope = captureWorkspaceScope(), controller = new AbortController();

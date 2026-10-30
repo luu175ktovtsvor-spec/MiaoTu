@@ -7,6 +7,7 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { IntlMessageFormat } from 'intl-messageformat'
 import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { numericMessageValues } from './numeric-messages.ts'
 
 const CATALOG_DIR = fileURLToPath(new URL('./locales/', import.meta.url))
 const requestLocale = new AsyncLocalStorage()
@@ -24,17 +25,20 @@ function catalog(locale) {
   return value
 }
 
-// 与前端 normalizeLocale 同一套口径：zh* 归 zh-CN，其余按大小写规范后原样保留。
+// 地区与文字体系跟客户端一致：ja-JP → ja，zh-Hant-* → zh-TW。
+// pa-Arab 等不能套用另一种文字体系的词典。
 export function normalizeLocale(value) {
   const tag = String(value || '').trim().replace(/_/g, '-')
-  if (!tag) return undefined
+  if (!tag || !/^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/i.test(tag)) return undefined
   const lower = tag.toLowerCase()
-  if (lower === 'zh' || lower.startsWith('zh-')) {
-    if (lower === 'zh-tw' || lower === 'zh-hk' || lower === 'zh-hant') return 'zh-TW'
-    return 'zh-CN'
-  }
-  const parts = lower.split('-')
-  return [parts[0], ...parts.slice(1).map(part => part.length === 2 ? part.toUpperCase() : part)].join('-')
+  const base = lower.split('-')[0]
+  let script: string | undefined
+  try { script = new Intl.Locale(tag).maximize().script } catch { return undefined }
+  if (base === 'zh') return script === 'Hant' ? 'zh-TW' : 'zh-CN'
+  const code = base === 'tl' ? 'fil' : base === 'in' ? 'id' : base
+  let ownScript: string | undefined
+  try { ownScript = new Intl.Locale(code).maximize().script } catch { return undefined }
+  return script && ownScript && script !== ownScript ? undefined : code
 }
 
 // Accept-Language 解析（q 值排序），与上游 resolveRequestLocale 同一口径。
@@ -48,7 +52,7 @@ export function resolveRequestLocale(header) {
     // 有词典、或是中文（键即原文）才算命中；否则继续往下找。
     if (item.locale === 'zh-CN' || catalog(item.locale)) return item.locale
   }
-  return fallback()
+  return String(header || '').trim() ? 'en' : fallback()
 }
 
 export function setLocaleFallback(resolve) { fallback = resolve }
@@ -109,4 +113,54 @@ function escapeMessageText(value) {
 export function t(strings, ...values) {
   const id = values.length ? strings.map((part, index) => escapeMessageText(part) + (index < values.length ? `{${index}}` : '')).join('') : strings[0]
   return translate(id, values.length ? Object.fromEntries(values.map((value, index) => [index, value])) : undefined)
+}
+
+// 参数校验先生成安全中文错误，响应时再按词典模板还原纯数字参数。
+// 只允许数字/分辨率/比例及它们的列表；不把用户文本、路径或诊断当占位符翻译。
+let publicNumericTemplates: string[] | undefined
+function numericPublicMessage(text: string) {
+  publicNumericTemplates ??= Object.keys(catalog('en') || {}).filter(id => /[㐀-鿿]/.test(id) && /\{\w+\}/.test(id))
+  for (const id of publicNumericTemplates) {
+    const values = numericMessageValues(id, text)
+    if (values) return translate(id, values)
+  }
+  return undefined
+}
+
+function publicMessage(text: string, language: string) {
+  if (!text) return text
+  const translated = translate(text)
+  if (translated !== text || language === 'zh-CN') return translated
+  const format = /^当前模型不支持这个(参考图片|参考视频|参考音频)(格式|容器格式|编码)(?:（[^（）\r\n]{0,200}）)?，请转换后重新上传$/.exec(text)
+  if (format) return translate('当前模型不支持这个' + format[1] + format[2] + '，请转换后重新上传')
+  if (/^当前模型不支持(?:生成模式 |“[^”\r\n]{1,80}”生成模式$)/.test(text)) return translate('当前模型不支持这个生成模式')
+  if (/^“(?:标准|节省模式)”生成模式不支持 /.test(text)) return translate('当前模式不支持这个分辨率')
+  const numeric = numericPublicMessage(text)
+  if (numeric !== undefined) return numeric
+  // 已由云端翻译过的词典文案可穿过桌面响应；未知诊断只给安全通用提示。
+  if ([catalog(language), catalog('en')].some(entries => entries && Object.values(entries).some((value: string) => value === text || numericMessageValues(value, text)))) return text
+  return language === 'zh-TW' ? text : translate('当前操作未能完成，请稍后重试或联系妙图团队')
+}
+
+// 只本地化已面向用户公开的错误字段，不递归改写任务、画布、用户文本或落盘记录。
+// 调用方先完成错误脱敏，再在响应边界取本次请求语言；不修改原始对象。
+export function localizeErrorResponse(value: any, status: number, header: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value
+  const locale = resolveRequestLocale(header)
+  return runWithLocale(locale, () => {
+    const result = { ...value }
+    if (status >= 400 || value.ok === false) {
+      for (const key of ['error', 'message']) if (typeof value[key] === 'string') result[key] = publicMessage(value[key], locale)
+    }
+    const explanation = value.errorExplanation
+    if (explanation && typeof explanation === 'object' && !Array.isArray(explanation)) {
+      result.errorExplanation = { ...explanation }
+      for (const key of ['summary', 'reason', 'action', 'billing']) {
+        // AI 说明已通过安全校验并按目标语言生成；它是创作结果，不拿词典覆盖正文。
+        if (explanation.source === 'ai' && (key === 'reason' || key === 'action')) continue
+        if (typeof explanation[key] === 'string') result.errorExplanation[key] = publicMessage(explanation[key], locale)
+      }
+    }
+    return result
+  })
 }

@@ -1,7 +1,29 @@
-import { createStage, disposeStage, type LightingSettings, type SceneDocument, type SceneSettings } from "./scene";
+import { snapshotStage } from './stageSnapshot';
+import { createStage } from "./stageRuntime";
+import { disposeStage, type CameraView, type LightingSettings, type SceneDocument, type SceneSettings } from "./scene";
+import type { CameraSnapshotRequest } from './cameraReconciliation';
+import { resolveCameraView } from './cameraTracking';
 import { translate } from "@miaoimg/i18n/vue";
 import { applyCamera, prepareMotion, sampleMotion, type CameraAnchor } from "./motion";
 import { prepareSceneAnimation, type DirectorPlan } from "./sceneAnimation";
+
+/** Resolve a private camera candidate against its own current scene, never the live editor. */
+export async function resolveSceneCamera(scene:SceneDocument,view:CameraView,aspect:number,signal?:AbortSignal,lighting?:LightingSettings,settings?:SceneSettings){
+  signal?.throwIfAborted();const runtime=await createStage(document.createElement('canvas'),scene,undefined,aspect,lighting,settings);
+  try{signal?.throwIfAborted();return resolveCameraView(view,runtime.camera.userData.directorResolveTarget);}finally{disposeStage(runtime);}
+}
+
+/** Batch snapshots by the original animation so every pose is resolved before deletion. */
+export async function resolveSceneCameraSnapshots(scene:SceneDocument,requests:CameraSnapshotRequest[],aspect:number,signal?:AbortSignal,lighting?:LightingSettings,settings?:SceneSettings){
+  const output:CameraView[]=new Array(requests.length),groups=new Map<DirectorPlan|undefined,number[]>();
+  requests.forEach((request,index)=>{const group=groups.get(request.plan)??[];group.push(index);groups.set(request.plan,group);});
+  for(const [plan,indices] of groups){
+    signal?.throwIfAborted();const runtime=await createStage(document.createElement('canvas'),scene,undefined,aspect,lighting,settings);let player:ReturnType<typeof prepareSceneAnimation>|undefined;
+    try{if(plan)player=prepareSceneAnimation(runtime,plan);for(const index of indices){signal?.throwIfAborted();const request=requests[index]!;player?.setTime(Math.min(plan!.duration,request.time));output[index]=resolveCameraView(request.view,runtime.camera.userData.directorResolveTarget);}}
+    finally{player?.dispose();disposeStage(runtime);}
+  }
+  return output;
+}
 
 // 给文本模型回看真实渲染结果，复用同一个场景，避免每张图重建 WebGL。
 export async function inspectScene(scene: SceneDocument, plan: DirectorPlan | undefined, times: number[], aspect: number, signal?: AbortSignal, lighting?: LightingSettings, settings?: SceneSettings) {
@@ -14,26 +36,27 @@ export async function inspectScene(scene: SceneDocument, plan: DirectorPlan | un
     const cameraFrames = plan ? prepareMotion(plan.cameraFrames) : undefined;
     runtime.renderer.setPixelRatio(1);
     runtime.renderer.setSize(Math.round(640 * Math.min(1, aspect)), Math.round(640 / Math.max(1, aspect)), false);
-    const frames = [];
+    const frames = [],samples:ReturnType<typeof snapshotStage>[] = [];
     for (const time of times) {
       signal?.throwIfAborted();
       player?.setTime(time);
       if (cameraFrames) sampleMotion(runtime.camera, cameraFrames, time);
       runtime.renderer.render(runtime.scene, runtime.camera);
+      samples.push(snapshotStage(runtime,scene,time));
       frames.push({ time, mimeType: "image/jpeg", data: runtime.renderer.domElement.toDataURL("image/jpeg", 0.82).split(",")[1]! });
     }
-    return { summary: { name: plan?.name ?? '静态场景', duration: plan?.duration ?? 0, objects: scene.objectList.length, times, limitation: "这是当前场景在指定时间的实际渲染；需与参考画面比较，不代表已验证动作一致。" }, frames };
+    return { summary: { name: plan?.name ?? '静态场景', duration: plan?.duration ?? 0, objects: scene.objectList.length, times, samples, limitation: "这是当前场景在指定时间的实际渲染；需与参考画面比较，不代表已验证动作一致。samples.objects[].inFrame 是物体在画面内的比例（0 为完全不在画面），用来确认动作主体是否入镜。" }, frames };
   } finally { player?.dispose(); disposeStage(runtime); }
 }
 
-export async function renderImage(scene: SceneDocument, anchor: CameraAnchor, aspect: number, time: number, signal: AbortSignal, plan?: DirectorPlan, lighting?: LightingSettings, settings?: SceneSettings) {
+export async function renderImage(scene: SceneDocument, anchor: CameraAnchor|undefined, aspect: number, time: number, signal: AbortSignal, plan?: DirectorPlan, lighting?: LightingSettings, settings?: SceneSettings) {
   signal.throwIfAborted();
   const runtime = await createStage(document.createElement("canvas"), scene, undefined, aspect, lighting, settings);
   let player: ReturnType<typeof prepareSceneAnimation> | undefined;
   try {
     signal.throwIfAborted();
     if (plan) { player = prepareSceneAnimation(runtime, plan); player.setTime(time); }
-    applyCamera(runtime.camera, anchor);
+    if(anchor)applyCamera(runtime.camera, anchor);else if(plan)sampleMotion(runtime.camera,prepareMotion(plan.cameraFrames),time);
     runtime.renderer.render(runtime.scene, runtime.camera);
     const blob = await new Promise<Blob>((resolve, reject) => runtime.renderer.domElement.toBlob(
       value => value ? resolve(value) : reject(new Error(translate("关键帧渲染失败"))), "image/png",

@@ -28,7 +28,7 @@ export function workspaceTransferTools({ files, userId, project, cwd }: Record<s
       if (!/^[\w.+-]+\/[\w.+-]+$/.test(mime)) throw new Error('文件类型无效。')
       const path = `assets/imported-${randomUUID()}${/^[.a-z0-9_-]{1,20}$/.test(extension) ? extension : ''}`
       const saved = await files.writeStream(userId, { path, project, mime, stream: createReadStream(source), signal })
-      const stored = files.stat(userId, path, project)
+      const stored = (await files.stat(userId, path, project))
       return result({ path, mime, size: stored.size, revision: saved.revision, project, canvasNodeCreated: false })
     },
   }, {
@@ -37,7 +37,7 @@ export function workspaceTransferTools({ files, userId, project, cwd }: Record<s
     parameters: { type: 'object', properties: { path: { type: 'string', minLength: 1 }, destination: { type: 'string', minLength: 1 } }, required: ['path', 'destination'], additionalProperties: false },
     async execute(_id, args, signal) {
       if (isProtectedWorkspacePath(args.path)) throw new Error('此配置包含凭据，不能通过 Agent 导出。')
-      const file = files.locate(userId, args.path, project), destination = localPath(cwd, args.destination)
+      const file = (await files.locate(userId, args.path, project)), destination = localPath(cwd, args.destination)
       if (file.mime === 'inode/directory') throw new Error('请选择实际文件。')
       signal.throwIfAborted()
       await mkdir(dirname(destination), { recursive: true })

@@ -75,5 +75,5 @@ export default function MiaoCanvasMount({ owner = '', csrf = '', project = DEFAU
       releaseDocumentLanguage()
     }
   }, [owner, csrf, project])
-  return <>{error && <FeedbackNotice message={error} action="重新加载" onAction={() => { void reloadWorkspace().catch(cause => setError(cause.message)) }} onClose={() => setError('')} />}<div ref={host} className="studio-miaoimg-mount" /></>
+  return <>{error && <FeedbackNotice message={error} action={t('studio.reload')} onAction={() => { void reloadWorkspace().catch(cause => setError(cause.message)) }} onClose={() => setError('')} />}<div ref={host} className="studio-miaoimg-mount" /></>
 }

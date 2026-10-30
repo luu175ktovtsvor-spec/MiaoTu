@@ -1,6 +1,6 @@
 # 妙图官网与管理后台
 
-React + Vite 工程：官网首页、灵感库与管理后台（admin.miaoimg.cn）。
+React + Vite 工程：官网首页、更新日志与管理后台（admin.miaoimg.cn）。网页版灵感库与画布已下线，灵感库数据只经下面的档案 API 供桌面版读取。
 
 在仓库根目录运行：
 
@@ -11,9 +11,8 @@ npm run dev:web
 
 The first run expands `../db/prompts.db.gz` once under the ignored
 `.oip/runtime/` directory. The cross-platform Node launcher finds Python,
-starts the read-only SQLite API, and then starts Vite. The browser fetches
-paginated JSON while Vite serves the fetched images from `../images/`, falling
-back to each record's original source URL when a file was not downloaded.
+starts the read-only SQLite archive API, and then starts Vite, which also
+serves the fetched images from `../images/`.
 
 Useful environment variables:
 
@@ -38,9 +37,7 @@ Useful environment variables:
 Search uses the archive's SQLite FTS5 index across source prompts,
 translations, authors, tools, and visual labels. The API bounds concurrent
 queries and keeps a small LRU response cache so one busy search cannot create
-an unbounded number of SQLite scans. Search text is submitted explicitly with
-Enter or the Search button, so typing and IME composition do not trigger API
-requests.
+an unbounded number of SQLite scans.
 
 `npm run preview` builds the frontend and runs the production preview with the
 same local API and image service on Windows, macOS, and Linux.

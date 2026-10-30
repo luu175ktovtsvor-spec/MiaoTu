@@ -47,13 +47,13 @@ export function createVideoPlayback({ root = mediaRoot, ensureTools = async () =
       try { const info = statSync(path); if (info.size > 0) { const time = new Date(); utimesSync(path, time, time); return { ...file, diskPath: path, bytes: null, mime: 'video/mp4', size: info.size, revision: file.revision + `-playback-v${MEDIA_INPUT_VERSION}` } } } catch { /* 尚未生成 */ }
       return null
     }
-    beforeCommit()
+    await beforeCommit()
     const ready = existing()
     if (ready) return ready
     if (!jobs.has(path) && jobs.size >= 8) return null
     return jobs.run(path, async (taskSignal, validateReaders) => {
       try {
-        const cached = existing(); if (cached) { validateReaders(); return cached }
+        const cached = existing(); if (cached) { await validateReaders(); return cached }
         taskSignal.throwIfAborted()
         await waitForMedia(ensureTools(), taskSignal)
         taskSignal.throwIfAborted()
@@ -63,7 +63,7 @@ export function createVideoPlayback({ root = mediaRoot, ensureTools = async () =
           // 只压播放预览：不裁剪、不拉伸、不替换原件；一次一个工作进程、两个线程。
           await execMedia(ffmpeg(), ['-v','error','-threads','2',...localMediaInputOptions(),'-i',file.diskPath,'-map','0:v:0','-map','0:a:0?','-vf',"scale='if(gt(iw,ih),min(iw,720),-2)':'if(gt(iw,ih),-2,min(ih,720))'",'-fpsmax','30','-c:v','libx264','-threads','2','-preset','veryfast','-crf','26','-maxrate','1200k','-bufsize','2400k','-pix_fmt','yuv420p','-c:a','aac','-b:a','96k','-movflags','+faststart','-y',temporary],
             {timeout:180000,maxBuffer:512*1024,signal:taskSignal})
-          taskSignal.throwIfAborted(); validateReaders()
+          taskSignal.throwIfAborted(); await validateReaders()
           if (statSync(temporary).size > 64 * 1024 * 1024) throw new Error('播放缓存过大')
           chmodSync(temporary, mediaPermissions().file); alignMediaOwner(temporary); renameSync(temporary,path)
           const result = existing(); prune(); return result
@@ -77,9 +77,3 @@ export function createVideoPlayback({ root = mediaRoot, ensureTools = async () =
 
   return { playback, async stop() { clearInterval(sweep); await jobs.stop() } }
 }
-let shared
-export function videoPlayback(owner, file, options?: { signal?: AbortSignal; beforeCommit?: () => void }) {
-  shared ||= createVideoPlayback()
-  return shared.playback(owner, file, options)
-}
-export async function stopVideoPlayback() { await shared?.stop() }

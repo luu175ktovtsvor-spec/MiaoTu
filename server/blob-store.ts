@@ -1,3 +1,4 @@
+import { filterAsync } from './async-collections.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { closeSync, constants, existsSync, fstatSync, linkSync, lstatSync, openSync, readFileSync, readSync, readdirSync, rmSync, statSync, utimesSync } from 'node:fs'
 import { join } from 'node:path'
@@ -37,20 +38,20 @@ export const BLOB_GC_GRACE_MS = 300_000
 export const MEDIA_LAYOUT_PATH = 'path'
 export const MEDIA_LAYOUT_BLOB = 'blob'
 
-export function ensureMediaLayout(store) {
-  store.run("CREATE TABLE IF NOT EXISTS media_layout(id INTEGER PRIMARY KEY CHECK(id=1),layout TEXT NOT NULL,updated_at TEXT NOT NULL)")
+export async function ensureMediaLayout(store) {
+  await store.run("CREATE TABLE IF NOT EXISTS media_layout(id INTEGER PRIMARY KEY CHECK(id=1),layout TEXT NOT NULL,updated_at TEXT NOT NULL)")
 }
 
 // 只读：只报账的入口（对账脚本、--report）会拿只读连接进来，这里不能建表。
 // 表还不存在 = 从来没迁移过 = 路径树布局。
-export function mediaLayout(store) {
-  try { return store.get('SELECT layout FROM media_layout WHERE id=1')?.layout || MEDIA_LAYOUT_PATH } catch { return MEDIA_LAYOUT_PATH }
+export async function mediaLayout(store) {
+  try { return (await store.get('SELECT layout FROM media_layout WHERE id=1'))?.layout || MEDIA_LAYOUT_PATH } catch { return MEDIA_LAYOUT_PATH }
 }
 
-export function setMediaLayout(store, layout) {
+export async function setMediaLayout(store, layout) {
   if (![MEDIA_LAYOUT_PATH, MEDIA_LAYOUT_BLOB].includes(layout)) throw new Error(`未知的媒体布局：${layout}`)
-  ensureMediaLayout(store)
-  store.run('INSERT INTO media_layout(id,layout,updated_at) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET layout=excluded.layout,updated_at=excluded.updated_at', layout, new Date().toISOString())
+  await ensureMediaLayout(store)
+  await store.run('INSERT INTO media_layout(id,layout,updated_at) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET layout=excluded.layout,updated_at=excluded.updated_at', layout, new Date().toISOString())
   return layout
 }
 
@@ -81,12 +82,12 @@ export class BlobStore {
   // ---- 引用计数（唯一的权威来源）----
 
   // 表或列还不存在时按 0 处理：那种库里根本不可能有 blob 引用，删字节也就无从谈起。
-  referenced(table, sha, userId?: string) {
+  async referenced(table, sha, userId?: string) {
     try {
-      if (userId === undefined) return Number(this.store.get(`SELECT COUNT(*) AS n FROM ${table} WHERE blob=?`, sha)?.n || 0)
+      if (userId === undefined) return Number((await this.store.get(`SELECT COUNT(*) AS n FROM ${table} WHERE blob=?`, sha))?.n || 0)
       return Number((table === 'workspace_files'
-        ? this.store.get('SELECT COUNT(*) AS n FROM workspace_files WHERE blob=? AND user_id=?', sha, userId)
-        : this.store.get("SELECT COUNT(*) AS n FROM artifacts a JOIN generations g ON g.id=a.request_id WHERE a.blob=? AND COALESCE(g.user_id,'')=?", sha, userId))?.n || 0)
+        ? (await this.store.get('SELECT COUNT(*) AS n FROM workspace_files WHERE blob=? AND user_id=?', sha, userId))
+        : (await this.store.get("SELECT COUNT(*) AS n FROM artifacts a JOIN generations g ON g.id=a.request_id WHERE a.blob=? AND COALESCE(g.user_id,'')=?", sha, userId)))?.n || 0)
     } catch (error) {
       // An older schema cannot own blob references. A lock/read failure cannot
       // establish that the reference count is zero, so collection must stop.
@@ -95,8 +96,8 @@ export class BlobStore {
     }
   }
 
-  liveCount(sha, userId?: string) {
-    return this.referenced('workspace_files', sha, userId) + this.referenced('artifacts', sha, userId)
+  async liveCount(sha, userId?: string) {
+    return (await this.referenced('workspace_files', sha, userId)) + (await this.referenced('artifacts', sha, userId))
   }
 
   // ---- 写 ----
@@ -222,13 +223,15 @@ export class BlobStore {
   //   2. 复用已有 blob 的（常见情况！）：写入方在复用时会 touch 一次 mtime（见 put），
   //      所以同样落在宽限期内。少了那个 touch，一个用了三个月的旧 blob 会被误删。
   // 宽限期之外还有对账兜底：先扫盘、后查活跃集合，扫描之后才出现的 blob 根本不在候选集里。
-  release(userId, sha, { graceMs = BLOB_GC_GRACE_MS, force = false }: Record<string, any> = {}) {
+  async release(userId, sha, { graceMs = BLOB_GC_GRACE_MS, force = false }: Record<string, any> = {}) {
     if (!isBlobHash(sha)) return false
-    if (this.liveCount(sha, userId) > 0) return false
-    const info = this.stat(userId, sha)
-    if (!info) return false
-    if (!force && Date.now() - info.mtimeMs < graceMs) return false
-    return this.remove(userId, sha)
+    return this.store.transaction(async () => {
+      await this.store.db.lock(`media:${userId}`)
+      if (await this.liveCount(sha, userId) > 0) return false
+      const info = this.stat(userId, sha)
+      if (!info || !force && Date.now() - info.mtimeMs < graceMs) return false
+      return this.remove(userId, sha)
+    })
   }
 
   // ---- 扫盘（对账与回收用）----
@@ -270,22 +273,24 @@ export class BlobStore {
 
   // 对账 --fix 的回收：先扫盘、后查活跃集合（顺序不能反），再逐条按宽限期判断。
   // 持写锁跑，让「查活跃集合 → 删」之间没有其他库写入者插进来。
-  sweep({ graceMs = BLOB_GC_GRACE_MS, apply = false, live }: Record<string, any> = {}) {
+  async sweep({ graceMs = BLOB_GC_GRACE_MS, apply = false, live }: Record<string, any> = {}) {
     const candidates = []
     for (const bucket of this.buckets()) {
       for (const blob of this.list(bucket.userId).blobs) candidates.push({ userId: bucket.userId, ...blob })
     }
-    const isLive = live || (sha => this.liveCount(sha) > 0)
-    const orphans = candidates.filter(item => !isLive(item.sha))
+    candidates.sort((a,b) => String(a.userId).localeCompare(String(b.userId)) || a.sha.localeCompare(b.sha))
+    const isLive = live || (async sha => (await this.liveCount(sha)) > 0)
+    const orphans = (await filterAsync(candidates, async item => !(await isLive(item.sha))))
     const fresh = orphans.filter(item => Date.now() - item.mtimeMs < graceMs)
     const reclaimable = orphans.filter(item => Date.now() - item.mtimeMs >= graceMs)
     if (!apply) return { candidates, orphans, fresh, reclaimable, removed: 0, removedBytes: 0 }
     let removed = 0
     let removedBytes = 0
-    this.store.transaction(() => {
+    await this.store.transaction(async () => {
       for (const item of reclaimable) {
         // 事务里再确认一次：扫盘之后可能有别处刚认领了它。
-        if (this.liveCount(item.sha) > 0) continue
+        await this.store.db.lock(`media:${item.userId}`)
+        if ((await this.liveCount(item.sha)) > 0) continue
         // 扫描后、取得写锁前，上传可能复用了旧 blob 并 touch；再次确认宽限期。
         const current = this.stat(item.userId, item.sha)
         if (!current || Date.now() - current.mtimeMs < graceMs) continue

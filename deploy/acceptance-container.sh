@@ -277,7 +277,7 @@ print("production management : %s" % sys.argv[3])
 PY
 
 echo "=== access ==="
-echo "浏览器地址           : http://127.0.0.1:$web_port/?studio=1"
+echo "浏览器地址           : http://127.0.0.1:$web_port/"
 echo "SSH 隧道             : ssh -N -L $web_port:127.0.0.1:$web_port $remote_host"
 echo "清理命令             : deploy/acceptance-container.sh --down $name"
 echo "清理范围             : 容器 $name + 临时目录 $root；生产容器、生产库、生产媒体不动"

@@ -1,3 +1,4 @@
+import { flatMapAsync, mapAsync } from '../server/async-collections.ts'
 import { createServer } from 'node:http'
 import { isWorkspaceRequest, sanitizeCanvasText, workspaceRequestHeaders } from '../server/canvas-document.ts'
 import { createReadStream, readFileSync, statSync, existsSync, mkdirSync, rmSync, chmodSync } from 'node:fs'
@@ -29,8 +30,9 @@ import { withRequestProject, currentProject } from '../server/workspace-scope.ts
 import { createMediaPreviews, MEDIA_PREVIEW_VERSION } from '../server/media-previews.ts'
 import { MEDIA_INPUT_VERSION } from '../server/media-input.ts'
 import { createAudioWaveforms } from './audio-waveform.ts'
+import { createAudioSilence } from './audio-silence.ts'
 import { createVideoPlayback } from '../server/video-playback.ts'
-import { fetchProviderModels, listPublicProviders, providerById, removeProvider, upsertProvider } from '../server/text-providers.ts'
+import { fetchProviderModels, listPublicProviders, providerById, providerModelFetchSettings, removeProvider, upsertProvider } from '../server/text-providers.ts'
 import { withRequestSignal } from '../server/request-lifetime.ts'
 import { createCustomProviderFetch } from '../server/provider-fetch.ts'
 import { createDesktopTextApi } from './text-models.ts'
@@ -47,10 +49,10 @@ import { createDesktopEntryHtml } from './entry-html.ts'
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2', '.ico': 'image/x-icon' }
 export async function startDesktopRuntime({ directory, getSafeStorage, credentialProtection, webRoot, origin, native, requestFetch, previewArchiveOrigin = '' }: Record<string, any>) {
   const entryHtml = createDesktopEntryHtml(webRoot)
-  const store = new LocalStore(directory)
-  store.cleanupTrashBackups()
+  const store = (await LocalStore.open(directory))
+  await store.cleanupTrashBackups()
   const systemTrash = createSystemTrash({ directory, trashItem: native?.trash })
-  const files = new DesktopWorkspaceFiles(store)
+  const files = (await DesktopWorkspaceFiles.open(store))
   const sanitizeTrashSource = (source: { diskPath?: string | null; bytes?: Uint8Array | null }, mime: string) => {
     if (mime !== 'application/json') return source
     const bytes = source.bytes || (source.diskPath ? readFileSync(source.diskPath) : null)
@@ -58,34 +60,34 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
     const sanitized = sanitizeCanvasText(Buffer.from(bytes).toString('utf8'))
     return sanitized === null ? source : { bytes: Buffer.from(sanitized) }
   }
-  const trashSource = (project: string, path: string, mime: string) =>
-    sanitizeTrashSource(files.locate('local', path, project), mime)
+  const trashSource = async (project: string, path: string, mime: string) =>
+    sanitizeTrashSource((await files.locate('local', path, project)), mime)
   // 删除时还在 5 分钟宽限期里的素材字节当时不能回收；桌面版没有后台对账，启动时补收一次。
-  try { files.blobs.sweep({ apply: true }) } catch (error) { console.warn('[workspace] BLOB_SWEEP_PENDING', error?.code || 'UNKNOWN') }
+  try { await files.blobs.sweep({ apply: true }) } catch (error) { console.warn('[workspace] BLOB_SWEEP_PENDING', error?.code || 'UNKNOWN') }
   const workspaceCatalogTools = createWorkspaceCatalogTools({ store, files })
   // 只有用户亲手删的（画布、文件面板）才进系统废纸篓；程序清理临时素材直接删，不往废纸篓里塞东西。
   // 删除提交之后才交给系统；提交失败时 rollback 先于 setImmediate 执行，暂存的副本随之丢弃。
-  files.beforeRemove = (_userId, project, entries, { trash, path }) => {
+  files.beforeRemove = async (_userId, project, entries, { trash, path }) => {
     if (!trash || !systemTrash.available) return
-    const name = `${store.projectLabel(project)} - ${path.split('/').pop() || '文件'}`
-    const staged = systemTrash.stage(name, entries, target => trashSource(project, target, entries.find(entry => entry.path === target)?.mime || ''))
+    const name = `${(await store.projectLabel(project))} - ${path.split('/').pop() || '文件'}`
+    const staged = (await systemTrash.stage(name, entries, async target => (await trashSource(project, target, entries.find(entry => entry.path === target)?.mime || ''))))
     let cancelled = false
-    setImmediate(() => { if (!cancelled) systemTrash.send(staged).catch(error => console.warn('[system-trash] ITEM_PENDING', error?.code || 'UNKNOWN')) })
+    store.db.afterCommit(() => { if (!cancelled) return systemTrash.send(staged).catch(error => console.warn('[system-trash] ITEM_PENDING', error?.code || 'UNKNOWN')) })
     return () => { cancelled = true; systemTrash.discard(staged) }
   }
   // 老版本藏在应用目录里的删除备份，以及上次没送进废纸篓的，都在后台交给系统，不拖慢启动。
   void (async () => {
     if (!systemTrash.available) return
     await systemTrash.flush()
-    const legacy = store.legacyTrash()
+    const legacy = (await store.legacyTrash())
     if (!legacy.length) return
-    const staged = systemTrash.stage('妙图旧版删除的文件', legacy.map(row => ({ path: `${row.project_id}/${row.path}`, mime: row.mime })),
+    const staged = (await systemTrash.stage('妙图旧版删除的文件', legacy.map(row => ({ path: `${row.project_id}/${row.path}`, mime: row.mime })),
       path => {
         const row = legacy.find(item => `${item.project_id}/${item.path}` === path)
         return sanitizeTrashSource(row.disk_path ? { diskPath: row.disk_path } : { bytes: row.bytes }, row.mime)
-      })
+      }))
     await systemTrash.send(staged)
-    store.dropLegacyTrash(legacy.map(row => row.id))
+    await store.dropLegacyTrash(legacy.map(row => row.id))
   })().catch(error => console.warn('[system-trash] LEGACY_TRASH_PENDING', error?.code || 'UNKNOWN'))
   let mcp, agent, computer, tasks: LocalTasks | undefined
   const localRoutes = new Map<string, LocalMediaRouter>()
@@ -119,23 +121,24 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
   const previews = createMediaPreviews({ ensureTools: () => tools.ensure(), cacheDirectory: () => join(directory, 'previews') })
   const playback = createVideoPlayback({ root: () => join(directory, 'projects', '_previews', 'playback'), ensureTools: () => tools.ensure() })
   const waveforms = createAudioWaveforms({ ensureTools: () => tools.ensure() })
+  const silence = createAudioSilence({ ensureTools: () => tools.ensure() })
   store.activeAccount = cloud.account
-  files.projectAccess = project => { store.project(project) }
+  files.projectAccess = async project => { await store.project(project) }
   for (const site of LOCAL_MEDIA_SITES) localRoutes.set(site.provider, new LocalMediaRouter(store, () => cloud.account, native?.localMediaHosts?.[site.id], site,
     () => ({ revision: cloud.authRevision, available: Boolean(cloud.account) && !cloud.sessionChanging && !cloud.authenticationExpired })))
   tasks = new LocalTasks({ store, files, cloud, localRoutes, ensureTools: () => tools.ensure() })
-  files.canvasCleanupReferences = (_userId, project) => tasks.canvasCleanupReferences(project)
+  files.canvasCleanupReferences = async (_userId, project) => (await tasks.canvasCleanupReferences(project))
   const token = randomBytes(32).toString('hex'), csrf = randomBytes(32).toString('hex')
   // MCP credentials belong to the signed-in account and survive normal restarts;
   // the window/model session token remains fresh for each launch.
   const mcpAvailable = () => Boolean(cloud.account) && !cloud.authenticationExpired && !cloud.sessionChanging
   const mcpKey = () => 'mcp-access:' + createHash('sha256').update(cloud.account || 'anonymous').digest('hex')
-  const mcpAccess = () => {
-    try { return JSON.parse(store.get('SELECT value FROM desktop_meta WHERE key=?', mcpKey())?.value || '{}') } catch { return {} }
+  const mcpAccess = async () => {
+    try { return JSON.parse((await store.get('SELECT value FROM desktop_meta WHERE key=?', mcpKey()))?.value || '{}') } catch { return {} }
   }
-  const saveMcpAccess = value => {
+  const saveMcpAccess = async value => {
     for (const name of ['desktop.sqlite', 'desktop.sqlite-wal', 'desktop.sqlite-shm']) if (existsSync(join(directory, name))) chmodSync(join(directory, name), 0o600)
-    store.run('INSERT INTO desktop_meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', mcpKey(), JSON.stringify(value))
+    await store.run('INSERT INTO desktop_meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', mcpKey(), JSON.stringify(value))
   }
   let address = '', lastConfig = null
   let stopRequest: Promise<void> | undefined
@@ -170,12 +173,13 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
     fetchPublicText: (url, signal, { offset, limit, contentHash }: Record<string, any> = {}) => requestWeb('webFetch', { url, offset, limit, contentHash }, signal),
     searchWeb: (query, limit, signal) => requestWeb('webSearch', { query, limit }, signal),
   }
-  agent = createAgentApi({ customProviderFetch: createCustomProviderFetch({ allowPrivate: true, fetchImpl: requestFetch || fetch }), showcaseRoot: webRoot, showcaseAssetFetch: (path, signal) => cloud.publicFile(path, { signal, headers: { accept: 'image/*' } }), durableDirectory: join(directory, 'agent-runtime'), durableIdentity: () => cloud.account || 'local', durableProjectAccess: project => store.project(project), nativeAgentScope: computer.scope, nativeConversationDefaults: parent => ({ localDirectory: parent?.localDirectory || computer.status().directory }), webTools, localSkills, additionalTools: (userId, runtime) => [...computer.tools(userId, runtime), ...workspaceCatalogTools], additionalInstructions: computer.instructions, nativeAgentPrompt: createPiAgentPrompt({ directory, status: computer.status }), workspaceFiles: files, ensureMediaTools: () => tools.ensure(), resolveTextSettings: (_env, id = 'gpt-6.1-sol') => {
+  agent = createAgentApi({ customProviderFetch: createCustomProviderFetch({ allowPrivate: true, fetchImpl: requestFetch || fetch }), showcaseRoot: webRoot, showcaseAssetFetch: (path, signal) => cloud.publicFile(path, { signal, headers: { accept: 'image/*' } }), durableDirectory: join(directory, 'agent-runtime'), durableIdentity: () => cloud.account || 'local', durableProjectAccess: async project => (await store.project(project)), nativeAgentScope: computer.scope, nativeConversationDefaults: parent => ({ localDirectory: parent?.localDirectory || computer.status().directory }), webTools, localSkills, additionalTools: (userId, runtime) => [...computer.tools(userId, runtime), ...workspaceCatalogTools], additionalInstructions: computer.instructions, nativeAgentPrompt: createPiAgentPrompt({ directory, status: computer.status }), workspaceFiles: files, ensureMediaTools: () => tools.ensure(), resolveTextSettings: (_env, id = 'gpt-6.1-sol') => {
     const modelEntry = ownTextModelById(id)
     const enabled = Boolean(cloud.account) && !cloud.authenticationExpired && !cloud.sessionChanging
     return { enabled, reason: enabled ? '' : 'login-required', apiKey: modelToken, baseUrl: address + '/v1', providerId: 'miaoimg', modelId: id, modelEntry, protocol: modelEntry?.protocol, contextWindow: modelEntry?.contextWindow, maxOutputTokens: modelEntry?.maxOutputTokens, ...(modelEntry?.reasoningEffort ? { reasoningEffort: modelEntry.reasoningEffort } : {}) }
   }, assertTextAccess: async (_session, { signal, providerId, atRequest = false }: Record<string, any> = {}) => {
     signal?.throwIfAborted()
+    if (process.env.MIAO_DESKTOP_NO_GENERATION === '1') throw Object.assign(new Error('本次开发验收禁止真实模型调用'), { status: 403 })
     // A user's configured provider uses their own credentials and billing.
     if (providerId && providerId !== 'miaoimg') return
     if (!cloud.account || cloud.authenticationExpired) throw Object.assign(new Error('请先登录后使用文本模型'), { status: 401 })
@@ -193,10 +197,10 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
   const ffmpeg = createFfmpegExec({ workspaceFiles: files, workspaceKey: () => userSession().user.workspaceKey })
   const exportPlugin = createPluginExport({ workspaceFiles: files })
   mcp = createMcpApi({ showcaseRoot: webRoot, showcaseAssetFetch: (path, signal) => cloud.publicFile(path, { signal, headers: { accept: 'image/*' } }), management: {
-    userByMcpToken: value => { const access = mcpAccess(); return mcpAvailable() && access.enabled && access.token === value ? 'local' : null },
-    mcpTokenInfo: () => { const access = mcpAccess(), available = mcpAvailable(); return { hasToken: Boolean(available && access.token), enabled: Boolean(available && access.enabled) } },
+    userByMcpToken: async value => { const access = (await mcpAccess()); return mcpAvailable() && access.enabled && access.token === value ? 'local' : null },
+    mcpTokenInfo: async () => { const access = (await mcpAccess()), available = mcpAvailable(); return { hasToken: Boolean(available && access.token), enabled: Boolean(available && access.enabled) } },
   }, workspaceFiles: files, webTools, ensureMediaTools: () => tools.ensure(),
-    assertProjectAccess: (_userId, project) => store.project(project),
+    assertProjectAccess: async (_userId, project) => (await store.project(project)),
     additionalTools: (userId, options) => computer.tools(userId, options).filter(tool => ['importLocalFile', 'exportWorkspaceFile'].includes(tool.name)),
   })
   function configResponse(catalogValue) {
@@ -312,11 +316,11 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
       const pendingKey = 'refresh:' + key
       const existing = catalogRefreshes.get(pendingKey)
       if (existing) return existing
-      const pending = cloud.json(path, { signal: AbortSignal.timeout(path === '/api/ai/media/models' ? 25_000 : 5000) }).then(value => {
+      const pending = cloud.json(path, { signal: AbortSignal.timeout(path === '/api/ai/media/models' ? 25_000 : 5000) }).then(async value => {
         if (cloud.account !== account || cloud.authRevision !== authRevision) throw Object.assign(new Error('账号已切换，请重新读取'), { status: 409 })
         if (path === '/api/ai/models') value = { ...value, data: (Array.isArray(value.data) ? value.data : []).filter(model => model.providerId === 'miaoimg') }
         catalogMemory.set(key, { value, updatedAt: Date.now() })
-        store.run('INSERT INTO desktop_meta VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', key, JSON.stringify(value))
+        await store.run('INSERT INTO desktop_meta VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', key, JSON.stringify(value))
         return value
       }).finally(() => { if (catalogRefreshes.get(pendingKey) === pending) catalogRefreshes.delete(pendingKey) })
       catalogRefreshes.set(pendingKey, pending)
@@ -333,7 +337,7 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
     }
     let saved: { value: any; updatedAt: number } | undefined = catalogMemory.get(key)
     if (!saved) {
-      const row = store.get('SELECT value FROM desktop_meta WHERE key=?', key)
+      const row = (await store.get('SELECT value FROM desktop_meta WHERE key=?', key))
       if (row) {
         try { saved = { value: JSON.parse(row.value), updatedAt: 0 } } catch {}
       }
@@ -374,15 +378,18 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
       // MCP 客户端只带 Authorization，不带桌面窗口的 Cookie；必须在普通页面鉴权前处理。
       if (url.pathname === '/mcp' && await mcp.handleMcp(request, response, url, helpers)) return
       if (!String(request.headers.cookie || '').split(/;\s*/).includes('miao_desktop=' + token)) throw Object.assign(new Error('请求无效，请重新打开妙图'), { status: 401 })
+      // 渲染进程带的 Accept-Language 就是当前界面语言，记给云端网关转发用。
+      cloud.setLanguage(request.headers['accept-language'])
       return await renderer.run(request, response, async () => {
       const project = currentProject() || DEFAULT_PROJECT_ID
-      if (requiresDesktopProject(url.pathname)) store.project(project)
-      if (process.env.MIAO_DESKTOP_NO_GENERATION === '1' && url.pathname === '/api/agent' && request.method === 'POST') throw Object.assign(new Error('本次开发验收禁止真实模型调用'), { status: 403 })
-      if (url.pathname === '/api/desktop/status') { json(response, 200, { cloud: cloud.view(), sync: { enabled: false, mode: 'local' }, tools: tools.view(), directory, pending: store.all("SELECT request_id,status FROM desktop_tasks WHERE account=? AND status NOT IN ('succeeded','failed','cancelled','expired')", cloud.account) }); return }
+      if (requiresDesktopProject(url.pathname)) await store.project(project)
+      if (process.env.MIAO_DESKTOP_NO_GENERATION === '1' && request.method === 'POST'
+        && ['/api/agent', '/api/agent/submit', '/api/ai/generate', '/api/imagine/text'].includes(url.pathname)) throw Object.assign(new Error('本次开发验收禁止真实模型调用'), { status: 403 })
+      if (url.pathname === '/api/desktop/status') { json(response, 200, { cloud: cloud.view(), sync: { enabled: false, mode: 'local' }, tools: tools.view(), directory, pending: (await store.all("SELECT request_id,status FROM desktop_tasks WHERE account=? AND status NOT IN ('succeeded','failed','cancelled','expired')", cloud.account)) }); return }
       if (['/api/desktop/doubao', '/api/desktop/dola'].includes(url.pathname)) {
         const site = LOCAL_MEDIA_SITES.find(site => url.pathname.endsWith('/' + site.id))!
         const localRoute = localRoutes.get(site.provider)!
-        if (request.method === 'GET') { json(response, 200, localRoute.view()); return }
+        if (request.method === 'GET') { json(response, 200, (await localRoute.view())); return }
         if (request.method !== 'POST') throw Object.assign(new Error('此操作需要 POST 请求'), { status: 405 })
         mutate(request)
         const account = cloud.account, revision = cloud.authRevision, signal = AbortSignal.any([incoming.signal, modelSession.signal])
@@ -393,7 +400,7 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
       }
       if (url.pathname === '/api/desktop/tools/install' && request.method === 'POST') { mutate(request); await tools.ensure(); json(response, 200, { ok: true, tools: tools.view() }); return }
       if (url.pathname === '/api/desktop/local-text/models' && request.method === 'GET') {
-        json(response, 200, { code: 200, data: [...localRoutes.values()].flatMap(route => route.textModels()) }); return
+        json(response, 200, { code: 200, data: (await flatMapAsync([...localRoutes.values()], async route => (await route.textModels()))) }); return
       }
       if (url.pathname === '/api/desktop/local-text' && request.method === 'POST') {
         mutate(request)
@@ -405,7 +412,6 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
         if (!localMediaSite(body.model, body.providerId) || localMediaKind(body.model) !== 'text') throw Object.assign(new Error('请选择豆包或 Dola 的文本模型'), { status: 422 })
         json(response, 202, await tasks.submit(project, 'text', body)); return
       }
-      if (url.pathname === '/api/desktop/register' && request.method === 'POST') { throw Object.assign(new Error('请使用邮箱验证码注册'), { status: 422 }) }
       if (url.pathname === '/api/desktop/login' && request.method === 'POST') {
         mutate(request); computer.cancel()
         const body = await readJson(request, 64 * 1024)
@@ -414,8 +420,8 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
         json(response, 200, { session: userSession() }); return
       }
       if (url.pathname === '/api/desktop/logout' && request.method === 'POST') { mutate(request); computer.cancel(); await cloud.logout(); store.activeAccount = cloud.account; json(response, 200, { ok: true }); return }
-      if (url.pathname === '/api/desktop/reveal' && request.method === 'POST') { mutate(request); const body = await readJson(request); const file = files.locate('local', body.path, body.project || 'default'); await native.reveal(file.diskPath); json(response, 200, { ok: true }); return }
-      if (url.pathname === '/api/desktop/export' && request.method === 'POST') { mutate(request); const body = await readJson(request); const file = files.locate('local', body.path, body.project || 'default'); json(response, 200, { saved: await native.save(file.diskPath, body.path.split('/').pop()) }); return }
+      if (url.pathname === '/api/desktop/reveal' && request.method === 'POST') { mutate(request); const body = await readJson(request); const file = (await files.locate('local', body.path, body.project || 'default')); await native.reveal(file.diskPath); json(response, 200, { ok: true }); return }
+      if (url.pathname === '/api/desktop/export' && request.method === 'POST') { mutate(request); const body = await readJson(request); const file = (await files.locate('local', body.path, body.project || 'default')); json(response, 200, { saved: await native.save(file.diskPath, body.path.split('/').pop()) }); return }
       if (url.pathname.startsWith('/api/agent') && await computer.scope(() => agent.handle(request, response, session, url, helpers))) return
       if (url.pathname.startsWith('/api/nodes') || url.pathname.startsWith('/api/ext')) {
         const account = cloud.account, revision = cloud.authRevision
@@ -460,16 +466,16 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
       if (url.pathname === '/api/imagine/config') { json(response, 200, await config(url.searchParams.get('fresh') === '1')); return }
       if (url.pathname === '/api/imagine/personalization') {
         const name = url.searchParams.get('document') || 'agents'
-        if (request.method === 'GET') { json(response, 200, { ok: true, ...agent.readPersonalization('local', name) }); return }
+        if (request.method === 'GET') { json(response, 200, { ok: true, ...(await agent.readPersonalization('local', name)) }); return }
         sameOrigin(request); const body = await readJson(request, 1024 * 1024)
-        json(response, 200, { ok: true, ...agent.writePersonalization('local', body.document, body.content, body.revision ?? null) }); return
+        json(response, 200, { ok: true, ...(await agent.writePersonalization('local', body.document, body.content, body.revision ?? null)) }); return
       }
       // The authenticated desktop settings can retrieve the account's MCP token;
       // no credentials are exposed by the unauthenticated MCP endpoint.
       if (url.pathname === '/api/imagine/mcp-skill' && request.method === 'GET') { json(response, 200, { ok: true, name: 'SKILL.md', content: mcpSkillMarkdown() }); return }
       if (url.pathname === '/api/imagine/mcp') {
         if (request.method === 'GET') {
-          const access = mcpAccess(), available = mcpAvailable()
+          const access = (await mcpAccess()), available = mcpAvailable()
           json(response, 200, { ok: true, desktop: true, enabled: Boolean(available && access.enabled), hasToken: Boolean(available && access.token), token: available && access.enabled ? access.token || '' : '' }); return
         }
         if (['POST', 'PUT'].includes(request.method)) {
@@ -482,17 +488,17 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
           if (request.method === 'PUT' && typeof body?.enabled !== 'boolean') throw Object.assign(new Error('缺少 MCP 开关状态'), { status: 422 })
           // Body reading yields to other requests. Read the latest credentials
           // only now, and save synchronously so a toggle cannot undo a rotation.
-          const access = mcpAccess()
+          const access = (await mcpAccess())
           const enabled = request.method === 'POST' ? Boolean(access.enabled) : body.enabled
           const next = { enabled, token: request.method === 'POST' || !access.token ? randomBytes(32).toString('hex') : access.token }
-          saveMcpAccess(next)
+          await saveMcpAccess(next)
           if (!enabled || request.method === 'POST') mcp.disconnectUser('local')
           json(response, 200, { ok: true, desktop: true, hasToken: true, enabled, token: enabled ? next.token : '' }); return
         }
       }
       if (url.pathname === '/api/imagine/providers' || url.pathname === '/api/imagine/providers/models') {
         if (request.method === 'GET' && url.pathname === '/api/imagine/providers') {
-          json(response, 200, { ok: true, providers: listPublicProviders(files, session.userId) }); return
+          json(response, 200, { ok: true, providers: (await listPublicProviders(files, session.userId)) }); return
         }
         sameOrigin(request)
         if (request.headers['x-miaoimg-workspace'] !== '1') throw Object.assign(new Error('请求被拒绝，请刷新页面后重试'), { status: 403 })
@@ -501,26 +507,22 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
           const body = await readJson(request, 512 * 1024)
           signal.throwIfAborted()
           if (url.pathname === '/api/imagine/providers/models' && request.method === 'POST') {
-            const stored = body?.id ? providerById(files, session.userId, body.id) : null
+            const stored = body?.id ? (await providerById(files, session.userId, body.id)) : null
             if (body?.id && !stored) throw Object.assign(new Error('供应商不存在'), { status: 404 })
-            const models = await fetchProviderModels({
-              apiUrl: body?.apiUrl || stored?.apiUrl,
-              protocol: body?.protocol || stored?.protocol,
-              apiKey: String(body?.apiKey ?? '').trim() || stored?.apiKey || '',
-            }, { allowPrivate: true, fetchImpl: requestFetch || fetch, signal })
+            const models = await fetchProviderModels(providerModelFetchSettings(body, stored), { allowPrivate: true, fetchImpl: requestFetch || fetch, signal })
             signal.throwIfAborted()
             json(response, 200, { ok: true, models }); return
           }
           if (url.pathname === '/api/imagine/providers' && request.method === 'POST') {
             const provider = body?.operation === 'remove'
-              ? removeProvider(files, session.userId, body.id)
-              : upsertProvider(files, session.userId, body)
+              ? (await removeProvider(files, session.userId, body.id))
+              : (await upsertProvider(files, session.userId, body))
             json(response, 200, { ok: true, ...(body?.operation === 'remove' ? provider : { provider }) }); return
           }
           throw Object.assign(new Error('供应商接口不存在'), { status: 404 })
         })
       }
-      if (url.pathname === '/api/desktop/trash' && request.method === 'GET') { json(response, 200, { items: store.all('SELECT id,project_id,path,mime,deleted_at FROM desktop_trash WHERE account IN (?,?) ORDER BY deleted_at DESC', '', cloud.account) }); return }
+      if (url.pathname === '/api/desktop/trash' && request.method === 'GET') { json(response, 200, { items: (await store.all('SELECT id,project_id,path,mime,deleted_at FROM desktop_trash WHERE account IN (?,?) ORDER BY deleted_at DESC', '', cloud.account)) }); return }
       if (url.pathname === '/api/desktop/trash/restore' && request.method === 'POST') {
         mutate(request)
         const account = cloud.account, revision = cloud.authRevision, signal = AbortSignal.any([incoming.signal, modelSession.signal])
@@ -530,21 +532,21 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
         }
         const body = await readJson(request, undefined, signal)
         assertCurrent()
-        const item = store.get('SELECT * FROM desktop_trash WHERE id=? AND account IN (?,?)', body?.id, '', account)
+        const item = (await store.get('SELECT * FROM desktop_trash WHERE id=? AND account IN (?,?)', body?.id, '', account))
         if (!item) throw new Error('回收站记录不存在')
-        store.ensureTrashProject(item.project_id, item.account)
+        await store.ensureTrashProject(item.project_id, item.account)
         let path = item.path
-        try { files.stat('local', path, item.project_id); const dot = path.lastIndexOf('.'); path = dot > path.lastIndexOf('/') ? path.slice(0,dot) + '-恢复-' + item.id.slice(0,8) + path.slice(dot) : path + '-恢复-' + item.id.slice(0,8) } catch {}
+        try { await files.stat('local', path, item.project_id); const dot = path.lastIndexOf('.'); path = dot > path.lastIndexOf('/') ? path.slice(0,dot) + '-恢复-' + item.id.slice(0,8) + path.slice(dot) : path + '-恢复-' + item.id.slice(0,8) } catch {}
         const release = item.disk_path ? store.retainTrashBackup(item.id, item.disk_path) : () => {}
-        let cleanup: ReturnType<typeof store.cleanupTrashBackups> | undefined
+        let cleanup: Awaited<ReturnType<typeof store.cleanupTrashBackups>> | undefined
         try {
           await files.writeStream('local', { path, project: item.project_id, mime: item.mime,
             stream: item.disk_path ? createReadStream(item.disk_path) : Readable.from([Buffer.from(item.bytes)]),
             revision: null, signal, beforeCommit: assertCurrent })
-          store.run('DELETE FROM desktop_trash WHERE id=?', item.id)
+          await store.run('DELETE FROM desktop_trash WHERE id=?', item.id)
         } finally {
           release()
-          if (item.disk_path) cleanup = store.cleanupTrashBackups([item.disk_path])
+          if (item.disk_path) cleanup = (await store.cleanupTrashBackups([item.disk_path]))
         }
         const cleanupWarning = cleanup && (cleanup.pending || cleanup.failed) ? '文件已恢复，回收站原件暂未清理' : ''
         json(response, 200, { ok: true, path, ...(cleanupWarning ? { cleanupWarning } : {}) }); return
@@ -552,7 +554,7 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
       if (url.pathname === '/api/imagine/session') { cloud.refresh().then(() => { store.activeAccount = cloud.account }).catch(() => {}); json(response, 200, { session: userSession(), requireLogin: false }); return }
       if (url.pathname === '/api/imagine/logout' && request.method === 'POST') { mutate(request); computer.cancel(); await cloud.logout(); store.activeAccount = cloud.account; json(response, 200, { ok: true }); return }
       if (url.pathname.startsWith('/api/imagine/workspace/projects')) {
-        if (request.method === 'GET') { json(response, 200, { projects: store.projects().map(item => ({ ...item, fileCount: files.fileCounts('local').get(item.id) || 0 })), scoped: true }); return }
+        if (request.method === 'GET') { json(response, 200, { projects: (await mapAsync((await store.projects()), async item => ({ ...item, fileCount: (await (await files.fileCounts('local')).get(item.id)) || 0 }))), scoped: true }); return }
         mutate(request)
         const authRevision = cloud.authRevision
         const account = cloud.account
@@ -563,61 +565,70 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
           const id = typeof body?.id === 'string' ? body.id.trim() : ''
           if (!id) throw Object.assign(new Error('缺少项目编号'), { status: 422 })
           const name = cleanProjectName(body?.name)
-          store.project(id)
-          store.renameProject(id, name)
-          json(response, 200, { project: store.project(id) }); return
+          await store.project(id)
+          await store.renameProject(id, name)
+          json(response, 200, { project: (await store.project(id)) }); return
         }
-        if (url.pathname.endsWith('/open')) { store.project(body.id); store.run("UPDATE projects SET last_opened_at=? WHERE user_id='local' AND id=?", new Date().toISOString(), body.id); json(response, 200, { project: store.project(body.id) }); return }
+        if (url.pathname.endsWith('/open')) { await store.project(body.id); await store.run("UPDATE projects SET last_opened_at=? WHERE user_id='local' AND id=?", new Date().toISOString(), body.id); json(response, 200, { project: (await store.project(body.id)) }); return }
         if (url.pathname.endsWith('/remove')) {
           if (typeof body?.id !== 'string' || !body.id) throw Object.assign(new Error('缺少项目编号'), { status: 422 })
-          store.project(body.id)
-          if (store.get("SELECT request_id FROM desktop_tasks WHERE project_id=? AND status NOT IN ('succeeded','failed','cancelled','expired')", body.id)) throw new Error('该项目还有待取回的生成任务，请先等待结果或明确取消')
+          await store.project(body.id)
+          if ((await store.get("SELECT request_id FROM desktop_tasks WHERE project_id=? AND status NOT IN ('succeeded','failed','cancelled','expired')", body.id))) throw new Error('该项目还有待取回的生成任务，请先等待结果或明确取消')
           await mcp.withProjectRemoval('local', body.id, async () => {
             assertCurrent()
             try {
               await agent.prepareProjectRemoval('local', body.id)
               assertCurrent()
-              store.project(body.id)
-              if (store.get("SELECT request_id FROM desktop_tasks WHERE project_id=? AND status NOT IN ('succeeded','failed','cancelled','expired')", body.id)) throw new Error('该项目还有待取回的生成任务，请先等待结果或明确取消')
+              await store.project(body.id)
+              if ((await store.get("SELECT request_id FROM desktop_tasks WHERE project_id=? AND status NOT IN ('succeeded','failed','cancelled','expired')", body.id))) throw new Error('该项目还有待取回的生成任务，请先等待结果或明确取消')
+              // Preserve application credentials before even staging ordinary
+              // project files in Trash; a failed migration leaves them intact.
+              await files.prepareProjectRemoval('local', body.id)
               // 整个项目先按原目录结构放进系统废纸篓，系统收下了才从妙图里删；放不进去就不删，告诉用户。
-              const projectEntries = files.list('local', body.id)
-              const staged = systemTrash.stage(store.projectLabel(body.id), projectEntries, path =>
-                trashSource(body.id, path, projectEntries.find(entry => entry.path === path)?.mime || ''))
+              const projectEntries = (await files.list('local', body.id))
+              const staged = (await systemTrash.stage((await store.projectLabel(body.id)), projectEntries, async path =>
+                (await trashSource(body.id, path, projectEntries.find(entry => entry.path === path)?.mime || ''))))
               try { await systemTrash.send(staged) } catch (error) {
                 systemTrash.discard(staged)
                 throw Object.assign(new Error('没能把项目放进废纸篓，项目未删除'), { status: 500, cause: error })
               }
               assertCurrent()
-              const removed = files.removeProject('local', body.id, { preserveDefault: true })
-              store.run('DELETE FROM desktop_sync WHERE project_id=? AND account=?', body.id, account)
+              const removed = (await files.removeProject('local', body.id, { preserveDefault: true }))
+              await store.run('DELETE FROM desktop_sync WHERE project_id=? AND account=?', body.id, account)
               await agent.finishProjectRemoval('local', body.id)
               json(response, 200, { ok: true, ...removed })
             } catch (error) { await agent.cancelProjectRemoval('local', body.id); throw error }
           })
           return
         }
-        json(response, 200, { project: { ...store.createProject(body.name), fileCount: 0 } }); return
+        json(response, 200, { project: { ...(await store.createProject(body.name)), fileCount: 0 } }); return
       }
       if (url.pathname === '/api/imagine/workspace/files') {
-        store.project(project)
+        await store.project(project)
         const path = url.searchParams.get('path')
         if (request.method === 'GET' || request.method === 'HEAD') {
-          if (!path) { json(response, 200, { ...files.listSnapshot('local', project), capabilities: { nonRecursiveRemove: true, copyFiles: true, copyFilesBatch: true, copyCanvasSnapshots: true, guardedCanvasRemove: true, markdownFileLinks: true, treeSourceEntries: true } }); return }
-          let file = files.locate('local', path, project)
+          if (!path) { json(response, 200, { ...(await files.listSnapshot('local', project)), capabilities: { nonRecursiveRemove: true, copyFiles: true, copyFilesBatch: true, copyCanvasSnapshots: true, guardedCanvasRemove: true, markdownFileLinks: true, treeSourceEntries: true } }); return }
+          let file = (await files.locate('local', path, project))
           const waveform = url.searchParams.get('waveform') === '1'
+          const analyzeSilence = url.searchParams.get('silence') === '1'
           const preview = url.searchParams.get('preview') === '1' && /^(image|video)\//i.test(file.mime)
           const play = url.searchParams.get('playback') === '1' && /^video\//.test(file.mime)
-          if (waveform || preview || play) {
+          if (waveform || analyzeSilence || preview || play) {
             const account = cloud.account, authRevision = cloud.authRevision, revision = file.revision
-            const assertCurrent = () => {
+            const assertCurrent = async () => {
               if (cloud.account !== account || cloud.authRevision !== authRevision) throw Object.assign(new Error('账号已切换，请重新读取'), { status: 409 })
-              store.project(project)
-              if (files.stat('local', path, project).revision !== revision) throw Object.assign(new Error('媒体已更新，请重新读取'), { status: 409 })
+              await store.project(project)
+              if ((await files.stat('local', path, project)).revision !== revision) throw Object.assign(new Error('媒体已更新，请重新读取'), { status: 409 })
             }
             await withRequestSignal(request, response, modelSession.signal, async signal => {
+              if (analyzeSilence) {
+                const number = (name, fallback) => url.searchParams.has(name) ? Number(url.searchParams.get(name)) : fallback
+                const result = await silence.read(JSON.stringify([account, project]), file, { thresholdDb: number('thresholdDb', -40), minSilence: number('minSilence', 0.4), padding: number('padding', 0.04) }, signal, () => { signal.throwIfAborted(); if (cloud.account !== account || cloud.authRevision !== authRevision) throw Object.assign(new Error('账号已切换，请重新读取'), { status: 409 }) })
+                signal.throwIfAborted(); await assertCurrent(); json(response, 200, { ...result, revision }); return
+              }
               if (waveform) {
                 const peaks = await waveforms.read(JSON.stringify([account, project]), file, signal, assertCurrent)
-                signal.throwIfAborted(); assertCurrent()
+                signal.throwIfAborted(); await assertCurrent()
                 json(response, 200, { peaks, revision }); return
               }
               if (preview) {
@@ -629,7 +640,7 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
                 const owner = createHash('sha256').update(project).digest('hex')
                 file = await playback.playback(owner, file, { signal, beforeCommit: assertCurrent }) || file
               }
-              signal.throwIfAborted(); assertCurrent()
+              signal.throwIfAborted(); await assertCurrent()
               await sendFile(request, response, file)
             })
             return
@@ -638,19 +649,8 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
         }
         mutate(request)
         if (request.method === 'PUT') { json(response, 200, await files.writeStream('local', { path, project, mime: request.headers['content-type'] || 'application/octet-stream', stream: request, revision: url.searchParams.get('revision') || null })); return }
-        const body = await readJson(request); const scope = body.project || project; store.project(scope)
-        json(response, 200, files.mutate('local', { ...body, project: scope })); return
-      }
-      if (url.pathname === '/api/imagine/workspace') {
-        store.project(project)
-        if (request.method === 'GET') { json(response, 200, store.workspaceForUser('local', project)); return }
-        mutate(request); const body = await readJson(request); const scope = body.project || project; store.project(scope)
-        const current = store.workspaceForUser('local', scope)
-        if ('workspace' in body && body.workspaceRevision !== current.workspaceRevision) throw Object.assign(new Error('本地工作区刚更新，请重新读取'), { status: 409 })
-        let assets = current.assets
-        if (body.assetOperation === 'save') assets = [...assets.filter(item => item.id !== body.asset.id), body.asset]
-        if (body.assetOperation === 'remove') assets = assets.filter(item => item.id !== body.assetId)
-        json(response, 200, store.saveWorkspaceForUser('local', { workspace: body.workspace, assets, project: scope })); return
+        const body = await readJson(request); const scope = body.project || project; await store.project(scope)
+        json(response, 200, (await files.mutate('local', { ...body, project: scope }))); return
       }
       if (url.pathname === '/api/imagine/reference-url' && request.method === 'POST') {
         mutate(request)
@@ -694,19 +694,19 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
         const kind = url.pathname === '/api/imagine/video/node' ? 'video' : url.searchParams.get('kind') === 'text' ? 'text' : 'image'
         if (kind === 'text' && (!url.searchParams.get('providerId') || !localMediaSite(url.searchParams.get('model'), url.searchParams.get('providerId')) || localMediaKind(url.searchParams.get('model')) !== 'text')) throw Object.assign(new Error('原文本任务来源或模型无效'), { status: 422 })
         const row = kind === 'text'
-          ? store.get("SELECT * FROM desktop_tasks WHERE project_id=? AND account=? AND directory=? AND kind='text' AND json_extract(result,'$.route') IN ('doubao-local','dola-local') AND json_extract(result,'$.route')=? AND json_extract(result,'$.model')=? ORDER BY created_at DESC,rowid DESC LIMIT 1", project, cloud.account, url.searchParams.get('outputDirectory'), url.searchParams.get('providerId'), url.searchParams.get('model'))
-          : store.get('SELECT * FROM desktop_tasks WHERE project_id=? AND account=? AND directory=? AND kind=? ORDER BY created_at DESC,rowid DESC LIMIT 1', project, cloud.account, url.searchParams.get('outputDirectory'), kind)
+          ? (await store.get("SELECT * FROM desktop_tasks WHERE project_id=? AND account=? AND directory=? AND kind='text' AND json_extract(result,'$.route') IN ('doubao-local','dola-local') AND json_extract(result,'$.route')=? AND json_extract(result,'$.model')=? ORDER BY created_at DESC,rowid DESC LIMIT 1", project, cloud.account, url.searchParams.get('outputDirectory'), url.searchParams.get('providerId'), url.searchParams.get('model')))
+          : (await store.get('SELECT * FROM desktop_tasks WHERE project_id=? AND account=? AND directory=? AND kind=? ORDER BY created_at DESC,rowid DESC LIMIT 1', project, cloud.account, url.searchParams.get('outputDirectory'), kind))
         json(response, 200, { ok: true, task: row && row.kind === kind && !['failed','cancelled','expired'].includes(row.status) ? { requestId: row.request_id, status: row.status } : null }); return
       }
       const task = /^\/api\/imagine\/(generation|video)\/([A-Za-z0-9_-]+)(?:\/(restore|cancel))?$/.exec(url.pathname)
       if (task) {
-        const row = store.get('SELECT * FROM desktop_tasks WHERE request_id=? AND project_id=?', task[2], project)
+        const row = (await store.get('SELECT * FROM desktop_tasks WHERE request_id=? AND project_id=?', task[2], project))
         if (!row) throw Object.assign(new Error('本地任务不存在'), { status: 404 })
         if (task[3] === 'cancel') {
           if (request.method !== 'POST') throw Object.assign(new Error('取消任务需要 POST 请求'), { status: 405 })
           mutate(request); json(response, 200, await tasks.cancel(row)); return
         }
-        const result = tasks.status(row)
+        const result = (await tasks.status(row))
         if (task[3] === 'restore' && ['failed', 'cancelled', 'expired'].includes(result.status)) throw Object.assign(new Error(result.error || '原任务已结束，没有可取回的生成文件'), { status: result.status === 'expired' ? 410 : 422 })
         json(response, 200, task[3] === 'restore' ? { ok: true, path: result.video?.metadata?.workspacePath || result.images?.[0]?.path || '' } : result); return
       }
@@ -718,7 +718,7 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
         // timeout. Serve the official catalog and last verified local menus now.
         const catalog = await modelCatalog(url.pathname)
         void Promise.all([...localRoutes.values()].map(route => route.prepareModels(AbortSignal.timeout(30_000)).catch(() => {})))
-        json(response, 200, { ...catalog, data: [...(Array.isArray(catalog.data) ? catalog.data : []), ...[...localRoutes.values()].flatMap(route => route.models())] })
+        json(response, 200, { ...catalog, data: [...(Array.isArray(catalog.data) ? catalog.data : []), ...(await flatMapAsync([...localRoutes.values()], async route => (await route.models())))] })
         return
       }
       if (url.pathname === '/api/imagine/profile' && request.method === 'POST') {
@@ -811,11 +811,11 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
       if (!response.headersSent) json(response, Number(error.status) || 400, { ok: false, code: Number(error.status) || 400, error: userFacingError(error, { status: Number(error.status) || 400 }), message: userFacingError(error, { status: Number(error.status) || 400 }), errorExplanation: error.errorExplanation || explainUserError(error, { status: Number(error.status) || 400 }), ...(error.activeRequestId ? { activeRequestId: error.activeRequestId } : {}) }); else response.destroy() }
     finally { incoming.finish() }
   }))
-  const preferredPort = Number(store.get("SELECT value FROM desktop_meta WHERE key='mcp-port'")?.value || 0)
+  const preferredPort = Number((await store.get("SELECT value FROM desktop_meta WHERE key='mcp-port'"))?.value || 0)
   const listen = port => new Promise <void>((done, fail) => { const error = reason => { server.removeListener('listening', ready); fail(reason) }; const ready = () => { server.removeListener('error', error); done() }; server.once('error', error); server.once('listening', ready); server.listen(port, '127.0.0.1') })
   try { await listen(Number.isInteger(preferredPort) && preferredPort > 1024 && preferredPort <= 65535 ? preferredPort : 0) }
   catch (error) { if (error.code !== 'EADDRINUSE' || !preferredPort) throw error; await listen(0) }
-  store.run("INSERT INTO desktop_meta(key,value) VALUES('mcp-port',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", String((server.address() as import('node:net').AddressInfo).port))
+  await store.run("INSERT INTO desktop_meta(key,value) VALUES('mcp-port',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", String((server.address() as import('node:net').AddressInfo).port))
   address = `http://127.0.0.1:${(server.address() as import('node:net').AddressInfo).port}`
   return { address, token, csrf, store, files, cloud, tasks, computer, renderer, localRoutes,
     stop() {
@@ -840,7 +840,7 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
         const agentStopped = agent.close(), mcpStopped = mcp.stop(), computerStopped = computer.stop()
         server.closeAllConnections()
         const serverStopped = new Promise<void>(done => server.close(() => done()))
-        await settle([agentStopped, mcpStopped, computerStopped, ...localStopped, previews.stop(), playback.stop(), waveforms.stop(), textStopped, serverStopped, httpStopped, cloudStopped])
+        await settle([agentStopped, mcpStopped, computerStopped, ...localStopped, previews.stop(), playback.stop(), waveforms.stop(), silence.stop(), textStopped, serverStopped, httpStopped, cloudStopped])
         // Aborting work is expected to reject its result. Join that outcome
         // without confusing it with a failure of a service's own close().
         await Promise.allSettled([...tasks.inflight.values(), ...tasks.cancelling.values(), ...tasks.saving.values(), ...tasks.deliveries.values(), ...tasks.staging.values(), ...[...tasks.submitting.values()].map(item => item.promise), ...(tools.pending ? [tools.pending] : [])])
@@ -848,8 +848,8 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
         // A rejected service close is not proof that its callbacks stopped.
         // Keep the store open if ownership could not be fully drained.
         if (errors.length) throw errors[0]
-        store.cleanupTrashBackups()
-        store.close()
+        await store.cleanupTrashBackups()
+        await store.close()
       }
       void shutdown().then(completed.resolve, completed.reject)
       return stopRequest

@@ -6,6 +6,7 @@ import { translate } from "@miaoimg/i18n/vue";
 //   POST ./api/imagine/generate          图片生成（异步任务 + 轮询）
 //   POST ./api/imagine/video             视频生成（异步任务 + 轮询）
 // 媒体输出写回当前账号的工作区目录，账号数据随登录态保留。
+import { withReplyLanguage } from '../../../../../../server/reply-language.ts';
 import { inject } from "vue";
 import { captureWorkspaceScope, assertWorkspaceScope } from "@/lib/workspaceRemote";
 import type { NodeAiModel, NodeMediaModel } from "./nodeAiTypes";
@@ -46,6 +47,7 @@ export type NodeImageRequest = {
   modelId: string;
   prompt: string;
   referenceHistory?: ReferenceHistory;
+  referenceRoles?: string[];
   outputDirectory: string;
   // 一次返回多张时，每张图写入各自的节点目录，删除生成节点不会带走其它节点的文件。
   outputDirectories?: string[];
@@ -280,10 +282,29 @@ async function toDataUrl(files: MediaFiles, path: string, mimeType: string) {
   return `data:${type};base64,${btoa(binary)}`;
 }
 
-async function imageReferencePayload(files: MediaFiles, request: Pick<NodeImageRequest, "images">, model?: NodeMediaModel) {
+async function imageReferencePayload(files: MediaFiles, request: Pick<NodeImageRequest, "images" | "edit">, model?: NodeMediaModel, signal?: AbortSignal) {
   const images = request.images || [];
   if (model?.maxReferences !== undefined && images.length > model.maxReferences) {
     throw new Error(translate("当前模型最多支持 {0} 张参考图", { 0: model.maxReferences }));
+  }
+  // The existing region-edit contract requires a PNG original. Decode only an
+  // editing copy, at original dimensions, shared by quote and submission. Never
+  // replace the workspace original or use the display thumbnail for its mask.
+  if (request.edit && images.length === 1 && images[0]!.mimeType !== "image/png") {
+    signal?.throwIfAborted();
+    const original = new Image();
+    original.src = await toDataUrl(files, images[0]!.path, images[0]!.mimeType);
+    await original.decode(); signal?.throwIfAborted();
+    const width = original.naturalWidth, height = original.naturalHeight;
+    if (!width || !height || width > 8192 || height > 8192 || width * height > 36_000_000)
+      throw new Error(translate("图片超过局部编辑上限（单边 8192 像素、合计 3600 万像素）"));
+    const canvas = document.createElement("canvas"); canvas.width = width; canvas.height = height;
+    try {
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error(translate("无法创建蒙版画布"));
+      context.drawImage(original, 0, 0); signal?.throwIfAborted();
+      return { references: [canvas.toDataURL("image/png")] };
+    } finally { canvas.width = 0; canvas.height = 0; original.src = ""; }
   }
   const workspaceOnly = images.every(item => !/^(?:data:|blob:|https?:|[/])/i.test(item.path));
   if (workspaceOnly) return { referenceFiles: images.map(item => {
@@ -377,9 +398,9 @@ export function useNodeAi() {
     return createFiles();
   }
 
-  async function getMediaModels(): Promise<NodeMediaModel[]> {
+  async function getMediaModels(force = false): Promise<NodeMediaModel[]> {
     assertWorkspaceScope(requestScope);
-    return loadMediaModels();
+    return loadMediaModels(force);
   }
 
   async function requestJson(url: string, body: unknown, signal?: AbortSignal) {
@@ -504,7 +525,7 @@ export function useNodeAi() {
     const models = await loadMediaModels();
     const model = models.find(item => item.providerId === request.providerId && item.modelId === request.modelId);
     const files = getFiles();
-    const referencePayload = await imageReferencePayload(files, request, model);
+    const referencePayload = await imageReferencePayload(files, request, model, signal);
     if (localMedia && 'references' in referencePayload) throw new Error(translate('请先把参考图片保存到项目里，再用这个模型生成'));
     const size = localMedia ? 'auto' : pickSize(model, request.size, request.ratio || ratioOf(model, request.size));
     signal?.throwIfAborted();
@@ -520,6 +541,7 @@ export function useNodeAi() {
         providerId: request.providerId,
         prompt: request.prompt,
         referenceHistory: request.referenceHistory,
+        ...(model?.referenceRoles?.length && request.referenceRoles?.length ? { referenceRoles: request.referenceRoles } : {}),
         size: size || undefined,
         ...(request.ratio ? { ratio: request.ratio } : {}),
         ...(localMedia || !request.format ? {} : { format: request.format }),
@@ -612,11 +634,12 @@ export function useNodeAi() {
     const model = models.find(item => item.modelId === request.modelId);
     const files = getFiles();
     // Quote and submission use the same original-file descriptors and checks.
-    const referencePayload = await imageReferencePayload(files, request, model);
+    const referencePayload = await imageReferencePayload(files, request, model, signal);
     const size = pickSize(model, request.size, request.ratio || ratioOf(model, request.size));
     return requestJson("./api/imagine/estimate", {
       model: request.modelId,
       prompt: request.prompt,
+      ...(model?.referenceRoles?.length && request.referenceRoles?.length ? { referenceRoles: request.referenceRoles } : {}),
       size: size || undefined,
       ...(request.ratio ? { ratio: request.ratio } : {}),
       ...(request.format ? { format: request.format } : {}),
@@ -648,6 +671,7 @@ export function useNodeAi() {
     // the meaning of optional-tail-frame requests for every upstream.
     const firstFrame = request.firstFrame ? await toReference(request.firstFrame.path) : "";
     const lastFrame = request.lastFrame ? await toReference(request.lastFrame.path) : "";
+    const keyframes = await Promise.all((request.keyframes || []).map(async item => ({ image: { url: await toReference(item.image.url) }, timestamp_s: item.timestamp_s })));
     const videos = await Promise.all((request.videos || []).map(item => toReference(item.path)));
     const audios = await Promise.all((request.audios || []).map(item => toReference(item.path)));
     // 参考视频按输入时长计费：本地文件在浏览器里量时长，只用于计费，不发给上游。
@@ -699,7 +723,7 @@ export function useNodeAi() {
         videos: videos.length ? videos : undefined,
         audios: audios.length ? audios : undefined,
         referenceVoices: request.referenceVoices?.length ? request.referenceVoices : (request.voice ? [request.voice] : undefined),
-        keyframes: request.keyframes?.length ? request.keyframes : undefined,
+        keyframes: keyframes.length ? keyframes : undefined,
         videoSeconds: videoSeconds || undefined,
         // 服务端会按这个目录把成片直接写进工作区，浏览器不必自己下载再回写。
         outputDirectory: request.outputDirectory || `${request.directory}/assets`,
@@ -790,6 +814,7 @@ export function useNodeAi() {
     const audios = await Promise.all((request.audios || []).map(item => toReference(item.path)));
     const firstFrame = request.firstFrame ? await toReference(request.firstFrame.path) : "";
     const lastFrame = request.lastFrame ? await toReference(request.lastFrame.path) : "";
+    const keyframes = await Promise.all((request.keyframes || []).map(async item => ({ image: { url: await toReference(item.image.url) }, timestamp_s: item.timestamp_s })));
     const mode = Array.isArray(request.mode) ? "image" : request.mode || "text";
     return requestJson("./api/imagine/video/estimate", {
       model: request.modelId,
@@ -810,6 +835,8 @@ export function useNodeAi() {
       images: images.length ? images : undefined,
       videos: videos.length ? videos : undefined,
       audios: audios.length ? audios : undefined,
+      referenceVoices: request.referenceVoices?.length ? request.referenceVoices : (request.voice ? [request.voice] : undefined),
+      keyframes: keyframes.length ? keyframes : undefined,
       videoSeconds: undefined,
     }, signal) as Promise<NodeCreditEstimate>;
   }
@@ -817,7 +844,7 @@ export function useNodeAi() {
   async function getModels(options: { tools?: boolean } = {}): Promise<NodeAiModel[]> {
     const scope = captureWorkspaceScope();
     const config = await loadConfig();
-    const providers = await loadUserProviders().catch(() => []);
+    const providers = await loadUserProviders();
     const local = window.miaoDesktop && !options.tools ? await requestData<NodeAiModel[]>('./api/desktop/local-text/models') : [];
     assertWorkspaceScope(scope);
     const official = config.textEnabled === false ? [] : (config.textModels || []).filter(model => model.configured !== false);
@@ -833,7 +860,7 @@ export function useNodeAi() {
           contextWindow: model.contextWindow,
           maxOutputTokens: model.maxOutputTokens,
         })),
-      ...providers.flatMap(provider => provider.models.map((model): NodeAiModel => ({
+      ...providers.filter(provider => provider.hasKey).flatMap(provider => provider.models.map((model): NodeAiModel => ({
         providerId: provider.id,
         providerLabel: provider.label,
         modelId: model.id,
@@ -873,7 +900,7 @@ export function useNodeAi() {
       else {
         if (request.tools?.length) throw new Error(translate('用豆包或 Dola 账号登录的文本模型不能调用 Agent 工具，请换一个文本模型'));
         if (request.references?.some(item => item.dataType !== 'STRING')) throw new Error(translate('这个文本模型只能引用文字，请移除图片或视频引用'));
-        prompt = [request.systemPrompt || '', request.prompt.trim(), ...(request.references || []).map(item => String(item.value || '').trim())].filter(Boolean).join('\n\n');
+        prompt = [withReplyLanguage(request.systemPrompt), request.prompt.trim(), ...(request.references || []).map(item => String(item.value || '').trim())].filter(Boolean).join('\n\n');
         request.signal?.throwIfAborted();
         // A failed binding save is still before dispatch and must not send.
         await request.onTask?.(requestId, false);
@@ -941,8 +968,8 @@ export function useNodeAi() {
         });
         for await (const event of readAgentEvents(response, signal)) {
           if (event.type === "status") request.onEvent?.({ type: "status", message: translate(event.message) });
-          if (event.type === "accepted") request.onEvent?.({ type: "status", message: translate(definitions.length ? "Agent 已接收，正在规划动画…" : "正在生成文本…") });
-          if (event.type === "compaction") request.onEvent?.({ type: "status", message: translate(definitions.length ? event.active ? "正在整理场景上下文…" : "继续生成动画…" : event.active ? "正在整理文本上下文…" : "继续生成文本…") });
+          if (event.type === "accepted") request.onEvent?.({ type: "status", message: translate(definitions.length ? "Agent 已接收，正在处理…" : "正在生成文本…") });
+          if (event.type === "compaction") request.onEvent?.({ type: "status", message: translate(definitions.length ? event.active ? "正在整理场景上下文…" : "继续处理…" : event.active ? "正在整理文本上下文…" : "继续生成文本…") });
           if (event.type === "text" || event.type === "thinking") {
             if (event.type === "text") blocks.set(event.blockId, event.content ?? (blocks.get(event.blockId) || "") + (event.delta || ""));
             if (event.delta) request.onEvent?.({ type: event.type === "text" ? "text" : "reasoning", delta: event.delta });

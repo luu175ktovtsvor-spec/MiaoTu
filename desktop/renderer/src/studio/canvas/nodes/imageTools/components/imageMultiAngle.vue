@@ -43,13 +43,13 @@
           <input v-model.number="settings.elevation" type="range" min="-80" max="80" step="1" :disabled="busy" :aria-label="translate('相机垂直俯仰')" />
         </div>
         <div class="rangeControl">
-          <div class="rangeHeader"><span>{{ translate('拍摄距离') }}</span><label class="numberControl"><input :value="settings.distance.toFixed(1)" type="number" min="2" max="10" step="0.1" :disabled="busy" :aria-label="translate('拍摄距离数值')" @change="setParameter($event, 'distance')" /><span>{{ getMultiAngleShot(settings.distance) }}</span></label></div>
+          <div class="rangeHeader"><span>{{ translate('拍摄距离') }}</span><label class="numberControl"><input :value="settings.distance.toFixed(1)" type="number" min="2" max="10" step="0.1" :disabled="busy" :aria-label="translate('拍摄距离数值')" @change="setParameter($event, 'distance')" /><span>{{ translate(getMultiAngleShot(settings.distance)) }}</span></label></div>
           <input v-model.number="settings.distance" type="range" min="2" max="10" step="0.1" :disabled="busy" :aria-label="translate('相机拍摄距离')" />
         </div>
       </div>
       <div class="lensRow">
         <div class="lensControl"><span>{{ translate('镜头') }}</span><div class="lensSwitch" role="group" :aria-label="translate('镜头类型')"><button type="button" :aria-pressed="settings.lens === 'standard'" :disabled="busy" @click="settings.lens = 'standard'">{{ translate('标准') }}</button><button type="button" :aria-pressed="settings.lens === 'wide'" :disabled="busy" @click="settings.lens = 'wide'">{{ translate('广角') }}</button></div></div>
-        <span class="angleSummary">相对原图 · {{ Math.round(settings.azimuth) }}° / {{ Math.round(settings.elevation) }}° · {{ getMultiAngleShot(settings.distance) }}</span>
+        <span class="angleSummary">{{ translate('相对原图 · {0}° / {1}° · {2}', { 0: Math.round(settings.azimuth), 1: Math.round(settings.elevation), 2: translate(getMultiAngleShot(settings.distance)) }) }}</span>
       </div>
       <imageVariationGenerator
         v-model:generating="generating"

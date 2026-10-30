@@ -23,7 +23,6 @@
         :mountNode="canvasPanelRef?.mountDocumentNode"
         :observeNode="canvasPanelRef?.observeDocumentNode" />
     </keep-alive>
-    <workspaceMenu v-if="!isDesktop" class="workspaceMenu" :disabled="leavingProject" @exit="exitProject" @switchProject="switchProject" @projectRemoved="projectRemoved" />
     <el-segmented :modelValue="activePanel" class="panelSwitcher" :class="{ docked: !!panelSwitcherPosition }" :style="panelSwitcherStyle" :options="panelOptions" size="small" :aria-label="translate('切换面板')" @change="switchPanel">
       <template #default="{ item }">
         <span class="panelOption" :title="item.label">
@@ -53,7 +52,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, inject, nextTick, onBeforeUnmount, onMounted, onScopeDispose, provide, ref, watch } from "vue";
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, onScopeDispose, provide, ref, watch } from "vue";
 import axios from "axios";
 import { IconLayoutDashboard, IconFileText } from "@tabler/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
@@ -64,7 +63,6 @@ import { captureWorkspaceScope, assertWorkspaceScope } from "@/lib/workspaceRemo
 import { useWorkspaceContentFiles as useWorkspaceFiles } from "@/lib/workspaceFiles";
 import anonymousData from "@/lib/anonymousData";
 import canvasHost from "./canvasHost.vue";
-import workspaceMenu from "./components/workspaceMenu.vue";
 import { translate } from "@miaoimg/i18n/vue";
 import type { CanvasContext } from "@miaoimg/tool-canvas/runtime";
 import type { WorkspaceFileMutator, WorkspaceFileCoordinator } from "@/pages/workspace/canvasFiles";
@@ -86,7 +84,6 @@ onMounted(() => {
   else window.setTimeout(() => (agentReady.value = true), 1500);
 });
 const workspaceStore = useWorkspaceStore();
-const isDesktop = Boolean(window.miaoDesktop);
 // 面板标签要跟着语言切，所以是 computed；模块级数组只会在 import 时求值一次。
 const panelOptions = computed(() => [
   { label: translate("画布"), value: "canvas", icon: IconLayoutDashboard },
@@ -402,7 +399,6 @@ onScopeDispose(() => unregisterNativeSave?.());
 
 // 切换项目 = 换一个工作区命名空间重新挂载（由外壳负责）。先把画布和文档刷盘，
 // 否则正在编辑的内容会跟着这次重挂载丢掉。
-const projectControl = inject<{ current: string; switch: (id: string) => void } | undefined>("workspaceProjectControl", undefined);
 const leavingProject = ref(false);
 let discardProject = false;
 function assertCurrentWorkspace() {
@@ -413,31 +409,6 @@ function currentWorkspace() {
   try { assertCurrentWorkspace(); return true; }
   catch { return false; }
 }
-async function switchProject(id: string) {
-  if (!projectControl || id === projectControl.current || leavingProject.value || !currentWorkspace()) return;
-  if (canvasPanelRef.value?.saveBusy) {
-    ElMessage.warning(translate("画布操作尚未完成，请稍后再切换"));
-    return;
-  }
-  leavingProject.value = true;
-  try {
-    await flushSave();
-    if (currentWorkspace()) projectControl.switch(id);
-  } catch (error) {
-    if (currentWorkspace()) ElMessage.error(translate("项目未能保存，已留在当前项目：{0}", { 0: error instanceof Error ? error.message : translate("项目保存失败") }));
-  } finally { leavingProject.value = false; }
-}
-
-function projectRemoved(id: string) {
-  if (!projectControl || id !== projectControl.current || !currentWorkspace()) return;
-  // A confirmed deletion must not flush the removed files back into storage.
-  discardProject = true;
-  (documentPanelRef.value ?? cachedDocumentPanel)?.cancelSave();
-  canvasPanelRef.value?.cancelSave();
-  controlLifetime.abort(new Error(translate("工作区已关闭")));
-  projectControl.switch("default");
-}
-
 // 画布嵌在妙图的 React 外壳里，离开工作区时先把画布与文档刷盘。
 onBeforeUnmount(() => { if (!discardProject) void flushSave().catch(() => {}); });
 
@@ -467,8 +438,7 @@ async function exitProject() {
       (documentPanelRef.value ?? cachedDocumentPanel)?.cancelSave();
       canvasPanelRef.value?.cancelSave();
     }
-    if (currentWorkspace() && window.miaoDesktop) window.dispatchEvent(new Event("miao-open-home"));
-    else if (currentWorkspace()) window.location.href = "/?library=1&from=canvas";
+    if (currentWorkspace()) window.dispatchEvent(new Event("miao-open-home"));
   } finally { leavingProject.value = false; }
 }
 provide("exitWorkspace", exitProject);
@@ -528,14 +498,6 @@ function saveDocumentNode(directory: string, canvasPath: string, nodeId: string,
     }
   }
 
-  .workspaceMenu {
-    position: absolute;
-    // 与工作区名称同排；名称条让出完整按钮宽度和间距。
-    top: 15px;
-    left: 15px;
-    z-index: 5;
-  }
-
   // 右侧 Agent 在窄屏会占住底部右侧，工具条改靠左，保持缩放和节点整理按钮可点。
   @media (max-width: 1100px) {
     :deep(.vue-flow__panel.bottom.center:has(.canvasControls)) {
@@ -548,14 +510,11 @@ function saveDocumentNode(directory: string, canvasPath: string, nodeId: string,
   }
 
   @media (max-width: 900px) {
-    .workspaceMenu { top: 15px; left: 12px; }
     :deep(.canvasMenuPanel) { top: 50px; }
     :deep(.canvasMenu) { margin-left: 0; max-width: calc(100vw - 30px); }
     .panelSwitcher { left: auto; right: 72px; transform: none; }
   }
   @media (max-width: 480px) {
-    :deep(.workspaceMenu .el-card__body) { padding: 4px !important; }
-    :deep(.workspaceMenu .menuContent) { gap: 4px; }
     .panelSwitcher { right: 68px; font-size: 11px; }
     :deep(.vue-flow__panel.bottom.center:has(.canvasControls)) { left: 12px; right: 12px; }
     :deep(.canvasControls) { justify-content: space-between; gap: 2px; }
@@ -566,7 +525,6 @@ function saveDocumentNode(directory: string, canvasPath: string, nodeId: string,
 
   // 设置对话框打开时，顶部浮层自动让位。画布仍保留操作区，关闭设置后恢复原位。
   &.settingsOpen {
-    .workspaceMenu,
     .panelSwitcher,
     :deep(.canvasMenuPanel),
     :deep(.canvasMenu),
@@ -580,7 +538,6 @@ function saveDocumentNode(directory: string, canvasPath: string, nodeId: string,
       pointer-events: none;
     }
 
-    .workspaceMenu,
     .panelSwitcher,
     :deep(.canvasMenuPanel),
     :deep(.floatingAgent) {
@@ -733,7 +690,6 @@ function saveDocumentNode(directory: string, canvasPath: string, nodeId: string,
 :global(body:has(.workspacePage.settingsOpen) .canvasToolbarCard),
 :global(body:has(.workspacePage.settingsOpen) .assetLibraryPanel),
 :global(body:has(.workspacePage.settingsOpen) .floatingAgent),
-:global(body:has(.workspacePage.settingsOpen) .workspaceMenu),
 :global(body:has(.workspacePage.settingsOpen) .panelSwitcher) {
   visibility: hidden;
   pointer-events: none;
@@ -741,7 +697,6 @@ function saveDocumentNode(directory: string, canvasPath: string, nodeId: string,
 
 :global(body:has(.workspacePage.settingsOpen) .canvasMenu),
 :global(body:has(.workspacePage.settingsOpen) .canvasToolbarCard),
-:global(body:has(.workspacePage.settingsOpen) .workspaceMenu),
 :global(body:has(.workspacePage.settingsOpen) .panelSwitcher),
 :global(body:has(.workspacePage.settingsOpen) .assetLibraryPanel),
 :global(body:has(.workspacePage.settingsOpen) .floatingAgent) {

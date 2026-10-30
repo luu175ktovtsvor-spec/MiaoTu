@@ -27,7 +27,7 @@
       <el-dropdown-menu
         ref="menuList"
         class="nodeMenu"
-        :aria-label="menuLevel === 'selection' ? translate('选区操作') : menuLevel === 'arrange' ? translate('整理选中节点') : menuLevel === 'actions' ? translate('操作菜单') : translate('添加节点')">
+        :aria-label="menuLevel === 'selection' ? translate('选区操作') : menuLevel === 'arrange' ? translate('整理选中节点') : menuLevel === 'actions' ? translate('操作菜单') : nodesMenuLabel">
         <template v-if="menuLevel === 'selection'">
           <el-dropdown-item command="duplicateSelection" :icon="IconCopyPlus" :disabled="selectionBusy || deleting || !selectedNodes.length">
             {{ translate('创建副本') }}
@@ -66,11 +66,15 @@
         </template>
         <template v-else>
           <el-dropdown-item v-if="!directNodes" command="actions" :icon="IconChevronLeft">{{ translate('返回操作菜单') }}</el-dropdown-item>
-          <el-dropdown-item v-else disabled class="menuSection">{{ translate('添加节点') }}</el-dropdown-item>
-          <el-dropdown-item v-for="node in filteredNodes" :key="node.type" :command="node.type" :icon="node.icon">
+          <el-dropdown-item v-else disabled class="menuSection">{{ nodesMenuLabel }}</el-dropdown-item>
+          <el-dropdown-item v-for="node in visibleNodes" :key="node.type" :command="node.type" :icon="node.icon">
             {{ translate(node.label) }}
           </el-dropdown-item>
-          <el-dropdown-item v-if="(pendingHandle || pendingGroup.length) && !filteredNodes.length" disabled>{{ translate('没有可连接的节点') }}</el-dropdown-item>
+          <el-dropdown-item v-if="(pendingHandle || pendingGroup.length) && !visibleNodes.length" disabled>{{ translate('没有可连接的节点') }}</el-dropdown-item>
+          <template v-if="sourceVideoNode">
+            <el-dropdown-item divided disabled class="menuSection">{{ translate('视频编辑') }}</el-dropdown-item>
+            <el-dropdown-item v-for="action in videoActions" :key="action.command" :command="action.command" :icon="action.icon">{{ translate(action.label) }}</el-dropdown-item>
+          </template>
           <template v-if="directNodes && !pendingHandle && !pendingGroup.length && uploadFiles">
             <el-dropdown-item divided disabled class="menuSection">{{ translate('添加资源') }}</el-dropdown-item>
             <el-dropdown-item command="upload" :icon="IconUpload">{{ translate('上传') }}</el-dropdown-item>
@@ -93,6 +97,8 @@ import { getSelectionRoots } from "../selectionNodes";
 import { deleteCanvasNodes } from "../canvasNodeDeletion";
 import { arrangeSelection } from "../arrangeSelection";
 import { defaultNodeLabel, numberedNodeLabel } from "../linkedNode";
+import { absoluteNodePosition } from "../canvasSelectionOperations";
+import { useVideoActionRegistry, type VideoAction } from "../videoActionRegistry";
 import { translate } from "@miaoimg/i18n/vue";
 import { generalSettings } from "@/stores/settings";
 import { getShortcutBindings, shortcutLabel, type CanvasShortcutAction } from "@/lib/canvasShortcuts";
@@ -101,6 +107,8 @@ import {
   IconCopyPlus,
   IconTrash,
   IconBox,
+  IconPhoto,
+  IconVideo,
   IconUpload,
   IconPlus,
   IconArrowBackUp,
@@ -110,6 +118,10 @@ import {
   IconLayoutColumns,
   IconLayoutRows,
   IconLayoutGrid,
+  IconPhotoScan,
+  IconMusic,
+  IconLayersSubtract,
+  IconScissors,
 } from "@tabler/icons-vue";
 
 const { remoteNodes = [], pasteNode, uploadFiles, canUndo = false, canRedo = false, selectionBusy = false, batchHistory } = defineProps<{
@@ -139,6 +151,23 @@ let nodePosition = { x: 0, y: 0 };
 type DraggedHandle = { node: GraphNode; id: string; type: HandleType; start: ConnectingHandle };
 const pendingHandle = shallowRef<DraggedHandle>();
 const pendingGroup = shallowRef<GraphNode[]>([]);
+const videoActionRegistry = useVideoActionRegistry();
+const nodesMenuLabel = computed(() => translate(pendingHandle.value?.type === "source" && !pendingGroup.value.length ? "引用该节点生成" : "添加节点"));
+const sourceVideoNode = computed(() => {
+  const handle = pendingHandle.value;
+  if (!handle || handle.type !== "source" || pendingGroup.value.length || !flow.nodesConnectable.value
+    || handle.node.connectable === false || flow.findNode(handle.node.id) !== handle.node) return;
+  const port = (handle.node.data.handles as NodeHandle[] | undefined)?.find(item => item.id === handle.id && item.type === "source");
+  const output = handle.node.data.outputs?.[handle.id];
+  if (!port || !isTypeCompatible(port.dataType, "VIDEO") || output?.dataType !== "VIDEO" || !output.value?.url) return;
+  return videoActionRegistry?.available(handle.node) ? handle.node : undefined;
+});
+const videoActions: { command: string; action: VideoAction; label: string; icon: Component }[] = [
+  { command: "media:video:capture", action: "capture", label: "截取视频帧", icon: IconPhotoScan },
+  { command: "media:video:extractAudio", action: "extractAudio", label: "提取音轨", icon: IconMusic },
+  { command: "media:video:separate", action: "separate", label: "分离音视频", icon: IconLayersSubtract },
+  { command: "media:video:trim", action: "trim", label: "片段截取", icon: IconScissors },
+];
 const selectionHandleRef = ref<InstanceType<typeof selectionHandle>>();
 const groupHandleRefs = ref<InstanceType<typeof selectionHandle>[]>([]);
 const groups = computed(() => flow.getNodes.value.filter(node => node.type === "canvasGroup" && !node.hidden));
@@ -173,6 +202,25 @@ const filteredNodes = computed(() => {
     const handles = (flow.nodeTypes?.value?.[node.type] as { handles?: NodeHandle[] } | undefined)?.handles;
     return handles?.some((item) => item.type !== port.type && isTypeCompatible(port.dataType, item.dataType));
   });
+});
+
+const visibleNodes = computed(() => {
+  const nodes = filteredNodes.value;
+  const hasImageGeneration = nodes.some(node => node.type === "remote-imageGenerationNode");
+  const hasVideoGeneration = nodes.some(node => node.type === "remote-videoGenerationNode");
+  const order: Record<string, number> = {
+    "remote-textNode": 0,
+    "remote-imageNode": 1, "remote-imageGenerationNode": 1,
+    "remote-videoNode": 2, "remote-videoGenerationNode": 2,
+    "remote-director3dNode": 3,
+    "remote-audioNode": 4,
+  };
+  return nodes
+    .filter(node => !(node.type === "remote-imageNode" && hasImageGeneration)
+      && !(node.type === "remote-videoNode" && hasVideoGeneration))
+    .map(node => node.type === "remote-imageGenerationNode" ? { ...node, label: "图片", icon: IconPhoto }
+      : node.type === "remote-videoGenerationNode" ? { ...node, label: "视频", icon: IconVideo } : node)
+    .sort((left, right) => (order[left.type] ?? 5) - (order[right.type] ?? 5));
 });
 
 function clearSelectionHandles() {
@@ -222,7 +270,8 @@ flow.onConnectEnd((event) => {
   if (!clicked && (!target?.classList.contains("vue-flow__pane") || !flow.vueFlowRef.value?.contains(target))) return;
   // 单击「+」时新节点和当前节点上下对齐，隔一段距离放在右边（输入端放左边），不压住原来的节点。
   const width = node.dimensions.width || 600, gap = 120;
-  const placement = clicked ? { x: handle.type === "source" ? node.position.x + width + gap : node.position.x - width - gap, y: node.position.y } : undefined;
+  const position = clicked ? absoluteNodePosition(node, flow.findNode) : undefined;
+  const placement = position ? { x: handle.type === "source" ? position.x + width + gap : position.x - width - gap, y: position.y } : undefined;
   void openMenu(event, true, [], { node, id: handle.id, type: handle.type, start: { ...handle } }, [], placement);
 });
 
@@ -280,6 +329,17 @@ async function createNode(type: string, client: { x: number; y: number }) {
 defineExpose({ openMenu, deleteSelection, createNode });
 
 async function handleCommand(command: unknown) {
+  const videoAction = videoActions.find(action => action.command === command);
+  if (videoAction) {
+    const source = sourceVideoNode.value;
+    clearConnection();
+    menu.value?.handleClose();
+    if (source) {
+      try { await videoActionRegistry?.run(source, videoAction.action); }
+      catch (error) { ElMessage.error(error instanceof Error ? error.message : translate("视频处理失败")); }
+    }
+    return;
+  }
   if (command === "nodes" || command === "actions" || command === "selection" || command === "arrange") {
     if (command === "arrange" && !canArrangeSelection.value) return;
     menuLevel.value = command;
@@ -364,6 +424,7 @@ async function runCommand(command: unknown) {
       flow.addEdges(connections);
       flow.removeSelectedElements();
       flow.nodesSelectionActive.value = false;
+      flow.addSelectedNodes([created]);
       clearConnection();
       menu.value?.handleClose();
     } else {
@@ -399,6 +460,9 @@ async function runCommand(command: unknown) {
     );
   if (connection) flow.addEdges(connection);
   else ElMessage.warning(translate("节点已创建，但没有兼容的端口可连接"));
+  flow.removeSelectedElements();
+  flow.nodesSelectionActive.value = false;
+  flow.addSelectedNodes([created]);
   clearConnection();
   menu.value?.handleClose();
 }

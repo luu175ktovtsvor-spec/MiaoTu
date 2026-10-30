@@ -15,8 +15,8 @@ export function createAgentCanvasControl({ workspaceFiles }: Record<string, any>
         busy: Boolean(view.state?.executingCalls?.length || (view.id && [...calls.values()]
           .some(call => call.key === view.key && call.connectionId === view.id))),
       }))
-  const removeViews = workspaceFiles ? toolWorkspaceFiles(workspaceFiles).addViews((userId, project) =>
-    fileViews(userId, project, workspaceFiles.referenceOwner?.(userId) || String(userId))) : () => {}
+  const removeViews = workspaceFiles ? toolWorkspaceFiles(workspaceFiles).addViews(async (userId, project) =>
+    fileViews(userId, project, (await workspaceFiles.referenceOwner?.(userId)) || String(userId))) : () => {}
   function disconnect(key, reason = new Error('画布连接已断开；已下发操作的结果待确认，请先读取画布状态'), generation?: number) {
     const channel = channels.get(key)
     if (!channel || generation !== undefined && channel.scope?.generation !== generation) return

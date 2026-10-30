@@ -419,7 +419,7 @@ export class LocalMediaHost {
   disconnect(owner: string, accountId: string | undefined, context: LocalMediaContext, assertIdle: () => void) {
     const entry = this.entry(owner, accountId, context)
     return this.queue(entry, context, 'disconnect', async signal => {
-      assertIdle(); this.assert(entry, context, signal)
+      await assertIdle(); this.assert(entry, context, signal)
       this.destroyWindow(entry)
       await entry.session.clearStorageData(); this.assert(entry, context, signal)
       await entry.session.clearCache(); this.assert(entry, context, signal)
@@ -480,7 +480,7 @@ export class LocalMediaHost {
               this.assert(entry, context, signal)
               if (this.site.id === 'doubao') throw Object.assign(new Error(`${this.site.label}去 AI 明水印设置未确认，本次尚未发送；请打开平台的水印管理，确认图片、视频去除选项及账户权限后重试`), { status: 422 })
             }
-            checkpoint({ phase: 'preparing', kind, watermarkPreference })
+            await checkpoint({ phase: 'preparing', kind, watermarkPreference })
           }
           // The home composer can paint before its shortcut handlers finish
           // hydrating. Re-read the mode before retrying this pre-send action.
@@ -575,7 +575,7 @@ export class LocalMediaHost {
         this.assert(entry, context, signal)
         // Durable intent precedes the only send. Uncertain outcomes retain
         // this original request; another browser lease must never resend it.
-        checkpoint({ phase: 'dispatching', conversationUrl: '', kind, ...(selection ? { modelLabel: selection.label } : {}) })
+        await checkpoint({ phase: 'dispatching', conversationUrl: '', kind, ...(selection ? { modelLabel: selection.label } : {}) })
         dispatched = true; entry.observations.set(id, observation)
         entry.dispatching = id; entry.unbound = id
         await this.click(entry, context, signal, sendTarget)
@@ -592,13 +592,13 @@ export class LocalMediaHost {
             observation.conversationUrl = url
             observation.routeVerified = Boolean(observation.upstream)
             if (entry.unbound === id) entry.unbound = undefined
-            checkpoint({ phase: 'accepted', conversationUrl: url, kind, ...(selection ? { modelLabel: selection.label } : {}), ...(observation.upstream ? { upstream: observation.upstream } : {}), routeVerified: observation.routeVerified })
+            await checkpoint({ phase: 'accepted', conversationUrl: url, kind, ...(selection ? { modelLabel: selection.label } : {}), ...(observation.upstream ? { upstream: observation.upstream } : {}), routeVerified: observation.routeVerified })
             return { ok: true, requestId: id, status: 'running' }
           }
         }
       } catch (error) {
         if (observation.rejection && !observation.upstream) {
-          checkpoint({ phase: 'not-sent', conversationUrl: '', kind })
+          await checkpoint({ phase: 'not-sent', conversationUrl: '', kind })
           dispatched = false; entry.observations.delete(id)
           if (entry.unbound === id) entry.unbound = undefined
           throw new Error(observation.rejection)
@@ -617,7 +617,7 @@ export class LocalMediaHost {
       const observation = entry.observations.get(id) || {}
       entry.observations.set(id, observation)
       if (observation.rejection && !observation.upstream) {
-        checkpoint({ phase: 'not-sent', conversationUrl: '', kind })
+        await checkpoint({ phase: 'not-sent', conversationUrl: '', kind })
         entry.observations.delete(id)
         if (entry.unbound === id) entry.unbound = undefined
         if (entry.dispatching === id) entry.dispatching = undefined
@@ -631,7 +631,7 @@ export class LocalMediaHost {
           if (page.userPrompt?.trim() === expectedPrompt.trim() && page.turns >= 2) {
             location = candidate; observation.conversationUrl = candidate; entry.unbound = undefined
             observation.routeVerified = Boolean(observation.upstream)
-            state = { ...state, phase: 'accepted', conversationUrl: candidate, routeVerified: observation.routeVerified, ...(observation.upstream ? { upstream: observation.upstream } : {}) }; checkpoint(state)
+            state = { ...state, phase: 'accepted', conversationUrl: candidate, routeVerified: observation.routeVerified, ...(observation.upstream ? { upstream: observation.upstream } : {}) }; await checkpoint(state)
             if (entry.dispatching === id) entry.dispatching = undefined
           }
         }
@@ -639,14 +639,14 @@ export class LocalMediaHost {
       if (!location) return { ok: true, requestId: id, status: 'running', submissionUncertain: true, error: `尚未取得原${this.site.label}对话编号，请打开${this.site.label}窗口核对；不会自动重发` }
       if (entry.unbound && entry.unbound !== id) return { ok: true, requestId: id, status: 'running', error: `正在确认另一条原${this.site.label}请求，稍后继续取回本任务` }
       observation.conversationUrl = location
-      if (!state.conversationUrl) { checkpoint({ ...state, phase: 'accepted', conversationUrl: location }); state = { ...state, conversationUrl: location } }
-      if (observation.upstream && !state.upstream) { state = { ...state, upstream: observation.upstream }; checkpoint(state) }
+      if (!state.conversationUrl) { await checkpoint({ ...state, phase: 'accepted', conversationUrl: location }); state = { ...state, conversationUrl: location } }
+      if (observation.upstream && !state.upstream) { state = { ...state, upstream: observation.upstream }; await checkpoint(state) }
       if (entry.window?.isVisible() && this.conversation(entry.window.webContents.getURL()) !== location) return { ok: true, requestId: id, status: 'running', error: `${this.site.label}窗口正在手动核对其他对话，关闭窗口后会继续取回原任务` }
       await this.navigate(entry, context, signal, location)
       const page = await this.run(entry, context, signal, 'snapshot')
       if (page.login || page.challenge || page.regionBlocked || page.dialog) return { ok: true, requestId: id, status: 'running', error: `原任务等待${this.site.label}页面处理，请打开${this.site.label}窗口继续` }
       const requested = { prompt: expectedPrompt, kind, label: state.modelLabel, duration: state.upstream?.duration, ratio: state.upstream?.ratio, resolution: state.upstream?.resolution }
-      const readResult = () => this.run(entry, context, signal, 'result', requested)
+      const readResult = async () => (await this.run(entry, context, signal, 'result', requested))
       let result = await readResult()
       // A loaded document is not a loaded conversation. Keep the browser
       // lease until its original messages hydrate, or parallel pollers can
@@ -665,7 +665,7 @@ export class LocalMediaHost {
           if (!target) return { ok: true, requestId: id, status: 'running', error: `${this.site.label}要求确认的模型或参数与原任务不一致，请打开原对话检查；不会自动确认` }
           await this.click(entry, context, signal, target)
           observation.confirmationSent = true
-          checkpoint({ ...state, phase: 'accepted', ...(state.modelLabel ? { modelLabel: state.modelLabel } : {}), autoConfirmation: 'sent' })
+          await checkpoint({ ...state, phase: 'accepted', ...(state.modelLabel ? { modelLabel: state.modelLabel } : {}), autoConfirmation: 'sent' })
           await delay(750, undefined, { signal })
           result = await readResult()
           if (this.conversation(result.url) !== location || result.userPrompt?.trim() !== expectedPrompt.trim()) break
@@ -723,7 +723,7 @@ export class LocalMediaHost {
               downloadSource = 'platform-download'
             }
           }
-          checkpoint({ ...state, phase: 'completed', ...(observation.upstream ? { upstream: observation.upstream } : {}), ...(downloadSource ? { downloadSource } : {}) })
+          await checkpoint({ ...state, phase: 'completed', ...(observation.upstream ? { upstream: observation.upstream } : {}), ...(downloadSource ? { downloadSource } : {}) })
           entry.observations.delete(id)
           return { ok: true, requestId: id, status: 'succeeded', ...(kind === 'text' ? { text: result.text } : kind === 'image' ? { images: items } : { video: items[0] }) }
         }

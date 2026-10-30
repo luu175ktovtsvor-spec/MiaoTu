@@ -13,7 +13,7 @@
     <template #topActions>
       <el-button v-if="previewUrl" :icon="IconScissors" :disabled="!previewUrl || uploading || uploadingDrag || actions?.processing" text :title="translate('截取音频')" :aria-label="translate('截取音频')" @click.stop="actions?.open('clip')">{{ translate('截取') }}</el-button>
       <el-button v-if="previewUrl" :icon="IconGauge" :disabled="!previewUrl || uploading || uploadingDrag || actions?.processing" text :title="translate('音频变速')" :aria-label="translate('音频变速')" @click.stop="actions?.open('speed')">{{ translate('变速') }}</el-button>
-      <el-dropdown v-if="previewUrl" :persistent="false" trigger="click" :disabled="!previewUrl || uploading || uploadingDrag || actions?.processing" @command="(format: AudioFormat) => actions?.open('convert', format)">
+      <el-dropdown v-if="previewUrl" ref="formatMenu" :persistent="false" trigger="click" :disabled="!previewUrl || uploading || uploadingDrag || actions?.processing" @command="(format: AudioFormat) => actions?.open('convert', format)">
         <el-button v-if="previewUrl" :icon="IconFileMusic" :disabled="!previewUrl || uploading || uploadingDrag || actions?.processing" text :title="translate('转换音频格式')" :aria-label="translate('转换音频格式')" @click.stop>{{ translate('格式') }}</el-button>
         <template #dropdown>
           <el-dropdown-menu>
@@ -61,10 +61,11 @@ import nodeEmptyState, { type EmptyHint } from "../components/nodeEmptyState.vue
 import { useLinkedNode } from "../linkedNode";
 import { readClipboardFiles } from "@/lib/clipboard";
 import { beginUpload } from "../uploadStatus";
-import { assetFileType, ASSET_MAX_BYTES } from "../assetFile";
+import { assetFileType } from "../assetFile";
 import audioPlayer from "./audioNode/audioPlayer.vue";
 import audioActions from "./audioNode/audioActions.vue";
 import { useMediaPublication } from "../scaffold/mediaPublication";
+import { useRegisterCanvasTools } from "../canvasToolRegistry";
 
 defineOptions({
   inheritAttrs: false,
@@ -86,6 +87,7 @@ const durationLabel = computed(() => {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 });
 const actions = ref<InstanceType<typeof audioActions>>();
+const formatMenu = ref<InstanceType<typeof ElDropdown>>();
 const speedTarget = ref<HTMLElement>();
 
 // 画布拖入的文件先建出这个节点，上传由节点自己跑：环形进度就画在本节点的预览框里。
@@ -97,6 +99,12 @@ const previewUrl = files.useFileUrl(
   outputFile,
   (error) => showError(error, translate("音频读取失败"))
 );
+useRegisterCanvasTools(node, {
+  available: tool => ["audio:clip", "audio:speed", "audio:convert", "audio:split-silence"].includes(tool)
+    && Boolean(outputFile.value?.url) && !uploading.value && !uploadingDrag.value && !actions.value?.processing,
+  ready: tool => Boolean(previewUrl.value && (tool === "audio:convert" ? formatMenu.value : actions.value)),
+  run: tool => tool === "audio:convert" ? formatMenu.value?.handleOpen() : actions.value?.open(tool === "audio:speed" ? "speed" : tool === "audio:split-silence" ? "silence" : "clip"),
+});
 
 async function enterFullscreen() {
   try { await audioContent.value?.requestFullscreen(); }
@@ -166,7 +174,7 @@ function uploadAudio(event: Event) {
 function takeAudio(file: File) {
   if (uploading.value || uploadingDrag.value || actions.value?.processing) return;
   if (assetFileType(file).kind !== "audio") return void ElMessage.error(translate("请选择音频文件"));
-  if (!file.size || file.size > ASSET_MAX_BYTES) return void ElMessage.error(translate("音频为空或超过当前工作区允许的大小"));
+  if (!file.size) return void ElMessage.error(translate("音频为空或超过当前工作区允许的大小"));
   // 和「拖文件进画布」走同一条通道：真上传进度的环形、失败可重试、写回 outputs 都由
   // useNodeUpload 统一处理。
   // ACT: 复制节点可能仍引用旧音频，替换输出不删除共享文件。

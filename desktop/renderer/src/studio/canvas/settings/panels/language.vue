@@ -45,13 +45,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onBeforeUnmount, onMounted, shallowRef } from 'vue';
 import { IconCheck, IconDeviceDesktop } from '@tabler/icons-vue';
 import { detectLocale, supportedLocales, type Locale } from '@miaoimg/i18n';
 import { translate } from '@miaoimg/i18n/vue';
 import { uiSettings, updateUiSettings } from '@/stores/settings';
 
-const systemLocale = computed(() => detectLocale(navigator.languages));
+const systemLocale = shallowRef(detectLocale(navigator.languages));
+const followSystemLanguage = () => { systemLocale.value = detectLocale(navigator.languages); };
+onMounted(() => window.addEventListener('languagechange', followSystemLanguage));
+onBeforeUnmount(() => window.removeEventListener('languagechange', followSystemLanguage));
 const systemName = computed(() => supportedLocales.find(item => item.code === systemLocale.value)?.name);
 const primaryLocales = supportedLocales.filter(item => item.code === 'zh-CN' || item.code === 'en');
 const otherLocales = supportedLocales.filter(item => item.code !== 'zh-CN' && item.code !== 'en');

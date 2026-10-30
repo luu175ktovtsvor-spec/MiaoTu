@@ -165,7 +165,7 @@ export class TrashBackups {
       return id && validId(id) ? [this.descriptor(id, 'legacy')] : []
     })
   }
-  sweep({ referenced, locked }: { referenced(path: string): boolean; locked<T>(operation: () => T): T }, paths?: readonly string[]): TrashCleanupResult {
+  async sweep({ referenced, locked }: { referenced(path: string): boolean | Promise<boolean>; locked<T>(operation: () => T | Promise<T>): Promise<T> }, paths?: readonly string[]): Promise<TrashCleanupResult> {
     const result = { removed: 0, pending: 0, failed: 0 }
     const failed = (error: unknown) => {
       result.failed++
@@ -178,8 +178,8 @@ export class TrashBackups {
       try {
         const before = this.inspect(entry)
         if (!before) continue
-        const removed = locked(() => {
-          if (this.readers.has(entry.backup) || referenced(entry.backup)) return false
+        const removed = await locked(async () => {
+          if (this.readers.has(entry.backup) || await referenced(entry.backup)) return false
           const current = this.inspect(entry)
           if (!current) return true
           if (!sameDirectory(before.root, current.root) || before.bytes !== current.bytes || !sameFile(before.marker, current.marker)

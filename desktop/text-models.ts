@@ -25,7 +25,7 @@ export function createDesktopTextApi({ workspaceFiles, cloud, loadOfficialModels
       assertCurrent()
       json(response, 200, { code: 200, message: 'ok', data: [
         ...(Array.isArray(official) ? official.filter(model => model.providerId === 'miaoimg') : []),
-        ...listPublicProviderModels(workspaceFiles, session.userId),
+        ...(await listPublicProviderModels(workspaceFiles, session.userId)),
       ] })
       return true
     }

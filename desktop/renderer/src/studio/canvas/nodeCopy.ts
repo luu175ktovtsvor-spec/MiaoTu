@@ -1,5 +1,6 @@
 import type { Edge, GraphEdge, GraphNode, Node } from "@vue-flow/core";
 import { getTargetValues } from "./scaffold/nodeInputs";
+import { remapVideoFrameReferences } from "./scaffold/mediaParameters";
 import { referenceKey, remapReferenceKey, orderNodeReferences, nodeReferenceMentions } from "./scaffold/nodeReferences";
 import { isPromptModel, remapPromptReferenceIds, normalizePromptModel, getPromptText } from "./scaffold/promptModel";
 import { remapCanvasTextSnapshots } from '../../../../../server/canvas-text-snapshot.ts';
@@ -33,6 +34,15 @@ export function remapCopiedNodeReferences(copies: Node[], edges: Edge[], ids: Re
   const incoming = Map.groupBy(edges, edge => edge.target);
   for (const copy of copies) {
     const data = copy.data;
+    if (copy.type === "remote-videoGenerationNode") {
+      remapVideoFrameReferences(data, ids);
+      // A copied node is a new editor, never an observer/owner of the original paid work.
+      delete data.segmentRemakeRun;
+      if (data.segmentRemakeDraft?.source?.nodeId) data.segmentRemakeDraft.source.nodeId = ids.get(data.segmentRemakeDraft.source.nodeId) || data.segmentRemakeDraft.source.nodeId;
+    }
+    if (data.imageReferenceRoles && typeof data.imageReferenceRoles === "object" && !Array.isArray(data.imageReferenceRoles)) {
+      data.imageReferenceRoles = Object.fromEntries(Object.entries(data.imageReferenceRoles).map(([key, value]) => [remapReferenceKey(key, ids), value]));
+    }
     if (data.referenceOrder && typeof data.referenceOrder === "object" && !Array.isArray(data.referenceOrder)) {
       data.referenceOrder = Object.fromEntries(Object.entries(data.referenceOrder).map(([handle, keys]) => [handle,
         Array.isArray(keys) ? keys.map(key => typeof key === "string" ? remapReferenceKey(key, ids) : key) : keys,

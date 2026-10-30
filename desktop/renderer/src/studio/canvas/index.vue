@@ -20,7 +20,7 @@
       :node-types="nodeTypes"
       :snap-to-grid="snapEnabled"
       :snap-grid="[16, 16]"
-      :min-zoom="0.2"
+      :min-zoom="0.1"
       :max-zoom="8"
       :nodes-connectable="true"
       :connect-on-click="false"
@@ -77,6 +77,8 @@
         :handMode="selectedTool === 'hand'"
         :canUndo="canUndo"
         :canRedo="canRedo"
+        :toolsBusy="allFunctionsRef?.busy"
+        @tools="allFunctionsRef?.open()"
         @addNode="addNodeFromToolbar"
         @tool="selectedTool = $event"
         @undo="changeHistory('undo')"
@@ -104,6 +106,7 @@
         :getSignal="() => canvasController.signal"
         :disabled="!canvasId || !project?.directory" />
       <nodeSearch ref="nodeSearchRef" :types="nodeOptions" :disabled="!active || settingsVisible || !canvasId || !project?.directory" />
+      <canvasToolPalette ref="allFunctionsRef" :canCreateDirector="availableNodes.some(node => node.type === 'remote-director3dNode')" @director="addQuickNode('remote-director3dNode')" />
     </vue-flow>
     <div v-if="showEmptyHint" class="emptyCanvasHint">
       <p><IconPointer :size="18" aria-hidden="true" />{{ translate('双击画布，自由生成节点') }}</p>
@@ -113,7 +116,7 @@
         </button>
       </div>
     </div>
-    <feedbackNotice :message="canvasSaveError" :action="copyingConflict ? '正在刷新…' : '刷新画布'" :disabled="copyingConflict" @action="saveConflictCopy" />
+    <feedbackNotice :message="canvasSaveError" :action="copyingConflict ? translate('正在刷新…') : translate('刷新画布')" :disabled="copyingConflict" @action="saveConflictCopy" />
     <teleport to="body">
       <el-button
         v-if="edgeDisconnect && findEdge(edgeDisconnect.id)"
@@ -170,6 +173,9 @@ import { useCanvasTools } from "./useCanvasTools";
 import type { CanvasContext } from "@miaoimg/tool-canvas/runtime";
 import { loadNodeComponent, loadNodeCatalog } from "./loadNodeComponent";
 import { useCanvasHistory } from "./useCanvasHistory";
+import { createVideoActionRegistry, videoActionRegistryKey } from "./videoActionRegistry";
+import { createCanvasToolRegistry, canvasToolRegistryKey } from "./canvasToolRegistry";
+import canvasToolPalette from "./components/canvasToolPalette.vue";
 import { reloadCanvasNodeText } from "./canvasDocumentReload";
 import { onBeforeCanvasNodeDeletion } from "./canvasNodeDeletion";
 import { copyNodeToClipboard, copyCanvasNodes, cloneCanvasSnapshot, pasteCanvasNodes, nodeClipboardCommand, readClipboardNodes } from "./nodeClipboard";
@@ -183,6 +189,7 @@ import groupNode from "./components/groupNode.vue";
 import selectionToolbar from "./components/selectionToolbar.vue";
 import nodeSearch from "./components/nodeSearch.vue";
 import { finishGroupDrag, getSelectionTree } from "./selectionNodes";
+import { absoluteNodePosition } from "./canvasSelectionOperations";
 import type { NodeOutput } from "@miaoimg/nodes-scaffold/values";
 import type { NodeConnectionFeedback, NodeHandle } from "@miaoimg/nodes-scaffold/connection";
 import { useNodeEvent } from "@miaoimg/nodes-scaffold/nodeEvent";
@@ -242,6 +249,7 @@ const canvasMenuRef = ref<InstanceType<typeof canvasMenu>>();
 const canvasControlsRef = ref<InstanceType<typeof canvasControls>>();
 const selectionToolbarRef = ref<InstanceType<typeof selectionToolbar>>();
 const nodeSearchRef = ref<InstanceType<typeof nodeSearch>>();
+const allFunctionsRef = ref<InstanceType<typeof canvasToolPalette>>();
 const modelNodes = {
   "remote-textNode": markRaw(textNode),
   "remote-imageNode": markRaw(imageNode),
@@ -298,13 +306,23 @@ const handMode = computed(() => props.active && !props.settingsVisible && (selec
 let pointerPosition: XYPosition | undefined;
 const pressedCodes = new Set<string>();
 let gestureScale: number | undefined;
-const isDesktop = new URLSearchParams(window.location.search).get("desktop") === "1";
 let copyingNodes = false;
 const showEdges = ref(true);
 const assetsVisible = ref(false);
 const assetLibraryRef = ref<InstanceType<typeof assetLibrary>>();
 const edgeDisconnect = ref<{ id: string; x: number; y: number }>();
 const flow = useVueFlow(props.runtimeKey);
+const actionBinding = {
+  scope: () => project.value?.directory && canvasId.value ? JSON.stringify([project.value.directory, canvasId.value]) : "",
+  active: () => props.active && !props.settingsVisible,
+  findNode: (id: string) => flow.findNode(id),
+};
+const videoActionRegistry = createVideoActionRegistry(actionBinding);
+provide(videoActionRegistryKey, videoActionRegistry);
+onScopeDispose(videoActionRegistry.dispose);
+const canvasToolRegistry = createCanvasToolRegistry(actionBinding);
+provide(canvasToolRegistryKey, canvasToolRegistry);
+onScopeDispose(canvasToolRegistry.dispose);
 onScopeDispose(anonymousData.observeCanvas(() => props.active && canvasId.value
   ? { nodes: flow.nodes.value, edgeCount: flow.edges.value.length }
   : undefined));
@@ -338,6 +356,7 @@ const getNodeTools = useNodeToolsContext();
 const { addNodes, addEdges, removeEdges, findEdge, findNode, toObject, viewport, setViewport, screenToFlowCoordinate } = flow;
 provide("copyNodeToClipboard", (node: Parameters<typeof copyNodeToClipboard>[0], signal?: AbortSignal) =>
   copyNodeToClipboard(node, project.value?.directory ?? "", signal ? AbortSignal.any([signal, canvasController.value.signal]) : canvasController.value.signal));
+provide("pasteCanvasClipboard", pasteClipboardNode);
 provide("retainNodeFiles", true);
 provide("canvasUiActive", computed(() => props.active && !props.settingsVisible));
 provide("selectionConnection", shallowRef<NodeConnectionFeedback>());
@@ -737,7 +756,7 @@ function addReferenceFiles(event: Event) {
     const files = Array.from(input.files ?? []);
     if (!files.length || context.signal.aborted) return;
     try {
-      await canvasHistory.batch(() => importReferenceFiles(files, { id: target.id, position: target.position, accepts }, context));
+      await canvasHistory.batch(() => importReferenceFiles(files, { id: target.id, position: absoluteNodePosition(target, flow.findNode), accepts }, context));
     } catch (error) {
       ElMessage.error(error instanceof Error ? error.message : translate("文件导入失败"));
     }
@@ -763,8 +782,6 @@ function addNodeAtPointer() {
   void nodeMenuRef.value?.openMenu(new MouseEvent("contextmenu", { clientX: position.x, clientY: position.y }), true);
 }
 
-// The toolbar's add button opens the same node menu as a double click, just
-// above the button so the new node lands near the visible center.
 // 和 LibTV 一样，空画布中间给出提示和几个最常用的节点，点一下就建好。
 const quickNodeTypes = ["remote-imageGenerationNode", "remote-videoGenerationNode", "remote-textNode", "remote-audioNode", "remote-director3dNode"];
 const quickNodes = computed(() => quickNodeTypes.flatMap(type => availableNodes.value.filter(node => node.type === type)
@@ -784,7 +801,10 @@ function addNodeFromToolbar(event: MouseEvent) {
   if (!rect) return;
   const x = button ? button.left + button.width / 2 : rect.left + rect.width / 2;
   const y = button ? button.top - 12 : rect.top + rect.height / 2;
-  void nodeMenuRef.value?.openMenu(new MouseEvent("contextmenu", { clientX: x, clientY: y }), true);
+  // Anchor the menu at the button, and place its new node with the same
+  // visible-center placement used by the empty-canvas shortcuts.
+  const placement = flow.screenToFlowCoordinate({ x: rect.left + rect.width / 2 - 300, y: rect.top + rect.height / 2 - 260 });
+  void nodeMenuRef.value?.openMenu(new MouseEvent("contextmenu", { clientX: x, clientY: y }), true, [], undefined, [], placement);
 }
 
 async function changeHistory(direction: "undo" | "redo") {
@@ -815,7 +835,6 @@ const canvasRevisionOwner = createFileRevisionOwner();
 let applyingRemote = false;
 let syncingRemote = false;
 const copyingConflict = ref(false);
-let syncTimer: number | undefined;
 let syncController: AbortController | undefined;
 let lastCanvasListSync = 0;
 const canvasSnapshot = () => persistentCanvas({ miaoimgCanvas: true, ...toObject() });
@@ -925,12 +944,11 @@ const saveCanvas = debounce((directory: string, fileName: string) => {
   });
 }, 500);
 
-async function syncRemoteCanvas(force = false) {
-  // Desktop canvas state is owned by this renderer and written to the local
-  // workspace by the autosave queue. Background model tasks patch the same
-  // local state and update the mounted generation node directly. Polling and
-  // merging the whole JSON every five seconds only creates stale-read churn.
-  if (window.miaoDesktop && !force) return;
+// Canvas state is owned by this renderer and written to the local workspace by
+// the autosave queue. Background model tasks patch the same local state and
+// update the mounted generation node directly, so there is no polling: read the
+// disk once on focus or when this canvas becomes active.
+async function syncRemoteCanvas() {
   if (flow.nodes.value.some(node => node.dragging || node.resizing)) return;
   if (syncingRemote || savePaused || saveCancelled || !props.active || document.hidden || !canvasBase || !canvasId.value) return;
   syncingRemote = true;
@@ -956,20 +974,18 @@ async function syncRemoteCanvas(force = false) {
   saving = pending.catch(() => {});
   try { await pending; } finally { syncingRemote = false; }
 }
-// 桌面端不轮询；只在回到窗口或切到这张画布时读一次磁盘，接住主进程写入的任务结果等外部改动。
-const resumeCanvasSync = () => { if (!document.hidden) void syncRemoteCanvas(true); };
+// 只在回到窗口或切到这张画布时读一次磁盘，接住主进程写入的任务结果等外部改动。
+const resumeCanvasSync = () => { if (!document.hidden) void syncRemoteCanvas(); };
 onMounted(() => {
-  if (!window.miaoDesktop) syncTimer = window.setInterval(() => { void syncRemoteCanvas(); }, 5000);
   window.addEventListener("focus", resumeCanvasSync);
   document.addEventListener("visibilitychange", resumeCanvasSync);
 });
 onScopeDispose(() => {
-  if (syncTimer !== undefined) window.clearInterval(syncTimer);
   syncController?.abort();
   window.removeEventListener("focus", resumeCanvasSync);
   document.removeEventListener("visibilitychange", resumeCanvasSync);
 });
-watch(() => props.active, active => { if (active) void syncRemoteCanvas(true); });
+watch(() => props.active, active => { if (active) void syncRemoteCanvas(); });
 watch(canvasId, async id => {
   if (!id) return;
   try {
@@ -1004,7 +1020,7 @@ async function saveConflictCopy() {
     await applyRemoteCanvas(latest.canvas);
     reconcileCanvasSave();
     await canvasMenuRef.value?.refreshCanvases();
-    ElMessage.success("画布已刷新，刷新前的改动已保留在画布列表");
+    ElMessage.success(translate("画布已刷新，刷新前的改动已保留在画布列表"));
   } catch (err) { showSaveError(err, true); }
   finally {
     copyingConflict.value = false;
@@ -1320,7 +1336,7 @@ function updateCanvasKeys(event: KeyboardEvent) {
   if (event.type === "keyup" || event.defaultPrevented || !inCanvas || editing) return;
   const action = ([
     "group", "mergeGroup", "ungroup", "addNode", "moveTool", "handTool", "arrange", "search",
-    "delete", "copy", "paste", "undo", "redo", "zoomIn", "zoomOut", "fitView",
+    "delete", "copy", "duplicate", "paste", "undo", "redo", "zoomIn", "zoomOut", "fitView",
   ] as const).find((action) =>
     shortcutMatches(event, shortcuts[action])
   );
@@ -1332,8 +1348,8 @@ function updateCanvasKeys(event: KeyboardEvent) {
   }
   if (!canvasId.value || !project.value?.directory) return;
   if (action === "copy" && (!flow.getSelectedNodes.value.length || window.getSelection()?.toString())) return;
-  // 桌面快捷键直接复用原生剪贴板桥接；浏览器 Ctrl/Cmd+V 保留原生事件，避免额外读取权限。
-  if (!isDesktop && action === "paste" && event.code === "KeyV" && (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey) return;
+  // Ctrl/Cmd+V 交给原生 paste 事件处理（系统剪贴板里的文件、图片和节点都从那里进来）。
+  if (action === "paste" && event.code === "KeyV" && (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey) return;
   event.preventDefault();
   if (event.repeat) return;
   if (action === "delete") {
@@ -1348,6 +1364,7 @@ function updateCanvasKeys(event: KeyboardEvent) {
     return;
   }
   if (action === "copy") void copySelectedNodes();
+  else if (action === "duplicate") void selectionToolbarRef.value?.operate("duplicate");
   else if (action === "paste") void pasteNodeAtCenter();
   else if (action === "undo" || action === "redo") void changeHistory(action);
   else if (action === "group" || action === "mergeGroup" || action === "ungroup") {

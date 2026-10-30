@@ -9,7 +9,6 @@ import { dictText, useLang } from '../i18n'
 // 进度计算全仓只有一份：与框架无关的核心，画布 composable 和历史面板共用（见 generationProgressCore.ts）
 import { createProgressTracker } from './generationProgressCore'
 import LanguageControl from '../LanguageControl'
-import StudioLogin from './StudioLogin'
 import StudioHome from './StudioHome'
 import StudioPicker from './StudioPicker'
 import ModelLogo from './ModelLogo'
@@ -17,12 +16,12 @@ import PaymentPanel from './PaymentPanel'
 import FeedbackPage from './FeedbackPage'
 import LocalTaskRecovery from './LocalTaskRecovery'
 import PersonalAssetLibrary from './PersonalAssetLibrary'
-import { navigateWorkspace, reloadWorkspace } from '../desktop/navigation'
+import { reloadWorkspace } from '../desktop/navigation'
 import DesktopRail from '../desktop/DesktopRail'
 import { studioPage, studioPoint, studioPointParts, studioRecords, studioText } from './studioText'
 import './studio.css'
 import './account.css'
-import { ACTIVE_STATUSES, TERMINAL_STATUSES, HISTORY_KINDS, historyProgress, currentMonthRange } from './history'
+import { ACTIVE_STATUSES, HISTORY_KINDS, historyProgress, currentMonthRange } from './history'
 import { HistoryCard, LedgerTable, PanelEmpty } from './historyView'
 import { emptyHistory, emptyLedger, type BoundCanvasInsert, type HistoryItem, type HistoryState, type LedgerState, type StudioConfig, type StudioSession, type HistoryProgress, type LibrarySelection } from './studioState'
 import type { PendingCanvasInsert } from '../stores/workspace'
@@ -104,7 +103,7 @@ export default function StudioPage() {
     const unsubscribe = subscribeWorkspaceScope(cancel)
     return () => { unsubscribe(); cancel() }
   }, [])
-  const [surface, setSurfaceState] = useState(() => (typeof window !== 'undefined' && window.miaoDesktop ? 'home' : 'look'))
+  const [surface, setSurfaceState] = useState('home')
   const surfaceRequestRef = useRef(0)
   const setSurface = useCallback((value: string) => { surfaceRequestRef.current++; setSurfaceState(value) }, [])
   useEffect(() => {
@@ -133,7 +132,7 @@ export default function StudioPage() {
   const [logoutBusy, setLogoutBusy] = useState(false)
   const [userSession, setUserSession] = useState<StudioSession | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [assetSection, setAssetSection] = useState<'history' | 'library'>(() => window.miaoDesktop ? 'library' : 'history')
+  const [assetSection, setAssetSection] = useState<'history' | 'library'>('library')
   const [homeSection, setHomeSection] = useState<'home' | 'projects' | 'cases'>('home')
   const [homeSectionRequest, setHomeSectionRequest] = useState(0)
   const historyOwner = workspaceOwnerKey(userSession)
@@ -251,7 +250,7 @@ export default function StudioPage() {
     setRowProgress({})
     setHistoryState(emptyHistory())
     setLedgerState(emptyLedger())
-    setAssetSection(window.miaoDesktop ? 'library' : 'history')
+    setAssetSection('library')
     setError('')
     setNotice('')
   }, [])
@@ -397,7 +396,7 @@ export default function StudioPage() {
         status: visible ? 'ready' : 'loading', refreshing: Boolean(visible), error: '' }
     })
     let timer
-    let refreshDesktop = Boolean(window.miaoDesktop)
+    let refreshDesktop = true
     // Desktop tasks advance in the local runtime. Read snapshots without
     // waiting for each task's download or issuing another cloud poll.
     const loadHistory = () => fetch(`./api/imagine/history?${params}`, { signal: controller.signal, cache: 'no-store' })
@@ -410,7 +409,7 @@ export default function StudioPage() {
         historyCacheRef.current.set(cacheKey, next)
         if (historyCacheRef.current.size > 12) historyCacheRef.current.delete(historyCacheRef.current.keys().next().value)
         setHistoryState(next)
-        refreshDesktop = Boolean(window.miaoDesktop && next.items.some(item => ACTIVE_STATUSES.has(item.status)))
+        refreshDesktop = next.items.some(item => ACTIVE_STATUSES.has(item.status))
       })
       .catch(loadError => {
         if (!controller.signal.aborted) setHistoryState(current => ({ ...current, status: current.items.length ? 'ready' : 'error',
@@ -465,7 +464,7 @@ export default function StudioPage() {
       if (controller.signal.aborted) return
       // 桌面启动后异步恢复云端账号，本机画布身份与 CSRF 没有变化。
       // 更新账号及积分即可；清空会话会卸载画布并取消正在进行的本地上传。
-      if (window.miaoDesktop && response.ok && data.session?.user?.id === 'local') {
+      if (response.ok && data.session?.user?.id === 'local') {
         setUserSession(data.session)
         return
       }
@@ -525,17 +524,8 @@ export default function StudioPage() {
     return () => window.clearInterval(timer)
   }, [historyState.items, surface])
 
-  const videoModelIds = useMemo(() => new Set((config?.videoModels || []).map((model) => model.id)), [config])
-  const inFlightRows = useMemo(
-    () => historyState.items
-      .filter((item) => ACTIVE_STATUSES.has(item.status))
-      // 视频的判据用模型目录（进行中的视频还没有 video 结果，看 item.video 会判成图片）。
-      .map((item) => ({ requestId: item.requestId, modelId: item.model, video: item.kind === 'video' || Boolean(item.video) || videoModelIds.has(item.model) })),
-    [historyState.items, videoModelIds],
-  )
-
   useEffect(() => {
-    if (surface !== 'history' || !window.miaoDesktop || !historyState.items.length) return
+    if (surface !== 'history' || !historyState.items.length) return
     const updates: Record<string, HistoryProgress> = {}
     for (const item of historyState.items) {
       if (!ACTIVE_STATUSES.has(item.status)) continue
@@ -546,54 +536,6 @@ export default function StudioPage() {
     setRowProgress(updates)
   }, [historyState.items, surface, clock])
 
-  useEffect(() => {
-    if (surface !== 'history' || !inFlightRows.length || window.miaoDesktop) return undefined
-    let cancelled = false
-    const controller = new AbortController()
-    let timer
-    let settled = false
-    let terminalTimer
-    // 轮询节奏听服务端的 pollAfterMs（画布也是这么做的：图片默认 1000ms、视频 1500ms，
-    // 上游没回报百分比时服务端自己会放到 3000ms），别在这边定第二个节奏。
-    async function tick() {
-      const updates: Record<string, HistoryProgress> = {}
-      let delay = 0
-      for (const row of inFlightRows) {
-        const endpoint = row.video
-          ? `./api/imagine/video/${encodeURIComponent(row.requestId)}`
-          : `./api/imagine/generation/${encodeURIComponent(row.requestId)}`
-        try {
-          const response = await fetch(endpoint, { cache: 'no-store', signal: controller.signal })
-          if (!response.ok) continue
-          const data = await response.json()
-          if (cancelled) return
-          let tracker = trackersRef.current.get(row.requestId)
-          if (!tracker) { tracker = createProgressTracker(); trackersRef.current.set(row.requestId, tracker) }
-          // elapsedSeconds 只算「真正在生成」那段（服务端 started_at 起算，不含排队）——
-          // 典型耗时表就是按 started_at→finished_at 取的，含排队会把百分比算虚高。
-          // 终态也交给核心处理：成功显示 100%，失败/取消清掉数字并只保留状态词；
-          // 列表 1.2 秒后翻成终态，环随卡片消失。
-          // ⚠️ 别用 percent 判断状态：失败/取消是 `percent: 0` + `showPercent: false`（不是"刚开始"），
-          // 而 `percent: 100` 只代表 succeeded——判状态一律看 showPercent / phase，不要看数字。
-          updates[row.requestId] = historyProgress({ ...data, model: row.modelId, kind: row.video ? 'video' : 'image' }, tracker, Date.now())
-          delay = Math.max(delay, Math.min(10000, Math.max(1000, Number(data?.pollAfterMs) || (row.video ? 1500 : 1000))))
-          // 这条已经落定（成功/失败/取消）：让列表重新拉一次，卡片才会从"进行中"翻成终态。
-          if (TERMINAL_STATUSES.has(data?.status) && !settled) {
-            settled = true
-            terminalTimer = window.setTimeout(() => { if (!cancelled) setHistoryRefresh((value) => value + 1) }, 1200)
-          }
-        } catch {
-          if (cancelled) return
-          // 拿不到就保持不动，不编数字
-        }
-      }
-      if (cancelled) return
-      if (Object.keys(updates).length) setRowProgress((current) => ({ ...current, ...updates }))
-      timer = window.setTimeout(tick, delay || 2000)
-    }
-    void tick()
-    return () => { cancelled = true; controller.abort(); window.clearTimeout(timer); window.clearTimeout(terminalTimer) }
-  }, [inFlightRows, surface])
 
 
   const refreshAccount = useCallback(async () => {
@@ -636,12 +578,6 @@ export default function StudioPage() {
     setHomeSection(section)
     setHomeSectionRequest(value => value + 1)
     void changeSurface('home')
-  }
-
-  async function goHome() {
-    const current = beginSurfaceAction()
-    try { await navigateWorkspace('/', current) }
-    catch { if (current()) setError(studioText('草稿保存失败，仍留在工作台，请重试', lang)) }
   }
 
   async function logoutUser() {
@@ -730,7 +666,7 @@ export default function StudioPage() {
   // 反馈有新回复时在左侧「反馈」上显示红点：打开时、回到窗口时和每两分钟读一次。
   const [feedbackUnread, setFeedbackUnread] = useState(0)
   useEffect(() => {
-    if (!window.miaoDesktop || !signedIn) { setFeedbackUnread(0); return }
+    if (!signedIn) { setFeedbackUnread(0); return }
     let cancelled = false
     const read = () => { if (!document.hidden) fetch('/api/imagine/feedback?status=open', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(d => { if (!cancelled && d) setFeedbackUnread(Number(d.unread) || 0) }).catch(() => {}) }
     read()
@@ -752,40 +688,19 @@ export default function StudioPage() {
     )
   }
 
-  if (!userSession && !window.miaoDesktop) {
-    return (
-      <StudioLogin
-        registrationEnabled={config?.registrationEnabled}
-        googleLogin={config?.googleLogin}
-        qqLogin={config?.qqLogin}
-        githubLogin={config?.githubLogin}
-        wechatLogin={config?.wechatLogin}
-        dingtalkLogin={config?.dingtalkLogin}
-        linuxdoLogin={config?.linuxdoLogin}
-        oidcLogin={config?.oidcLogin}
-        onSuccess={async (session) => {
-          authEpochRef.current += 1
-          setUserSession(session)
-          await hydrateWorkspace(config, session, true)
-          setNotice(studioText('登录成功', lang))
-        }}
-      />
-    )
-  }
-
   const balance = userSession?.user?.points
   const statusMessage = error || libraryHandoffError || notice
   const openAccountSurface = () => {
     closeSettings()
-    if (window.miaoDesktop && !signedIn) window.dispatchEvent(new Event('miao-desktop-account'))
+    if (!signedIn) window.dispatchEvent(new Event('miao-desktop-account'))
     else void changeSurface('account')
   }
-  // 已登录直接进入完整账号页；未登录仍使用原生登录弹窗。
+  // 桌面端已登录进入完整账号页；未登录交给原生账号弹窗。
   const openAccountPage = () => { closeSettings(); void changeSurface('account') }
 
   return (
     <div className="studio-shell studio-app">
-      {window.miaoDesktop && (surface !== 'look' || settingsOpen) && <DesktopRail
+      {(surface !== 'look' || settingsOpen) && <DesktopRail
         active={settingsOpen ? 'settings' : surface === 'history' ? 'assets' : surface === 'account' ? 'account' : surface === 'feedback' ? 'feedback' : surface === 'look' ? 'canvas' : homeSection}
         feedbackUnread={feedbackUnread}
         onFeedback={() => { closeSettings(); void changeSurface('feedback') }}
@@ -803,18 +718,17 @@ export default function StudioPage() {
       <div className="studio-app__body">
       <div className="grain-overlay" aria-hidden="true" />
       {/* 桌面画布全屏铺开：顶栏缩成右上角的悬浮胶囊，语言在设置里切换。 */}
-      <header className={`studio-top${window.miaoDesktop && surface === 'look' && !settingsOpen ? ' studio-top--canvas' : ''}`}>
+      <header className={`studio-top${surface === 'look' && !settingsOpen ? ' studio-top--canvas' : ''}`}>
         <a className="studio-top__brand" href="/" onClick={event => {
           if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
           event.preventDefault()
-          if (window.miaoDesktop) { closeSettings(); void changeSurface('home'); return }
-          void goHome()
-        }}><img src="/miaoimg-logo.png" alt="" width="28" height="28" />妙图</a>
-        {!window.miaoDesktop && Boolean(userSession?.user?.email) && <button type="button" className="studio-top__history" aria-current={surface === 'history' ? 'page' : undefined} onClick={() => { void changeSurface('history') }}>{studioText('历史', lang)}</button>}
+          closeSettings()
+          void changeSurface('home')
+        }}><img src="/miaoimg-logo.png" alt="" width="28" height="28" />{dictText(lang, 'app.title')}</a>
         <span className="studio-top__gap" />
         {Number.isFinite(balance) && Boolean(userSession?.user?.email) && <button type="button" aria-current={surface === 'account' ? 'page' : undefined} onClick={openAccountPage}>{studioPoint(balance, lang)}</button>}
-        <button type="button" aria-current={surface === 'account' ? 'page' : undefined} onClick={openAccountSurface}>{window.miaoDesktop && !userSession?.user?.email ? studioText('登录 / 注册', lang) : studioText('账号', lang)}</button>
-        {!(window.miaoDesktop && surface === 'look' && !settingsOpen) && <LanguageControl compact />}
+        <button type="button" aria-current={surface === 'account' ? 'page' : undefined} onClick={openAccountSurface}>{!userSession?.user?.email ? studioText('登录 / 注册', lang) : studioText('账号', lang)}</button>
+        {!(surface === 'look' && !settingsOpen) && <LanguageControl compact />}
       </header>
       {statusMessage && <FeedbackNotice message={statusMessage} error={Boolean(error || libraryHandoffError)} onClose={() => { setError(''); setLibraryHandoffError(''); setNotice('') }} />}
       {surface === 'history' ? (
@@ -903,7 +817,7 @@ export default function StudioPage() {
         <FeedbackPage csrf={userSession?.csrf} signedIn={signedIn} lang={lang} onLogin={() => window.dispatchEvent(new Event('miao-desktop-account'))} onBack={() => openHomeSection('home')} onUnread={setFeedbackUnread} />
       ) : surface === 'account' ? (
       <main className="studio-record account-page">
-        <button type="button" className="account-back" onClick={() => void changeSurface(window.miaoDesktop ? 'home' : 'look')}><ArrowLeft size={15} aria-hidden="true" />{studioText('返回', lang)}</button>
+        <button type="button" className="account-back" onClick={() => void changeSurface('home')}><ArrowLeft size={15} aria-hidden="true" />{studioText('返回', lang)}</button>
         <header className="account-heading">
           <div><h1>{studioText('账号', lang)}</h1><p>{studioText('管理个人资料、账号安全与积分', lang)}</p></div>
           <button type="button" className="account-logout" onClick={logoutUser} disabled={logoutBusy || passwordBusy || profileBusy} aria-busy={logoutBusy}>

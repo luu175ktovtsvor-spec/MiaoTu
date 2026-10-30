@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { contentLang } from './shellLanguage'
 export const GALLERY_SESSION_SCHEMA = 'oip-gallery-session-v1'
 export const GALLERY_TAXONOMY_VERSION = 'oip-visual-v2'
 
@@ -117,7 +118,7 @@ export function orderItemsForGallerySession(items, session) {
 
 export function localizedDerivedPrompt(session, lang) {
   if (!session) return ''
-  const preferred = lang === 'zh' ? 'zh-Hans' : 'en'
+  const preferred = contentLang(lang) === 'zh' ? 'zh-Hans' : 'en'
   const fallback = preferred === 'en' ? 'zh-Hans' : 'en'
   return session.derived_prompt?.[preferred] || session.derived_prompt?.[fallback] || ''
 }

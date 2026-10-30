@@ -54,14 +54,14 @@ export async function desktopModel(request, response, session, url, { management
   const endpoint = { '/api/imagine/desktop/model/chat/completions': 'openai-completions', '/api/imagine/desktop/model/responses': 'openai-responses' }[url.pathname]
   if (!endpoint || request.method !== 'POST') return false
   if (response.destroyed || response.writableEnded) return true
-  assertTextAccess({ management, session })
+  await assertTextAccess({ management, session })
   mutation(request, session)
   const body = await readModelJson(request)
   // The account may have been disabled or lost its balance while uploading.
   if (response.destroyed || response.writableEnded) return true
-  const user = assertTextAccess({ management, session })
+  const user = (await assertTextAccess({ management, session }))
   const model = ownTextModelById(body.model, env)
-  const operating = management.settings()
+  const operating = (await management.settings())
   const legacyEndpoint = endpoint === 'openai-completions' && Boolean(model) && LEGACY_COMPLETIONS_MODELS.has(model.id)
   if (!model || (model.protocol !== endpoint && !legacyEndpoint) || !operating.enabled || operating.models[model.id] === false || user.models?.length && !user.models.includes(model.id)) throw failure('该模型当前不可用', 422)
   const config = textSettings(env, model.id)
@@ -76,7 +76,7 @@ export async function desktopModel(request, response, session, url, { management
     // The server owns this origin; reuse the no-redirect provider transport so
     // an upstream Location cannot replay private conversation bytes elsewhere.
     const upstream = await createCustomProviderFetch({ allowPrivate: true, env, fetchImpl: meter.fetch,
-      beforeDispatch: () => assertTextModelAccess({ management, session, modelId: model.id }),
+      beforeDispatch: async () => (await assertTextModelAccess({ management, session, modelId: model.id })),
       redirectMessage: '模型服务地址已变化，请联系妙图团队' })(config.baseUrl + (endpoint === 'openai-responses' ? '/responses' : '/chat/completions'), {
       method: 'POST', headers: { authorization: `Bearer ${config.apiKey}`, 'content-type': 'application/json' },
       // 取消模型供应商的持久存储；本机 SDK 自己保留上下文。

@@ -1,3 +1,4 @@
+import { SUIHE_VIDEO_CONTRACT_VERSION, suiheVideoContractSnapshot } from './suihe-contract.ts'
 import { cloudWorkspaceStorageEnabled } from './cloud-storage-policy.ts'
 import { isSeedance25 } from './seedance25.ts'
 import { recordDesktopMediaOutput } from './desktop-media.ts'
@@ -31,7 +32,6 @@ const probeVideoFile = createMediaProbe()
 
 /** First video contract. Upstream calls only happen inside createVideo/pollVideo. */
 export const VIDEO_LIMITS = Object.freeze({ minDuration: 1, maxDuration: 30 })
-export const VIDEO_API_PATHS = Object.freeze({ create: '/api/imagine/video', poll: '/api/imagine/video/:requestId' })
 
 export function videoSettings(env = process.env, model) {
   if (model?.provider === 'suihe') return suiheSettings(env)
@@ -72,7 +72,7 @@ function isSuiheLibraryReference(value) {
 }
 
 function suiheLibraryReferences(source) {
-  return [source?.image, ...(Array.isArray(source?.images) ? source.images : [])].filter(isSuiheLibraryReference)
+  return [source?.image, ...(Array.isArray(source?.images) ? source.images : []), source?.firstFrame, source?.lastFrame].filter(isSuiheLibraryReference)
 }
 
 function modelModes(model) {
@@ -130,7 +130,7 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
         : value
       return Boolean(String(item || '').trim())
     })
-  const grokFramePromptOptional = model.id === 'grok-imagine-video-1.5'
+  const grokFramePromptOptional = Boolean(model.parameterRules?.promptOptionalWithImage)
     && (String(payload.image || '').trim()
       || String(payload.firstFrame || '').trim()
       || String(payload.lastFrame || '').trim()
@@ -138,8 +138,12 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
       || hasNonEmptyReference(payload.keyframes)
       || hasNonEmptyReference(payload.referenceVoices)
       || hasNonEmptyReference(payload.voiceIds))
+  const arkReferencePromptOptional = model.provider === 'ark' && Boolean(model.parameterRules?.promptOptionalWithReferences)
+    && !['text', 'edit', 'extend'].includes(String(payload.mode || 'text'))
+    && (String(payload.image || '').trim() || String(payload.firstFrame || '').trim() || String(payload.lastFrame || '').trim()
+      || hasNonEmptyReference(payload.images) || hasNonEmptyReference(payload.videos) || String(payload.video || '').trim() || hasNonEmptyReference(payload.audios))
   if (model.provider === 'suihe' && [...prompt].length > 4000) throw failure('视频描述不能超过 4000 个字符', 422)
-  if (prompt.length < (model.provider === 'suihe' ? 1 : 2) && !grokFramePromptOptional) throw failure('请先输入视频描述', 422)
+  if (prompt.length < (model.provider === 'suihe' ? 1 : 2) && !grokFramePromptOptional && !arkReferencePromptOptional) throw failure('请先输入视频描述', 422)
   const config = videoSettings(env, model)
   if (!config.enabled) throw failure('模型调用暂不可用，请稍后再试', 503)
   if (model.provider === 'ark') {
@@ -166,12 +170,18 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
   const hasFrames = rawFrames !== undefined
   const frameDuration = hasFrames ? rawFrames / 24 : undefined
   const mode = Array.isArray(payload.mode) ? 'image' : String(payload.mode || 'text').trim() || 'text'
-  if (!supportsMode(model, mode)) throw failure(`当前模型不支持生成模式 ${mode}`, 422)
+  const legacySuiheExtension = model.provider === 'suihe' && isSeedance25(model) && mode === 'extend' && payload.submissionState !== undefined && !payload.suiheContract
+  if (!supportsMode(model, mode) && !legacySuiheExtension) throw failure(`当前模型不支持生成模式 ${mode}`, 422)
   const suppliedDuration = payload.duration === undefined || payload.duration === '' ? undefined : Number(payload.duration)
   // 没选时长时不补 5 秒。编辑会沿用成片时长：Seedance 2.5 官方用 -1，Grok 编辑不传 duration。
   const inheritsDuration = mode === 'edit' && (model.provider === 'grok' || isSeedance25(model))
   if (!hasFrames && suppliedDuration === undefined && !inheritsDuration) throw failure('请选择视频时长', 422)
-  const rawDuration = frameDuration ?? suppliedDuration ?? (isSeedance25(model) && mode === 'edit' ? -1 : undefined)
+  const newSuiheEdit = model.provider === 'suihe' && isSeedance25(model) && mode === 'edit' && (payload.suiheContract?.version === SUIHE_VIDEO_CONTRACT_VERSION || payload.submissionState === undefined)
+  const sourceHint = Number(payload.editVideoSeconds || payload.suiheContract?.editSourceSeconds || payload.videoSeconds) || 4
+  // Suihe accepts a positive integer outer hint, not Ark's internal -1. The
+  // original media is still validated independently; this never clips it.
+  const rawDuration = newSuiheEdit ? Math.max(4,Math.min(30,Math.round(sourceHint)))
+    : frameDuration ?? suppliedDuration ?? (isSeedance25(model) && mode === 'edit' ? -1 : undefined)
   const allowedDurations = Array.isArray(model.durations) && model.durations.length ? model.durations : null
   // 火山方舟用 -1 表示由模型自己选时长。只在该型号目录写了 -1 时放行。
   const automaticDuration = !hasFrames && rawDuration === -1 && Boolean(allowedDurations?.includes(-1) || (isSeedance25(model) && mode === 'edit'))
@@ -228,14 +238,14 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
   const requestedVideos = uniqueUrls(payload.videos)
   const requestedAudios = uniqueUrls(payload.audios)
   const rawVoices = Array.isArray(payload.referenceVoices) ? payload.referenceVoices : Array.isArray(payload.voiceIds) ? payload.voiceIds : []
-  if (rawVoices.length > 3) throw failure('预设声音最多支持 3 个', 422)
+  const voiceLimit = Number(model.maxReferenceVoices) || 0
+  if (rawVoices.length > voiceLimit && rawVoices.length) throw failure(voiceLimit ? `预设声音最多支持 ${voiceLimit} 个` : '当前模型不支持预设声音', 422)
   const referenceVoices = rawVoices.map((value) => {
     const voiceId = typeof value === 'object' ? value?.voice_id ?? value?.voiceId : value
     const normalized = String(voiceId || '').trim()
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(normalized)) throw failure('预设声音标识无效', 422)
-    return normalized
+    return normalized.toLowerCase()
   })
-  if (referenceVoices.length && model.id !== 'grok-imagine-video-1.5') throw failure('当前模型不支持预设声音', 422)
   const firstFrame = String(payload.firstFrame || '').trim()
   const lastFrame = String(payload.lastFrame || '').trim()
   const keyframesPayload = payload.keyframes === undefined ? [] : payload.keyframes
@@ -251,7 +261,7 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
     if (!Number.isFinite(timestamp) || timestamp <= 0 || timestamp >= rawDuration || Math.abs(timestamp * 3 - Math.round(timestamp * 3)) > 1e-6) {
       throw failure('keyframe 时间必须在视频内部并对齐 1/3 秒网格', 422)
     }
-    return { image: { url }, timestamp_s: Math.round(timestamp * 1000) / 1000 }
+    return { image: { url }, timestamp_s: Math.round(timestamp * 3) / 3 }
   })
   const keyframeSlots = new Set(keyframes.map((item) => Math.round(item.timestamp_s * 3)))
   if (keyframeSlots.size !== keyframes.length) throw failure('keyframe 时间不能重复', 422)
@@ -265,9 +275,10 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
   const audios = requestedAudios
   const libraryReferences = [...images, ...frameEntries].filter(isSuiheLibraryReference)
   if (libraryReferences.length && model.provider !== 'suihe') throw failure('人物白名单或云端素材只能用于穗禾模型', 422)
-  if (libraryReferences.length && (mode !== 'image' || frameEntries.some(isSuiheLibraryReference))) throw failure('人物白名单或云端素材请放在全能参考模式中', 422)
+  if (libraryReferences.length && !(['image','singleImage','edit'].includes(mode) || isFrameMode(mode))) throw failure('人物白名单或云端素材请放在全能参考模式中', 422)
   const videoLimit = (mode === 'edit' || mode === 'extend') ? Math.max(1, limits.video ?? 0) : (limits.video ?? 0)
   const video = videos[0] || ''
+  if (legacySuiheExtension && (videos.length !== 1 || images.length || frameEntries.length || audios.length)) throw failure('当前模式不支持图片参考', 422)
   const referenceImageCount = frameEntries.length + images.length
   const modeReferences = model.parameterRules?.referencesByMode?.[mode]
   if (modeReferences) {
@@ -292,7 +303,7 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
   // 首尾帧不能再带额外参考图，参考模式里也不能再出现首尾帧字段。官方给的替代做法是
   // 在参考模式的描述里点名哪张参考图当首帧，所以这里直接拦住而不是悄悄丢掉素材。
   if (model.provider === 'ark' || model.provider === 'suihe') {
-    if ((model.provider === 'suihe' || isSeedance25(model)) && lastFrame && !firstFrame) throw failure('首尾帧模式需要首帧，请补充首帧图片', 422)
+    if (lastFrame && !firstFrame) throw failure('首尾帧模式需要首帧，请补充首帧图片', 422)
     if (isFrameMode(mode) && images.length) throw failure('首尾帧模式不能同时带参考图；要用参考图请换成混合参考模式，并在描述里指定首帧', 422)
     if (mode === 'image' && frameEntries.length) throw failure('混合参考模式不能再指定首尾帧，请在描述里说明哪张参考图当首帧', 422)
   }
@@ -343,11 +354,19 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
     ratio = 'adaptive'
   }
   if (isSeedance20(model) && videos.length && Number(payload.videoSeconds) > 15) throw failure('Seedance 2.0 系列参考视频总时长不能超过 15 秒', 422)
+  // Metaso's H3 page allows one reference video up to 15.5 s, but multiple
+  // videos must total <=15 s; reference audio must total <=15 s as well.
+  // prepareVideoRequest replaces these values with probed original durations
+  // before reserving credits. Reuse the existing localized duration messages.
+  if (model.provider === 'metaso' && model.id === 'MiniMax-H3') {
+    if (videos.length > 1 && Number(payload.videoSeconds) > 15) throw failure('参考视频时长不能超过 15 秒；原素材未被截短', 422)
+    if (audios.length && Number(payload.audioSeconds) > 15) throw failure('参考音频时长不能超过 15 秒；原素材未被截短', 422)
+  }
   if (isSeedance25(model) && videos.length && Number(payload.videoSeconds) > 30) throw failure('Seedance 2.5 参考视频总时长不能超过 30 秒', 422)
   if (isSeedance25(model) && audios.length && Number(payload.audioSeconds) > 30) throw failure('Seedance 2.5 参考音频总时长不能超过 30 秒', 422)
   // 方舟 2.0 fast 带参考时没有 1080p。Grok 1.5 的单图生视频可以 1080p；
   // 参考图、尾帧或关键帧属于参考生视频，官方最高 720p。
-  const grokReferenceCapped = model.id === 'grok-imagine-video-1.5' && (mode === 'image' || keyframes.length > 0 || Boolean(lastFrame))
+  const grokReferenceCapped = model.id === 'grok-imagine-video-1.5' && (mode === 'image' || keyframes.length > 0 || Boolean(lastFrame) || referenceVoices.length > 0)
   if (resolution === '1080p' && ((model.provider === 'ark' && !isSeedance25(model) && (referenceImageCount || keyframes.length)) || grokReferenceCapped)) {
     throw failure('带参考图、尾帧或关键帧时最高支持 720p', 422)
   }
@@ -398,25 +417,35 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
   if (videos.length && pricing.billReferenceVideoSeconds && videoSeconds <= 0) throw failure('参考视频需要提供实际时长（秒）', 422)
   if (model.provider === 'grok' && mode === 'edit' && videoSeconds > 8.7) throw failure('Grok 视频编辑输入最长 8.7 秒', 422)
   if (model.provider === 'grok' && mode === 'extend' && (videoSeconds < 2 || videoSeconds > 15)) throw failure('Grok 视频延长输入必须为 2–15 秒', 422)
-  // 编辑输出继承输入视频时长；续写只按新增片段计输出，输入视频
-  // 另按真实秒数计入成本。官方编辑/续写输出最高 720p。
+  // 新快照的续写预算覆盖源视频+新增片段；传给上游的duration仍只指新增片段。
+  // 旧快照不补标志、不重算已接受预算。编辑/续写计价按输出最高720p。
+  const videoPricing = isCostPlusVideo(model.publicId || model.id)
+    ? payload.videoPricing && typeof payload.videoPricing === 'object' && !Array.isArray(payload.videoPricing) ? payload.videoPricing : videoPricingSnapshot()
+    : undefined
   const longestDuration = allowedDurations ? Math.max(...allowedDurations.filter((item) => item > 0)) : duration
   // -1 的成片秒数要等生成结束才知道。预扣按该型号最长秒数，结算再按实际用量退差。
   const billableDuration = isSeedance25(model) && mode === 'edit'
-    ? Number(payload.editVideoSeconds || videoSeconds)
+    ? Number(payload.editVideoSeconds || (model.provider === 'suihe' && payload.suiheContract?.version === SUIHE_VIDEO_CONTRACT_VERSION ? payload.suiheContract.editSourceSeconds : 0) || videoSeconds)
     : model.provider === 'grok' && mode === 'edit'
     ? videoSeconds
+    : model.provider === 'grok' && mode === 'extend' && videoPricing?.extensionOutputBudget === 'source_plus_extension'
+    ? Math.round((videoSeconds + Number(duration)) * 1000) / 1000
     : hasFrames ? frameDuration : duration === -1 ? longestDuration : duration
   const billingResolution = model.provider === 'grok' && (mode === 'edit' || mode === 'extend')
     ? '720p'
     : resolution
   const billableReferenceImages = referenceImageCount + keyframes.length
-  const videoPricing = isCostPlusVideo(model.publicId || model.id) ? videoPricingSnapshot() : undefined
-  const cost = estimateVideoCost(model, { duration, billableDuration, resolution: billingResolution, ratio, videoSeconds, audioSeconds: Number(payload.audioSeconds)||0, generateAudio, referenceImages: billableReferenceImages, contextIr, videoPricing })
+  const suiheContract = model.provider === 'suihe'
+    ? payload.suiheContract?.version === SUIHE_VIDEO_CONTRACT_VERSION ? payload.suiheContract : payload.submissionState === undefined ? suiheVideoContractSnapshot(model) : undefined
+    : undefined
+  if (suiheContract && mode === 'edit') suiheContract.editSourceSeconds = billableDuration
+  const frozenSuiheCost = model.provider === 'suihe' ? payload.submissionState !== undefined && payload.suiheCost
+    ? payload.suiheCost : suihePricingSnapshot(model,{resolution,creativeMode}) : undefined
+  const cost = estimateVideoCost(model, { ...(frozenSuiheCost ? {suiheCost:frozenSuiheCost} : {}), duration, billableDuration, resolution: billingResolution, ratio, videoSeconds, audioSeconds: Number(payload.audioSeconds)||0, generateAudio, referenceImages: billableReferenceImages, contextIr, videoPricing })
   return {
     model, prompt, mode, duration, billableDuration, resolution, ratio, image, images, videos, video, audios, referenceVoices, firstFrame, lastFrame, keyframes, generateAudio, creativeMode, contextIr, cost, arkOptions,
     // 服务端落盘要用这次请求的节点目录；只保留安全的相对路径。
-    parameters: { ...(videoPricing ? {videoPricing} : {}), upstreamProvider:model.provider, ...(model.provider==='suihe'?{suiheCost:suihePricingSnapshot(model,{resolution,creativeMode})}:{}), referenceHistory: normalizeReferenceHistory(payload.referenceHistory), outputDirectory: safeOutputDirectory(payload.outputDirectory), mode, duration, billableDuration, resolution, ratio: ratio || null, image: image || null, images, videos, video: video || null, audios, referenceVoices, firstFrame: firstFrame || null, lastFrame: lastFrame || null, keyframes, generateAudio, creativeMode: creativeMode || null, videoSeconds, audioSeconds:Number(payload.audioSeconds)||0, referenceImages: billableReferenceImages, frames: rawFrames ?? null, seed: seed ?? null, cameraFixed: cameraFixed ?? null, returnLastFrame: returnLastFrame ?? null, webSearch, ...(contextIr === false ? { contextIr } : {}) },
+    parameters: { ...(videoPricing ? {videoPricing} : {}), ...(suiheContract ? {suiheContract} : {}), upstreamProvider:model.provider, ...(frozenSuiheCost?{suiheCost:frozenSuiheCost}:{}), referenceHistory: normalizeReferenceHistory(payload.referenceHistory), outputDirectory: safeOutputDirectory(payload.outputDirectory), mode, duration, billableDuration, resolution: model.provider === 'grok' && ['edit','extend'].includes(mode) && videoPricing?.extensionOutputBudget === 'source_plus_extension' ? billingResolution : resolution, ratio: ratio || null, image: image || null, images, videos, video: video || null, audios, referenceVoices, firstFrame: firstFrame || null, lastFrame: lastFrame || null, keyframes, generateAudio, creativeMode: creativeMode || null, videoSeconds, audioSeconds:Number(payload.audioSeconds)||0, referenceImages: billableReferenceImages, frames: rawFrames ?? null, seed: seed ?? null, cameraFixed: cameraFixed ?? null, returnLastFrame: returnLastFrame ?? null, webSearch, ...(contextIr === false ? { contextIr } : {}) },
   }
 }
 
@@ -458,7 +487,7 @@ function referenceProviderRequest(request, userId, materializeReference, { inlin
   const delivery = new Map()
   const converted = new Map()
   const convert = (value, kind, inline = inlineImages) => {
-    if (!value) return Promise.resolve(value)
+    if (!value || isSuiheLibraryReference(value)) return Promise.resolve(value)
     const key = JSON.stringify([value, kind, inline])
     if (converted.has(key)) return converted.get(key)
     const promise = Promise.resolve(materializeReference(value, userId, { kind, inline })).then((item) => {
@@ -512,9 +541,9 @@ function errorWithUpstreamId(error, request, attempts = 1) {
   return { id, message, diagnostic, errorText: `${message}；${diagnostic}`.slice(0, 500) }
 }
 
-function storedReferenceDiagnostics(management, generationId) {
+async function storedReferenceDiagnostics(management, generationId) {
   try {
-    const stored = management.loadGeneration(generationId)
+    const stored = (await management.loadGeneration(generationId))
     const parameters = stored?.parameters || {}
     return referenceDiagnostics(parameters)
   } catch {
@@ -536,7 +565,6 @@ export async function createSub2ApiVideo(request, { env = process.env, fetchImpl
   if (!editing && request.generateAudio !== undefined) body.generate_audio = Boolean(request.generateAudio)
   if (!editing && !extending) {
     if (request.resolution) body.resolution = request.resolution
-    if (request.ratio) body.aspect_ratio = request.ratio
   }
   // With several references, xAI expects every image in reference_images and
   // no duplicated pinned image. A single image is the image-to-video input.
@@ -556,6 +584,11 @@ export async function createSub2ApiVideo(request, { env = process.env, fetchImpl
   if (Array.isArray(request.referenceVoices) && request.referenceVoices.length) {
     body.reference_audios = request.referenceVoices.map((voice_id) => ({ voice_id }))
   }
+  // Bare first-frame requests are image-to-video even when a frame-mode UI
+  // supplied image. Adding reference voices or pinned frames changes the API
+  // request into reference-to-video, where aspect_ratio is supported.
+  const imageToVideo = body.image && !body.reference_images && !body.last_frame && !body.keyframes && !body.reference_audios
+  if (!editing && !extending && request.ratio && !imageToVideo) body.aspect_ratio = request.ratio
   if (request.video) body.video = { url: request.video }
   const path = request.mode === 'edit' ? '/v1/videos/edits' : request.mode === 'extend' ? '/v1/videos/extensions' : '/v1/videos/generations'
   const response = await createMediaProviderFetch({ env, fetchImpl })(`${config.baseUrl}${path}`, { method: 'POST', headers: { authorization: `Bearer ${config.apiKey}`, 'content-type': 'application/json' }, body: JSON.stringify(body), signal })
@@ -609,7 +642,7 @@ function identity(payload: Record<string, any> = {}) {
  * 预览用（estimateVideoCredits）和真正下单（createVideo）都走这一条，
  * 保证「界面上显示的积分」和「请求时预扣的积分」是同一个数字。
  */
-export async function prepareVideoRequest(payload, session, { env = process.env, probeReferenceMedia, signal }: Record<string, any> = {}) {
+export async function prepareVideoRequest(payload, session, { env = process.env, probeReferenceMedia, management, suiheFetch = fetch, signal }: Record<string, any> = {}) {
   signal?.throwIfAborted()
   const modelForProbe = modelById(String(payload.model || '').trim())
   const needsMediaProbe = Boolean(probeReferenceMedia && (payload.video || (Array.isArray(payload.videos) && payload.videos.length) || (Array.isArray(payload.audios) && payload.audios.length)))
@@ -619,21 +652,9 @@ export async function prepareVideoRequest(payload, session, { env = process.env,
     ? { ...payload, audioSeconds:0, videoSeconds: String(payload.mode || '') === 'extend' && modelForProbe?.provider === 'grok' ? 2 : 1 }
     : { ...payload, audioSeconds:0 }
   let request = validateVideoRequest(validationPayload, env)
-  // 云枢 Classic 的 image 首帧路径实测沿用输入比例；reference_images
-  // 可按所选比例生成。保留首帧语义，不静默改参考模式或裁切用户素材。
-  if (request.model.id === 'grok-imagine-video' && request.mode === 'singleImage' && request.ratio) {
-    if (!probeReferenceMedia) throw failure('参考图比例校验服务不可用，已阻止生成', 503)
-    const source = await probeReferenceMedia(request.image || request.images[0], session?.userId, 'image', { signal })
-    signal?.throwIfAborted()
-    const [width, height] = request.ratio.split(':').map(Number)
-    if (!(source?.width > 0 && source?.height > 0)) throw failure('无法读取参考图尺寸，已阻止生成', 422)
-    if (Math.abs((source.width / source.height) / (width / height) - 1) > 0.03) {
-      throw failure(`当前普通 Grok 单图通道会沿用参考图比例（${source.width}×${source.height}），与所选 ${request.ratio} 不一致；请切换“混合参考”，或使用同比例参考图`, 422)
-    }
-  }
   const libraryReferences = request.model.provider === 'suihe' ? suiheLibraryReferences(request) : []
   if (libraryReferences.length) {
-    await assertSuiheLibraryReferences({ userId: session?.userId, references: libraryReferences, env, signal })
+    await assertSuiheLibraryReferences({ userId: session?.userId, store: management, references: libraryReferences, env, fetchImpl: suiheFetch, signal })
     signal?.throwIfAborted()
   }
   const imageUrls = uniqueUrls([request.image, ...request.images, request.firstFrame, request.lastFrame, ...request.keyframes.map(item => item.image.url)]).filter(url => !isSuiheLibraryReference(url))
@@ -686,7 +707,7 @@ export async function prepareVideoRequest(payload, session, { env = process.env,
   }
   if(request.model.provider==='suihe') {
     signal?.throwIfAborted()
-    const quote=await estimateSuiheVideo(request,{env})
+    const quote=await estimateSuiheVideo(request,{env,fetchImpl:suiheFetch})
     signal?.throwIfAborted()
     const generationSnapshot=suihePricingSnapshot(request.model,{resolution:quote.generationResolution,creativeMode:quote.creativeMode})
     request.parameters.suiheCost={...request.parameters.suiheCost,preEstimate:{...quote,
@@ -698,18 +719,24 @@ export async function prepareVideoRequest(payload, session, { env = process.env,
 }
 
 /** 只算积分、不占额不下单：给画布显示「这次请求会扣多少」。 */
-function routeNewVideo(payload, management, env) {
-  const settings = management.settings()
+async function routeNewVideo(payload, management, env) {
+  const settings = (await management.settings())
   const model = activeModelForSettings(payload.model, settings, env)
   if (!model?.video || model.internalOnly || settings.models?.[model.publicId || model.id] === false) throw failure('当前视频模型未开放', 403)
-  // The server owns routing. Never trust channel markers from the caller.
-  return { ...payload, __provider: model.provider, upstreamProvider: model.provider }
+  // New orders own their tariff snapshot. A caller cannot select an old price
+  // or omit the extension budget flag; queue replay calls validation directly.
+  const fresh = { ...payload }
+  delete fresh.videoPricing
+  delete fresh.suiheContract
+  delete fresh.suiheCost
+  delete fresh.submissionState
+  return { ...fresh, __provider: model.provider, upstreamProvider: model.provider }
 }
 
 export async function estimateVideoCredits(payload, session, { management, env = process.env, probeReferenceMedia, signal }: Record<string, any> = {}) {
   if (!session) throw failure('请先登录再查看积分', 401)
-  if (management) payload = routeNewVideo(payload, management, env)
-  const request = await prepareVideoRequest(payload, session, { env, probeReferenceMedia, signal })
+  if (management) payload = (await routeNewVideo(payload, management, env))
+  const request = await prepareVideoRequest(payload, session, { env, probeReferenceMedia, management, signal })
   return {
     model: request.model.publicId || request.model.id,
     points: request.cost.points,
@@ -723,26 +750,26 @@ export async function createVideo(payload, session, { management, env = process.
   if (!management) throw failure('视频处理器缺少 ManagementStore', 500)
   if (!session) throw failure('请先登录再生成', 401)
   const ids = identity(payload)
-  const existing = management.existingGeneration({ session, requestId: ids.requestId, idempotencyKey: ids.idempotencyKey, accessToken: payload.accessToken })
+  const existing = (await management.existingGeneration({ session, requestId: ids.requestId, idempotencyKey: ids.idempotencyKey, accessToken: payload.accessToken }))
   if (existing) {
-    const current = management.generationForViewer(existing.requestId, session, existing.accessToken || payload.accessToken)
+    const current = (await management.generationForViewer(existing.requestId, session, existing.accessToken || payload.accessToken))
     if (!current) throw failure('生成记录不存在', 404)
     return generationReceipt(current, { taskId: existing.upstreamRequestId || null, accessToken: existing.accessToken || undefined, duplicate: true })
   }
   // A replay may outlive its input lease, model settings or reference files.
   // Only a genuinely new task prepares inputs and checks new-order policy.
-  assertModelAccess({ management, session, service: '视频模型' })
+  await assertModelAccess({ management, session, service: '视频模型' })
   if (preparePayload) payload = preparePayload(payload)
-  if (!management.settings().videoEnabled) throw failure('管理员尚未开启视频生成', 503)
-  payload = routeNewVideo(payload, management, env)
-  const request = await prepareVideoRequest(payload, session, { env, probeReferenceMedia, signal })
+  if (!(await management.settings()).videoEnabled) throw failure('管理员尚未开启视频生成', 503)
+  payload = (await routeNewVideo(payload, management, env))
+  const request = await prepareVideoRequest(payload, session, { env, probeReferenceMedia, management, signal })
   request.parameters.workspaceProject = currentProject() || DEFAULT_PROJECT_ID
   request.parameters.referenceVideoCount = request.parameters.videos.length
   request.parameters.referenceAudioCount = request.parameters.audios.length
   if (payload.desktopDelivery === 1) Object.assign(request.parameters, { desktopDelivery: 1, desktopReferences: payload.desktopReferences })
   signal?.throwIfAborted()
-  const reservation = management.reserve({ session, model: request.model, points: request.cost.points, prompt: request.prompt, parameters: request.parameters, requestId: ids.requestId, idempotencyKey: ids.idempotencyKey, status: GENERATION_STATES.QUEUED, inputs: {}, accessToken: payload.accessToken })
-  const current = management.generationForViewer(reservation.requestId, session, reservation.accessToken || payload.accessToken)
+  const reservation = (await management.reserve({ session, model: request.model, points: request.cost.points, prompt: request.prompt, parameters: request.parameters, requestId: ids.requestId, idempotencyKey: ids.idempotencyKey, status: GENERATION_STATES.QUEUED, inputs: {}, accessToken: payload.accessToken }))
+  const current = (await management.generationForViewer(reservation.requestId, session, reservation.accessToken || payload.accessToken))
   if (!current) throw failure('生成记录不存在', 404)
   return generationReceipt(current, { accessToken: reservation.accessToken || undefined, duplicate: Boolean(reservation.duplicate), ...(!reservation.duplicate ? { cost: request.cost } : {}) })
 }
@@ -754,16 +781,16 @@ export async function submitQueuedVideo(job, { management, env = process.env, fe
   const request = validateVideoRequest({ ...parameters, model: job.model, prompt: job.prompt, __provider: job.provider }, env)
   if (parameters.videoPricing && isCostPlusVideo(job.model)) request.parameters.videoPricing = parameters.videoPricing
   signal?.throwIfAborted()
-  if (!management.heartbeat(job.id, job.lease_id)) throw failure('生成已取消或已结算', 409)
+  if (!(await management.heartbeat(job.id, job.lease_id))) throw failure('生成已取消或已结算', 409)
   // 秘塔余额差只作共享账号窗口观察，不能直接归为本单实扣。
   const balanceBefore = request.model.provider === 'metaso' ? await metasoCreditsBalance({ env, fetchImpl }) : null
   let task
   let lastError
   let lastUpstreamRequest = request
   let attempts = 0
-  const dispatchFetch: typeof fetch = (input, init) => {
+  const dispatchFetch: typeof fetch = async (input, init) => {
     signal?.throwIfAborted()
-    management.assertGenerationDispatch(job.id, job.lease_id, { markStarted: true })
+    await management.assertGenerationDispatch(job.id, job.lease_id, { markStarted: true })
     return fetchImpl(input, init)
   }
   for (let attempt = 0; attempt <= REFERENCE_RETRY_DELAYS_MS.length; attempt += 1) {
@@ -774,17 +801,21 @@ export async function submitQueuedVideo(job, { management, env = process.env, fe
       // refreshes its TTL and ensures a transient provider fetch timeout never
       // reuses the URL that just failed.
       let upstreamRequest = await referenceProviderRequest(request, job.user_id, materializeReference, { inlineArkImages: attempt > 0 })
-      // Suihe fails omni-reference images that may show a person unless they
-      // come from the account's whitelist; prepare that library server-side.
-      // Library calls use the plain fetch: they are not the paid submission.
-      if (request.model.provider === 'suihe' && request.mode === 'image') {
+      // New tasks prepare every admitted image slot automatically. Old
+      // snapshots retain omni-reference-only preparation; accepted tasks poll
+      // their original task instead of returning through this dispatch path.
+      // Storage can have its own charge; it must not mark video generation dispatched.
+      const expandedImagePreparation = request.parameters.suiheContract?.imageLibraryPreparation === 'all_image_slots'
+      const automaticImageMode = request.mode === 'image' || expandedImagePreparation && ['singleImage','startEndRequired','endFrameOptional','startFrameOptional','edit'].includes(request.mode)
+      if (request.model.provider === 'suihe' && automaticImageMode) {
         upstreamRequest = await whitelistReferenceImages(upstreamRequest, { userId: job.user_id, store: management, env, fetchImpl, signal,
           readBytes: value => referenceBlob(value, 'image', { fetchImpl, signal }) })
       }
+      if (request.model.provider === 'suihe' && suiheLibraryReferences(upstreamRequest).length) await assertSuiheLibraryReferences({userId:job.user_id,store:management,references:suiheLibraryReferences(upstreamRequest),env,fetchImpl,signal})
       lastUpstreamRequest = upstreamRequest
       signal?.throwIfAborted()
       task = request.model.provider === 'suihe'
-        ? await createSuiheTask(upstreamRequest, { env, fetchImpl: dispatchFetch, signal, subKey: suiheLibraryReferences(upstreamRequest).length ? suiheAssetSubKey(job.user_id) : '' })
+        ? await createSuiheTask(upstreamRequest, { env, fetchImpl: dispatchFetch, signal, subKey: suiheAssetSubKey(job.user_id) })
         : request.model.provider === 'ark'
         ? await createArkVideoTask(upstreamRequest, { env, fetchImpl: dispatchFetch, signal })
         : request.model.provider === 'metaso'
@@ -802,7 +833,7 @@ export async function submitQueuedVideo(job, { management, env = process.env, fe
     const details = errorWithUpstreamId(lastError, lastUpstreamRequest, attempts)
     const failed = Object.assign(lastError || new Error(details.message), { message: details.message, upstreamRequestId: details.id || lastError?.upstreamRequestId || '' })
     try {
-      management.recordUpstreamCall({
+      await management.recordUpstreamCall({
         generationId: job.id,
         provider: request.model.provider,
         model: job.model,
@@ -824,14 +855,14 @@ export async function submitQueuedVideo(job, { management, env = process.env, fe
   try {
     task.referenceDiagnostics = referenceDiagnostics(lastUpstreamRequest)
     task.sentBody = task.sentBody ? redactReferencePayload(task.sentBody) : task.referenceDiagnostics
-    management.setUpstreamTask(job.id, { requestId: task.id, model: task.upstreamModel, status: task.upstreamStatus })
+    await management.setUpstreamTask(job.id, { requestId: task.id, model: task.upstreamModel, status: task.upstreamStatus })
     const balanceAfter = request.model.provider === 'metaso' ? await metasoCreditsBalance({ env, fetchImpl }) : null
     const estimatedCost = request.model.provider === 'metaso'
       ? estimateUpstreamCostRmb({ model: request.model, parameters: request.parameters, seconds: Number(request.billableDuration ?? request.duration) || null })
       : null
     const estimatedCredits = estimatedCost?.detail?.supplierCredits ?? (estimatedCost?.rmb == null ? null : Math.round(Number(estimatedCost.rmb) / 0.0108 * 10000) / 10000)
     try {
-      management.recordUpstreamCall({
+      await management.recordUpstreamCall({
         generationId: job.id,
         provider: request.model.provider,
         model: job.model,
@@ -863,7 +894,7 @@ export async function submitQueuedVideo(job, { management, env = process.env, fe
  * 目标目录优先用这次请求带的 outputDirectory（画布节点目录），否则 assets/。
  */
 async function persistVideoIntoWorkspace({ management, workspaceFiles, generationId, video, model, env, fetchImpl }: Record<string, any>) {
-  const row = management.get('SELECT user_id, request_id, parameters FROM generations WHERE id=?', generationId)
+  const row = (await management.get('SELECT user_id, request_id, parameters FROM generations WHERE id=?', generationId))
   const userId = row?.user_id
   if (!userId) return ''
   let parameters: Record<string, any> = {}
@@ -894,7 +925,7 @@ async function persistVideoIntoWorkspace({ management, workspaceFiles, generatio
     const mimeType = String(video.mime || 'video/mp4').split(';')[0].trim()
     const path = `${directory}/${randomUUID()}.${mimeType === 'video/webm' ? 'webm' : 'mp4'}`
     const project = parameters.workspaceProject || DEFAULT_PROJECT_ID
-    const absolute = workspaceFiles.fileFor(userId, project, path, { create: true })
+    const absolute = (await workspaceFiles.fileFor(userId, project, path, { create: true }))
     const identity = !response.headers.get('content-encoding') || response.headers.get('content-encoding').split(',').every(value => value.trim().toLowerCase() === 'identity')
     const declaredLength = identity && /^\d+$/.test(response.headers.get('content-length') || '') ? Number(response.headers.get('content-length')) : null
     // This is the existing server workspace cache limit. Larger results remain
@@ -909,28 +940,28 @@ async function persistVideoIntoWorkspace({ management, workspaceFiles, generatio
         if (error?.status === 503) throw error
         throw failure('成片文件无效或不完整，请重新取回', 502)
       }
-      const publish = file => {
+      const publish = async file => {
         receiveSignal.throwIfAborted()
         if (file.size > WORKSPACE_FILE_MAX_BYTES) throw failure('单个文件不能超过 200MB', 413)
-        management.transaction(() => {
-          const latest = management.get('SELECT status,parameters FROM generations WHERE id=?', generationId)
+        await management.transaction(async () => {
+          const latest = (await management.get('SELECT status,parameters FROM generations WHERE id=?', generationId))
           const delivery = JSON.parse(latest?.parameters || '{}')
           if (delivery.desktopDeliveredAt || delivery.desktopMediaExpiredAt) throw failure('服务器临时文件已清理，请打开本机保存的结果', 410)
           if (![GENERATION_STATES.RUNNING, GENERATION_STATES.SUCCEEDED].includes(latest?.status)) throw failure('这次生成已取消或结束，未写入成片', 409)
-          if (management.get(`SELECT path FROM workspace_files WHERE ${workspaceFiles.scopeWhere()} AND path=?`, ...workspaceFiles.scopeArgs(userId, project), path)) throw failure('暂存文件路径冲突，未覆盖原文件', 409)
-          workspaceFiles.assertWriteTarget(userId, project, path, mimeType, null)
+          if ((await management.get(`SELECT path FROM workspace_files WHERE ${workspaceFiles.scopeWhere()} AND path=?`, ...(await workspaceFiles.scopeArgs(userId, project)), path))) throw failure('暂存文件路径冲突，未覆盖原文件', 409)
+          await workspaceFiles.assertWriteTarget(userId, project, path, mimeType, null)
           const blob = file.sha256 || workspaceFiles.blobs.putFile(userId, file.path).blob
           if (file.sha256) workspaceFiles.blobs.linkFromFile(userId, file.path, blob, { copyFallback: true })
           const revision = randomUUID()
-          workspaceFiles.putIndex(userId, project, path, mimeType, file.size, revision, blob)
-          if (parameters.desktopDelivery === 1) recordDesktopMediaOutput(management, userId, row.request_id, { path, revision, blob }, project)
+          await workspaceFiles.putIndex(userId, project, path, mimeType, file.size, revision, blob)
+          if (parameters.desktopDelivery === 1) await recordDesktopMediaOutput(management, userId, row.request_id, { path, revision, blob }, project)
         })
-        workspaceFiles.flushBytes()
+        await workspaceFiles.flushBytes()
         return path
       }
       // Preserve the original for desktop digest acknowledgement. Website
       // playback keeps lossless faststart, without loading whole files into JS.
-      return parameters.desktopDelivery === 1 ? publish(received) : withNormalizedVideoFile(received, { path, mime: mimeType, signal: receiveSignal }, publish)
+      return parameters.desktopDelivery === 1 ? (await publish(received)) : withNormalizedVideoFile(received, { path, mime: mimeType, signal: receiveSignal }, publish)
     })
   } catch (error) {
     if (signal.aborted) throw failure('成片下载超时，请重新取回', 504)
@@ -948,7 +979,7 @@ async function persistVideoIntoWorkspace({ management, workspaceFiles, generatio
 const videoRestores = new Map()
 export async function restoreVideoResult({ requestId }: Record<string, any>, session, dependencies: Record<string, any> = {}) {
   if (!session) throw failure('请先登录', 401)
-  dependencies.management.generationForViewer(requestId, session)
+  await dependencies.management.generationForViewer(requestId, session)
   if (videoRestores.has(requestId)) return videoRestores.get(requestId)
   const promise = restoreVideoResultOnce({ requestId }, session, dependencies).finally(() => videoRestores.delete(requestId))
   videoRestores.set(requestId, promise)
@@ -957,28 +988,28 @@ export async function restoreVideoResult({ requestId }: Record<string, any>, ses
 async function restoreVideoResultOnce({ requestId }: Record<string, any>, session, { management, workspaceFiles, env = process.env, fetchImpl = fetch }: Record<string, any> = {}) {
   if (!session) throw failure('请先登录', 401)
   if (!management || !workspaceFiles) throw failure('结果取回缺少依赖', 500)
-  const existing = management.existingGeneration({ session, requestId })
+  const existing = (await management.existingGeneration({ session, requestId }))
   if (!existing) throw failure('生成记录不存在', 404)
-  const record = management.generationForViewer(requestId, session)
+  const record = (await management.generationForViewer(requestId, session))
   if (record.parameters?.cloudWorkspaceRetiredAt) throw failure('旧云端项目文件已停用，请使用桌面版中保存的文件', 410)
   if (record?.parameters?.desktopDeliveredAt || record?.parameters?.desktopMediaExpiredAt) throw failure('服务器临时文件已清理，请打开本机保存的结果', 410)
   if (record?.status !== GENERATION_STATES.SUCCEEDED) throw failure('这次生成还没有成功，无法取回', 409)
-  const video = management.videoResult(existing.id)
+  const video = (await management.videoResult(existing.id))
   if (!video) throw failure('这次生成没有视频结果', 404)
   if (video.metadata?.workspacePath) {
-    try { workspaceFiles.locate(session.userId, video.metadata.workspacePath, record.parameters?.workspaceProject || DEFAULT_PROJECT_ID); return { path: video.metadata.workspacePath, already: true } } catch { /* 文件没了就重下 */ }
+    try { await workspaceFiles.locate(session.userId, video.metadata.workspacePath, record.parameters?.workspaceProject || DEFAULT_PROJECT_ID); return { path: video.metadata.workspacePath, already: true } } catch { /* 文件没了就重下 */ }
   }
   const model = modelForGeneration(record.model, record.parameters || {}, existing.provider) || modelById(record.model)
   const path = await persistVideoIntoWorkspace({ management, workspaceFiles, generationId: existing.id, video, model, env, fetchImpl })
   if (!path) throw failure('成片地址不可用，无法取回', 502)
-  management.setVideoWorkspacePath(existing.id, path)
+  await management.setVideoWorkspacePath(existing.id, path)
   return { path, already: false }
 }
 
 const videoPolls = new Map()
 export async function pollVideo(payload, session, dependencies: Record<string, any> = {}) {
   // Authorize every caller before sharing an in-flight poll with the background worker.
-  dependencies.management.generationForViewer(String(payload?.requestId || ''), session, payload?.accessToken || '')
+  await dependencies.management.generationForViewer(String(payload?.requestId || ''), session, payload?.accessToken || '')
   const key = String(payload?.requestId || '')
   if (videoPolls.has(key)) return videoPolls.get(key)
   const promise = pollVideoOnce(payload, session, dependencies).finally(() => videoPolls.delete(key))
@@ -991,9 +1022,9 @@ async function pollVideoOnce(payload, session, { management, env = process.env, 
   const requestId = String(payload?.requestId || '').trim()
   if (!requestId) throw failure('缺少视频请求标识', 422)
   const accessToken = String(payload?.accessToken || '').trim()
-  const existing = management.existingGeneration({ session, requestId, accessToken })
+  const existing = (await management.existingGeneration({ session, requestId, accessToken }))
   if (!existing) throw failure('视频生成记录不存在', 404)
-  const current = management.generationForViewer(requestId, session, accessToken)
+  const current = (await management.generationForViewer(requestId, session, accessToken))
   const terminalResponse = record => record && [GENERATION_STATES.SUCCEEDED, GENERATION_STATES.FAILED, GENERATION_STATES.CANCELLED, GENERATION_STATES.EXPIRED].includes(record.status)
     ? { ...record, httpStatus: record.status === GENERATION_STATES.EXPIRED ? 410 : 200 }
     : null
@@ -1015,7 +1046,7 @@ async function pollVideoOnce(payload, session, { management, env = process.env, 
       : provider === 'suihe'
       ? await pollSuiheTask(taskIdValue, { env, fetchImpl, signal: AbortSignal.timeout(30_000) })
       : await pollSub2ApiVideo(taskIdValue, { env, model, fetchImpl, signal: AbortSignal.timeout(30_000) })
-    const latestTerminal = terminalResponse(management.generationForViewer(requestId, session, accessToken))
+    const latestTerminal = terminalResponse((await management.generationForViewer(requestId, session, accessToken)))
     if (latestTerminal) return latestTerminal
     // 上游视频地址可能要求 Bearer Key、跨域，或只在短时间内对服务端可读；
     // 统一改走同源代理地址，浏览器再从服务端工作区写入账号持久化文件。
@@ -1036,10 +1067,10 @@ async function pollVideoOnce(payload, session, { management, env = process.env, 
           console.warn('[video] 成片写入工作区失败', existing.id, error?.message || error)
         }
       }
-      management.completeVideo(existing.id, result)
+      await management.completeVideo(existing.id, result)
       try {
-        const settled = management.get('SELECT parameters, upstream_cost FROM generations WHERE id=?', existing.id)
-        management.finishUpstreamCall(existing.id, {
+        const settled = (await management.get('SELECT parameters, upstream_cost FROM generations WHERE id=?', existing.id))
+        await management.finishUpstreamCall(existing.id, {
           response: result.metadata?.raw ?? null,
           usage: result.usage ?? null,
           cost: settled?.upstream_cost ? JSON.parse(settled.upstream_cost) : null,
@@ -1048,7 +1079,7 @@ async function pollVideoOnce(payload, session, { management, env = process.env, 
           status: 'ok',
         })
       } catch { /* 留档失败不影响结果 */ }
-      const settled = management.generationForViewer(requestId, session, accessToken)
+      const settled = (await management.generationForViewer(requestId, session, accessToken))
       return { ...settled, requestId, status: GENERATION_STATES.SUCCEEDED, cost: { points: settled?.chargedPoints ?? current?.reservedPoints ?? 0, reservedPoints: settled?.reservedPoints ?? current?.reservedPoints ?? 0 }, httpStatus: 200 }
     }
     if (result.status === 'failed') {
@@ -1059,13 +1090,13 @@ async function pollVideoOnce(payload, session, { management, env = process.env, 
       const resultMessage = resultRequestId && !String(rawResultMessage).includes(resultRequestId)
         ? `${rawResultMessage}（上游 Request id: ${resultRequestId}）`
         : rawResultMessage
-      const diagnostic = `参考素材=${JSON.stringify(storedReferenceDiagnostics(management, existing.id))}`
+      const diagnostic = `参考素材=${JSON.stringify((await storedReferenceDiagnostics(management, existing.id)))}`
       const failureText = `${resultMessage}；${diagnostic}`.slice(0, 500)
-      management.fail(existing.id, failureText, { ...result, upstreamRequestId: resultRequestId || result.upstreamRequestId })
-      const afterFailure = terminalResponse(management.generationForViewer(requestId, session, accessToken))
+      await management.fail(existing.id, failureText, { ...result, upstreamRequestId: resultRequestId || result.upstreamRequestId })
+      const afterFailure = terminalResponse((await management.generationForViewer(requestId, session, accessToken)))
       if (afterFailure && afterFailure.status !== GENERATION_STATES.FAILED) return afterFailure
       try {
-        management.finishUpstreamCall(existing.id, { response: result.metadata?.raw ?? null, usage: result.usage ?? null, upstreamRequestId: resultRequestId || result.upstreamRequestId || taskIdValue, status: 'failed_after_submit', error: failureText })
+        await management.finishUpstreamCall(existing.id, { response: result.metadata?.raw ?? null, usage: result.usage ?? null, upstreamRequestId: resultRequestId || result.upstreamRequestId || taskIdValue, status: 'failed_after_submit', error: failureText })
       } catch { /* 留档失败不影响结算 */ }
       // 注意：result.status 是业务状态（failed），不能覆盖 Error 的 HTTP status。
       throw Object.assign(new Error(failureText), { ...result, upstreamRequestId: resultRequestId || result.upstreamRequestId, status: 422 })
@@ -1074,7 +1105,7 @@ async function pollVideoOnce(payload, session, { management, env = process.env, 
   } catch (error) {
     // Only an explicit upstream terminal task state settles the reservation.
     // HTTP/auth/network errors during a read do not change the task's state.
-    const latest = terminalResponse(management.generationForViewer(requestId, session, accessToken))
+    const latest = terminalResponse((await management.generationForViewer(requestId, session, accessToken)))
     if (latest) return latest
     return { requestId, taskId: taskIdValue, status: GENERATION_STATES.RUNNING, progress: null, pollAfterMs: 5_000, httpStatus: 202 }
   }

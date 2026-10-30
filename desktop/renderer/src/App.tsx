@@ -12,12 +12,9 @@ function StudioLoading() {
 }
 
 function DesktopContent() {
-  const params = new URLSearchParams(window.location.search)
-  const pick = params.get('pick')
-  const studio = params.get('studio') === '1' || params.has('play')
-  const library = !studio && (params.has('library') || params.has('session') || params.has('focus') || params.has('q') || ['prompt', 'reference'].includes(pick))
-  const selectionMode = pick === 'prompt' || pick === 'reference' ? pick : null
-  return <Suspense fallback={<StudioLoading />}>{library ? <InspirationLibrary selectionMode={selectionMode} /> : <StudioPage />}</Suspense>
+  // 独立灵感库页只用于开发预览（MIAO_DESKTOP_PREVIEW_LIBRARY），正式窗口总是进工作台。
+  const library = new URLSearchParams(window.location.search).has('library')
+  return <Suspense fallback={<StudioLoading />}>{library ? <InspirationLibrary /> : <StudioPage />}</Suspense>
 }
 
 export default function App() {

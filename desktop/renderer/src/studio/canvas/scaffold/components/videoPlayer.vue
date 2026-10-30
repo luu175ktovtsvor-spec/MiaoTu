@@ -91,7 +91,7 @@ const canAdaptPlayback = computed(() => Boolean(window.miaoDesktop) && workspace
 const posterUrl = computed(() => props.src.includes("/api/imagine/workspace/files?") ? workspacePreviewUrl(props.src) : undefined);
 // 节点名是画布数据：展示时按当前语言兜底，写进画布（新建节点名）仍用中文原文。
 const label = computed(() => props.label || translate("节点视频"));
-const emit = defineEmits<{ dimensions: [size: { width: number; height: number }] }>();
+const emit = defineEmits<{ time: [seconds: number]; dimensions: [size: { width: number; height: number }] }>();
 const video = ref<HTMLVideoElement>();
 const fullscreen = ref(false);
 const ready = ref(false);
@@ -115,6 +115,7 @@ onMounted(() => {
 });
 watch(mediaActive, active => {
   if (!active) {
+    seekController?.abort();
     resumeAfterSwitch = false;
     resumeTime = video.value?.currentTime ?? resumeTime;
     video.value?.pause();
@@ -128,11 +129,14 @@ watch(mediaActive, active => {
 }, { flush: "pre" });
 const getCanvas = inject<(() => { id: string } | undefined) | undefined>("canvas", undefined);
 let captureController: AbortController | undefined;
+let seekController: AbortController | undefined;
 let captureJob: Promise<unknown> | undefined;
 
 watch(() => getCanvas?.()?.id, () => captureController?.abort(), { flush: "sync" });
 watch(() => props.disabled, disabled => { if (disabled) captureController?.abort(); }, { flush: "sync" });
 watch(() => props.src, () => {
+  seekController?.abort();
+  emit("time", 0);
   captureController?.abort();
   ready.value = false;
   originalFallback.value = false;
@@ -148,7 +152,7 @@ watch(() => props.src, () => {
   failed.value = false;
   if (mediaActive.value && !posterUrl.value) void requestMedia();
 }, { flush: "sync" });
-onBeforeUnmount(() => { observer?.disconnect(); captureController?.abort(); video.value?.pause(); video.value?.removeAttribute("src"); video.value?.load(); });
+onBeforeUnmount(() => { seekController?.abort(); observer?.disconnect(); captureController?.abort(); video.value?.pause(); video.value?.removeAttribute("src"); video.value?.load(); });
 // 切到其他画布或后台标签时停止播放，避免看不见的播放器继续抢带宽。
 const visibility = () => { pageVisible.value = !document.hidden; };
 document.addEventListener("visibilitychange", visibility);
@@ -186,7 +190,7 @@ nodeTools.register({
   async execute({ frame }, { signal }) { return captureFrame(frame, signal, true); },
 });
 
-defineExpose({ enterFullscreen, cancelAndWait });
+defineExpose({ enterFullscreen, cancelAndWait, captureFrame, capturing, seek, seekTo });
 
 async function cancelAndWait() {
   captureController?.abort();
@@ -270,6 +274,7 @@ function useLightweightPlayback(resume: boolean) {
 }
 function readTime() {
   if (!scrubbing) currentTime.value = video.value?.currentTime ?? 0;
+  emit("time", currentTime.value);
   // 桌面版始终播放本机原片。以前按丢帧率中途切到转码副本：播放会停下来等 ffmpeg
   // 转完整段，回来还是 720p 低码率，看起来就是"卡一下再变糊"。只有解码失败才降载。
 }
@@ -278,6 +283,22 @@ function scrub(value: number | number[]) {
   scrubbing = true;
   currentTime.value = value;
 }
+async function seekTo(seconds: number) {
+  if (!Number.isFinite(seconds)) return;
+  seekController?.abort(); const local = seekController = new AbortController(), source = props.src;
+  await prepareToolPlayback(local.signal); local.signal.throwIfAborted();
+  const target = video.value; if (!target || props.src !== source) return;
+  if (!target.readyState) await new Promise<void>((resolve, reject) => {
+    const finish = (failure?: unknown) => { clearTimeout(timeout); target.removeEventListener("loadedmetadata", done); target.removeEventListener("error", failed); local.signal.removeEventListener("abort", aborted); failure ? reject(failure) : resolve(); };
+    const done = () => finish(), failed = () => finish(new Error(translate("视频读取失败"))), aborted = () => finish(local.signal.reason);
+    const timeout = setTimeout(failed, 15000);
+    target.addEventListener("loadedmetadata", done, { once: true }); target.addEventListener("error", failed, { once: true }); local.signal.addEventListener("abort", aborted, { once: true });
+    if (target.readyState) finish(); else if (local.signal.aborted) aborted();
+  });
+  local.signal.throwIfAborted(); if (props.src !== source || video.value !== target) return;
+  readDuration(); seek(seconds); emit("time", currentTime.value);
+}
+
 function seek(value: number | number[]) {
   scrubbing = false;
   if (!video.value || !Number.isFinite(value)) return;

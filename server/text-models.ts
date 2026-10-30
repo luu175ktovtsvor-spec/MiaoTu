@@ -1,4 +1,5 @@
 import { failure } from './management-store.ts'
+import { withReplyLanguage } from './reply-language.ts'
 import { runtimeSecretSource } from './runtime-secrets.ts'
 import { assertProviderRequestAllowed, isMockProviderMode } from './provider-safety.ts'
 import { DEFAULT_CONTEXT_WINDOW, RESPONSES_FALLBACK_INSTRUCTIONS, assertOwnTextModelRegistry, ownTextModelById, ownTextModelIds, textChannelOf } from './text-model-registry.ts'
@@ -71,7 +72,8 @@ export async function validateTextRequest(payload: Record<string, any> = {}, env
   if (!model) throw failure('不支持的文本模型', 422)
   const prompt = String(payload.prompt || '').trim()
   if (!prompt) throw failure('请先输入内容', 422)
-  const systemPrompt = String(payload.systemPrompt || '').trim()
+  // Error explanations pass replyLanguage:false because their language is fixed by the request.
+  const systemPrompt = payload.replyLanguage === false ? String(payload.systemPrompt || '').trim() : withReplyLanguage(payload.systemPrompt)
   const omitted = payload.maxTokens === undefined || payload.maxTokens === null || payload.maxTokens === ''
   const rawTokens = omitted ? undefined : Number(payload.maxTokens)
   if (rawTokens !== undefined && (!Number.isFinite(rawTokens) || rawTokens <= 0)) throw failure('输出长度必须是正数', 422)

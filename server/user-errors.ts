@@ -3,7 +3,7 @@ export function userFacingError(value, { status = 0, submissionUncertain = false
   const text = String(value?.message || value || '').trim()
   if (/^原图(?:暂存(?:期已结束|回执缺失)|未能保存，请保留原任务)/.test(text)) return '原图未能保存，请保留原任务并联系妙图团队核对，不要重复生成'
   if (submissionUncertain) return '正在确认生成结果，请稍后查看状态，不要重复提交'
-  if (/real person|真人/i.test(text)) return '参考图片被当前模型判定可能包含真人，未通过图片审核'
+  if (/real person|真人|(?:参考图|图片).{0,24}(?:可能含人像|疑似人像)/i.test(text)) return '参考图片被当前模型判定可能包含真人，未通过图片审核'
   if (/text content contains sensitive content|文本.*(?:敏感|审核未通过)/i.test(text)) return '生成描述未通过当前模型的文本审核'
   if (/real person|moderation|content.?policy|safety|sensitive|敏感|审核|违禁/i.test(text)) return '参考素材或描述未通过当前模型的使用限制，请调整素材或描述后再试'
   if (/余额不足|积分不足|quota|insufficient|credits?.*(?:exhaust|insufficient)|额度已用尽/i.test(text)
@@ -50,7 +50,7 @@ export function explainUserError(value, options: Record<string, any> = {}) {
     category = 'route_mismatch'; reason = '平台准备发送的模型或参数与节点选择不一致，妙图已在发送前拦截。'; action = '保留任务编号并联系妙图团队修复适配；本次尚未发送，不要反复提交。'
   } else if (/尚未发送|尚未提交/.test(text)) {
     category = 'not_submitted'; reason = summary; action = '本次生成尚未发送，按提示检查平台页面、账号或参数后再试。'
-  } else if (/real person|真人/i.test(text)) {
+  } else if (/real person|真人|(?:参考图|图片).{0,24}(?:可能含人像|疑似人像)/i.test(text)) {
     category = 'reference_person_rejected'
     reason = '当前模型将输入图片判定为可能包含真人，因此拒绝本次请求；这不等于已确认图片中是真人。'
     action = '检查并替换带人物面孔的参考图片，或选择明确支持这类素材的模型。'

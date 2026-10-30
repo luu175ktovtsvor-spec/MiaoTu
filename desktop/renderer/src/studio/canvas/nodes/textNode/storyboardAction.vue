@@ -43,6 +43,7 @@ const ratio = ref("");
 const draft = ref<Array<{ text: string; enabled: boolean }>>([]);
 const chosen = computed(() => draft.value.filter(shot => shot.enabled && shot.text.trim()));
 const shots = computed(() => splitShots(props.text));
+defineExpose({ open, creating });
 
 async function open() {
   draft.value = shots.value.map((text, index) => ({ text, enabled: index < maxShots }));

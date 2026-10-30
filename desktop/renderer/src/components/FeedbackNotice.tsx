@@ -1,12 +1,15 @@
 import { useEffect, useRef } from 'react'
 import { h } from 'vue'
 import { ElMessage } from 'element-plus'
-import { userFacingError } from '../../../../server/user-errors.ts'
+import { publicError } from '../lib/publicError'
+import { useLang } from '../i18n'
 
 /** React surfaces share the canvas message stack and presentation. */
 export default function FeedbackNotice({ message, error = true, action, onAction, onClose }: {
   message: string; error?: boolean; action?: string; onAction?: () => void; onClose?: () => void
 }) {
+  const { lang } = useLang()
+  const displayMessage = error ? publicError(message, undefined, lang) : message
   const handlers = useRef({ onAction, onClose })
   handlers.current = { onAction, onClose }
   useEffect(() => {
@@ -14,7 +17,7 @@ export default function FeedbackNotice({ message, error = true, action, onAction
     let active = true
     const notice = ElMessage({
       message: h('div', { class: 'feedback-notice-content' }, [
-        h('span', error ? userFacingError(message) : message),
+        h('span', displayMessage),
         ...(action ? [h('button', { type: 'button', class: 'feedback-notice-action', onClick: () => handlers.current.onAction?.() }, action)] : []),
       ]),
       type: error ? 'error' : 'info', offset: 64, showClose: error,
@@ -22,6 +25,6 @@ export default function FeedbackNotice({ message, error = true, action, onAction
       onClose: () => { if (active) handlers.current.onClose?.() },
     })
     return () => { active = false; notice.close() }
-  }, [message, error, action])
+  }, [message, displayMessage, error, action, lang])
   return null
 }

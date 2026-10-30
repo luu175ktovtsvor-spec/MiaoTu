@@ -11,10 +11,13 @@
     :style="{ width: previewUrl && videoWidth ? `${videoWidth}px` : undefined }"
     @fullscreen="player?.enterFullscreen()">
     <template #topActions>
-      <el-button v-for="entry in modelEntries" :key="entry.mode" :icon="entry.icon" text :disabled="!outputFile || uploading || uploadingDrag || exporting || actions?.processing || creatingEntry" :title="translate(entry.label)" :aria-label="translate(entry.label)" @click.stop="createModeNode(entry)">{{ translate(entry.label) }}</el-button>
+      <el-button v-for="entry in modelEntries" :key="entry.mode" :icon="entry.icon" text :disabled="!outputFile || uploading || uploadingDrag || exporting || actions?.processing || creatingEntry" :title="translate(entry.label)" :aria-label="translate(entry.label)" @click.stop="entry.mode === 'edit' ? videoIntents.open('video:edit') : createModeNode(entry)">{{ translate(entry.label) }}</el-button>
+      <el-button v-if="outputFile && videoIntents.remakeAvailable" :icon="IconScissors" text :loading="videoIntents.busy.value && videoIntents.state.intent === 'video:retake-segment'" :disabled="uploading || uploadingDrag || exporting || actions?.processing || creatingEntry || videoIntents.busy.value" :title="translate('片段重拍')" :aria-label="translate('片段重拍')" @click.stop="videoIntents.open('video:retake-segment')">{{ translate('片段重拍') }}</el-button>
       <el-button v-if="outputFile" :icon="IconMusic" text :disabled="!outputFile || uploading || uploadingDrag || exporting || actions?.processing" :title="translate('提取音轨')" :aria-label="translate('提取音轨')" @click.stop="actions?.open('extractAudio')">{{ translate('提取音轨') }}</el-button>
       <el-button v-if="outputFile" :icon="IconLayersSubtract" text :disabled="!outputFile || uploading || uploadingDrag || exporting || actions?.processing" :title="translate('分离音视频')" :aria-label="translate('分离音视频')" @click.stop="actions?.open('separate')">{{ translate('分离音视频') }}</el-button>
       <el-button v-if="outputFile" :icon="IconScissors" text :disabled="!outputFile || uploading || uploadingDrag || exporting || actions?.processing" :title="translate('片段截取')" :aria-label="translate('片段截取')" @click.stop="actions?.open('trim')">{{ translate('片段截取') }}</el-button>
+      <el-button v-if="outputFile" :icon="IconCrop" text :disabled="uploading || uploadingDrag || exporting || actions?.processing" :title="translate('画面裁剪')" :aria-label="translate('画面裁剪')" @click.stop="actions?.open('crop')" />
+      <el-button v-if="outputFile" :icon="IconGauge" text :disabled="uploading || uploadingDrag || exporting || actions?.processing" :title="translate('视频变速')" :aria-label="translate('视频变速')" @click.stop="actions?.open('speed')" />
       <el-button
         :icon="IconTransfer"
         :loading="uploading || uploadingDrag"
@@ -40,12 +43,13 @@
       <uploadProgress v-if="dragUploadEntry" :entry="dragUploadEntry" @retry="retryDragUpload" @dismiss="dismissDragUpload" />
     </div>
   </nodeSkeleton>
+  <videoIntentDialog :controller="videoIntents" :src="previewUrl" />
   <videoActions ref="actions" :file="outputFile" :src="previewUrl" :disabled="uploading || uploadingDrag || exporting" />
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue";
-import { IconVideo, IconClipboard, IconUpload, IconTransfer, IconMusic, IconLayersSubtract, IconScissors, IconPencil, IconArrowAutofitRight } from "@tabler/icons-vue";
+import { IconVideo, IconClipboard, IconUpload, IconTransfer, IconMusic, IconLayersSubtract, IconScissors, IconCrop, IconGauge } from "@tabler/icons-vue";
 import { ElButton, ElMessage, ElProgress } from "element-plus";
 import { nodeSkeleton, nodeTools, useNode, useNodeUpload, z, type NodeHandle } from "@miaoimg/nodes-scaffold/runtime";
 import { translate } from "@miaoimg/i18n/vue";
@@ -53,13 +57,17 @@ import uploadProgress from "../components/uploadProgress.vue";
 import nodeEmptyState, { type EmptyHint } from "../components/nodeEmptyState.vue";
 import { readClipboardFiles } from "@/lib/clipboard";
 import { beginUpload } from "../uploadStatus";
-import { assetFileType, ASSET_MAX_BYTES } from "../assetFile";
+import { assetFileType } from "../assetFile";
 import videoPlayer from "@miaoimg/nodes-scaffold/videoPlayer";
 import videoActions from "./videoNode/videoActions.vue";
 import { useMediaPublication } from "../scaffold/mediaPublication";
 import { mediaExportProgress } from "../scaffold/mediaExport";
 import { videoSizeLabel } from "../../../../../../server/media-size-label";
-import { useLinkedNode } from "../linkedNode";
+import { useVideoModeEntries } from "./videoNode/useVideoModeEntries";
+import { useRegisterVideoActions } from "../videoActionRegistry";
+import { useVideoPaletteActions, combineCanvasToolExtensions } from "../useMediaPaletteActions";
+import { useVideoIntentActions } from "./videoNode/useVideoIntentActions";
+import videoIntentDialog from "./videoNode/videoIntentDialog.vue";
 
 defineOptions({
   inheritAttrs: false,
@@ -91,6 +99,11 @@ const previewUrl = files.useFileUrl(
   outputFile,
   (error) => showError(error, translate("视频读取失败"))
 );
+useRegisterVideoActions(node, {
+  available: () => Boolean(outputFile.value?.url && previewUrl.value && player.value && actions.value)
+    && !uploading.value && !uploadingDrag.value && !exporting.value && !actions.value?.processing && !player.value?.capturing,
+  run: action => action === "capture" ? player.value?.captureFrame("current") : actions.value?.open(action),
+});
 
 nodeEvent.on("save", (reason) => {
   if (uploading.value || uploadingDrag.value) throw new Error(translate("视频处理中，请完成后再切换或刷新节点"));
@@ -130,38 +143,30 @@ nodeTools.register({
   },
 });
 
-// 模型能编辑或延长已有视频时，在视频节点上直接给入口（和图片的打光、多角度一样）：
-// 新建一个连好这段视频、已选好模式和支持该模式的模型的视频生成节点，不自动生成。
-// 只有当前目录里确实有模型支持该模式时才显示。
-type ModeEntry = { mode: "edit" | "extend"; label: string; icon: typeof IconScissors; model: string };
-const videoModels = ref<Array<{ providerId: string; modelId: string; mode?: unknown[] }>>([]);
-const creatingEntry = ref(false);
-const { createLinked } = useLinkedNode();
-watch(() => Boolean(outputFile.value), async (hasVideo) => {
-  if (!hasVideo || videoModels.value.length) return;
-  videoModels.value = (await ai.getMediaModels().catch(() => [])).filter(item => item.type === "video");
-}, { immediate: true });
-const modelEntries = computed<ModeEntry[]>(() => ([["edit", "编辑视频", IconPencil], ["extend", "延长视频", IconArrowAutofitRight]] as const).flatMap(([mode, label, icon]) => {
-  const model = videoModels.value.find(item => item.mode?.includes(mode));
-  return model ? [{ mode, label, icon, model: JSON.stringify([model.providerId, model.modelId]) }] : [];
-}));
-async function createModeNode(entry: ModeEntry) {
-  if (creatingEntry.value) return;
-  creatingEntry.value = true;
-  try {
-    const created = await createLinked(node, "remote-videoGenerationNode", translate(entry.label));
-    if (!created) return;
-    await nextTick();
-    // 顺序要和节点里的同步监听对上：先模型，再标记为明确选择，最后写模式。
-    created.data.model = entry.model;
-    created.data.modeChosen = true;
-    created.data.mode = JSON.stringify(entry.mode);
-  } catch (error) {
-    showError(error, translate("新建节点失败"));
-  } finally {
-    creatingEntry.value = false;
-  }
-}
+const { entries: modelEntries, creating: creatingEntry, create: createModeNode } = useVideoModeEntries({
+  node,
+  hasVideo: () => Boolean(outputFile.value),
+  loadModels: () => ai.getMediaModels(),
+  onError: (error) => showError(error, translate("新建节点失败")),
+});
+
+const videoIntents = useVideoIntentActions({
+  node, file: () => outputFile.value,
+  disabled: () => uploading.value || uploadingDrag.value || exporting.value || Boolean(actions.value?.processing || player.value?.capturing || creatingEntry.value),
+  loadModels: () => ai.getMediaModels(), onError: error => showError(error, translate("准备编辑节点失败")),
+});
+useVideoPaletteActions({
+  node, hasVideo: () => Boolean(outputFile.value?.url),
+  busy: () => uploading.value || uploadingDrag.value || exporting.value || Boolean(actions.value?.processing || player.value?.capturing || creatingEntry.value || videoIntents.busy.value),
+  ready: tool => tool === "video:capture" ? Boolean(player.value) : tool === "video:extend" ? true : Boolean(actions.value),
+  capture: () => player.value?.captureFrame("current"), open: action => actions.value?.open(action),
+  mode: mode => { const entry = modelEntries.value.find(item => item.mode === mode); if (!entry) throw new Error(translate("当前没有支持此操作的视频模型")); return createModeNode(entry); },
+  extension: combineCanvasToolExtensions(videoIntents.extension, {
+    available: tool => ["video:crop", "video:speed"].includes(tool),
+    ready: () => Boolean(actions.value),
+    run: (tool, context) => { context.assertCurrent(); actions.value?.open(tool === "video:crop" ? "crop" : "speed"); },
+  }),
+});
 
 async function resizeVideo({ width, height }: { width: number; height: number }) {
   if (!width || !height) return;
@@ -193,7 +198,6 @@ function takeVideo(file: File) {
   if (uploading.value || uploadingDrag.value || exporting.value || actions.value?.processing) return;
   if (assetFileType(file).kind !== "video") return void ElMessage.error(translate("请选择视频文件"));
   if (!file.size) return void ElMessage.error(translate("视频不能为空"));
-  if (file.size > ASSET_MAX_BYTES) return void ElMessage.error(translate("视频不能超过 100 MB"));
   // 和「拖文件进画布」走同一条通道：真上传进度的环形、失败可重试、写回 outputs 都由
   // useNodeUpload 统一处理。
   // ACT: 复制节点可能仍引用旧视频，替换输出不删除共享文件。

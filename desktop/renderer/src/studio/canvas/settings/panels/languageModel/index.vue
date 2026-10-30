@@ -33,7 +33,7 @@
         <el-tag v-if="selectedModelInfo.reasoning" size="small" effect="plain">{{ translate('支持推理') }}</el-tag>
       </div>
     </settings-section>
-    <settings-section v-if="isDesktop" :title="translate('我的供应商')" :description="translate('接入你自己的大模型账号（OpenAI、DeepSeek、Kimi、通义、本机 Ollama 等），用你自己的 API Key，不消耗妙图积分。')">
+    <settings-section :title="translate('我的供应商')" :description="translate('接入你自己的大模型账号（OpenAI、DeepSeek、Kimi、通义、本机 Ollama 等），用你自己的 API Key，不消耗妙图积分。')">
       <template #actions>
         <el-button text size="small" :icon="IconPlus" @click="openEditor(null)">{{ translate('添加供应商') }}</el-button>
       </template>
@@ -54,7 +54,7 @@
       </ul>
     </settings-section>
     <providerEditor :visible="editorVisible" :provider="editingProvider" :existingIds="providers.map(item => item.id)" @close="editorVisible = false" @saved="onSaved" />
-    <settings-section v-if="isDesktop" :title="translate('豆包与 Dola 文本模型')" :description="translate('在设置 → 豆包与 Dola 中连接账户后，可在文本节点选择对应来源。')">
+    <settings-section :title="translate('豆包与 Dola 文本模型')" :description="translate('在设置 → 豆包与 Dola 中连接账户后，可在文本节点选择对应来源。')">
       <p class="localTextHint">{{ translate('使用豆包或 Dola 账号自带的权益生成文本回复；Agent 和导演台请选择上面的妙图模型或你接入的模型。') }}</p>
     </settings-section>
   </div>
@@ -75,7 +75,6 @@ import { loadServerModelChoices, modelChoices, textModelSettings, updateTextMode
 
 const loading = ref(false);
 const error = ref("");
-const isDesktop = Boolean(window.miaoDesktop);
 const selectedModel = ref("");
 
 const modelOptions = computed(() => modelChoices.value.map(model => ({

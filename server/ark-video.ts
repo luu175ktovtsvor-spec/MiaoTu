@@ -29,9 +29,9 @@ export function arkVideoReady(env = process.env) {
 }
 
 export function arkVideoContent(request) {
-  const parts: Array<Record<string, any>> = [{ type: 'text', text: request.prompt }]
-  // Preserve the role supplied by the canvas. A lone last_frame is valid for
-  // the optional-tail-frame mode and must not be re-labelled first_frame.
+  if (request.lastFrame && !request.firstFrame) throw failure('首尾帧模式需要首帧，请补充首帧图片', 422)
+  const parts: Array<Record<string, any>> = request.prompt ? [{ type: 'text', text: request.prompt }] : []
+  // Keep the supplied first/last roles; a tail frame requires a first frame.
   if (request.firstFrame) {
     parts.push({ type: 'image_url', image_url: { url: request.firstFrame }, role: 'first_frame' })
   }

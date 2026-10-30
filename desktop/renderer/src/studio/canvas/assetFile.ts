@@ -1,5 +1,4 @@
 // 文件选择和拖拽使用同一份类型判断；浏览器可能不给 File.type。
-export const ASSET_MAX_BYTES = window.miaoDesktop ? Infinity : 100 * 1024 * 1024;
 const mimeTypes: Record<string, string> = {
   png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif",
   avif: "image/avif", apng: "image/apng", bmp: "image/bmp", svg: "image/svg+xml", ico: "image/x-icon",

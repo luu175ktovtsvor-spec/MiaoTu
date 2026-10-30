@@ -8,6 +8,8 @@ import {
   validGalleryFocus,
 } from '../gallerySession'
 import { useLang } from '../i18n'
+import { contentLang } from '../shellLanguage'
+import { studioText } from '../studio/studioText'
 import { initialSearchState, normalizeSearchQuery, searchReducer } from '../searchState'
 
 const PAGE_SIZE = 24
@@ -69,7 +71,9 @@ function localizedPrompt(item, lang) {
 }
 
 export function usePromptArchiveApi() {
-  const { lang } = useLang()
+  // lang 是界面语言；案例数据只有中/英两份（zh-Hans / en），数据选择用 contentLang。
+  const { lang: uiLang } = useLang()
+  const lang = contentLang(uiLang)
   const [items, setItems] = useState([])
   const [catalog, setCatalog] = useState({ tools: [], authors: [], tags: [], stats: {} as Record<string, number> })
   const [dims, setDims] = useState({})
@@ -137,7 +141,7 @@ export function usePromptArchiveApi() {
         session ? galleryPromptApiUrl(session) : requestUrl(0),
         { signal: controller.signal },
       )
-      if (!session && selectedMedia !== 'all' && payload.media !== selectedMedia) throw new Error(lang === 'zh' ? '媒体分类服务尚未更新，请稍后重试。' : 'Media filters are not available on the server yet.')
+      if (!session && selectedMedia !== 'all' && payload.media !== selectedMedia) throw new Error(studioText('媒体分类服务尚未更新，请稍后重试。', uiLang))
       return { payload, session }
     }
 

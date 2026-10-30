@@ -6,18 +6,18 @@ import { BlobStore } from './blob-store.ts'
 
 const apply = process.argv.includes('--apply')
 const db = new DatabaseSync(process.env.OIP_MANAGEMENT_DB || join(process.env.OIP_DATA_DIR || 'data', 'management.sqlite'), { readOnly: !apply })
-db.exec('PRAGMA busy_timeout=5000')
+await db.exec('PRAGMA busy_timeout=5000')
 const store = {
-  get: (sql, ...args) => db.prepare(sql).get(...args),
-  all: (sql, ...args) => db.prepare(sql).all(...args),
-  transaction(fn) {
-    db.exec('BEGIN IMMEDIATE')
-    try { const result = fn(); db.exec('COMMIT'); return result }
-    catch (error) { db.exec('ROLLBACK'); throw error }
+  get: async (sql, ...args) => (await (await db.prepare(sql)).get(...args)),
+  all: async (sql, ...args) => (await (await db.prepare(sql)).all(...args)),
+  async transaction(fn) {
+    await db.exec('BEGIN IMMEDIATE')
+    try { const result = fn(); await db.exec('COMMIT'); return result }
+    catch (error) { await db.exec('ROLLBACK'); throw error }
   },
 }
 try {
   // 快照候选，再取得与上传/结果写入共用的写锁重新确认引用和 mtime。
-  const result = new BlobStore(store).sweep({ apply })
+  const result = (await new BlobStore(store).sweep({ apply }))
   console.log(JSON.stringify({ apply, candidates: result.candidates.length, reclaimable: result.reclaimable.length, fresh: result.fresh.length, removed: result.removed, removedBytes: result.removedBytes }))
-} finally { db.close() }
+} finally { await db.close() }

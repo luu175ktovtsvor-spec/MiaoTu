@@ -328,7 +328,7 @@ else:
         "public_origin": {path: http_code(f"{public_origin.rstrip('/')}{path}") for path in ["/", "/manage", "/api/catalog"]} if public_origin else {},
         "loopback": {
             "web": {"port": web, "paths": service_probe(web, ["/", "/manage", "/api/catalog", "/api/prompts", "/api/admin/session"])},
-            "image_api": {"port": image_api, "paths": service_probe(image_api, ["/health", "/api/imagine/config", "/api/agent/health", "/api/ai/health", "/api/ext/health", "/api/mcp/health", "/api/nodes/health", "/api/ffmpeg/health", "/mcp"])},
+            "image_api": {"port": image_api, "paths": service_probe(image_api, ["/health", "/api/imagine/config", "/api/ai/health", "/api/mcp/health", "/mcp"])},
             "archive_api": {"port": archive_api, "paths": service_probe(archive_api, ["/health", "/api/catalog", "/api/prompts"])},
             "admin_api": {"port": admin, "paths": service_probe(admin, ["/health", "/api/admin/session"])},
         },

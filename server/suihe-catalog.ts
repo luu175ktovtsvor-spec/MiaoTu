@@ -23,10 +23,9 @@ export function suiheModelOverlay(model): Record<string, any> {
     const framesAvailable = functionModes.includes('first_last_frames')
     const mixedAvailable = functionModes.includes('omni_reference')
     const editAvailable = is25 && functionModes.includes('video_edit')
-    // Suihe v1.1 has no separate extension function mode: 2.5 extends a video
-    // through omni_reference with omni_reference_task_type=extend (only 2.5,
-    // only in omni reference). 2.0 / Fast / Mini have no extension.
-    const extendAvailable = is25 && (mixedAvailable || functionModes.includes('video_extend') || functionModes.includes('extend'))
+    // The 2026-10-29 gateway reply confirms the former adaptive+extend
+    // request is rejected, while its output-duration/billing contract remains
+    // unverified. Do not infer an available extension from omni_reference.
     const listedResolutions = cap.resolutions || (id === 'seedance-2.0' ? ['480p','720p','1080p','4k'] : is25 ? ['480p','720p','1080p'] : ['480p','720p'])
     const configuredDefault = String(cap.default_resolution || '').trim().toLowerCase()
     const defaultResolution = configuredDefault || (listedResolutions.includes('720p') ? '720p' : listedResolutions[0])
@@ -47,13 +46,28 @@ export function suiheModelOverlay(model): Record<string, any> {
     const maxDuration = cap.duration?.max || (is25 ? 30 : 15)
     const durations = Array.from({length:maxDuration - minDuration + 1}, (_, n) => n + minDuration)
     const defaultDuration = Number(cap.default_duration) || (durations.includes(10) ? 10 : durations[0])
-    return { ...common, note: `${is25 ? '4–30' : '4–15'} 秒 · ${resolutions.join('/')}`, sizes: resolutions.map(value => ({value,label:value,ratio:'16:9'})), ratios: [...new Set([...(cap.ratios || ratios), ...(is25 ? ['adaptive'] : [])])], durations,
-      modes: ['text',...(framesAvailable ? ['singleImage','endFrameOptional'] : []), ...(editAvailable ? ['edit'] : []), ...(extendAvailable ? ['extend'] : []), ...(mixedAvailable ? [[`imageReference:${cap.reference_limits?.image ?? (is25 ? 30 : 9)}`, `videoReference:${cap.reference_limits?.video ?? (is25 ? 10 : 3)}`, `audioReference:${cap.reference_limits?.audio ?? (is25 ? 10 : 3)}`]] : [])],
-      referenceLimits: { image:cap.reference_limits?.image ?? (is25 ? 30 : 9), video:cap.reference_limits?.video ?? (is25 ? 10 : 3), audio:cap.reference_limits?.audio ?? (is25 ? 10 : 3), frames:framesAvailable?2:0 }, audio:'optional', supportsEdit:editAvailable,
+    return {
+      ...common, note: `${is25 ? '4–30' : '4–15'} 秒 · ${resolutions.join('/')}`,
+      sizes: resolutions.map(value => ({value,label:value,ratio:'16:9'})),
+      ratios: [...new Set([...(cap.ratios || ratios), ...(is25 ? ['adaptive'] : [])])], durations,
+      modes: ['text', ...(framesAvailable ? ['singleImage','endFrameOptional'] : []), ...(editAvailable ? ['edit'] : []),
+        ...(mixedAvailable ? [[`imageReference:${cap.reference_limits?.image ?? (is25 ? 30 : 9)}`, `videoReference:${cap.reference_limits?.video ?? (is25 ? 10 : 3)}`, `audioReference:${cap.reference_limits?.audio ?? (is25 ? 10 : 3)}`]] : [])],
+      referenceLimits: { image:cap.reference_limits?.image ?? (is25 ? 30 : 9), video:cap.reference_limits?.video ?? (is25 ? 10 : 3), audio:cap.reference_limits?.audio ?? (is25 ? 10 : 3), frames:framesAvailable?2:0 },
+      audio:'optional', supportsEdit:editAvailable,
       creativeModes, defaultCreativeMode, defaultResolution: resolutions[0] || '', defaultDuration, resolutionsByCreativeMode,
-      controls:[{key:'creativeMode',label:'生成模式',type:'select',options:creativeModes,default:defaultCreativeMode},...(id==='seedance-2.0-mini'?[{key:'cameraFixed',label:'固定镜头',type:'boolean'}]:[]),{key:'returnLastFrame',label:'返回尾帧',type:'boolean'}],
+      controls:[{key:'creativeMode',label:'生成模式',type:'select',options:creativeModes,default:defaultCreativeMode}, ...(id==='seedance-2.0-mini'?[{key:'cameraFixed',label:'固定镜头',type:'boolean'}]:[]), {key:'returnLastFrame',label:'返回尾帧',type:'boolean'}],
       maxDurationByResolution:{}, maxDurationByMode:{},
-      parameterRules: { requireVisualInMixed:!is25, resolutionsByControl:{creativeMode:resolutionsByCreativeMode}, ratiosByMode:{text:cap.ratios || ratios,image:cap.ratios || ratios,singleImage:is25?['adaptive']:cap.ratios || ratios,endFrameOptional:is25?['adaptive']:cap.ratios || ratios, ...(is25 ? {edit:['adaptive'],...(extendAvailable ? {extend:['adaptive']} : {})} : {})}, inheritByMode:is25?{singleImage:['ratio'],endFrameOptional:['ratio'],edit:['duration','ratio'],...(extendAvailable ? {extend:['ratio']} : {})}:{}, ...(is25 ? {referencesByMode:{edit:{image:[0,cap.reference_limits?.image ?? 30],video:[1,1],audio:[0,cap.reference_limits?.audio ?? 10]},...(extendAvailable ? {extend:{image:[0,0],video:[1,1],audio:[0,0]}} : {})},referenceInputsByMode:{edit:{video:{minDuration:4,maxDuration:30}},...(extendAvailable ? {extend:{video:{minDuration:2,maxDuration:30}}} : {})},hintsByMode:{edit:'编辑保持原视频时长与比例，参考视频需为 4–30 秒',...(extendAvailable ? {extend:'延长输入视频需为 2–30 秒；所选时长为输出时长，比例跟随原视频'} : {})}} : {}) },
+      parameterRules: {
+        promptOptionalWithReferences:false, maxPromptCharacters:4000, requireVisualInMixed:!is25,
+        resolutionsByControl:{creativeMode:resolutionsByCreativeMode},
+        ratiosByMode:{text:cap.ratios || ratios,image:cap.ratios || ratios,singleImage:is25?['adaptive']:cap.ratios || ratios,endFrameOptional:is25?['adaptive']:cap.ratios || ratios,...(is25?{edit:['adaptive']}:{})},
+        inheritByMode:is25?{singleImage:['ratio'],endFrameOptional:['ratio'],edit:['duration','ratio']}:{},
+        ...(is25 ? {
+          referencesByMode:{edit:{image:[0,cap.reference_limits?.image ?? 30],video:[1,1],audio:[0,cap.reference_limits?.audio ?? 10]}},
+          referenceInputsByMode:{edit:{video:{minDuration:4,maxDuration:30}}},
+          hintsByMode:{edit:'编辑保持原视频时长与比例，参考视频需为 4–30 秒'},
+        } : {}),
+      },
     }
   }
   const tiers = cap.resolutions || ({'seedream-5.0-pro':['1k','1.5k','2k'],'seedream-5.0-lite':['2k','3k'],'seedream-4.5':['2k','4k'],'seedream-4.0':['1k','2k','4k']})[id]

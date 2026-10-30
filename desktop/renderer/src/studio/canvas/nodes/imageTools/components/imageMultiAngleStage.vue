@@ -3,7 +3,7 @@
     <canvas ref="canvas" aria-hidden="true" @webglcontextlost.prevent="finishDrag(); unavailable = true" @webglcontextrestored="restoreContext" />
     <template v-if="!unavailable">
       <template v-if="viewMode === 'orbit'">
-        <span v-for="label in directionLabels" :key="label.text" class="directionLabel" :style="label.style">{{ label.text }}</span>
+        <span v-for="label in directionLabels" :key="label.text" class="directionLabel" :style="label.style">{{ translate(label.text) }}</span>
       </template>
       <button
         type="button"
@@ -11,7 +11,7 @@
         :class="{ cameraViewHandle: viewMode === 'camera' }"
         :style="viewMode === 'orbit' ? handleStyle : undefined"
         :disabled="disabled"
-        :aria-label="`相机，水平环绕 ${azimuth} 度，垂直俯仰 ${elevation} 度，距离 ${distance}；方向键调整角度，Shift 微调，加减键调整距离`"
+        :aria-label="translate('相机，水平环绕 {azimuth} 度，垂直俯仰 {elevation} 度，距离 {distance}；方向键调整角度，Shift 微调，加减键调整距离', { azimuth, elevation, distance })"
         :title="translate('拖动调整相机角度；方向键调整，Shift 微调，加减键调整距离')"
         @pointerdown.stop.prevent="startDrag"
         @pointermove="moveDrag"

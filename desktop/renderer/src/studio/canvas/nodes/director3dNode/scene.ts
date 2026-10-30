@@ -1,18 +1,26 @@
 import { z } from "@miaoimg/nodes-scaffold/runtime";
 import { createJsonScene, registerObject, type SceneRuntime } from "threejson/core";
-import { AmbientLight, Box3, DirectionalLight, GridHelper, HemisphereLight, Mesh, PCFSoftShadowMap, PlaneGeometry, ShadowMaterial, Sphere, Vector3 } from "three";
+import { AmbientLight, Box3, Color, DirectionalLight, EquirectangularReflectionMapping, GridHelper, HemisphereLight, Mesh, MeshStandardMaterial, PCFShadowMap, PlaneGeometry, ShadowMaterial, Sphere, SRGBColorSpace, Texture, TextureLoader, Vector3 } from "three";
 import { Sky } from "three/examples/jsm/objects/Sky.js";
-import { createMannequin, mannequinJoints } from "./mannequin";
+import { cameraRoll } from './cameraOrientation';
+import { bodyTypeIds, createMannequin, mannequinJoints } from "./mannequin";
 
 const coordinate = z.number().min(-10000).max(10000);
 const vector = z.strictObject({ x: coordinate, y: coordinate, z: coordinate });
+export const cameraBindingSchema = z.strictObject({ objectId:z.string().min(1).max(100), point:z.enum(['root','center']), offset:vector });
 const color = z.string().regex(/^#[\da-f]{6}$/i);
+export const stageAssemblySchema = z.strictObject({
+  id: z.string().min(1).max(100), name: z.string().min(1).max(100), position: vector,
+  rotation: z.strictObject({ rotationX: coordinate, rotationY: coordinate, rotationZ: coordinate }),
+  scale: z.number().min(0.01).max(100),
+});
+export type StageAssembly = z.infer<typeof stageAssemblySchema>;
 // ACT: 场景只接入基础几何体和内置人偶，不接受可执行脚本、HTML 或外部资源配置。
 export const sceneSchema = z.strictObject({
   version: z.literal("next"),
   sceneConfig: z.strictObject({
     scene: z.strictObject({ background: color }),
-    camera: z.strictObject({ position: vector, fov: z.number().min(10).max(120), near: z.number().min(0.01).max(10), far: z.number().min(20).max(10000) }),
+    camera: z.strictObject({ position: vector, tracking:z.strictObject({follow:cameraBindingSchema.optional(),lookAt:cameraBindingSchema.optional()}).optional(), roll: z.number().min(-Math.PI).max(Math.PI).optional(), fov: z.number().min(10).max(120), near: z.number().min(0.01).max(10), far: z.number().min(20).max(10000) }),
     controls: z.strictObject({ target: vector }),
     lights: z.array(z.strictObject({
       type: z.enum(["ambient", "directional", "point", "spot", "hemisphere"]),
@@ -24,17 +32,29 @@ export const sceneSchema = z.strictObject({
     objType: z.enum(["box", "sphere", "cylinder", "cone", "ring", "torus", "capsule", "plane", "mannequin"]),
     geometry: z.record(z.string().regex(/^[a-zA-Z]+$/), z.union([z.number().min(0).max(10000), z.boolean()]))
       .refine(value => Object.entries(value).every(([key, size]) => !/segments/i.test(key) || (typeof size === "number" && Number.isInteger(size) && size >= 1 && size <= 64)), "细分段数必须是 1～64 的整数"),
+    assembly: stageAssemblySchema.describe("整体道具的共享变换；使用 updateStageAsset 修改，不直接编辑此字段").optional(),
     position: vector,
     rotation: z.strictObject({ rotationX: coordinate, rotationY: coordinate, rotationZ: coordinate }).optional(),
     scale: z.strictObject({ scaleX: coordinate, scaleY: coordinate, scaleZ: coordinate }).optional(),
     pose: z.partialRecord(z.enum(mannequinJoints), vector).describe("仅 mannequin：关节相对父关节的局部 XYZ 旋转，弧度，省略为自然站姿").optional(),
+    posePresetHeight: z.number().min(-2).max(2).describe("人偶预设已计入根位置的高度偏移，手调关节后切换预设时用于还原高度").optional(),
+    bodyType: z.enum(bodyTypeIds).describe("仅 mannequin：体型，省略为标准男性").optional(),
     hiddenParts: z.array(z.enum(mannequinJoints)).max(mannequinJoints.length).describe("仅 mannequin：不显示指定关节及其下游部位，省略为完整人偶").optional(),
     material: z.strictObject({
       type: z.enum(["standard", "basic", "phong", "lambert"]), color,
       roughness: z.number().min(0).max(1).optional(), metalness: z.number().min(0).max(1).optional(),
       opacity: z.number().min(0).max(1).optional(), transparent: z.boolean().optional(), wireframe: z.boolean().optional(),
     }),
-  }).refine(object => object.objType === "mannequin" || (!object.pose && !object.hiddenParts), "仅人偶支持关节姿态和部位隐藏")).max(200).refine(objects => new Set(objects.map(object => object.threeJsonId)).size === objects.length, "物体 ID 不能重复"),
+  }).refine(object => object.objType === "mannequin" || (!object.pose && !object.hiddenParts && !object.bodyType && object.posePresetHeight === undefined), "仅人偶支持关节姿态、体型和部位隐藏")).max(200).refine(objects => new Set(objects.map(object => object.threeJsonId)).size === objects.length, "物体 ID 不能重复").refine(objects => {
+    const groups = new Map<string, string>(), ids = new Set(objects.map(object => object.threeJsonId));
+    for (const object of objects) if (object.assembly) {
+      if (object.objType === 'mannequin' || ids.has(object.assembly.id)) return false;
+      const text = JSON.stringify(object.assembly), previous = groups.get(object.assembly.id);
+      if (previous && previous !== text) return false;
+      groups.set(object.assembly.id, text);
+    }
+    return true;
+  }, "整体道具的信息不一致"),
 });
 export type SceneDocument = z.infer<typeof sceneSchema>;
 // 导演台属性面板可改的物体字段：名称、位置、旋转（弧度）、缩放和材质颜色。
@@ -44,6 +64,12 @@ export interface ObjectPatch {
   rotation: { rotationX: number; rotationY: number; rotationZ: number };
   scale: { scaleX: number; scaleY: number; scaleZ: number };
   color: string;
+  pose?: SceneDocument["objectList"][number]["pose"];
+  posePresetHeight?: number;
+  roughness?: number;
+  metalness?: number;
+  assemblyColor?: boolean;
+  assemblyMaterial?: boolean;
 }
 export const cameraViewSchema = sceneSchema.shape.sceneConfig.pick({ camera: true, controls: true });
 export type CameraView = z.infer<typeof cameraViewSchema>;
@@ -59,11 +85,29 @@ export function createMannequinObject(id: string): SceneDocument["objectList"][n
 export interface SceneSettings {
   gridVisible: boolean;
   skyVisible: boolean;
+  backgroundColor?: string;
+  groundColor?: string;
+  groundVisible?: boolean;
+  groundHeight?: number;
+  /** 0–1; 1 (the default) is an opaque floor. */
+  groundOpacity?: number;
+  snapToGrid?: boolean;
+  labelsVisible?: boolean;
+  panoramaUrl?: string;
+  panoramaRotation?: number;
 }
 
-export function applySceneSettings(runtime: SceneRuntime, settings: SceneSettings) {
+const panoramas = new WeakMap<SceneRuntime, { url: string; texture?: Texture; pending?: Promise<void>; disposed?: boolean }>();
+export async function applySceneSettings(runtime: SceneRuntime, settings: SceneSettings) {
+  if (settings.backgroundColor) runtime.scene.background = new Color(settings.backgroundColor);
+  const ground = runtime.scene.getObjectByName("directorGround") as Mesh | undefined;
+  if (ground) {
+    ground.visible = settings.groundVisible ?? false;
+    ground.position.y = settings.groundHeight ?? -0.015;
+    (ground.material as MeshStandardMaterial).color.set(settings.groundColor ?? "#363942");
+  }
   for (const child of runtime.scene.children) {
-    if (child instanceof GridHelper) child.visible = settings.gridVisible;
+    if (child instanceof GridHelper) { child.visible = settings.gridVisible; child.position.y = settings.groundHeight ?? 0; }
   }
   let sky = runtime.scene.children.find(child => child instanceof Sky);
   if (!sky && settings.skyVisible) {
@@ -77,7 +121,30 @@ export function applySceneSettings(runtime: SceneRuntime, settings: SceneSetting
     );
     runtime.scene.add(sky);
   }
-  if (sky) sky.visible = settings.skyVisible;
+  if (sky) sky.visible = settings.skyVisible && !settings.panoramaUrl;
+  const previous = panoramas.get(runtime);
+  const url = settings.panoramaUrl ?? '';
+  if (previous?.url !== url) {
+    if (previous) previous.disposed = true;
+    previous?.texture?.dispose();
+    const entry: { url: string; texture?: Texture; pending?: Promise<void>; disposed?: boolean } = { url };
+    panoramas.set(runtime, entry);
+    if (url || previous?.url) runtime.scene.background = new Color(settings.backgroundColor ?? '#202024');
+    if (url) entry.pending = new TextureLoader().loadAsync(url).then(texture => {
+      if (entry.disposed || panoramas.get(runtime) !== entry) { texture.dispose(); return; }
+      texture.mapping = EquirectangularReflectionMapping;
+      texture.colorSpace = SRGBColorSpace;
+      entry.texture = texture;
+      runtime.scene.background = texture;
+      runtime.invalidate();
+    }).catch(error => { if (!entry.disposed) { panoramas.delete(runtime); throw error; } });
+    await entry.pending;
+  } else {
+    await previous?.pending;
+    if (previous?.texture) runtime.scene.background = previous.texture;
+  }
+  if (panoramas.get(runtime)?.url !== url || panoramas.get(runtime)?.disposed) return;
+  runtime.scene.backgroundRotation.y = (settings.panoramaRotation ?? 0) * Math.PI / 180;
   runtime.invalidate();
 }
 
@@ -150,7 +217,7 @@ export function updateSunShadow(runtime: SceneRuntime) {
   const bounds = new Box3();
   runtime.scene.updateMatrixWorld(true);
   runtime.scene.traverse(object => {
-    if (object instanceof Mesh && !(object instanceof Sky) && !(object.material instanceof ShadowMaterial)) bounds.expandByObject(object);
+    if (object instanceof Mesh && object.castShadow && !(object instanceof Sky) && !(object.material instanceof ShadowMaterial) && object.name !== "directorGround") bounds.expandByObject(object);
   });
   const sphere = bounds.isEmpty() ? new Sphere(new Vector3(), 10) : bounds.getBoundingSphere(new Sphere());
   const radius = Math.max(5, sphere.radius * 1.5);
@@ -182,12 +249,13 @@ export async function createStage(canvas: HTMLCanvasElement, document: SceneDocu
   const width = Math.round(960 * Math.min(1, aspect) / 2) * 2;
   const height = Math.round(960 / Math.max(1, aspect) / 2) * 2;
   let runtime: SceneRuntime | undefined;
+  const { roll: _roll, tracking: _tracking, ...camera } = document.sceneConfig.camera;
   try {
     const next = await createJsonScene({
       ...document,
-      objectList: document.objectList.filter(object => object.objType !== "mannequin"),
+      objectList: document.objectList.filter(object => object.objType !== "mannequin").map(({ assembly: _assembly, ...object }) => object),
       sceneConfig: {
-        ...document.sceneConfig, canvasWidth: width, canvasHeight: height,
+        ...document.sceneConfig, camera, canvasWidth: width, canvasHeight: height,
         controls: { enabled: false },
         renderer: { antialias: true, ratioRate: 1 / window.devicePixelRatio, shadowMapEnabled: true },
         renderLoop: { autoResize: false, firstAutoResize: false, updateAnimations: false, scheduleMode: "demand" },
@@ -195,7 +263,7 @@ export async function createStage(canvas: HTMLCanvasElement, document: SceneDocu
     }, { canvas, beforeFrame, onRuntimeReady: context => { runtime = context.runtime; } });
     for (const object of document.objectList) {
       if (object.objType !== "mannequin") continue;
-      const mannequin = createMannequin(object.threeJsonId, object.material.color, object.hiddenParts);
+      const mannequin = createMannequin(object.threeJsonId, object.material.color, object.hiddenParts, object.bodyType);
       mannequin.position.set(object.position.x, object.position.y, object.position.z);
       mannequin.rotation.set(object.rotation?.rotationX ?? 0, object.rotation?.rotationY ?? 0, object.rotation?.rotationZ ?? 0);
       mannequin.scale.set(object.scale?.scaleX ?? 1, object.scale?.scaleY ?? 1, object.scale?.scaleZ ?? 1);
@@ -213,7 +281,7 @@ export async function createStage(canvas: HTMLCanvasElement, document: SceneDocu
     const { x, y, z } = document.sceneConfig.controls.target;
     next.camera.lookAt(x, y, z);
     next.camera.updateProjectionMatrix();
-    next.renderer.shadowMap.type = PCFSoftShadowMap;
+    next.renderer.shadowMap.type = PCFShadowMap;
     next.scene.traverse(object => {
       if (object instanceof Mesh) {
         object.castShadow = true;
@@ -226,8 +294,13 @@ export async function createStage(canvas: HTMLCanvasElement, document: SceneDocu
     shadowGround.position.y = -0.01;
     shadowGround.receiveShadow = true;
     next.scene.add(shadowGround);
+    const ground = new Mesh(new PlaneGeometry(200, 200), new MeshStandardMaterial({ color: "#363942", roughness: 0.95 }));
+    ground.name = "directorGround";
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    next.scene.add(ground);
     next.scene.add(new GridHelper(200, 200, 0x666670, 0x3d3d45));
-    applySceneSettings(next, settings);
+    await applySceneSettings(next, settings);
     if (lighting) applyLighting(next, lighting);
     return next;
   } catch (error) {
@@ -241,7 +314,7 @@ export function captureCamera(runtime: SceneRuntime): CameraView {
   const { x, y, z } = camera.position;
   const target = camera.getWorldDirection(new Vector3()).add(camera.position);
   return {
-    camera: { position: { x, y, z }, fov: camera.fov, near: camera.near, far: camera.far },
+    camera: { position: { x, y, z }, ...(Math.abs(cameraRoll(camera.position,camera.quaternion)) > 1e-7 ? { roll: cameraRoll(camera.position,camera.quaternion) } : {}), fov: camera.fov, near: camera.near, far: camera.far },
     controls: { target: { x: target.x, y: target.y, z: target.z } },
   };
 }
@@ -254,6 +327,8 @@ export function capturePreview(runtime: SceneRuntime) {
 }
 
 export function disposeStage(runtime: SceneRuntime) {
+  const panorama = panoramas.get(runtime);
+  if (panorama) { panorama.disposed = true; panorama.texture?.dispose(); panoramas.delete(runtime); }
   for (const child of runtime.scene.children) {
     if (child instanceof GridHelper) child.dispose();
     if (child instanceof Sky) {

@@ -45,7 +45,7 @@ const toolbarStyle = computed(() => {
   const element = flow.vueFlowRef.value;
   const flowTop = element?.getBoundingClientRect().top ?? 0;
   const workspace = element?.closest(".workspacePage");
-  const menuBottom = Math.max(flowTop, ...Array.from(workspace?.querySelectorAll<HTMLElement>(".workspaceMenu, .canvasMenu, .panelSwitcher") ?? [])
+  const menuBottom = Math.max(flowTop, ...Array.from(workspace?.querySelectorAll<HTMLElement>(".canvasMenu, .panelSwitcher") ?? [])
     .filter(item => item.getClientRects().length && getComputedStyle(item).visibility !== "hidden")
     .map(item => item.getBoundingClientRect().bottom));
   return {

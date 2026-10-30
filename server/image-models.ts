@@ -8,6 +8,7 @@
 
 import { runtimeSecret } from './runtime-secrets.ts'
 import { referenceInputPolicy } from './reference-input-contract.ts'
+import { REFERENCE_ROLES } from './creative-contract.ts'
 import { suiheCapability, suiheModelId, suiheModelOverlay, SUIHE_MODEL_IDS } from './suihe-catalog.ts'
 
 const COMMON_SIZES = [
@@ -80,18 +81,18 @@ const SEEDREAM_LITE_SIZES = [
 const IMAGE_CATALOG = [
   {
     id: 'gpt-image-2', label: 'GPT Image 2', provider: 'yunshu',
-    note: '输入保真度高', sizes: GPT2_SIZES, customSize: true, sizeRule: GPT_SIZE_RULE, quality: ['low', 'medium', 'high'],
-    formats: ['png', 'jpeg', 'webp'], maxReferences: 8, maxCount: 4, supportsEdit: true, supportsTransparent: true,
+    note: '输入保真度高', sizes: GPT2_SIZES, customSize: true, sizeRule: GPT_SIZE_RULE, quality: ['auto', 'low', 'medium', 'high'],
+    formats: ['png', 'jpeg', 'webp'], maxReferences: 16, maxCount: 10, supportsEdit: true, supportsTransparent: true,
   },
   {
     id: 'gpt-image-2.5-sunburst', label: 'GPT Image 2.5 Sunburst', provider: 'yunshu',
-    note: '编辑精度优先', sizes: GPT2_SIZES, customSize: true, sizeRule: GPT_SIZE_RULE, quality: ['low', 'medium', 'high', 'xhigh', 'max'],
-    formats: ['png', 'jpeg', 'webp'], maxReferences: 8, maxCount: 4, supportsEdit: true, supportsTransparent: true,
+    note: '编辑精度优先', sizes: GPT2_SIZES, customSize: true, sizeRule: GPT_SIZE_RULE, quality: ['auto', 'low', 'medium', 'high', 'xhigh', 'max'],
+    formats: ['png', 'jpeg', 'webp'], maxReferences: 16, maxCount: 10, supportsEdit: true, supportsTransparent: true,
   },
   {
     id: 'gpt-image-2.5-flare', label: 'GPT Image 2.5 Flare', provider: 'yunshu',
-    note: '速度和质量平衡', sizes: GPT2_SIZES, customSize: true, sizeRule: GPT_SIZE_RULE, quality: ['low', 'medium', 'high', 'xhigh', 'max'],
-    formats: ['png', 'jpeg', 'webp'], maxReferences: 8, maxCount: 4, supportsEdit: true, supportsTransparent: true,
+    note: '速度和质量平衡', sizes: GPT2_SIZES, customSize: true, sizeRule: GPT_SIZE_RULE, quality: ['auto', 'low', 'medium', 'high', 'xhigh', 'max'],
+    formats: ['png', 'jpeg', 'webp'], maxReferences: 16, maxCount: 10, supportsEdit: true, supportsTransparent: true,
   },
   {
     // xAI image generation (docs.x.ai, 2026-10-08): aspect_ratio is its own
@@ -99,6 +100,12 @@ const IMAGE_CATALOG = [
     // Quality exists only on 2.0. Multi-image edit accepts up to 5 source images.
     id: 'grok-imagine-image', label: 'Grok Imagine Image', provider: 'grok',
     note: '1k/2k · 官方画面比例', sizes: GROK_IMAGE_SIZES, ratios: GROK_IMAGE_RATIOS, quality: [],
+    formats: ['auto'], maxReferences: 5, maxCount: 10, supportsEdit: true, supportsTransparent: false,
+  },
+  {
+    // Quality 保留独立 ID；xAI 公告 2026-11-02 后此 ID 重定向到 2.0 low，网关行为仍需核实。
+    id: 'grok-imagine-image-quality', label: 'Grok Imagine Image Quality', provider: 'grok',
+    note: '1k/2k · 高画质', sizes: GROK_IMAGE_SIZES, ratios: GROK_IMAGE_RATIOS, quality: [],
     formats: ['auto'], maxReferences: 5, maxCount: 10, supportsEdit: true, supportsTransparent: false,
   },
   {
@@ -125,6 +132,7 @@ const IMAGE_CATALOG = [
     note: '支持多图和组图', sizes: SEEDREAM_LITE_SIZES, customSize: true, sizeRule: SEEDREAM_LITE_SIZE_RULE,
     quality: [], formats: ['jpeg', 'png'], maxReferences: 14, maxCount: 15, maxCombinedImages: 15,
     supportsEdit: true, supportsTransparent: false,
+    controls: [{ key: 'webSearch', label: '联网搜索', type: 'boolean' }],
   },
   {
     id: 'doubao-seedream-4-5-251128', publicId: 'seedream-4.5', label: 'Seedream 4.5', provider: 'ark',
@@ -232,6 +240,7 @@ const VIDEO_CATALOG = [
     audio: 'optional', referenceLimits: { image:30, video:10, audio:10, frames:2 },
     maxReferences:30, maxCount:1, supportsEdit:true, supportsTransparent:false,
     parameterRules: {
+      promptOptionalWithReferences: true,
       referenceInputsByMode: { edit: { video: { minDuration: 4, maxDuration: 30 } } },
       ratiosByMode: { singleImage: ['adaptive'], endFrameOptional: ['adaptive'], edit: ['adaptive'], extend: ['adaptive'] },
       inheritByMode: { singleImage: ['ratio'], endFrameOptional: ['ratio'], edit: ['duration', 'ratio'], extend: ['ratio'] },
@@ -262,7 +271,7 @@ const VIDEO_CATALOG = [
     modes: ['text', 'singleImage', 'startFrameOptional', 'endFrameOptional', 'edit', 'extend', ['imageReference:9', 'videoReference:3', 'audioReference:3']],
     audio: 'optional', referenceLimits: { image: 9, video: 3, audio: 3, frames: 2 },
     maxReferences: 9, maxCount: 1, supportsEdit: true, supportsTransparent: false,
-    parameterRules: { requireVisualInMixed: true },
+    parameterRules: { requireVisualInMixed: true, promptOptionalWithReferences: true },
     controls: ARK_VIDEO_CONTROLS,
   },
   {
@@ -304,7 +313,8 @@ const VIDEO_CATALOG = [
     maxDurationByMode: { image: 10 },
     parameterRules: {
       durationByMode: { image: { max: 10 }, extend: { min: 2, max: 10 } },
-      inheritByMode: { edit: ['duration', 'ratio', 'resolution'], extend: ['ratio', 'resolution'] },
+      // 官方：图生视频忽略 aspect_ratio，输出跟随输入图片。
+      inheritByMode: { singleImage: ['ratio'], edit: ['duration', 'ratio', 'resolution'], extend: ['ratio', 'resolution'] },
       referencesByMode: {
         edit: { video: [1, 1], image: [0, 0], audio: [0, 0] },
         extend: { video: [1, 1], image: [0, 0], audio: [0, 0] },
@@ -329,10 +339,31 @@ const VIDEO_CATALOG = [
     // 上传音频文件参考需要 xAI 受信合作方权限，普通账号只有预设声音，所以这里只暴露 voice_id。
     modes: ['text', 'singleImage', 'startFrameOptional', 'endFrameOptional', ['imageReference:14']],
     audio: 'optional', referenceLimits: { image: 14, video: 0, audio: 0, frames: 2 }, keyframes: 4,
+    // 参考生视频的预设声音（reference_audios[].voice_id），最多 3 个；名单取自 xAI 文字转语音内置声音。
+    referenceVoices: ['eve', 'ara', 'leo', 'rex', 'sal'], maxReferenceVoices: 3,
     maxReferences: 14, maxCount: 1, supportsEdit: false, supportsTransparent: false,
     parameterRules: {
       promptOptionalWithImage: true,
-      resolutionsByMode: { image: ['480p', '720p'], startFrameOptional: ['480p', '720p'], endFrameOptional: ['480p', '720p'] },
+      referenceResolutions: ['480p', '720p'],
+      framePlusReferences: true,
+      pinFramesInMixed: true,
+      // 官方：图生视频忽略 aspect_ratio，输出跟随输入图片。
+      inheritByMode: { singleImage: ['ratio'] },
+      // 参考图、尾帧、关键帧最高 720p；首尾帧模式只给首帧时属于图生视频，可到 1080p，带尾帧时由服务端拦下。
+      resolutionsByMode: { image: ['480p', '720p'], startFrameOptional: ['480p', '720p'] },
+    },
+  },
+  {
+    // 官方能力表：1.5 Lite 只有文生和图生，1–15 秒，1080p 由 720p 放大；不支持参考图、声音、首尾帧和关键帧。
+    id: 'grok-imagine-video-1.5-lite', label: 'Grok Imagine Video 1.5 Lite', provider: 'grok', video: true,
+    note: '1–15 秒 · 480p/720p/1080p', sizes: GROK_VIDEO_1_5_SIZES, quality: [], formats: ['mp4'],
+    durations: DURATIONS_1_15, ratios: GROK_VIDEO_RATIOS,
+    modes: ['text', 'singleImage'],
+    audio: 'optional', referenceLimits: { image: 1, video: 0, audio: 0, frames: 0 },
+    maxReferences: 1, maxCount: 1, supportsEdit: false, supportsTransparent: false,
+    parameterRules: {
+      promptOptionalWithImage: true,
+      inheritByMode: { singleImage: ['ratio'] },
     },
   },
 ]
@@ -574,6 +605,8 @@ export function publicModelCatalog(env = process.env, settings: Record<string, a
     supportsEdit: model.supportsEdit,
     regionEdit: model.provider === 'yunshu' ? 'mask' : model.provider==='ark' && model.id.startsWith('doubao-seedream-5-0-') ? 'annotation' : null,
     supportsTransparent: model.supportsTransparent,
+    transparentInput: model.supportsTransparent ? (model.provider === 'ark' ? 'alpha-png' : 'any-image') : null,
+    referenceRoles: model.supportsEdit && model.maxReferences > 0 ? REFERENCE_ROLES : [],
     inputFidelity: model.inputFidelity || [],
     supportsLayerDecomposition: Boolean(model.supportsLayerDecomposition),
     optimizePromptModes: Array.isArray(model.optimizePromptModes) ? model.optimizePromptModes : [],
@@ -612,6 +645,7 @@ export function publicVideoCatalog(env = process.env, settings: Record<string, a
     referenceLimits: model.referenceLimits || { image: model.maxReferences || 1, video: 0, audio: 0, frames: 0 },
     referenceInputs: Object.fromEntries(['image', 'video', 'audio'].map(kind => [kind, referenceInputPolicy(model, kind)])),
     keyframes: model.keyframes || 0,
+    ...(model.maxReferenceVoices ? { referenceVoices: model.referenceVoices || [], maxReferenceVoices: model.maxReferenceVoices } : {}),
     formats: model.formats,
     maxReferences: model.maxReferences,
     maxCount: model.maxCount ?? 1,
@@ -632,8 +666,9 @@ const UPSTREAM_COSTS = {
   'gpt-image-2': '云枢实测 0.180 美元/张（99 张均值，未含结汇）',
   'gpt-image-2.5-sunburst': '云枢实测 0.201 美元/张（2 张均值，未含结汇）',
   'gpt-image-2.5-flare': '云枢实测 0.201 美元/张（22 张均值，未含结汇）',
-  'grok-imagine-image': 'Grok 图片价目 $0.04/张 × 渠道倍率 1 × 7.2 元/美元（推算）',
-  'grok-imagine-image-2.0': 'Grok 图片价目 $0.04/张 × 渠道倍率 1 × 7.2 元/美元（推算）',
+  'grok-imagine-image': 'Grok 图片价目 $0.02/张 × 渠道倍率 1 × 7.2 元/美元（推算）',
+  'grok-imagine-image-2.0': 'Grok 图片价目 $0.04–$0.08/张（尺寸/质量分档），输入图 $0.01/张 × 渠道倍率 1 × 7.2 元/美元（推算）',
+  'grok-imagine-image-quality': 'Grok 图片价目 $0.05–$0.07/张（尺寸分档），输入图 $0.01/张 × 渠道倍率 1 × 7.2 元/美元（推算）',
   'doubao-seedream-5-0-pro': '官方刊例：≤261 万像素 0.30 元/张 · >261 万像素 0.60 元/张 · 输入图第 2 张起 0.02 元/张',
   'doubao-seedream-5-0-flash': '官方刊例 0.12 元/张',
   'doubao-seedream-4-0': '官方刊例 0.20 元/张',
@@ -644,8 +679,9 @@ const UPSTREAM_COSTS = {
   'MiniMax-H3': '秘塔最贵档 0.0108 元/积分：768P 约 0.11 元/秒 · 2K 约 0.18 元/秒 · 参考视频按输入时长 · 图片超 5 张约 0.06 元/张',
   'seedance-2.0-mini': '秘塔最贵档 0.0108 元/积分：720p 约 0.38 元/秒（35.09 积分/秒）',
   'seedance-2.0': '秘塔最贵档 0.0108 元/积分：720p 约 1.18 元/秒（108.89 积分/秒）',
-  'grok-imagine-video': 'Grok 视频价目 480p $0.05/秒、720p $0.07/秒 × 渠道倍率 1 × 7.2 元/美元（推算）',
-  'grok-imagine-video-1.5': 'Grok 视频价目 480p $0.08/秒、720p $0.14/秒、1080p $0.25/秒 × 渠道倍率 1 × 7.2 元/美元（推算）',
+  'grok-imagine-video': '当前网关按输出秒计费：480p $0.05/秒、720p $0.07/秒 × 渠道倍率 0.5 × 7.2 元/美元；新任务不单计输入媒体费',
+  'grok-imagine-video-1.5': '当前网关按输出秒计费：480p $0.08/秒、720p $0.14/秒、1080p $0.25/秒 × 渠道倍率 0.5 × 7.2 元/美元；新任务不单计输入媒体费',
+  'grok-imagine-video-1.5-lite': '当前网关按 1.5 价族回落：480p $0.08/秒、720p $0.14/秒、1080p $0.25/秒 × 已核实渠道倍率 0.5 × 7.2 元/美元；新任务不单计输入媒体费；官网 Lite $0.02/$0.03/$0.14 暂不作为本渠道采购价',
 }
 const SUIHE_UPSTREAM_COSTS = {
   'seedance-2.5': '穗禾采购：火山官方 token 成本 × 0.81；480p/720p 70/42、1080p 77/46 元/百万（无视频/含视频）',
@@ -723,7 +759,9 @@ export function normalizeGeneration(modelId, input: Record<string, any> = {}, re
   const quality = String((input.quality || (model.provider === 'grok' ? '' : defaults.quality)) || '').trim().toLowerCase()
   const format = String(input.format || defaults.format).trim().toLowerCase()
   const background = String(input.background || defaults.background).trim().toLowerCase()
-  const inputFidelity = String(input.inputFidelity || defaults.inputFidelity).trim().toLowerCase()
+  // Ignore unsupported legacy fidelity values instead of sending a field that
+  // GPT Image 2 rejects. Older clients may still have saved high/low.
+  const inputFidelity = model.inputFidelity?.length ? String(input.inputFidelity || defaults.inputFidelity).trim().toLowerCase() : ''
   const rawCount = input.count === undefined || input.count === null || input.count === '' ? 1 : Number(input.count)
   if (!Number.isSafeInteger(rawCount) || rawCount < 1 || rawCount > model.maxCount) throw new Error(`当前模型一次最多生成 ${model.maxCount} 张图片`)
   const count = rawCount
@@ -731,7 +769,8 @@ export function normalizeGeneration(modelId, input: Record<string, any> = {}, re
   if (seed !== undefined && (!Number.isInteger(seed) || seed < -1 || seed > 2147483647)) throw new Error('随机种子无效')
   const responseFormat = String(input.responseFormat || '').trim().toLowerCase()
   if (responseFormat && !['url', 'b64_json'].includes(responseFormat)) throw new Error('图片响应格式无效')
-  if (!validSize(model.id, size, model)) throw new Error('当前模型不支持这个画布尺寸')
+  const automaticLayerSize = size === 'auto' && model.supportsLayerDecomposition && input.layerDecomposition === true && model.layerSizes?.includes('auto')
+  if (!automaticLayerSize && !validSize(model.id, size, model)) throw new Error('当前模型不支持这个画布尺寸')
   const requestedRatio = legacyRatio || String(input.ratio || '').trim()
   if (Array.isArray(model.ratios) && model.ratios.length && requestedRatio && !model.ratios.includes(requestedRatio)) throw new Error('当前模型不支持这个画面比例')
   // GPT Image and Seedream encode aspect ratio in the concrete size and never

@@ -46,6 +46,7 @@ const props = defineProps<{
   connectReference?: (id: string) => MentionItem & { value: string };
   // Source string for translate(); text nodes describe writing, media nodes describe a picture.
   placeholder?: string;
+  compact?: boolean;
   expandable?: boolean;
   expandMode?: "dialog" | "external";
 }>();
@@ -188,7 +189,7 @@ watch(senderElement, (element, _previous, onCleanup) => {
   const instance = new xSender(element, {
     autoFocus: false,
     placeholder: translate(props.placeholder ?? "描述你想要生成的画面内容，@引用素材"),
-    chatStyle: { minHeight: "70px", maxHeight: "180px", fontSize: "14px", lineHeight: "1.6" },
+    chatStyle: { minHeight: props.compact ? "28px" : "70px", maxHeight: props.compact ? "120px" : "180px", fontSize: "14px", lineHeight: "1.6" },
     getPopupContainer: () => popup,
     mentionConfig: mentionConfig(),
     keyboardSendFun: () => false,
@@ -201,8 +202,20 @@ watch(senderElement, (element, _previous, onCleanup) => {
   customMenu.className = "referenceMenuHost";
   mentionDialog.appendChild(customMenu);
   mentionTarget.value = customMenu;
-  const menuObserver = new MutationObserver(() => { mentionVisible.value = mentionDialog.getClientRects().length > 0; });
+  // The SDK anchors from the caret, but does not reserve space for our taller
+  // reference picker. Apply an independent translation only when it overflows.
+  let menuX=0,menuY=0,menuFrame=0;
+  function positionReferenceMenu(){
+    menuFrame=0;if(!mentionDialog.isConnected||!mentionDialog.getClientRects().length)return;
+    const rect=mentionDialog.getBoundingClientRect(),left=rect.left-menuX,top=rect.top-menuY,pad=12;
+    const x=Math.max(pad,Math.min(left,window.innerWidth-rect.width-pad))-left,y=Math.max(pad,Math.min(top,window.innerHeight-rect.height-pad))-top;
+    if(Math.abs(x-menuX)>.1||Math.abs(y-menuY)>.1){menuX=x;menuY=y;mentionDialog.style.translate=`${x}px ${y}px`;}
+  }
+  function scheduleReferenceMenu(){if(!menuFrame)menuFrame=requestAnimationFrame(positionReferenceMenu);}
+  const menuObserver = new MutationObserver(() => { mentionVisible.value = mentionDialog.getClientRects().length > 0;if(mentionVisible.value)scheduleReferenceMenu(); });
   menuObserver.observe(mentionDialog, { attributes: true, attributeFilter: ["class", "style"] });
+  const menuResize=new ResizeObserver(scheduleReferenceMenu);menuResize.observe(mentionDialog);
+  window.addEventListener('resize',scheduleReferenceMenu);
   // ACT: 弹窗只移动现有编辑器，保留参考标签、光标与撤销记录。
   const syncExpandedEditor = async (visible: boolean) => {
     instance.bus.emit(xSender.EventSet.EVENT_COMMON_DIALOG_CLOSE);
@@ -251,7 +264,7 @@ watch(senderElement, (element, _previous, onCleanup) => {
   editor.setAttribute("aria-label", translate("生成提示词"));
   editor.setAttribute("aria-multiline", "true");
   // 切换语言不会重建 x-sender 实例，这里手动把随语言变化的文案同步过去。
-  const stopLocaleWatch = watch(locale, () => {
+  const stopLocaleWatch = watch([locale, () => props.placeholder], () => {
     if (sender !== instance) return;
     instance.updateConfig({
       placeholder: translate(props.placeholder ?? "描述你想要生成的画面内容，@引用素材"),
@@ -280,7 +293,7 @@ watch(senderElement, (element, _previous, onCleanup) => {
     model.value = instance.getModel();
     releaseNodeFocus(instance);
     sender = undefined;
-    menuObserver.disconnect();
+    menuObserver.disconnect();menuResize.disconnect();window.removeEventListener('resize',scheduleReferenceMenu);if(menuFrame)cancelAnimationFrame(menuFrame);
     mentionVisible.value = false;
     mentionTarget.value = undefined;
     editor.removeEventListener("copy", copyText);

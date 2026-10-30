@@ -1,5 +1,5 @@
 <template>
-  <el-dialog v-model="visible" :title="translate('画布节点搜索')" width="min(480px, calc(100vw - 32px))" alignCenter appendToBody @opened="searchInput?.focus()">
+  <el-dialog v-model="visible" :title="translate('画布节点搜索')" width="min(480px, calc(100vw - 32px))" alignCenter appendToBody @opened="searchInput?.focus()" @close-auto-focus="focusSelectedNode">
     <div class="nodeSearch">
       <div class="searchControls">
       <el-input
@@ -41,11 +41,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
-import { useVueFlow } from "@vue-flow/core";
+import { computed, nextTick, onScopeDispose, ref, watch } from "vue";
+import { useVueFlow, type GraphNode } from "@vue-flow/core";
 import { IconSearch, IconFileText, IconPhoto, IconPhotoSpark, IconVideo, IconCameraAi, IconMusic, IconCube3dSphere, IconBoxMultiple, IconPuzzle } from "@tabler/icons-vue";
 import type { InputInstance } from "element-plus";
 import { translate } from "@miaoimg/i18n/vue";
+import { assertWorkspaceScope, captureWorkspaceScope } from "@/lib/workspaceRemote";
 
 const props = defineProps<{ disabled?: boolean; types?: { type: string; label: string }[] }>();
 const flow = useVueFlow();
@@ -55,6 +56,8 @@ const selectedType = ref("all");
 const activeIndex = ref(0);
 const searchInput = ref<InputInstance>();
 const resultList = ref<HTMLElement>();
+let pendingFocus: { node: GraphNode; scope: ReturnType<typeof captureWorkspaceScope>; element: HTMLElement | null | undefined } | undefined;
+onScopeDispose(() => { pendingFocus = undefined; });
 function nodeDisplayLabel(node: { id: string; type?: string; data?: { label?: unknown } }) {
   const label = node.data?.label;
   return typeof label === "string" && label.trim() && !/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(label) ? label : `${translate("未命名节点")} · ${node.id.slice(0, 8)}`;
@@ -90,10 +93,11 @@ watch(activeIndex, async index => {
   await nextTick();
   resultList.value?.children[index]?.scrollIntoView({ block: "nearest" });
 });
-watch(() => props.disabled, disabled => { if (disabled) visible.value = false; });
+watch(() => props.disabled, disabled => { if (disabled) { pendingFocus = undefined; visible.value = false; } }, { flush: 'sync' });
 
 function open() {
   if (props.disabled) return;
+  pendingFocus = undefined;
   query.value = "";
   selectedType.value = "all";
   activeIndex.value = 0;
@@ -111,6 +115,7 @@ function navigateResults(event: Event | KeyboardEvent) {
 async function selectNode(index: number) {
   const node = results.value[index]?.node;
   if (!node || props.disabled) return;
+  pendingFocus = { node, scope: captureWorkspaceScope(), element: flow.vueFlowRef.value };
   visible.value = false;
   flow.removeSelectedElements();
   flow.addSelectedNodes([node]);
@@ -118,6 +123,24 @@ async function selectNode(index: number) {
   await nextTick();
   // 选中后节点下方会展开编辑卡片，最大只放到 100%，避免卡片被底部工具栏挡住。
   await flow.fitView({ nodes: [node.id], padding: 0.4, maxZoom: 1, duration: 200 });
+}
+
+async function focusSelectedNode() {
+  const pending = pendingFocus;
+  if (!pending) return; // Cancel/Esc keeps the dialog's normal trigger restoration.
+  // Element Plus emits close-auto-focus before restoring its trigger. Wait
+  // until that synchronous focus-trap cleanup has finished, then hand back to canvas.
+  await nextTick();
+  if (pendingFocus !== pending) return;
+  pendingFocus = undefined;
+  if (visible.value || props.disabled || !pending.element?.isConnected
+    || flow.vueFlowRef.value !== pending.element || flow.findNode(pending.node.id) !== pending.node
+    || pending.node.hidden || !flow.getSelectedNodes.value.includes(pending.node)) return;
+  try { assertWorkspaceScope(pending.scope); } catch { return; }
+  const label = pending.element.querySelector<HTMLElement>(`.vue-flow__node[data-id="${CSS.escape(pending.node.id)}"] .labelText, .vue-flow__node[data-id="${CSS.escape(pending.node.id)}"] .groupLabel`);
+  const target = label ?? pending.element;
+  if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');
+  target.focus({ preventScroll: true });
 }
 
 defineExpose({ open });

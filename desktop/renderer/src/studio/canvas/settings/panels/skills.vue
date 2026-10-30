@@ -9,7 +9,7 @@
     </div>
     <div class="skillNote">
       <p>{{ translate('Agent 按任务选择已启用的技能，也可在对话框输入 / 手动指定。') }}</p>
-      <p v-if="isDesktop">{{ translate('开启本机操作后，还会读取你个人目录和当前工作文件夹里 .agents/skills 下的技能。') }}</p>
+      <p>{{ translate('开启本机操作后，还会读取你个人目录和当前工作文件夹里 .agents/skills 下的技能。') }}</p>
     </div>
     <feedbackNotice :message="error" @close="error = ''" />
     <div v-if="filtered.length" class="skillGrid">
@@ -34,7 +34,6 @@ import { IconFolderCode, IconSearch, IconSparkles, IconStack2 } from '@tabler/ic
 import { workspaceHeaders, captureWorkspaceScope, assertWorkspaceScope } from '@/lib/workspaceRemote';
 type Skill = { id: string; name: string; displayName?: string; displayNameEn?: string; description: string; descriptionEn?: string; enabled: boolean; local?: boolean; builtin?: boolean };
 const scope = captureWorkspaceScope(), controller = new AbortController();
-const isDesktop = Boolean(window.miaoDesktop);
 const skills = ref<Skill[]>([]), query = ref(''), error = ref(''), pending = ref(''), loading = ref(true);
 const skillLabel = (skill: Skill) => (locale.value.startsWith('zh') ? skill.displayName : skill.displayNameEn) || skill.displayName || skill.name;
 const skillText = (skill: Skill) => (locale.value.startsWith('zh') ? skill.description : skill.descriptionEn) || skill.description;

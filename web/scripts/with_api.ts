@@ -53,8 +53,8 @@ const configuredManagementDb = process.env.OIP_MANAGEMENT_DB
 const managementDbPath = configuredManagementDb
   ? (configuredManagementDb === ':memory:' ? configuredManagementDb : resolve(repositoryRoot, configuredManagementDb))
   : resolve(repositoryRoot, process.env.OIP_DATA_DIR || 'data', 'management.sqlite')
-const managementBootstrap = new ManagementStore(managementDbPath)
-managementBootstrap.close()
+const managementBootstrap = (await ManagementStore.open(managementDbPath))
+await managementBootstrap.close()
 
 function optionalPort(value, name) {
   if (!value) return undefined

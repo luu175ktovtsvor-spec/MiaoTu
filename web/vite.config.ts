@@ -7,7 +7,6 @@ import tailwindcss from '@tailwindcss/vite'
 import { archiveImagesPlugin, blockPrivateArchive } from './scripts/archiveMiddleware.ts'
 
 const WEB_DIR = fileURLToPath(new URL('.', import.meta.url))
-const DIMS_FILE = resolve(WEB_DIR, 'dims.json')
 const API_PORT = globalThis.process?.env.OIP_API_PORT || '8787'
 const IMAGE_API_PORT = globalThis.process?.env.OIP_IMAGE_API_PORT || '8788'
 const ADMIN_API_PORT = globalThis.process?.env.OIP_ADMIN_PORT || '4184'
@@ -30,21 +29,10 @@ function archiveAssetsPlugin() {
     configurePreviewServer(server) {
       blockPrivateArchive(server.middlewares)
     },
-    generateBundle() {
-      try {
-        this.emitFile({
-          type: 'asset',
-          fileName: 'dims.json',
-          source: readFileSync(DIMS_FILE),
-        })
-      } catch {
-        // dims.json is optional (run scripts/export_dims.py to regenerate)
-      }
-    },
   }
 }
 
-// The web Agent shares the reviewed showcase catalog with the desktop Agent.
+// The cloud MCP shares the reviewed showcase catalog with the desktop Agent.
 // Keep the catalog and prompt shards as build assets so the API can search
 // them without importing the renderer bundle or copying the full media set.
 function showcaseAgentManifestPlugin() {
@@ -82,13 +70,8 @@ export default defineConfig({
     proxy: {
       '/api/admin': apiProxy(ADMIN_API_PORT),
       '/api/imagine': apiProxy(IMAGE_API_PORT),
-      '/api/agent': apiProxy(IMAGE_API_PORT),
       '/api/mcp': apiProxy(IMAGE_API_PORT),
-      '/api/nodes': apiProxy(IMAGE_API_PORT),
-      '/api/ext': apiProxy(IMAGE_API_PORT),
-      '/api/plugins': apiProxy(IMAGE_API_PORT),
       '/api/ai': apiProxy(IMAGE_API_PORT),
-      '/api/ffmpeg': apiProxy(IMAGE_API_PORT),
       '/mcp': apiProxy(IMAGE_API_PORT),
       '/api': apiProxy(API_PORT),
       '/health': apiProxy(ARCHIVE_ENABLED ? API_PORT : IMAGE_API_PORT),
@@ -99,13 +82,8 @@ export default defineConfig({
     proxy: {
       '/api/admin': apiProxy(ADMIN_API_PORT),
       '/api/imagine': apiProxy(IMAGE_API_PORT),
-      '/api/agent': apiProxy(IMAGE_API_PORT),
       '/api/mcp': apiProxy(IMAGE_API_PORT),
-      '/api/nodes': apiProxy(IMAGE_API_PORT),
-      '/api/ext': apiProxy(IMAGE_API_PORT),
-      '/api/plugins': apiProxy(IMAGE_API_PORT),
       '/api/ai': apiProxy(IMAGE_API_PORT),
-      '/api/ffmpeg': apiProxy(IMAGE_API_PORT),
       '/mcp': apiProxy(IMAGE_API_PORT),
       '/api': apiProxy(API_PORT),
       '/health': apiProxy(ARCHIVE_ENABLED ? API_PORT : IMAGE_API_PORT),

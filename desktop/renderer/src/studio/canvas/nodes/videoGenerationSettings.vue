@@ -1,11 +1,11 @@
 <template>
-  <el-popover :persistent="false" :popper-options="{ modifiers: [{ name: 'preventOverflow', options: { padding: 12, altAxis: true } }] }" trigger="click" placement="top-start" width="min(380px, calc(100vw - 24px))" :disabled="disabled" :showArrow="false" :popperStyle="{ padding: '14px 16px' }">
+  <el-popover :persistent="false" :popper-options="{ modifiers: [{ name: 'preventOverflow', options: { padding: 12, altAxis: true } }] }" trigger="click" placement="top-start" width="min(380px, calc(100vw - 24px))" :disabled="disabled && !openWhenDisabled" :showArrow="false" :popperStyle="{ padding: '14px 16px' }">
     <template #reference>
-      <el-button class="settingsButton" text size="small" :disabled="disabled" :aria-label="translate('视频生成设置')">
-        <span class="ratioShape" :style="ratioStyle(ratio)" aria-hidden="true" />
+      <el-button class="settingsButton" text size="small" :disabled="disabled && !openWhenDisabled" :aria-label="translate('视频生成设置')">
+        <span v-if="!hideRatioIcon" class="ratioShape" :style="ratioStyle(ratio)" aria-hidden="true" />
         <span>{{ summary }}</span>
         <component :is="generateAudio ? IconVolume : IconVolumeOff" v-if="audioOptional || model?.audio === true" :size="15" :aria-label="translate(generateAudio || model?.audio === true ? '生成音频' : '不生成音频')" />
-        <icon-chevron-up :size="14" aria-hidden="true" />
+        <component :is="summaryOverride ? IconChevronDown : IconChevronUp" :size="14" aria-hidden="true" />
       </el-button>
     </template>
     <div class="generationSettings nodrag nopan nowheel" @pointerdown.stop @mousedown.stop @dblclick.stop @keydown.stop @wheel.stop>
@@ -29,10 +29,53 @@
         </div>
         <settingOptions v-else v-model="durationValue" :options="durations.map(item => ({ value: item, label: durationLabel(item) }))" :columns="Math.min(4, durations.length)" :disabled="disabled" :label="translate('视频时长')" />
       </template>
-      <p v-if="inputHint" class="inputHint">{{ inputHint }}</p>
+      <p v-if="inputHint && !hideInputHint" class="inputHint">{{ inputHint }}</p>
       <template v-if="audioOptional">
         <div class="sectionLabel">{{ translate('生成音频') }}</div>
         <settingOptions v-model="generateAudio" :options="[{ value: true, label: translate('开启') }, { value: false, label: translate('关闭') }]" :columns="2" :disabled="disabled" :label="translate('生成音频')" />
+      </template>
+      <template v-if="voiceOptions.length">
+        <div class="sectionLabel">{{ translate('预设声音') }} <small>{{ voices.length }}/{{ model?.maxReferenceVoices }}</small></div>
+        <el-select
+          v-model="voices"
+          multiple filterable allow-create default-first-option
+          :multiple-limit="model?.maxReferenceVoices || 0"
+          :disabled="disabled"
+          :aria-label="translate('预设声音')">
+          <el-option v-for="voice in voiceOptions" :key="voice" :label="voice.charAt(0).toUpperCase() + voice.slice(1)" :value="voice" />
+        </el-select>
+      </template>
+      <template v-if="model?.parameterRules?.pinFramesInMixed && selectedModeName === 'image'">
+        <template v-for="pin in (['firstFrame', 'lastFrame'] as const)" :key="pin">
+          <div class="sectionLabel">{{ translate(pin === 'firstFrame' ? '首帧' : '尾帧') }}</div>
+          <el-select :model-value="keyframeImages?.some(image => image.reference === pinnedFrames[pin]) ? pinnedFrames[pin] : undefined"
+            clearable :disabled="disabled" :placeholder="translate('选择图片')" :aria-label="translate(pin === 'firstFrame' ? '首帧' : '尾帧')"
+            @update:model-value="value => pinnedFrames = { ...pinnedFrames, [pin]: value || undefined }">
+            <el-option v-for="image in keyframeImages" :key="image.reference" :label="image.label" :value="image.reference">
+              <span class="frameImageOption"><img v-if="image.preview" :src="image.preview" alt="" loading="lazy" /><span>{{ image.label }}</span></span>
+            </el-option>
+          </el-select>
+        </template>
+      </template>
+      <template v-if="keyframesAvailable">
+        <div class="sectionLabel">{{ translate('关键帧') }} <small>{{ keyframes.length }}/{{ model?.keyframes }}</small></div>
+        <div class="keyframeOptions">
+          <div v-for="(item, index) in keyframes" :key="index" class="keyframeRow">
+            <el-select :model-value="keyframeImages?.some(image => image.reference === item.reference) ? item.reference : undefined"
+              :disabled="disabled" :placeholder="translate('选择图片')" :aria-label="translate('选择图片')"
+              @update:model-value="value => updateKeyframeReference(index, value)">
+              <el-option v-for="image in keyframeImages" :key="image.reference" :label="image.label" :value="image.reference">
+              <span class="frameImageOption"><img v-if="image.preview" :src="image.preview" alt="" loading="lazy" /><span>{{ image.label }}</span></span>
+            </el-option>
+            </el-select>
+            <el-input-number :model-value="item.timestamp_s" :min="1 / 3" :max="Math.max(1 / 3, (duration || 1) - 1 / 3)"
+              :step="1 / 3" :precision="3" :controls="false" :disabled="disabled" :aria-label="translate('关键帧') + ' (s)'"
+              @update:model-value="value => updateKeyframeTime(index, value)" />
+            <span>s</span>
+            <el-button text :disabled="disabled" :aria-label="translate('删除')" @click="keyframes = keyframes.filter((_, other) => other !== index)">×</el-button>
+          </div>
+          <el-button text :disabled="disabled || !nextKeyframe" @click="addKeyframe">{{ translate('添加') }}</el-button>
+        </div>
       </template>
       <template v-if="controls.length">
         <el-button class="advancedToggle" text :aria-expanded="showAdvanced" @click="showAdvanced = !showAdvanced">
@@ -52,6 +95,7 @@
           </template>
         </div>
       </template>
+      <slot name="additional" />
     </div>
   </el-popover>
 </template>
@@ -62,18 +106,20 @@ import { ElButton, ElInputNumber, ElPopover, ElSlider, ElSwitch } from "element-
 import { IconChevronDown, IconChevronUp, IconVolume, IconVolumeOff } from "@tabler/icons-vue";
 import type { NodeMediaModel } from "@miaoimg/nodes-scaffold/runtime";
 import { translate } from "@miaoimg/i18n/vue";
-import { durationsForMode, inheritedFields, resolutionsForMode, visibleControls } from "../scaffold/mediaParameters";
+import { durationsForMode, inheritedFields, resolutionsForMode, visibleControls, type VideoFramePins, type VideoKeyframeImage, type VideoKeyframeSelection } from "../scaffold/mediaParameters";
 import { sizeTier } from "../../../../../../server/media-size-label";
 import settingOptions from "./settingOptions.vue";
-import { getLocale } from "../i18n";
 
-const props = defineProps<{ model?: NodeMediaModel; disabled?: boolean; ratios: string[]; videoReferences?: number; imageReferences?: number }>();
+const props = defineProps<{ model?: NodeMediaModel; summaryOverride?: string; hideRatioIcon?: boolean; hideInputHint?: boolean; openWhenDisabled?: boolean; disabled?: boolean; ratios: string[]; videoReferences?: number; imageReferences?: number; keyframeImages?: VideoKeyframeImage[] }>();
 const duration = defineModel<number | undefined>("duration", { required: true });
 const resolution = defineModel<string>("resolution", { required: true });
 const ratio = defineModel<string>("ratio", { required: true });
 const mode = defineModel<string>("mode", { required: true });
 const generateAudio = defineModel<boolean>("generateAudio", { required: true });
 const parameters = defineModel<Record<string, unknown>>("parameters", { default: () => ({}) });
+const voices = defineModel<string[]>("voices", { default: () => [] });
+const keyframes = defineModel<VideoKeyframeSelection[]>("keyframes", { default: () => [] });
+const pinnedFrames = defineModel<VideoFramePins>("pinnedFrames", { default: () => ({}) });
 const showAdvanced = ref(false);
 const localPlatform = computed(() => ['doubao-local', 'dola-local'].includes(props.model?.providerId || ''));
 function ratioLabel(value: string) {
@@ -95,11 +141,34 @@ const inheritsSourceFormat = computed(() => inherited.value.includes("resolution
 const inheritsSourceRatio = computed(() => inherited.value.includes("ratio") || inheritsSourceFormat.value);
 const audioOptional = computed(() => props.model?.audio === "optional" && props.model.parameterRules?.audioByMode?.[selectedModeName.value] !== "hidden");
 const controls = computed(() => visibleControls(props.model, selectedModeName.value));
+// 预设声音只用于带参考素材的生成，文生视频不带。
+const voiceOptions = computed(() => props.model?.maxReferenceVoices && selectedModeName.value !== "text" ? props.model.referenceVoices || [] : []);
+
+
+const keyframesAvailable = computed(() => Boolean(props.model?.keyframes && ['image', 'startFrameOptional', 'endFrameOptional', 'startEndRequired'].includes(selectedModeName.value)));
+const nextKeyframe = computed(() => {
+  if (keyframes.value.length >= (props.model?.keyframes || 0)) return null;
+  const image = props.keyframeImages?.find(image => !keyframes.value.some(item => item.reference === image.reference)) || props.keyframeImages?.[0];
+  if (!image) return null;
+  const occupied = new Set(keyframes.value.map(item => Math.round(item.timestamp_s * 3)));
+  for (let slot = 1; slot < (duration.value || 0) * 3; slot++) {
+    if (!occupied.has(slot)) return { reference: image.reference, timestamp_s: slot / 3 };
+  }
+  return null;
+});
+function addKeyframe() { if (nextKeyframe.value) keyframes.value = [...keyframes.value, nextKeyframe.value]; }
+function updateKeyframeReference(index: number, reference: string) {
+  keyframes.value = keyframes.value.map((item, other) => other === index ? { ...item, reference } : item);
+}
+function updateKeyframeTime(index: number, value: number | undefined | null) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return;
+  keyframes.value = keyframes.value.map((item, other) => other === index ? { ...item, timestamp_s: Math.round(value * 3) / 3 } : item);
+}
 
 function controlOptionLabel(key: string, option: string) {
   if (key === "creativeMode") {
     if (option === "native") return translate("标准");
-    if (option === "super_economy") return ["zh-CN", "zh-TW"].includes(getLocale()) ? (getLocale() === "zh-TW" ? "節省模式" : "节省模式") : "Economy mode";
+    if (option === "super_economy") return translate("节省模式");
   }
   return translate(option);
 }
@@ -124,6 +193,7 @@ const durationValue = computed({
 });
 // 和 LibTV 一样：比例 · 清晰度 · 时长，音频状态用图标表示。
 const summary = computed(() => {
+  if (props.summaryOverride) return props.summaryOverride;
   if (inheritsSourceDuration.value) return translate('编辑 · 跟随输入');
   if (inheritsSourceFormat.value) return translate('延长 {0} · 跟随输入', { 0: durationLabel(duration.value) });
   const resolutionText = resolution.value ? sizeTier(resolution.value) || resolution.value : localPlatform.value ? translate('清晰度跟随平台') : '';
@@ -144,7 +214,11 @@ const inputHint = computed(() => {
 });
 
 function resolutionsFor(value: number | undefined) {
-  return resolutionsForMode(props.model, selectedModeName.value, value, parameters.value);
+  const listed = resolutionsForMode(props.model, selectedModeName.value, value, parameters.value);
+  const limit = props.model?.parameterRules?.referenceResolutions;
+  const pinnedLast = selectedModeName.value === 'startFrameOptional' && (props.imageReferences || 0) > 0
+    || ['endFrameOptional', 'startEndRequired'].includes(selectedModeName.value) && (props.imageReferences || 0) > 1;
+  return limit && (voices.value.length || keyframes.value.length || pinnedLast) ? listed.filter(item => limit.includes(item)) : listed;
 }
 
 function ratioStyle(value: string) {
@@ -216,6 +290,15 @@ function ratioStyle(value: string) {
     display: flex;
     flex-direction: column;
   }
+
+  .frameImageOption { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .frameImageOption img { width: 28px; height: 28px; flex: 0 0 28px; object-fit: cover; border-radius: 5px; }
+  .frameImageOption span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .keyframeOptions { display: flex; flex-direction: column; gap: 8px; }
+  .keyframeRow { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .keyframeRow .el-select { min-width: 0; flex: 1; }
+  .keyframeRow .el-input-number { width: 84px; flex: 0 0 84px; }
+  .sectionLabel small { margin-left: 4px; color: var(--el-text-color-secondary); font-weight: 400; }
 
   .controlRow {
     display: flex;

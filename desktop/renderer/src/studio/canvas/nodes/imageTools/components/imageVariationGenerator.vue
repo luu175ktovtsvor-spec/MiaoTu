@@ -1,15 +1,18 @@
 <template>
   <footer class="variationFooter">
-    <el-select v-model="settings.model" class="modelSelect" popper-class="modelSelectPopper" filterable :loading="modelsLoading" :disabled="busy" :placeholder="translate('选择图片模型')" :aria-label="`${label}模型`" :noDataText="translate('请先在设置中添加图片模型')" placement="top-start" @visible-change="visible => visible && refreshModels()">
+    <el-select v-model="settings.model" class="modelSelect" popper-class="modelSelectPopper" filterable :loading="modelsLoading" :disabled="busy" :placeholder="translate('选择图片模型')" :aria-label="translate('{label}模型', { label })" :noDataText="translate('请先在设置中添加图片模型')" placement="top-start" @visible-change="visible => visible && refreshModels()">
+      <template #prefix><modelIcon :model="selectedModel?.modelId || nodeModelValueId(settings.model)" :size="16" /></template>
       <el-option-group v-for="provider in modelGroups" :key="provider.id" :label="provider.label">
-        <el-option v-for="model in provider.models" :key="model.modelId" :label="model.label" :value="JSON.stringify([model.providerId, model.modelId])" />
+        <el-option v-for="model in provider.models" :key="model.modelId" :label="model.label" :value="JSON.stringify([model.providerId, model.modelId])">
+          <span class="modelOptionContent"><modelIcon :model="model.modelId" :size="16" /><span class="modelOptionText">{{ model.label }}</span></span>
+        </el-option>
       </el-option-group>
     </el-select>
     <el-popover trigger="click" placement="top" :width="220" :disabled="busy || !selectedModel" :showArrow="false">
-      <template #reference><el-button class="sizeButton" text :disabled="busy || !selectedModel" :aria-label="`${label}输出设置`">{{ settings.ratio || translate('比例') }} · {{ settings.size ? sizeTier(settings.size) || translate('自动') : translate('清晰度') }}</el-button></template>
+      <template #reference><el-button class="sizeButton" text :disabled="busy || !selectedModel" :aria-label="translate('{label}输出设置', { label })">{{ settings.ratio || translate('比例') }} · {{ settings.size ? sizeTier(settings.size) || translate('自动') : translate('清晰度') }}</el-button></template>
       <div class="variationSettings nodrag nopan nowheel" @pointerdown.stop @mousedown.stop @wheel.stop @keydown.stop>
-        <label>{{ translate('清晰度') }}<el-select v-model="settings.size" :disabled="busy" :aria-label="`${label}清晰度`"><el-option v-for="size in sizeOptions" :key="size" :label="mediaSizeLabel(size, '', translate('自动'))" :value="size" /></el-select></label>
-        <label>{{ translate('比例') }}<el-select v-model="settings.ratio" :disabled="busy" :aria-label="`${label}比例`" @change="ratioFromSource = false"><el-option v-for="ratio in ratioOptions" :key="ratio" :label="ratio" :value="ratio" /></el-select></label>
+        <label>{{ translate('清晰度') }}<el-select v-model="settings.size" :disabled="busy" :aria-label="translate('{label}清晰度', { label })"><el-option v-for="size in sizeOptions" :key="size" :label="mediaSizeLabel(size, '', translate('自动'))" :value="size" /></el-select></label>
+        <label>{{ translate('比例') }}<el-select v-model="settings.ratio" :disabled="busy" :aria-label="translate('{label}比例', { label })" @change="ratioFromSource = false"><el-option v-for="ratio in ratioOptions" :key="ratio" :label="ratio" :value="ratio" /></el-select></label>
       </div>
     </el-popover>
     <el-button type="primary" :icon="IconSparkles" :loading="generating" :disabled="busy || modelsLoading || !source || !selectedModel || !settings.ratio || !prompt.trim()" @click="generate">{{ translate('生成图片') }}</el-button>
@@ -22,8 +25,10 @@ import { computed, onMounted, onScopeDispose, ref, watch } from "vue";
 import { useNode, useVueFlow } from "@vue-flow/core";
 import { ElButton, ElOption, ElOptionGroup, ElPopover, ElSelect } from "element-plus";
 import { IconSparkles } from "@tabler/icons-vue";
+import { modelIcon } from "@miaoimg/model-icons";
 import { useNodeAi, useNodeToolsContext, type NodeMediaModel, type NodeMediaValue } from "@miaoimg/nodes-scaffold/runtime";
 import { groupNodeModels } from "../../../scaffold/nodeAi";
+import { nodeModelValueId } from "../../../scaffold/localModelLabel";
 import { showNodeError } from "../../../scaffold/showNodeError";
 import { useImageVariationNode } from "../useImageVariationNode";
 import { mediaSizeLabel, sizeTier } from "../../../../../../../../server/media-size-label";

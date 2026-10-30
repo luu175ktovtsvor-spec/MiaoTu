@@ -1,0 +1,88 @@
+/* A restrained control scale for the 3D workbench, independent of canvas cards. */
+body[data-miaoimg-canvas-ui] .el-dialog.directorDialog {
+  --el-component-size-small: 28px;
+  --el-border-radius-base: 8px;
+  --el-bg-color: #18191b;
+  --el-bg-color-overlay: #232426;
+  --el-fill-color: rgba(255,255,255,.08);
+  --el-fill-color-light: rgba(255,255,255,.05);
+  --el-fill-color-extra-light: rgba(255,255,255,.035);
+  --el-text-color-primary: #eeeeef;
+  --el-text-color-regular: #c7c7cb;
+  --el-text-color-secondary: #929298;
+  --el-border-color-light: rgba(255,255,255,.1);
+  --el-border-color-lighter: rgba(255,255,255,.07);
+  --el-disabled-bg-color: #292a2d;
+  --el-disabled-text-color: #85878d;
+  --el-disabled-border-color: rgba(255,255,255,.07);
+  --el-color-primary: #f2f2f3;
+  --el-color-primary-light-3: #ffffff;
+  --el-color-primary-light-5: #e4e4e6;
+  --el-color-primary-light-9: rgba(242,242,243,.12);
+  --el-color-primary-dark-2: #d4d4d6;
+  --canvas-text: #eeeeef;
+  --canvas-body: #c7c7cb;
+  --canvas-muted: #929298;
+  --canvas-field: rgba(255,255,255,.1);
+  --canvas-line: rgba(255,255,255,.08);
+  --canvas-hover: rgba(255,255,255,.06);
+  --canvas-accent-ink: #151515;
+}
+body[data-miaoimg-canvas-ui] .directorDialog .directorHeader,
+body[data-miaoimg-canvas-ui] .directorDialog .leftWorkspace { background:#18191b; }
+body[data-miaoimg-canvas-ui] .directorDialog .rightWorkspace { background:#222325; }
+body[data-miaoimg-canvas-ui] .directorDialog :is(.el-input__wrapper,.el-select__wrapper,.el-textarea__inner) { border-radius:8px; }
+body[data-miaoimg-canvas-ui] .directorDialog .outlineItem { border-radius:6px; }
+body[data-miaoimg-canvas-ui] .directorDialog :is(.directorRail button,.bottomTools button,.materialButtons button,.poseGrid button,.objectActions button) { border-radius:8px; }
+body[data-miaoimg-canvas-ui] .directorDialog :is(.viewModes,.transformModes) { border-radius:12px; padding:2px; gap:2px; }
+body[data-miaoimg-canvas-ui] .directorDialog .viewModes button { height:32px; border-radius:10px; padding:0 8px; font-size:13px; }
+body[data-miaoimg-canvas-ui] .directorDialog .transformModes button { border-radius:8px; }
+body[data-miaoimg-canvas-ui] .directorDialog .rightTabs { height:48px; box-sizing:border-box; }
+body[data-miaoimg-canvas-ui] .directorDialog .rightTabs button { height:32px; padding:0 10px; border-radius:8px; font-size:13px; }
+body[data-miaoimg-canvas-ui] .directorDialog .directorTrace .toolCall { border-radius:8px; }
+body[data-miaoimg-canvas-ui] .directorDialog .stageComposer .chatFooter { max-height:200px; overflow-y:auto; border-radius:22px; }
+body[data-miaoimg-canvas-ui] .directorDialog .stageComposer .sendButton { border-radius:50%; }
+body[data-miaoimg-canvas-ui] .directorDialog .setPreview,
+body[data-miaoimg-canvas-ui] .directorDialog .referenceImage { border-radius:8px; }
+body[data-miaoimg-canvas-ui] .el-popper.directorColorPanel,
+body[data-miaoimg-canvas-ui] .el-popper.directorModelSelectPopper { border-radius:10px; background:#232426; color:#eeeeef; }
+
+body[data-miaoimg-canvas-ui] .directorDialog .el-input.is-disabled .el-input__wrapper { background:var(--el-disabled-bg-color); box-shadow:0 0 0 1px var(--el-disabled-border-color) inset; }
+body[data-miaoimg-canvas-ui] .directorDialog .el-input.is-disabled .el-input__inner { -webkit-text-fill-color:var(--el-disabled-text-color); }
+
+body[data-miaoimg-canvas-ui] .el-popper.directorPlanMenu{border-radius:8px;background:#232426;border-color:#ffffff18;min-width:120px}body[data-miaoimg-canvas-ui] .directorPlanMenu .el-dropdown-menu{background:#232426;padding:4px}body[data-miaoimg-canvas-ui] .directorPlanMenu .el-dropdown-menu__item{color:#c7c7cb;border-radius:5px;font-size:12px;line-height:28px;padding:0 10px}body[data-miaoimg-canvas-ui] .directorPlanMenu .el-dropdown-menu__item:not(.is-disabled):hover{background:#ffffff0d;color:#eeeeef}
+
+/* Compact action menus open immediately, without moving hit targets during scaling. */
+body[data-miaoimg-canvas-ui] .directorPlanMenu[class*="-enter-"],body[data-miaoimg-canvas-ui] .directorPlanMenu[class*="-leave-"]{transition:none!important;animation:none!important}
+
+body[data-miaoimg-canvas-ui] .el-popper.directorReferencePopover { max-width:calc(100vw - 24px); box-sizing:border-box; padding:12px; border-radius:10px; border-color:#ffffff18; background:#232426; color:#eeeeef; }
+body[data-miaoimg-canvas-ui] .directorReferencePopover .referenceItem { width:48px; height:48px; border-radius:8px; }
+
+/* LibTV-style control skin: borderless 28px fields on a 10% white fill, 8px radius, 12px type. */
+body[data-miaoimg-canvas-ui] .directorDialog :is(.el-input__wrapper,.el-select__wrapper,.el-textarea__inner) { box-shadow:none; background:rgba(255,255,255,.1); }
+body[data-miaoimg-canvas-ui] .directorDialog :is(.el-input__wrapper,.el-select__wrapper):hover { box-shadow:none; background:rgba(255,255,255,.13); }
+body[data-miaoimg-canvas-ui] .directorDialog :is(.el-input__wrapper.is-focus,.el-select__wrapper.is-focused) { box-shadow:inset 0 0 0 1px rgba(255,255,255,.4); }
+body[data-miaoimg-canvas-ui] .directorDialog .el-input { --el-input-height:28px; font-size:12px; }
+body[data-miaoimg-canvas-ui] .directorDialog .el-input-number { width:auto; line-height:28px; }
+body[data-miaoimg-canvas-ui] .directorDialog .el-input-number .el-input__wrapper { padding:0 8px; }
+body[data-miaoimg-canvas-ui] .directorDialog .el-input-number .el-input__inner { font-variant-numeric:tabular-nums; }
+body[data-miaoimg-canvas-ui] .directorDialog .el-input-number .el-input__prefix { color:var(--el-text-color-secondary); margin-right:6px; }
+body[data-miaoimg-canvas-ui] .directorDialog .el-input-number:has(.el-input__prefix) .el-input__inner { text-align:left; }
+body[data-miaoimg-canvas-ui] .directorDialog .el-input.is-disabled .el-input__wrapper { background:rgba(255,255,255,.05); box-shadow:none; }
+body[data-miaoimg-canvas-ui] .directorDialog .el-button:not(.is-text):not(.is-circle) { height:28px; padding:0 10px; border:0; border-radius:8px; font-size:12px; font-weight:400; --el-button-bg-color:rgba(255,255,255,.1); --el-button-hover-bg-color:rgba(255,255,255,.16); --el-button-active-bg-color:rgba(255,255,255,.2); --el-button-text-color:var(--el-text-color-primary); --el-button-hover-text-color:var(--el-text-color-primary); --el-button-disabled-bg-color:rgba(255,255,255,.05); --el-button-disabled-text-color:#6c6c72; }
+body[data-miaoimg-canvas-ui] .directorDialog .el-button--primary:not(.is-text):not(.is-circle) { --el-button-bg-color:#f2f2f3; --el-button-hover-bg-color:#ffffff; --el-button-active-bg-color:#dcdcde; --el-button-text-color:#151515; --el-button-hover-text-color:#151515; --el-button-active-text-color:#151515; --el-button-disabled-bg-color:rgba(242,242,243,.3); --el-button-disabled-text-color:#2a2a2a; font-weight:500; }
+body[data-miaoimg-canvas-ui] .directorDialog .el-switch { --el-switch-on-color:#f2f2f3; --el-switch-off-color:rgba(255,255,255,.16); height:20px; }
+body[data-miaoimg-canvas-ui] .directorDialog .el-switch .el-switch__core { min-width:28px; height:16px; border:0; border-radius:8px; }
+body[data-miaoimg-canvas-ui] .directorDialog .el-switch .el-switch__action { width:12px; height:12px; left:2px; background:#9a9aa0; }
+body[data-miaoimg-canvas-ui] .directorDialog .el-switch.is-checked .el-switch__action { left:calc(100% - 14px); background:#151515; }
+body[data-miaoimg-canvas-ui] .directorDialog .el-slider { --el-slider-main-bg-color:#f2f2f3; --el-slider-runway-bg-color:rgba(255,255,255,.14); --el-slider-height:4px; --el-slider-button-size:12px; --el-slider-border-radius:2px; }
+body[data-miaoimg-canvas-ui] .directorDialog .el-slider__button { border:0; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.4); }
+body[data-miaoimg-canvas-ui] .directorDialog select { height:28px; border:0; border-radius:8px; background-color:rgba(255,255,255,.1); color:var(--el-text-color-primary); font-size:12px; color-scheme:dark; }
+body[data-miaoimg-canvas-ui] .directorDialog select:focus-visible { outline:0; box-shadow:inset 0 0 0 1px rgba(255,255,255,.4); }
+body[data-miaoimg-canvas-ui] .el-popper.directorTrackPopover { padding:10px; border-radius:10px; border-color:#ffffff18; background:#232426; --el-color-primary:#f2f2f3; }
+body[data-miaoimg-canvas-ui] .directorTrackPopover .el-button { height:28px; border:0; border-radius:8px; font-size:12px; --el-button-bg-color:#f2f2f3; --el-button-hover-bg-color:#fff; --el-button-text-color:#151515; --el-button-hover-text-color:#151515; --el-button-disabled-bg-color:rgba(242,242,243,.3); --el-button-disabled-text-color:#2a2a2a; }
+body[data-miaoimg-canvas-ui] .directorDialog :is(.sceneSettingsPanel,.lightingPanel,.referenceHeader) { background:transparent; }
+body[data-miaoimg-canvas-ui] .directorDialog .referenceHeader { margin-top:8px; padding-top:10px; border-top:1px solid rgba(255,255,255,.06); }
+body[data-miaoimg-canvas-ui] .directorDialog .el-input-number :is(.el-input-number__decrease,.el-input-number__increase) { top:0; bottom:0; width:28px; height:auto; border:0; background:transparent; color:var(--el-text-color-secondary); }
+body[data-miaoimg-canvas-ui] .directorDialog .el-input-number :is(.el-input-number__decrease,.el-input-number__increase):hover:not(.is-disabled) { color:var(--el-text-color-primary); }
+body[data-miaoimg-canvas-ui] .directorDialog .el-input-number:not(.is-without-controls) .el-input__wrapper { padding:0 30px; }

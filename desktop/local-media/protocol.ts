@@ -23,10 +23,10 @@ export function readGenerationRoute(data: readonly { bytes?: Uint8Array }[] | un
       else break
     }
     const modelKey = parameters?.model
-    if (modelKey !== undefined && (typeof modelKey !== 'string' || !/^[A-Za-z0-9 _.:-]{1,128}$/.test(modelKey))) return
+    if (modelKey !== undefined && (typeof modelKey !== 'string' || !/^[A-Za-z0-9 _+.:-]{1,128}$/.test(modelKey))) return
     const rawModeKey = body.option?.model_config?.model_item_key ?? body.model_item_key ?? body.ext?.model_item_key ?? message?.ext?.model_item_key
     const modeKey = rawModeKey === '' ? undefined : rawModeKey
-    if (modeKey !== undefined && (typeof modeKey !== 'string' || !/^[A-Za-z0-9_.:-]{1,64}$/.test(modeKey))) return
+    if (modeKey !== undefined && (typeof modeKey !== 'string' || !/^[A-Za-z0-9 _+.:-]{1,80}$/.test(modeKey))) return
     if (modelKey === undefined && modeKey === undefined && !Number.isInteger(abilityType)) return
     const duration = Number(parameters?.duration)
     const resolution = abilityType === 17 ? parameters?.resolution : undefined

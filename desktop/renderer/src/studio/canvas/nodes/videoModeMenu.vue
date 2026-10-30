@@ -1,7 +1,7 @@
 <template>
   <el-popover v-if="items.length" v-model:visible="open" :persistent="false" trigger="click" placement="top-start" :width="200" :disabled="disabled" :showArrow="false" :popperStyle="{ padding: '8px' }">
     <template #reference>
-      <el-button class="modeButton" text size="small" :disabled="disabled" :aria-label="translate('视频生成模式')">
+      <el-button class="modeButton" text size="small" :disabled="disabled" :aria-label="translate('视频生成模式')" :title="current?.description">
         <component :is="current?.icon || IconTypography" :size="15" aria-hidden="true" />
         <span>{{ current?.label || translate('选择模式') }}</span>
         <icon-chevron-up :size="14" aria-hidden="true" />
@@ -16,6 +16,7 @@
         role="menuitemradio"
         class="modeItem"
         :aria-checked="item.value === mode"
+        :disabled="!item.available"
         :title="item.description"
         @click="choose(item.value)">
         <component :is="item.icon" :size="15" aria-hidden="true" />
@@ -34,7 +35,7 @@ import type { NodeMediaModel } from "@miaoimg/nodes-scaffold/runtime";
 import { videoModeDescription, videoModeLabel, videoReferenceTypes } from "./videoModeText";
 
 // 生成模式单独放在模型旁边（LibTV 同款）：顺序固定为文生视频、全能参考、图生视频、首尾帧、图片参考。
-// 模型支持的模式随时都能先选再连素材，当前素材不符合时节点在发送前拦下。
+// 菜单仅启用当前素材满足的模式；保留画布里已保存的模式，发送前仍校验。
 const props = defineProps<{ model?: NodeMediaModel; available: string[]; disabled?: boolean }>();
 const mode = defineModel<string>({ required: true });
 const emit = defineEmits<{ choose: [value: string] }>();
@@ -49,16 +50,19 @@ function icon(item: Mode) {
   if (Array.isArray(item)) return rank(item) === 1 ? IconAtom2 : IconPhotoPlus;
   return ({ text: IconTypography, singleImage: IconPhoto, edit: IconPencil, extend: IconArrowAutofitRight } as Record<string, typeof IconPhoto>)[item] ?? IconLayersIntersect;
 }
+const frameModeCount = computed(() => (props.model?.mode ?? []).filter(item => typeof item === "string" && ["startEndRequired", "endFrameOptional", "startFrameOptional"].includes(item)).length);
 const items = computed(() => (props.model?.mode ?? [])
   .map((item, index) => ({ item, index }))
   .sort((left, right) => rank(left.item) - rank(right.item) || left.index - right.index)
   .map(({ item }) => {
     const value = JSON.stringify(item);
-    return { value, label: videoModeLabel(item, props.model), description: videoModeDescription(item, props.model), icon: icon(item), available: props.available.includes(value) };
+    const label = rank(item) === 3 && frameModeCount.value === 1 ? translate("首尾帧") : videoModeLabel(item, props.model);
+    return { value, label, description: videoModeDescription(item, props.model), icon: icon(item), available: props.available.includes(value) };
   }));
 const current = computed(() => items.value.find(item => item.value === mode.value));
 
 function choose(value: string) {
+  if (!items.value.some(item => item.value === value && item.available)) return;
   // 先告诉节点这是用户明确的选择，再写入模式；节点的自动切换监听是同步的。
   emit("choose", value);
   mode.value = value;
@@ -100,9 +104,12 @@ function choose(value: string) {
   text-align: left;
   cursor: pointer;
 
+  &:disabled { opacity: .4; cursor: not-allowed; }
+
   &:hover:not(:disabled),
   &[aria-checked="true"] { background: var(--el-fill-color); }
 
   &:focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: -2px; }
+
 }
 </style>

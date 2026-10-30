@@ -1,3 +1,4 @@
+import { PROVIDER_CHANNELS } from '../server/provider-safety.ts'
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import { once } from 'node:events'
@@ -7,7 +8,7 @@ import { estimateGenerationCost, setPricingOverrides, imageCreditsPerImage } fro
 import { costPlusVideoCost, setVideoPricing, videoPricingSnapshot, videoExpenses, VIDEO_PRICING_VERSION } from '../server/video-pricing.ts'
 import { suiheCost, suihePricingSnapshot } from '../server/suihe-pricing.ts'
 import { estimateSuiheVideo } from '../server/suihe.ts'
-import { prepareVideoRequest } from '../server/video-api.ts'
+import { prepareVideoRequest, validateVideoRequest, estimateVideoCredits, createSub2ApiVideo } from '../server/video-api.ts'
 
 // Money-path checks use only disposable SQLite and injected, non-network responses.
 // Audited supplier examples: 5 s, 16:9, no references, audio enabled.
@@ -27,8 +28,8 @@ const fixtures = [
 assert.equal(modelForGeneration('grok-imagine-video',{},'grok').video,true)
 assert.equal(modelForGeneration('not-a-model',{},'grok'),null)
 const round = value => Math.round(value * 10000) / 10000
-const store = new ManagementStore(':memory:')
-const {user} = store.createUser({name:'video-pricing-check', email:'video-pricing@example.invalid', password:'isolated-pricing-check', points:10000}, 'verification')
+const store = (await ManagementStore.open(':memory:'))
+const {user} = (await store.createUser({name:'video-pricing-check', email:'video-pricing@example.invalid', password:'isolated-pricing-check', points:10000}, 'verification'))
 const session = {role:'user', userId:user.id}
 let checked = 0
 for (const [id, resolution, native, economy] of fixtures) {
@@ -47,14 +48,14 @@ for (const [id, resolution, native, economy] of fixtures) {
     assert.equal(quote.points, round(credits/1000+0.5), `${id}/${resolution}/${creativeMode}`)
     // Unlabelled actual_cost must never be interpreted as RMB.
     assert.equal(suiheCost(model,parameters,{usage:{suihe_actual_cost:999999}}).rmb, credits/1000)
-    const before = store.user(user.id).points
-    const reserved = store.reserve({session,model,points:quote.points,prompt:'pricing only',parameters,status:'running'})
-    assert.equal(round(before-store.user(user.id).points),quote.points)
+    const before = (await store.user(user.id)).points
+    const reserved = (await store.reserve({session,model,points:quote.points,prompt:'pricing only',parameters,status:'running'}))
+    assert.equal(round(before-(await store.user(user.id)).points),quote.points)
     const actual = round(credits/1000*0.8)
-    store.completeVideo(reserved.id,{id:'fixture-result',url:'https://example.invalid/not-fetched.mp4',duration:5,
+    await store.completeVideo(reserved.id,{id:'fixture-result',url:'https://example.invalid/not-fetched.mp4',duration:5,
       usage:{suihe_billing:{status:'confirmed',charged_cny:actual}}})
-    assert.equal(store.get('SELECT charged_points FROM generations WHERE id=?',reserved.id).charged_points,round(actual+0.5))
-    assert.equal(round(before-store.user(user.id).points),round(actual+0.5))
+    assert.equal((await store.get('SELECT charged_points FROM generations WHERE id=?',reserved.id)).charged_points,round(actual+0.5))
+    assert.equal(round(before-(await store.user(user.id)).points),round(actual+0.5))
     checked++
   }
 }
@@ -66,7 +67,7 @@ setVideoPricing({markupPerSecond:0.1, metasoRmbPerCredit:0.0108, usdToRmb:7.2,
 assert.equal(videoExpenses().rmbPerRequest,0)
 assert.equal(videoExpenses().rmbPerOutputSecond,0)
 for (const [id, resolutions] of [['MiniMax-H3',['480p','768P','1080p','2K']],
-  ['grok-imagine-video',['480p','720p']],['grok-imagine-video-1.5',['480p','720p','1080p']],
+  ['grok-imagine-video',['480p','720p']],['grok-imagine-video-1.5',['480p','720p','1080p']],['grok-imagine-video-1.5-lite',['480p','720p','1080p']],
   ['seedance-2.0-fast',['480p','720p']],['seedance-2.5',['480p','720p','1080p']]] as const) {
   const provider = id==='MiniMax-H3'?'metaso':id.startsWith('grok')?'grok':'ark'
   const model = modelForGeneration(id,{},provider)
@@ -74,7 +75,9 @@ for (const [id, resolutions] of [['MiniMax-H3',['480p','768P','1080p','2K']],
     const parameters = {duration:5,resolution,ratio:'16:9',videoSeconds,referenceImages:7,videoPricing:videoPricingSnapshot()}
     const cost = costPlusVideoCost({model,parameters})
     const quote = estimateGenerationCost({model,generation:parameters})
-    assert.equal(quote.points,round(cost.rawRmb+0.5))
+    const customer = parameters.videoPricing.supplierPricing.grok
+    const expected = provider === 'grok' ? 5 * cost.detail.perSecondUsd * customer.customerMultiplier * customer.rmbPerUsd + 0.5 : cost.rawRmb + 0.5
+    assert.equal(quote.points,round(expected))
     checked++
   }
 }
@@ -90,31 +93,31 @@ const oldQuote=estimateGenerationCost({model:h3,generation:{duration:5,resolutio
 assert.equal(oldQuote.points,1.59)
 
 // Migration preserves manual prices; later edits remain authoritative on restart.
-store.saveSettings({prices:{'grok-imagine-video-1.5':{video:{'1080p':0.66}}}},'verification')
-store.run('DELETE FROM settings WHERE key=?','video-pricing-rules-20261026-simple')
-store.migrateVideoPricingRules()
-assert.equal(store.settings().prices['grok-imagine-video-1.5'].video['1080p'],0.66)
-store.saveSettings({prices:{'grok-imagine-video-1.5':{video:{'1080p':1.17}}}},'verification')
-store.migrateVideoPricingRules()
-assert.equal(store.settings().prices['grok-imagine-video-1.5'].video['1080p'],1.17)
+await store.saveSettings({prices:{'grok-imagine-video-1.5':{video:{'1080p':0.66}}}},'verification')
+await store.run('DELETE FROM settings WHERE key=?','video-pricing-rules-20261026-simple')
+await store.migrateVideoPricingRules()
+assert.equal((await store.settings()).prices['grok-imagine-video-1.5'].video['1080p'],0.66)
+await store.saveSettings({prices:{'grok-imagine-video-1.5':{video:{'1080p':1.17}}}},'verification')
+await store.migrateVideoPricingRules()
+assert.equal((await store.settings()).prices['grok-imagine-video-1.5'].video['1080p'],1.17)
 assert.equal(estimateGenerationCost({model:modelById('grok-imagine-video-1.5'),generation:{duration:5,resolution:'1080p'}}).points,5.85)
 setPricingOverrides({})
-store.saveSettings({prices:{}},'verification')
+await store.saveSettings({prices:{}},'verification')
 const grok=modelById('grok-imagine-video')
 const grokParameters={duration:5,resolution:'720p',videoPricing:videoPricingSnapshot()}
 const grokQuote=estimateGenerationCost({model:grok,generation:grokParameters})
-assert.equal(grokQuote.points,1.76)
-const grokReservation=store.reserve({session,model:grok,points:grokQuote.points,prompt:'pricing only',parameters:grokParameters,status:'running'})
-store.completeVideo(grokReservation.id,{id:'duration-only',url:'https://example.invalid/not-fetched.mp4',duration:4})
-assert.equal(store.get('SELECT charged_points FROM generations WHERE id=?',grokReservation.id).charged_points,1.408)
-const grokRecordedCost=JSON.parse(store.get('SELECT upstream_cost FROM generations WHERE id=?',grokReservation.id).upstream_cost)
+assert.equal(grokQuote.points,1.004)
+const grokReservation=(await store.reserve({session,model:grok,points:grokQuote.points,prompt:'pricing only',parameters:grokParameters,status:'running'}))
+await store.completeVideo(grokReservation.id,{id:'duration-only',url:'https://example.invalid/not-fetched.mp4',duration:4})
+assert.equal((await store.get('SELECT charged_points FROM generations WHERE id=?',grokReservation.id)).charged_points,0.8032)
+const grokRecordedCost=JSON.parse((await store.get('SELECT upstream_cost FROM generations WHERE id=?',grokReservation.id)).upstream_cost)
 assert.equal(grokRecordedCost.rmb,1.008)
 const changedQuote=estimateGenerationCost({model:grok,generation:grokParameters})
-store.saveSettings({prices:{'grok-imagine-video':{video:{'720p':0.9}}}},'verification')
-const balanceBeforeRejected=store.user(user.id).points
-assert.throws(()=>store.reserve({session,model:grok,points:changedQuote.points,prompt:'changed price',parameters:grokParameters,status:'running'}),/价格刚刚发生变化/)
-assert.equal(store.user(user.id).points,balanceBeforeRejected)
-store.saveSettings({prices:{}},'verification')
+await store.saveSettings({prices:{'grok-imagine-video':{video:{'720p':0.9}}}},'verification')
+const balanceBeforeRejected=(await store.user(user.id)).points
+await assert.rejects(async ()=>(await store.reserve({session,model:grok,points:changedQuote.points,prompt:'changed price',parameters:grokParameters,status:'running'})),/价格刚刚发生变化/)
+assert.equal((await store.user(user.id)).points,balanceBeforeRejected)
+await store.saveSettings({prices:{}},'verification')
 const ark=modelForGeneration('seedance-2.0-fast',{},'ark')
 const arkManual={duration:5,resolution:'720p',ratio:'16:9',videoSeconds:3,submissionState:'started',manualVideoCreditsPerSecond:1.2,videoPricing:videoPricingSnapshot()}
 const arkReferenceCost=costPlusVideoCost({model:ark,parameters:arkManual}).detail.referenceCostRmb
@@ -172,9 +175,9 @@ try {
   for(const [creativeMode,expected] of [['native',2.918],['super_economy',2.059]] as const) {
     const prepared=await prepareVideoRequest({model:'seedance-2.0-fast',prompt:'计价验证',mode:'text',resolution:'720p',ratio:'16:9',duration:5,creativeMode},session,{env:mockEnv})
     assert.equal(prepared.cost.points,expected)
-    const held=store.reserve({session,model:prepared.model,points:prepared.cost.points,prompt:prepared.prompt,parameters:prepared.parameters})
-    assert.equal(store.get('SELECT reserved_points FROM generations WHERE id=?',held.id).reserved_points,expected)
-    store.cancel(held.requestId,session)
+    const held=(await store.reserve({session,model:prepared.model,points:prepared.cost.points,prompt:prepared.prompt,parameters:prepared.parameters}))
+    assert.equal((await store.get('SELECT reserved_points FROM generations WHERE id=?',held.id)).reserved_points,expected)
+    await store.cancel(held.requestId,session)
   }
   assert.equal(quoteCalls,2)
   await assert.rejects(prepareVideoRequest({model:'seedance-2.0-fast',prompt:'计价验证',mode:'text',resolution:'480p',ratio:'16:9',duration:5,creativeMode:'super_economy'},session,{env:mockEnv}),/不支持/)
@@ -189,7 +192,39 @@ for(const [id,size,expected] of [['doubao-seedream-4-0','2048x2048',0.3],['seedr
   const model=modelForGeneration(id,{},'ark')
   assert.equal(imageCreditsPerImage(model,{size}),expected)
 }
-assert.equal(round(store.get('SELECT SUM(delta) AS balance FROM ledger WHERE user_id=?',user.id).balance),round(store.user(user.id).points))
+assert.equal(round((await store.get('SELECT SUM(delta) AS balance FROM ledger WHERE user_id=?',user.id)).balance),round((await store.user(user.id)).points))
 assert.equal(videoPricingSnapshot().version,VIDEO_PRICING_VERSION)
-store.db.close()
+// Extension reserves the entire returned video for new snapshots while the
+// upstream duration still means newly added seconds. Client snapshots are not trusted.
+const extensionEnv: Record<string,string> = { OIP_MOCK_PROVIDERS:'1', ENABLE_MODEL_CALLS:'true' }
+for (const channel of PROVIDER_CHANNELS) { extensionEnv[channel.baseEnv] = 'http://127.0.0.1:9'; for (const key of channel.keyEnvs) extensionEnv[key] = 'fake-extension-contract' }
+const extensionInput = { model:'grok-imagine-video', mode:'extend', prompt:'continue', duration:5, video:'https://example.invalid/source.mp4', videoSeconds:9999 }
+const extensionProbe = async () => ({ duration:10, sizeBytes:1024, width:1280, height:720, format:'mp4', codec:'h264' })
+const extension = await prepareVideoRequest(extensionInput, session, { env:extensionEnv, probeReferenceMedia:extensionProbe })
+assert.equal(extension.duration,5); assert.equal(extension.billableDuration,15); assert.equal(extension.parameters.videoSeconds,10)
+assert.equal(extension.parameters.videoPricing.extensionOutputBudget,'source_plus_extension')
+assert.equal(extension.cost.points,3.012)
+const oldExtensionPricing = structuredClone(videoPricingSnapshot()); delete oldExtensionPricing.extensionOutputBudget; delete oldExtensionPricing.supplierPricing.grok.customerMultiplier
+const oldExtension = validateVideoRequest({ ...extensionInput, videoSeconds:10, videoPricing:oldExtensionPricing }, extensionEnv)
+assert.equal(oldExtension.billableDuration,5); assert.equal(oldExtension.parameters.videoPricing.extensionOutputBudget,undefined)
+const queueParameters = Object.fromEntries(Object.entries(extension.parameters).filter(([,value])=>value!==null))
+const queuedExtension = validateVideoRequest({ ...queueParameters, model:extensionInput.model, prompt:extensionInput.prompt, __provider:'grok' }, extensionEnv)
+assert.equal(queuedExtension.billableDuration,15)
+const safeQuote = await estimateVideoCredits({ ...extensionInput, videoPricing:oldExtensionPricing }, session, { env:extensionEnv, probeReferenceMedia:extensionProbe, management:{ settings:()=>({models:{}}) } })
+assert.equal(safeQuote.duration,15); assert.equal(safeQuote.points,extension.cost.points)
+let extensionSent: any
+await createSub2ApiVideo(extension, { env:extensionEnv, fetchImpl:async(url,init)=> { const outgoing = url instanceof Request ? url : new Request(url,init); extensionSent={url:outgoing.url,body:await outgoing.json()}; return Response.json({request_id:'extension-contract',status:'queued'}) } })
+assert.ok(extensionSent.url.endsWith('/v1/videos/extensions')); assert.equal(extensionSent.body.duration,5); assert.equal(extensionSent.body.video.url,extensionInput.video)
+const heldExtension = (await store.reserve({session,model:extension.model,points:extension.cost.points,prompt:extension.prompt,parameters:extension.parameters,status:'running'}))
+await store.completeVideo(heldExtension.id,{id:'extension-completed',url:'https://example.invalid/not-fetched.mp4',duration:14})
+const completedExtension = (await store.get('SELECT * FROM generations WHERE id=?',heldExtension.id))
+assert.equal(completedExtension.charged_points,2.8112); assert.equal(completedExtension.reserved_points,3.012)
+assert.equal(JSON.parse(completedExtension.upstream_cost).rmb,3.528)
+const heldLonger = (await store.reserve({session,model:extension.model,points:extension.cost.points,prompt:extension.prompt,parameters:extension.parameters,status:'running'}))
+await store.completeVideo(heldLonger.id,{id:'extension-longer',url:'https://example.invalid/not-fetched.mp4',duration:16})
+assert.equal((await store.get('SELECT charged_points FROM generations WHERE id=?',heldLonger.id)).charged_points,3.012)
+const oldGrokPricing = structuredClone(videoPricingSnapshot()); delete oldGrokPricing.extensionOutputBudget; delete oldGrokPricing.supplierPricing.grok.customerMultiplier
+assert.equal(estimateGenerationCost({model:grok,generation:{duration:5,resolution:'720p',videoPricing:oldGrokPricing}}).points,1.76)
+console.log('New Grok extension output budget, server-probed duration, unchanged sent duration, queued replay, actual-duration refund, cap and legacy snapshot verified; no generation.')
+await store.db.close()
 console.log(`Video pricing verified: ${checked} parameter combinations, holds/refunds, old snapshots, manual prices, migration, quote validation and official images; no real upstream calls.`)

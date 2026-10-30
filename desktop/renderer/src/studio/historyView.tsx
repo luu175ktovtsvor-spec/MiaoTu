@@ -80,7 +80,7 @@ export function HistoryCard({ item, lang, locale, onOpen, progress, now }: { ite
   const previewUrl = video?.thumbnailUrl || image?.thumbnailUrl || ''
   const delivery = item.delivery?.target === 'desktop' ? item.delivery : null
   const deliveryLabel = delivery?.status === 'saved'
-    ? (typeof window !== 'undefined' && window.miaoDesktop ? '已保存到这台电脑' : '已交付桌面')
+    ? '已保存到这台电脑'
     : delivery?.status === 'expired' ? '服务器暂存已过期' : delivery && item.status === 'succeeded' ? '等待桌面保存' : ''
   // 提交/生成仍用预扣额度；保存中的生成已经结算，显示实扣。
   const inFlight = ACTIVE_STATUSES.has(item.status)

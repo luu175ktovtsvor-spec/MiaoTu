@@ -25,9 +25,9 @@ export class LocalMediaRouter {
     const label = typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, 40) : ''
     return label || fallback
   }
-  private accountState(owner: string): PlatformAccounts {
+  private async accountState(owner: string): Promise<PlatformAccounts> {
     let saved: Partial<PlatformAccounts> = {}
-    try { saved = JSON.parse(this.store.get('SELECT value FROM desktop_meta WHERE key=?', this.accountKey(owner))?.value || '{}') } catch {}
+    try { saved = JSON.parse((await this.store.get('SELECT value FROM desktop_meta WHERE key=?', this.accountKey(owner)))?.value || '{}') } catch {}
     const accounts = (Array.isArray(saved.accounts) ? saved.accounts : [])
       .filter((item): item is PlatformAccount => !!item && typeof item.id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(item.id))
       .map((item, index) => ({ id: item.id, label: this.accountLabel(item.label, this.site.label + ' 账号 ' + (index + 1)), createdAt: typeof item.createdAt === 'string' ? item.createdAt : new Date().toISOString() }))
@@ -36,28 +36,28 @@ export class LocalMediaRouter {
     const activeId = accounts.some(item => item.id === saved.activeId) ? saved.activeId! : accounts[0].id
     return { activeId, accounts }
   }
-  private saveAccountState(owner: string, value: PlatformAccounts) {
-    this.store.run('INSERT INTO desktop_meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', this.accountKey(owner), JSON.stringify(value))
+  private async saveAccountState(owner: string, value: PlatformAccounts) {
+    await this.store.run('INSERT INTO desktop_meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', this.accountKey(owner), JSON.stringify(value))
   }
-  private activeAccount(owner: string) {
-    const state = this.accountState(owner)
+  private async activeAccount(owner: string) {
+    const state = (await this.accountState(owner))
     return state.accounts.find(item => item.id === state.activeId) || state.accounts[0]
   }
   private taskAccountId(saved: any) {
     return /^[A-Za-z0-9_-]{1,64}$/.test(String(saved?.routeState?.platformAccountId || '')) ? String(saved.routeState.platformAccountId) : 'default'
   }
-  view() {
+  async view() {
     const owner = this.account()
     const state = this.sessionState()
-    const accounts = this.accountState(owner)
-    const active = this.activeAccount(owner)
+    const accounts = (await this.accountState(owner))
+    const active = (await this.activeAccount(owner))
     const status = state.available ? this.host?.view(owner, active.id, state.revision) || disconnectedStatus(this.site.label) : disconnectedStatus(this.site.label)
     const now = new Date()
     const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString()
     const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString()
     // Status refreshes must not copy every historic prompt/result into the
     // Electron main process. Aggregate only today's rows in local calendar time.
-    const rows = owner ? this.store.all("SELECT kind,status,json_extract(result,'$.routeState.phase') AS phase,COUNT(*) AS total FROM desktop_tasks WHERE account=? AND created_at>=? AND created_at<? AND json_extract(result,'$.route')=? AND COALESCE(json_extract(result,'$.routeState.platformAccountId'),'default')=? GROUP BY kind,status,phase", owner, start, end, this.site.provider, active.id) : []
+    const rows = owner ? (await this.store.all("SELECT kind,status,json_extract(result,'$.routeState.phase') AS phase,COUNT(*) AS total FROM desktop_tasks WHERE account=? AND created_at>=? AND created_at<? AND json_extract(result,'$.route')=? AND COALESCE(json_extract(result,'$.routeState.platformAccountId'),'default')=? GROUP BY kind,status,phase", owner, start, end, this.site.provider, active.id)) : []
     const usage = (kind: DoubaoKind) => {
       const selected = rows.filter(row => row.kind === kind)
       const count = (matches: (row: any) => boolean) => selected.reduce((total, row) => total + (matches(row) ? Number(row.total) : 0), 0)
@@ -66,23 +66,23 @@ export class LocalMediaRouter {
         succeeded: count(row => row.status === 'succeeded'),
         pending: count(row => !['succeeded', 'failed', 'cancelled', 'expired'].includes(row.status)) }
     }
-    const pending = owner ? this.store.all("SELECT request_id,kind,status,created_at,json_extract(result,'$.routeState.conversationUrl') AS conversation_url,COALESCE(json_extract(result,'$.routeState.platformAccountId'),'default') AS account_id,json_extract(result,'$.routeState.platformAccountLabel') AS account_label FROM desktop_tasks WHERE account=? AND status NOT IN ('succeeded','failed','cancelled','expired') AND json_extract(result,'$.route')=? ORDER BY created_at", owner, this.site.provider)
+    const pending = owner ? (await this.store.all("SELECT request_id,kind,status,created_at,json_extract(result,'$.routeState.conversationUrl') AS conversation_url,COALESCE(json_extract(result,'$.routeState.platformAccountId'),'default') AS account_id,json_extract(result,'$.routeState.platformAccountLabel') AS account_label FROM desktop_tasks WHERE account=? AND status NOT IN ('succeeded','failed','cancelled','expired') AND json_extract(result,'$.route')=? ORDER BY created_at", owner, this.site.provider))
       .map(row => ({ id: row.request_id, kind: row.kind, status: row.status, createdAt: row.created_at, needsBinding: !row.conversation_url, accountId: row.account_id, accountLabel: row.account_label || accounts.accounts.find(item => item.id === row.account_id)?.label || '默认账号' })) : []
     const upstreamId = (modelId: string) => status.menu?.models.find(item => liveModelId(this.site, item) === modelId)?.key || ''
     const models = state.available ? localMediaModels(this.site, status).map(model => ({ ...model, upstreamModelId: upstreamId(model.modelId) || model.upstreamModelId || '' })) : []
     const textModels = state.available ? localTextModels(this.site, status).map(model => ({ ...model, upstreamModelId: upstreamId(model.modelId) })) : []
     return { ok: true, ...status, available: !!this.host, accountId: active.id, accounts: accounts.accounts.map(item => ({ ...item, active: item.id === active.id })), models, textModels, usage: { image: usage('image'), video: usage('video'), text: usage('text') }, pending }
   }
-  models() {
+  async models() {
     const state = this.sessionState()
     const owner = this.account()
-    return localMediaModels(this.site, state.available ? this.host?.view(owner, this.activeAccount(owner).id, state.revision) || disconnectedStatus(this.site.label) : disconnectedStatus(this.site.label))
+    return localMediaModels(this.site, state.available ? this.host?.view(owner, (await this.activeAccount(owner)).id, state.revision) || disconnectedStatus(this.site.label) : disconnectedStatus(this.site.label))
   }
   async prepareModels(signal?: AbortSignal) {
     if (!this.host) return
     const state = this.sessionState()
     if (!state.available) return
-    const scope = this.capture(signal)
+    const scope = (await this.capture(signal))
     const current = this.host.view(scope.owner, scope.platformAccountId, state.revision)
     if (current.menu?.loaded && Date.now() - Date.parse(current.menu.checkedAt) < 30_000) return
     if (!current.connected && current.menu?.loaded) return
@@ -91,12 +91,12 @@ export class LocalMediaRouter {
       await this.host.refresh(scope.owner, scope.platformAccountId, scope)
     } catch { /* the node keeps the last menu, or stays empty until the page can be read */ }
   }
-  textModels() {
+  async textModels() {
     const state = this.sessionState()
     const owner = this.account()
-    return localTextModels(this.site, state.available ? this.host?.view(owner, this.activeAccount(owner).id, state.revision) || disconnectedStatus(this.site.label) : disconnectedStatus(this.site.label))
+    return localTextModels(this.site, state.available ? this.host?.view(owner, (await this.activeAccount(owner)).id, state.revision) || disconnectedStatus(this.site.label) : disconnectedStatus(this.site.label))
   }
-  private capture(signal?: AbortSignal, requestedAccountId?: string): LocalMediaContext & { owner: string } {
+  private async capture(signal?: AbortSignal, requestedAccountId?: string): Promise<LocalMediaContext & { owner: string }> {
     if (!this.host) throw Object.assign(new Error(`请在妙图桌面客户端连接${this.site.label}`), { status: 503 })
     const owner = this.account(), { revision } = this.sessionState()
     if (!owner) throw Object.assign(new Error('请先登录妙图账户'), { status: 401 })
@@ -106,76 +106,76 @@ export class LocalMediaRouter {
       const state = this.sessionState()
       if (this.closing || owner !== this.account() || revision !== state.revision || !state.available) throw Object.assign(new Error('妙图账户正在切换或已失效，请重新读取'), { status: 409 })
     }
-    const account = this.accountState(owner)
-    const platformAccount = requestedAccountId ? account.accounts.find(item => item.id === requestedAccountId) : this.activeAccount(owner)
+    const account = (await this.accountState(owner))
+    const platformAccount = requestedAccountId ? account.accounts.find(item => item.id === requestedAccountId) : (await this.activeAccount(owner))
     if (!platformAccount) throw Object.assign(new Error(`原${this.site.label}账号已不存在，请重新关联原任务`), { status: 409 })
     assert()
     return { owner, revision, signal: lifetime, assert, platformAccountId: platformAccount.id, platformAccountLabel: platformAccount.label }
   }
-  private assertRow(row: any, scope: LocalMediaContext & { owner: string }) {
+  private async assertRow(row: any, scope: LocalMediaContext & { owner: string }) {
     scope.assert()
     if (row.account !== scope.owner) throw Object.assign(new Error('请登录提交此任务的账号'), { status: 401 })
-    this.store.project(row.project_id)
+    await this.store.project(row.project_id)
   }
   async action(action: string, payload: Record<string, any> = {}, signal?: AbortSignal) {
-    const scope = this.capture(signal), owner = scope.owner, host = this.host!
+    const scope = (await this.capture(signal)), owner = scope.owner, host = this.host!
     if (['add-account', 'select-account', 'rename-account', 'remove-account'].includes(action)) {
-      const state = this.accountState(owner)
+      const state = (await this.accountState(owner))
       if (action === 'add-account') {
         const id = randomUUID()
         const account = { id, label: this.accountLabel(payload.label, this.site.label + ' 账号 ' + (state.accounts.length + 1)), createdAt: new Date().toISOString() }
-        this.saveAccountState(owner, { activeId: id, accounts: [...state.accounts, account] })
-        const next = this.capture(signal, id)
+        await this.saveAccountState(owner, { activeId: id, accounts: [...state.accounts, account] })
+        const next = (await this.capture(signal, id))
         await host.login(owner, id, next)
       } else if (action === 'select-account') {
         const id = String(payload.accountId || '')
         if (!state.accounts.some(item => item.id === id)) throw Object.assign(new Error('要切换的平台账号不存在'), { status: 404 })
-        this.saveAccountState(owner, { ...state, activeId: id })
-        await host.refresh(owner, id, this.capture(signal, id)).catch(() => {})
+        await this.saveAccountState(owner, { ...state, activeId: id })
+        await host.refresh(owner, id, (await this.capture(signal, id))).catch(() => {})
       } else if (action === 'rename-account') {
         const id = String(payload.accountId || '')
         const account = state.accounts.find(item => item.id === id)
         if (!account) throw Object.assign(new Error('要重命名的平台账号不存在'), { status: 404 })
         account.label = this.accountLabel(payload.label, account.label)
-        this.saveAccountState(owner, state)
+        await this.saveAccountState(owner, state)
       } else if (action === 'remove-account') {
         const id = String(payload.accountId || '')
         if (id === 'default') throw Object.assign(new Error('默认平台账号不能删除，可以清空登录状态或重命名'), { status: 422 })
         if (state.accounts.length <= 1 || !state.accounts.some(item => item.id === id)) throw Object.assign(new Error('要删除的平台账号不存在'), { status: 404 })
-        this.assertIdle(owner, '', id)
-        await host.disconnect(owner, id, this.capture(signal, id), () => { scope.assert(); this.assertIdle(owner, '', id) })
+        await this.assertIdle(owner, '', id)
+        await host.disconnect(owner, id, (await this.capture(signal, id)), async () => { scope.assert(); await this.assertIdle(owner, '', id) })
         const accounts = state.accounts.filter(item => item.id !== id)
-        this.saveAccountState(owner, { activeId: state.activeId === id ? accounts[0].id : state.activeId, accounts })
+        await this.saveAccountState(owner, { activeId: state.activeId === id ? accounts[0].id : state.activeId, accounts })
       }
       scope.assert()
-      return this.view()
+      return (await this.view())
     }
     if (action === 'bind-current') {
-      const row = this.store.get("SELECT * FROM desktop_tasks WHERE request_id=? AND account=? AND json_extract(result,'$.route')=?", String(payload.requestId || ''), owner, this.site.provider)
+      const row = (await this.store.get("SELECT * FROM desktop_tasks WHERE request_id=? AND account=? AND json_extract(result,'$.route')=?", String(payload.requestId || ''), owner, this.site.provider))
       if (!row || ['succeeded', 'failed', 'cancelled', 'expired'].includes(row.status)) throw Object.assign(new Error('原任务不存在或已结束'), { status: 404 })
-      this.assertRow(row, scope)
+      await this.assertRow(row, scope)
       const saved = JSON.parse(row.result || '{}')
       if (saved.routeState?.conversationUrl) throw Object.assign(new Error('原任务已有对话编号，将继续取回原对话'), { status: 409 })
       const accountId = this.taskAccountId(saved)
-      const registry = this.accountState(owner)
-      if (registry.accounts.some(item => item.id === accountId) && registry.activeId !== accountId) this.saveAccountState(owner, { ...registry, activeId: accountId })
-      const url = await host.bindCurrent(owner, accountId, row.request_id, saved.prompt || '', row.kind, this.capture(signal, accountId))
-      this.checkpoint(row, { phase: 'accepted', conversationUrl: url, kind: row.kind }, scope)
+      const registry = (await this.accountState(owner))
+      if (registry.accounts.some(item => item.id === accountId) && registry.activeId !== accountId) await this.saveAccountState(owner, { ...registry, activeId: accountId })
+      const url = await host.bindCurrent(owner, accountId, row.request_id, saved.prompt || '', row.kind, (await this.capture(signal, accountId)))
+      await this.checkpoint(row, { phase: 'accepted', conversationUrl: url, kind: row.kind }, scope)
     } else if (action === 'disconnect') {
-      this.assertIdle(owner, '', scope.platformAccountId)
-      await host.disconnect(owner, scope.platformAccountId, scope, () => { scope.assert(); this.assertIdle(owner, '', scope.platformAccountId) })
+      await this.assertIdle(owner, '', scope.platformAccountId)
+      await host.disconnect(owner, scope.platformAccountId, scope, async () => { scope.assert(); await this.assertIdle(owner, '', scope.platformAccountId) })
     } else if (action === 'login' || action === 'open') await host.login(owner, scope.platformAccountId, scope)
     else if (action === 'refresh') await host.refresh(owner, scope.platformAccountId, scope)
     else throw Object.assign(new Error(`未知${this.site.label}操作`), { status: 422 })
     scope.assert()
-    return this.view()
+    return (await this.view())
   }
-  assertIdle(owner = this.account(), except = '', platformAccountId = '') {
-    const active = this.store.get("SELECT request_id FROM desktop_tasks WHERE account=? AND json_extract(result,'$.route')=? AND request_id<>? AND status NOT IN ('succeeded','failed','cancelled','expired') AND (?='' OR COALESCE(json_extract(result,'$.routeState.platformAccountId'),'default')=?) LIMIT 1", owner, this.site.provider, except, platformAccountId, platformAccountId)
+  async assertIdle(owner = this.account(), except = '', platformAccountId = '') {
+    const active = (await this.store.get("SELECT request_id FROM desktop_tasks WHERE account=? AND json_extract(result,'$.route')=? AND request_id<>? AND status NOT IN ('succeeded','failed','cancelled','expired') AND (?='' OR COALESCE(json_extract(result,'$.routeState.platformAccountId'),'default')=?) LIMIT 1", owner, this.site.provider, except, platformAccountId, platformAccountId))
     if (active) throw Object.assign(new Error(`${this.site.label}仍有任务待取回，请先处理原任务`), { status: 409 })
   }
   async validate(kind: string, body: Record<string, any>, estimate = false, signal?: AbortSignal) {
-    const scope = this.capture(signal)
+    const scope = (await this.capture(signal))
     if (localMediaKind(body.model) !== kind || body.providerId && body.providerId !== this.site.provider) throw Object.assign(new Error(`${this.site.label}路由与所选模型不匹配`), { status: 422 })
     if (!estimate && (typeof body.prompt !== 'string' || !body.prompt.trim())) throw Object.assign(new Error(`请填写有效的${this.site.label}生成提示词`), { status: 422 })
     const capabilities = localMediaCapabilities(body.model, this.site.provider)
@@ -197,9 +197,9 @@ export class LocalMediaRouter {
     scope.assert()
     if (status[kind].remaining === 0 && status[kind].source === 'platform') throw Object.assign(new Error(`${this.site.label}返回的对应生成额度已用完，请刷新额度或切换模型`), { status: 402 })
   }
-  checkpoint(row: any, state: Record<string, any>, scope: LocalMediaContext & { owner: string }) {
-    this.assertRow(row, scope)
-    const latest = this.store.get('SELECT result,status FROM desktop_tasks WHERE request_id=? AND account=? AND project_id=?', row.request_id, row.account, row.project_id)
+  async checkpoint(row: any, state: Record<string, any>, scope: LocalMediaContext & { owner: string }) {
+    await this.assertRow(row, scope)
+    const latest = (await this.store.get('SELECT result,status FROM desktop_tasks WHERE request_id=? AND account=? AND project_id=?', row.request_id, row.account, row.project_id))
     if (!latest || ['succeeded', 'failed', 'cancelled', 'expired'].includes(latest.status)) throw new Error(`${this.site.label}任务已结束`)
     const result = JSON.parse(latest.result || '{}')
     const { submissionPhase: _phase, ...previous } = result
@@ -215,41 +215,41 @@ export class LocalMediaRouter {
       ...(saved.conversationUrl ? { conversationUrl: saved.conversationUrl } : {}),
       ...(saved.upstream ? { upstream: { ...state.upstream, ...saved.upstream } } : {}),
     }
-    this.store.run('UPDATE desktop_tasks SET result=? WHERE request_id=? AND account=? AND project_id=?', JSON.stringify({ ...previous, route: this.site.provider, routeState: next }), row.request_id, row.account, row.project_id)
+    await this.store.run('UPDATE desktop_tasks SET result=? WHERE request_id=? AND account=? AND project_id=?', JSON.stringify({ ...previous, route: this.site.provider, routeState: next }), row.request_id, row.account, row.project_id)
   }
   async submit(row: any, body: Record<string, any>, signal: AbortSignal) {
-    const scope = this.capture(signal); this.assertRow(row, scope)
-    this.checkpoint(row, { phase: 'preparing', kind: row.kind, platformAccountId: scope.platformAccountId, platformAccountLabel: scope.platformAccountLabel }, scope)
-    const result = await this.host!.submit(row.account, scope.platformAccountId, row.request_id, row.kind, body, state => this.checkpoint(row, state, scope), scope)
-    this.assertRow(row, scope)
+    const scope = (await this.capture(signal)); await this.assertRow(row, scope)
+    await this.checkpoint(row, { phase: 'preparing', kind: row.kind, platformAccountId: scope.platformAccountId, platformAccountLabel: scope.platformAccountLabel }, scope)
+    const result = await this.host!.submit(row.account, scope.platformAccountId, row.request_id, row.kind, body, async state => (await this.checkpoint(row, state, scope)), scope)
+    await this.assertRow(row, scope)
     return result
   }
   async poll(row: any, saved: any, signal?: AbortSignal) {
     const accountId = this.taskAccountId(saved)
-    const scope = this.capture(signal, accountId); this.assertRow(row, scope)
+    const scope = (await this.capture(signal, accountId)); await this.assertRow(row, scope)
     try {
-      const result = await this.host!.poll(row.account, accountId, row.request_id, row.kind, saved.routeState || {}, state => this.checkpoint(row, state, scope), saved.prompt || '', scope)
-      this.assertRow(row, scope)
+      const result = await this.host!.poll(row.account, accountId, row.request_id, row.kind, saved.routeState || {}, async state => (await this.checkpoint(row, state, scope)), saved.prompt || '', scope)
+      await this.assertRow(row, scope)
       return result
     } catch {
-      this.assertRow(row, scope)
+      await this.assertRow(row, scope)
       return { ok: true, requestId: row.request_id, status: 'running', error: `原${this.site.label}任务暂未能读取，请打开${this.site.label}窗口检查网络或登录状态；不会重发` }
     }
   }
   async cancel(row: any, saved: any, signal?: AbortSignal) {
     const accountId = this.taskAccountId(saved)
-    const scope = this.capture(signal, accountId); this.assertRow(row, scope)
+    const scope = (await this.capture(signal, accountId)); await this.assertRow(row, scope)
     const result = await this.host!.cancel(row.account, accountId, row.request_id, saved.routeState || {}, saved.prompt || '', scope)
-    this.assertRow(row, scope)
+    await this.assertRow(row, scope)
     return result
   }
   async download(row: any, url: string, signal: AbortSignal) {
     let saved: Record<string, any> = {}
     try { saved = JSON.parse(row.result || '{}') } catch {}
     const accountId = this.taskAccountId(saved)
-    const scope = this.capture(signal, accountId); this.assertRow(row, scope)
+    const scope = (await this.capture(signal, accountId)); await this.assertRow(row, scope)
     const response = await this.host!.download(row.account, accountId, url, scope)
-    try { this.assertRow(row, scope) } catch (error) { await response.body?.cancel().catch(() => {}); throw error }
+    try { await this.assertRow(row, scope) } catch (error) { await response.body?.cancel().catch(() => {}); throw error }
     return response
   }
   retire(owner: string) {

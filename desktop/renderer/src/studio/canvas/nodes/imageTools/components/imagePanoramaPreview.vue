@@ -4,7 +4,7 @@
     <div class="previewWorkspace">
       <div class="stageColumn">
         <div class="stageHeader">
-          <span class="viewLabel">{{ showOriginal ? translate('原图对比') : activeCorrectionCount ? `已启用 ${activeCorrectionCount} 项校正` : translate('当前视角') }}</span>
+          <span class="viewLabel">{{ showOriginal ? translate('原图对比') : activeCorrectionCount ? translate('已启用 {0} 项校正', { 0: activeCorrectionCount }) : translate('当前视角') }}</span>
           <div class="viewActions">
             <el-button size="small" :type="showOriginal ? 'primary' : 'default'" :plain="showOriginal" :disabled="busy || !ready" :aria-pressed="showOriginal" @click="showOriginal = !showOriginal">{{ showOriginal ? translate('返回校正') : translate('对比原图') }}</el-button>
             <el-button size="small" :type="showGrid ? 'primary' : 'default'" :plain="showGrid" :disabled="busy || !ready" :aria-pressed="showGrid" @click="showGrid = !showGrid">{{ translate('参考线') }}</el-button>
@@ -17,7 +17,7 @@
             :class="{ dragging: !!drag }"
             tabindex="0"
             role="application"
-            :aria-label="`${mode === 'sphere' ? '720°全景图' : '360°环绕图'}预览，拖动或方向键旋转，滚轮或加减键缩放，Home 重置`"
+            :aria-label="mode === 'sphere' ? translate('720°全景图预览，拖动或方向键旋转，滚轮或加减键缩放，Home 重置') : translate('360°环绕图预览，拖动或方向键旋转，滚轮或加减键缩放，Home 重置')"
             :aria-busy="loading || capturing"
             @pointerdown.prevent="startDrag"
             @pointermove="moveDrag"
@@ -33,7 +33,7 @@
           </div>
         </div>
         <div class="viewControls">
-          <span class="viewAngles">水平 {{ Math.round(yaw) }}°<template v-if="mode === 'sphere'"> · 俯仰 {{ Math.round(pitch) }}°</template></span>
+          <span class="viewAngles">{{ translate('水平 {0}°', { 0: Math.round(yaw) }) }}<template v-if="mode === 'sphere'"> · {{ translate('俯仰 {0}°', { 0: Math.round(pitch) }) }}</template></span>
           <div class="viewFov"><span>{{ translate('视野') }}</span><el-slider v-model="fov" :min="minFov" :max="maxFov" :step="1" :disabled="busy || !ready" :aria-label="translate('全景视野')" /><span>{{ Math.round(fov) }}°</span></div>
           <el-button size="small" text :disabled="busy || !ready" @click="resetView">{{ translate('重置视角') }}</el-button>
         </div>
@@ -75,7 +75,7 @@
               <div class="rangeControl"><div><span>{{ translate('高度偏移') }}</span><span>{{ horizonOffset }}%</span></div><el-slider v-model="horizonOffset" :min="-12" :max="12" :step="0.5" :disabled="busy" :aria-label="translate('地平线高度偏移')" /></div>
               <div class="rangeControl"><div><span>{{ translate('起伏修正') }}</span><span>{{ waveAmplitude }}%</span></div><el-slider v-model="waveAmplitude" :min="-12" :max="12" :step="0.5" :disabled="busy" :aria-label="translate('地平线起伏修正')" /></div>
               <div class="rangeControl"><div><span>{{ translate('起伏方向') }}</span><span>{{ wavePhase }}°</span></div><el-slider v-model="wavePhase" :min="0" :max="360" :step="1" :disabled="busy" :aria-label="translate('地平线起伏方向')" /></div>
-              <div class="selectControl"><span>{{ translate('起伏次数') }}</span><el-select v-model="waveCount" size="small" :disabled="busy" :aria-label="translate('地平线起伏次数')"><el-option v-for="count in 4" :key="count" :label="`${count} 次`" :value="count" /></el-select></div>
+              <div class="selectControl"><span>{{ translate('起伏次数') }}</span><el-select v-model="waveCount" size="small" :disabled="busy" :aria-label="translate('地平线起伏次数')"><el-option v-for="count in 4" :key="count" :label="translate('{count} 次', { count })" :value="count" /></el-select></div>
             </div>
           </section>
           <section class="correctionGroup" :class="{ enabled: seamEnabled }">
@@ -96,7 +96,7 @@
         </div>
         <el-button type="primary" :loading="busy" :disabled="!ready" @click="capture()">{{ disabled ? translate('正在保存…') : capturing ? translate('正在截图…') : translate('截图并添加节点') }}</el-button>
       </div>
-      <p class="captureHint">{{ captureCount === 1 ? translate('截取当前视角') : captureCount === 4 ? translate('每隔 90° 截取水平视角，排列为 2 × 2') : mode === 'sphere' ? translate('上方、水平、下方各 4 个方向，排列为 4 × 3') : translate('每隔 30° 截取一张，排列为 4 × 3') }} · 每张 1280 × 720 · {{ showOriginal ? translate('截图仍使用校正结果') : translate('截图包含已启用的校正') }}</p>
+      <p class="captureHint">{{ captureCount === 1 ? translate('截取当前视角') : captureCount === 4 ? translate('每隔 90° 截取水平视角，排列为 2 × 2') : mode === 'sphere' ? translate('上方、水平、下方各 4 个方向，排列为 4 × 3') : translate('每隔 30° 截取一张，排列为 4 × 3') }} · {{ translate('每张 1280 × 720') }} · {{ showOriginal ? translate('截图仍使用校正结果') : translate('截图包含已启用的校正') }}</p>
       <p v-if="captureError" class="captureError" role="alert">{{ captureError }}</p>
     </footer>
   </section>
@@ -369,7 +369,7 @@ function loadImage() {
     if (!Number.isFinite(ratio) || ratio <= 0) {
       loaded.dispose();
       loading.value = false;
-      imageError.value = "图片尺寸无效，无法预览全景图";
+      imageError.value = translate("图片尺寸无效，无法预览全景图");
       return;
     }
     imageRatio.value = ratio;
@@ -385,7 +385,7 @@ function loadImage() {
   }).catch(() => {
     if (disposed || request.signal.aborted || version !== imageVersion) return;
     loading.value = false;
-    imageError.value = "全景图加载失败，请检查图片后重新打开";
+    imageError.value = translate("全景图加载失败，请检查图片后重新打开");
   }).finally(() => {
     if (imageRequest === request) imageRequest = undefined;
   });
@@ -507,7 +507,7 @@ async function capture(toolCall = false) {
     emit("capture", payload);
   } catch (error) {
     if (toolCall) throw error;
-    if (!disposed) captureError.value = error instanceof Error ? error.message : "截图失败，请重试";
+    if (!disposed) captureError.value = error instanceof Error ? error.message : translate("截图失败，请重试");
   } finally {
     for (const output of outputs) output.canvas.width = output.canvas.height = 1;
     capturing.value = false;

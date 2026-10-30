@@ -1,8 +1,11 @@
 import type { BrowserFfmpegCommand, BrowserFfmpegFactory, FfprobeData } from "@miaoimg/ffmpeg/browser";
 import { preservedAudioOutput, preservedVideoOutput, primaryAudio } from "../mediaPreservation";
+import { audioTempoFilters, normalizedCrop, videoGeometry, type PixelCrop } from "./videoLocalGeometry";
 
 export type VideoProcessingOptions = {
-  action: "extractAudio" | "separate" | "trim";
+  action: "extractAudio" | "separate" | "trim" | "crop" | "speed";
+  crop?: PixelCrop;
+  speed?: number;
   audioPath?: string;
   videoPath?: string;
   start?: number;
@@ -46,8 +49,8 @@ function runCommand(command: BrowserFfmpegCommand, signal?: AbortSignal) {
 export async function processVideo(ffmpeg: BrowserFfmpegFactory, source: string, options: VideoProcessingOptions, signal?: AbortSignal) {
   signal?.throwIfAborted();
   const sourcePath = normalizePath(source);
-  if (!["extractAudio", "separate", "trim"].includes(options.action)) throw new Error("未知的视频处理操作");
-  const needsAudio = options.action !== "trim";
+  if (!["extractAudio", "separate", "trim", "crop", "speed"].includes(options.action)) throw new Error("未知的视频处理操作");
+  const needsAudio = options.action === "extractAudio" || options.action === "separate";
   const needsVideo = options.action !== "extractAudio";
   if (needsAudio && !options.audioPath) throw new Error("缺少音轨输出路径");
   if (needsVideo && !options.videoPath) throw new Error("缺少视频输出路径");
@@ -66,9 +69,13 @@ export async function processVideo(ffmpeg: BrowserFfmpegFactory, source: string,
     throw new Error("截取范围须满足 0 ≤ 开始时间 < 结束时间 ≤ 视频时长");
   }
 
+  const geometry = options.action === "crop" ? videoGeometry(video) : undefined;
+  if (options.action === "crop" && (!options.crop || Object.entries(normalizedCrop(options.crop, geometry!)).some(([key,value])=>options.crop![key] !== value))) throw new Error("裁剪坐标和尺寸须为范围内的偶数，宽高至少为 2 像素");
+  if (options.action === "speed") audioTempoFilters(options.speed!);
+  const transform = options.action === "trim" || options.action === "crop" || options.action === "speed" && options.speed !== 1;
   const audioOutput = needsAudio ? preservedAudioOutput(options.audioPath!, audio!, true, media) : undefined;
   // Trim re-encodes for a frame-accurate range, so it always writes H.264 MP4.
-  const videoOutput = !needsVideo ? undefined : options.action === "trim"
+  const videoOutput = !needsVideo ? undefined : transform
     ? { path: options.videoPath!.replace(/\.[^/.]+$/, "") + ".mp4", format: "mp4", mimeType: "video/mp4", codec: "libx264" }
     : preservedVideoOutput(options.videoPath!, source, media);
   for (const target of [audioOutput, videoOutput]) {
@@ -83,13 +90,43 @@ export async function processVideo(ffmpeg: BrowserFfmpegFactory, source: string,
       .outputOptions("-map", `0:${audio!.index}`);
     if (audioOutput!.format === "ipod") command.outputOptions("-movflags", "+faststart");
   }
-  if (needsVideo && options.action === "trim") {
-    // 截取按所选起止精确到帧：桌面端本机重新编码，画质参数接近原片；不再向外对齐关键帧。
-    command.output(videoOutput!.path).videoCodec("libx264").format("mp4").duration(actualEnd - actualStart)
-      .outputOptions("-map", `0:${video.index}`, "-preset", "fast", "-crf", "16", "-pix_fmt", "yuv420p", "-movflags", "+faststart");
-    // 和原来一样保留全部音轨（多语言、解说轨等），不只取第一条。
-    if (audio) command.audioCodec("aac").outputOptions("-map", "0:a?", "-b:a", "256k");
+  if (needsVideo && transform) {
+    command.output(videoOutput!.path).videoCodec("libx264").format("mp4")
+      .outputOptions("-preset", "fast", "-crf", "16", "-pix_fmt", "yuv420p", "-movflags", "+faststart");
+    if (options.action === "speed") {
+      const speed = options.speed!, tracks = media.streams.filter(stream => stream.codec_type === "audio");
+      const starts = [video, ...tracks].map(stream => Number(stream.start_time)).filter(Number.isFinite);
+      const origin = starts.length ? Math.min(...starts) : 0;
+      const [n, d = 1] = String(video.avg_frame_rate || video.r_frame_rate || "0/1").split("/").map(Number);
+      if (!(n > 0) || !(d > 0)) throw new Error("无法读取有效的视频帧率");
+      const offset = (stream: typeof video) => Math.max(0, (Number.isFinite(Number(stream.start_time)) ? Number(stream.start_time) : origin) - origin) / speed;
+      const filters = [`[0:${video.index}]setpts=(PTS-STARTPTS)/${speed}+${offset(video)}/TB,fps=${n}/${d}[retimedVideo]`,
+        ...tracks.map((track, index) => {
+          const trackDuration = Number(track.duration) > 0 ? Number(track.duration) : Math.max(0, duration - offset(track) * speed);
+          // Feed a short silent tail through the time stretcher to flush its
+          // analysis window, then trim to the exact requested sample duration.
+          return `[0:${track.index}]asetpts=PTS-STARTPTS,apad=pad_dur=0.25,${audioTempoFilters(speed).join(",")},atrim=duration=${trackDuration / speed},asetpts=PTS-STARTPTS+${offset(track)}/TB[retimedAudio${index}]`;
+        })];
+      command.complexFilter(filters).outputOptions("-map", "[retimedVideo]");
+      tracks.forEach((track, index) => {
+        command.outputOptions("-map", `[retimedAudio${index}]`, `-map_metadata:s:a:${index}`, `0:s:a:${index}`, `-disposition:a:${index}`, track.disposition?.default ? "default" : "0");
+      });
+    } else {
+      command.outputOptions("-map", `0:${video.index}`);
+      if (options.action === "trim") command.duration(actualEnd - actualStart);
+      if (options.action === "crop") {
+        const crop = options.crop!;
+        command.videoFilters(`crop=${crop.width}:${crop.height}:${crop.x}:${crop.y},setsar=${geometry!.sarNumerator}/${geometry!.sarDenominator}`)
+          .outputOptions("-metadata:s:v:0", "rotate=0");
+      }
+      if (audio) command.outputOptions("-map", "0:a?");
+    }
+    if (audio) command.audioCodec("aac").outputOptions("-b:a", "256k");
     else command.noAudio();
+  } else if (needsVideo && options.action === "speed") {
+    command.output(videoOutput!.path).videoCodec("copy").format(videoOutput!.format).outputOptions("-map", `0:${video.index}`, "-map", "0:a?");
+    if (audio) command.audioCodec("copy"); else command.noAudio();
+    if (["mp4", "mov"].includes(videoOutput!.format)) command.outputOptions("-movflags", "+faststart");
   } else if (needsVideo) {
     // 分离直接复制视频，不修改尺寸、帧率、色彩或编码质量。
     command.output(videoOutput!.path).videoCodec("copy").format(videoOutput!.format)
@@ -102,6 +139,8 @@ export async function processVideo(ffmpeg: BrowserFfmpegFactory, source: string,
   const resultVideo = result.streams.find(stream => stream.codec_type === "video");
   const resultDuration = Number(result.format.duration);
   if (!Number.isFinite(resultDuration) || resultDuration <= 0 || (needsVideo && !resultVideo)) throw new Error("生成的媒体文件无效");
+  if (options.action === "crop" && (resultVideo?.width !== options.crop!.width || resultVideo?.height !== options.crop!.height)) throw new Error("生成的媒体文件无效");
+  if (options.action === "speed" && Math.abs(resultDuration - duration / options.speed!) > 0.15) throw new Error("生成的媒体文件无效");
   return { duration: resultDuration, start: actualStart, end: actualStart + resultDuration, audio: audioOutput, video: videoOutput, width: resultVideo?.width ?? video.width, height: resultVideo?.height ?? video.height };
 }
 

@@ -9,6 +9,7 @@
 //   - 上下文超限不是报错，是自动压缩（compaction_start / compaction_end）
 //   - 工具返回 terminate:true 且整批如此 → 停止
 import { existsSync, lstatSync, mkdirSync, realpathSync, unlinkSync } from 'node:fs'
+import { withReplyLanguage } from './reply-language.ts'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { calculateContextTokens, createAgentSession, DefaultResourceLoader, estimateTokens, getLastAssistantUsage, ModelRuntime, SessionManager, SettingsManager, shouldCompact, defineTool } from '@earendil-works/pi-coding-agent'
 import { InMemoryCredentialStore, lazyStream } from '@earendil-works/pi-ai'
@@ -246,7 +247,7 @@ export async function runAgentTurn({
     cwd, agentDir, settingsManager,
     noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,
     systemPrompt: '',
-    systemPromptOverride: () => systemPrompt || '',
+    systemPromptOverride: () => withReplyLanguage(systemPrompt),
   })
   await resourceLoader.reload()
   const { session } = await createAgentSession({

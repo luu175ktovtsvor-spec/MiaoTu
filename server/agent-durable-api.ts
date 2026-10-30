@@ -1,4 +1,5 @@
 import { isWorkspaceRequest } from './canvas-document.ts'
+import { withReplyLanguage } from './reply-language.ts'
 import { readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
@@ -37,8 +38,8 @@ async function joinClosures(work: Iterable<Promise<unknown>>, failures: Iterable
 }
 
 
-// HTTP admits native submissions and observes committed state. It never owns a
-// generation promise or implements an agent loop. Realms bind account AND project.
+// Pi owns execution and receipts. An explicitly submitting observer owns the
+// lifetime of text work; unrelated readers cannot stop it. Realms bind account AND project.
 export function createDurableAgentApi({ directory, identity, createTools, canvasTools, instructions, resolveModel, beforeModelRequest, validateQuestion, legacy, sessionDirectory, contextualText, delegation, restoreConversation, assertProject = () => {}, executionScope = operation => operation(), conversationDefaults, workspaceFiles }: Record<string, any>) {
   const realms = new Map(), opening = new Map(), openingProjects = new Map(), closingRealms = new Map(), removingProjects = new Set(), control = createAgentCanvasControl({ workspaceFiles })
   // Failed closes remain visible even after their pending entry is released.
@@ -48,6 +49,8 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
   let closing = false, accountRevision = 0
   async function closeResources(state) {
     const errors = []
+    state.retiring = true
+    await Promise.allSettled(state.observerStops || [])
     try { await state.archive?.close() } catch (error) { errors.push(error) }
     try { state.unsubscribeIndex?.() } catch (error) { errors.push(error) }
     try { await state.host.close() } catch (error) { errors.push(error) }
@@ -83,24 +86,26 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
         assertRealmClosed(key)
         if (closing || identity() !== account || accountRevision !== revision) throw failure('会话已切换，请重试', 409)
       }
-      const scope = (operation, metadata?: any) => {
+      const scope = async (operation, metadata?: any) => {
         if (closing || identity() !== account || accountRevision !== revision) throw failure('账号已切换，原任务已停止', 403)
         if (removingProjects.has(JSON.stringify([userId,project]))) throw failure('项目正在关闭', 409)
-        assertProject(project)
+        await assertProject(project)
+        if (closing || identity() !== account || accountRevision !== revision) throw failure('账号已切换，原任务已停止',403)
+        if (removingProjects.has(JSON.stringify([userId,project]))) throw failure('项目正在关闭',409)
         return withWorkspaceProject(project, () => runWithLocale(metadata?.locale || 'zh-CN', () => executionScope(operation, metadata)))
       }
       const models = await ModelRuntime.create({ credentials: new InMemoryCredentialStore(), modelsPath: null, refreshOnCreate: false })
-      const catalog: any = scope(() => createTools(userId, { catalogOnly: true }))
+      const catalog: any = (await scope(() => createTools(userId, { catalogOnly: true })))
       const definitions = [...canvasTools, ...catalog].map(tool => ({ ...tool, ...(safeReads.has(tool.name) ? { replay: 'safe' } : {}) }))
       let host, state
       host = await DurableAgentRuntime.open({
         path: join(directory, key + '.sqlite'), models, tools: definitions, scope, validateQuestion,
-        instructions: (metadata, input) => instructions(userId, metadata, {
+        instructions: async (metadata, input) => withReplyLanguage(await instructions(userId, metadata, {
           tools: input.agent.tools.map(tool => definitions.find(definition => definition.name === tool.name) || tool),
-        }),
+        })),
         prepareConversation: async (metadata, id, taskContext = context) => {
           const agent = await host.harness.snapshot(AgentDoc, id, taskContext)
-          return scope(async () => {
+          return (await scope(async () => {
             const registered = await model(state, metadata, { userId }, agent?.model?.provider)
             // An archived child has history but no native model configuration.
             // Bind only a still-empty slot: a concurrent direct user submission
@@ -114,10 +119,10 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
               }
             }, taskContext)
             return registered
-          }, metadata)
+          }, metadata))
         },
-        resolveChildren: (parentId, files, taskContext) => scope(() => resolveChildren(state, parentId, files, taskContext)),
-        delegation: delegation ? (task, metadata, ctx) => scope(() => delegation(task, metadata, host, ctx), metadata) : undefined,
+        resolveChildren: async (parentId, files, taskContext) => (await scope(() => resolveChildren(state, parentId, files, taskContext))),
+        delegation: delegation ? async (task, metadata, ctx) => (await scope(() => delegation(task, metadata, host, ctx), metadata)) : undefined,
         normalizeResult: value => ({ output: value?.[VIDEO_REVIEW_CONTENT] || [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value ?? null) }], ...(value?.[AGENT_TOOL_USAGE] ? { usage: value[AGENT_TOOL_USAGE] } : {}), ...(value?.summary ? { details: { publicSummary: typeof value.summary === 'string' ? value.summary : JSON.stringify(value.summary) } } : {}) }),
         executeTool: async (name, args, execution) => {
           if (canvasTools.some(tool => tool.name === name)) {
@@ -137,7 +142,7 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
         catch (cleanupError) { throw new AggregateError([error, cleanupError], 'Agent 初始化清理未完成', { cause: error }) }
         throw error
       }
-      state = { key, account, revision, project, userId, host, models, scope, files: new Map(), filesById: new Map(), pendingMetadata: new Map(), locks: new Map() }
+      state = { key, account, revision, project, userId, host, models, scope, files: new Map(), filesById: new Map(), pendingMetadata: new Map(), locks: new Map(), observers: new Map(), textOwners: new Map(), observerStops: new Set(), observerStopFailures: new Map() }
       try {
         // The scheduler is still paused and this realm is not published. Seed
         // once, then follow Pi's committed revisions instead of rescanning every
@@ -159,7 +164,7 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
             if (ancestors.has(item.id)) throw failure('原对话父子关系存在循环，请保留记录并另建对话', 409)
             const parent = byId.get(item.metadata.parentId)
             if (parent) await bindDefaults(parent, new Set([...ancestors, item.id]))
-            const defaults = scope(() => conversationDefaults(parent?.metadata))
+            const defaults = (await scope(() => conversationDefaults(parent?.metadata)))
             const missing = Object.fromEntries(Object.entries(defaults).filter(([key]) => item.metadata[key] === undefined))
             if (Object.keys(missing).length) {
               await host.configure(item.id, {}, missing)
@@ -171,25 +176,20 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
         }
         const startup = await host.harness.inspect(context)
         const deleted = new Set([...state.files.values()].filter(item => item.metadata.deleted).map(item => item.id))
-        // A crash may land after the deletion tombstone but before cancellation.
-        // Mark all such work while the scheduler is still paused. In particular,
-        // a recovered compaction can already be past its preparation hooks.
-        for (const task of startup.tasks) if (deleted.has(task.record.conversationId) || deleted.has(task.record.input?.childId)) await host.harness.abortTask(task.record.id, context)
-        for (const submission of startup.submissions) if (deleted.has(submission.conversationId) && submission.status === 'queued') await host.harness.abortSubmission(submission.id, context, submission.conversationId)
-        // Register every unfinished conversation's model before waking the native
-        // scheduler. Credentials are re-resolved, never stored in SQLite metadata.
-        const unfinished = new Set(startup.tasks.map(task => task.record.conversationId))
-        for (const [file, item] of state.files) if (unfinished.has(item.id) && item.metadata.modelId && !item.metadata.deleted) {
-          try { await scope(async () => { const agent = await host.harness.snapshot(AgentDoc, item.id, context); await model(state, item.metadata, { userId }, agent?.model?.provider) }, item.metadata) }
-          catch (error) { console.warn('[agent-native] 模型尚不可用', file, String(error.message).slice(0, 120)) }
-        }
+        // Observers do not survive a host restart. Withdraw their old text work
+        // before resuming the scheduler, including compaction already past its
+        // preparation hook. Media receipts live outside this harness and remain.
+        for (const task of startup.tasks) await host.harness.abortTask(task.record.id, context)
+        for (const submission of startup.submissions) if (submission.status === 'queued') await host.harness.abortSubmission(submission.id, context, submission.conversationId)
+        const unfinished = new Set([...startup.tasks.map(task => task.record.conversationId), ...startup.submissions.filter(item => item.status === 'queued').map(item => item.conversationId)])
+        for (const id of unfinished) if (!deleted.has(id) && state.filesById.has(id)) await host.configure(id, {}, { stoppedAt: new Date().toISOString() })
         if (closing || identity() !== account || accountRevision !== revision || removingProjects.has(JSON.stringify([userId,project]))) throw failure('账号已切换', 403)
         state.archive = createAgentArchive({ host, metadataDoc: AgentMetadata,
           snapshot: async (id, metadata) => snapshot(state, { id, metadata: { ...metadata, nativeId: id } }, false),
-          read: file => { try { return withWorkspaceProject(project, () => legacy.read(userId, file)) } catch (error) { if (error.status === 404) return null; throw error } },
-          revision: legacy.revision ? file => { try { return legacy.revision(userId, file) } catch (error) { if (error.status === 404) return null; throw error } } : undefined,
+          read: async file => { try { return await withWorkspaceProject(project, () => legacy.read(userId, file)) } catch (error) { if (error.status === 404) return null; throw error } },
+          revision: legacy.revision ? async file => { try { return await legacy.revision(userId, file) } catch (error) { if (error.status === 404) return null; throw error } } : undefined,
           write: (file, data) => legacy.write(userId, file, data),
-          remove: file => { try { legacy.remove(userId, file) } catch (error) { if (error.status !== 404) throw error } },
+          remove: async file => { try { await legacy.remove(userId, file) } catch (error) { if (error.status !== 404) throw error } },
           cleanupSource: file => file && legacy.cleanupSource?.(userId, file),
           writeScope: operation => { if (identity() !== account) return false; return withWorkspaceProject(project, operation) },
         })
@@ -257,12 +257,12 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
   async function locate(state, file, create = false, lineage = new Set(), expectedParentId?: number) {
     if (lineage.has(file)) throw failure('原对话父子关系存在循环，请保留记录并另建对话', 409)
     await refresh(state)
-    const item = state.files.get(file)
+    const item = (await state.files.get(file))
     if (item?.metadata.deleted) throw failure('对话已删除', 404)
     if (item && expectedParentId && item.metadata.parentId !== expectedParentId) throw failure('子任务不属于当前对话', 403)
     if (item) return item
     if (!create) return null
-    const previous = legacy.read(state.userId, file), history = [], restoredMetadata: Record<string, any> = {}
+    const previous = await legacy.read(state.userId, file), history = [], restoredMetadata: Record<string, any> = {}
     if (expectedParentId) {
       const parent = state.filesById.get(expectedParentId)
       if (!parent || parent.metadata.deleted) throw failure('父对话已删除', 404)
@@ -285,7 +285,7 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
       // Legacy transcripts without native state retain tool-call/result pairs.
       for (const message of legacy.modelHistory(previous)) history.push({ kind: 'miaoimg.import', data: { source: 'legacy' }, model: [message] })
     }
-    if (previous.messages?.length) history.push({ kind: 'miaoimg.import-ui', data: { messages: legacy.get(state.userId, file).messages } })
+    if (previous.messages?.length) history.push({ kind: 'miaoimg.import-ui', data: { messages: (await legacy.get(state.userId, file)).messages } })
     let parent
     if (previous.parentFile) {
       const parents = new Set(lineage); parents.add(file)
@@ -428,10 +428,44 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
     await state.host.harness.commit(async tx => { const metadata = await tx.doc(AgentMetadata, item.id); metadata.presentationRevision = Number(metadata.presentationRevision || 0) + 1; metadata.historyTaskId = historyTaskId; metadata.importedFailure = null }, context)
     item.metadata = { ...await state.host.harness.snapshot(AgentMetadata, item.id, context), nativeId: item.id }
   }
-  async function observe(state, item, response) {
+  function connectedObserver(state, id, observerId) {
+    if (state.observerStopFailures.has(id)) throw failure('停止未完成，请重试', 503)
+    const observer = typeof observerId === 'string' && state.observers.get(id)?.get(observerId)
+    if (!observer?.active || observer.response.destroyed || observer.response.writableEnded) throw failure('对话连接已断开，请重新连接后再发送', 409)
+    return observer
+  }
+  function releaseObserver(state, item, observer) {
+    if (!observer?.active) return
+    observer.active = false
+    const readers = state.observers.get(item.id)
+    if (readers?.get(observer.id) === observer) readers.delete(observer.id)
+    if (!readers?.size) state.observers.delete(item.id)
+    if (state.retiring || state.textOwners.get(item.id) !== observer) return
+    // Serialize with admission: a close during submit must also stop an input
+    // whose receipt is committed just after the close. A newer explicit owner
+    // is never cancelled by this older reader's delayed finalizer.
+    const stopped = locked(state, item.metadata.file, async () => {
+      if (state.textOwners.get(item.id) !== observer) return
+      await state.host.stop(item.id)
+      if (state.textOwners.get(item.id) === observer) state.textOwners.delete(item.id)
+    })
+    state.observerStops.add(stopped)
+    void stopped.then(() => state.observerStops.delete(stopped), error => {
+      state.observerStops.delete(stopped); state.observerStopFailures.set(item.id, error)
+      console.warn('[agent-native] 断开后停止未完成', error?.code || error?.status || 'unknown')
+    })
+  }
+  async function observe(state, item, response, observerId = '') {
     if (response.destroyed || response.writableEnded) return
+    if (observerId && !/^[0-9a-f-]{36}$/i.test(observerId)) throw failure('对话连接已断开，请重新连接后再发送', 409)
+    const observer = observerId ? { id: observerId, response, active: true } : null
+    if (observer) {
+      const readers = state.observers.get(item.id) || new Map()
+      if (readers.has(observerId)) throw failure('对话连接已断开，请重新连接后再发送', 409)
+      readers.set(observerId, observer); state.observers.set(item.id, readers)
+    }
     const lifetime = new AbortController(), ctx = withAbortSignal(lifetime.signal, context)
-    const close = () => lifetime.abort()
+    const close = () => { releaseObserver(state, item, observer); lifetime.abort() }
     let heartbeat, watch, unsubscribe, pending
     try {
       response.writeHead(200, { 'content-type': 'application/x-ndjson; charset=utf-8', 'cache-control': 'no-store', 'x-accel-buffering': 'no' }); response.flushHeaders()
@@ -498,7 +532,7 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
       if (!lifetime.signal.aborted) watch.start(() => schedule())
       await watch.closed
     } finally {
-      unsubscribe?.(); clearInterval(heartbeat); response.off('close', close); lifetime.abort()
+      unsubscribe?.(); clearInterval(heartbeat); response.off('close', close); close()
       try { await watch?.stop() } finally { await pending; response.end() }
     }
   }
@@ -517,16 +551,16 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
     }
     if (path.startsWith('/api/agent/control/')) {
       const account = identity(), generation = accountRevision, project = currentProject() || 'default'
-      const owner = workspaceFiles?.referenceOwner?.(session.userId) || String(session.userId)
+      const owner = (await workspaceFiles?.referenceOwner?.(session.userId)) || String(session.userId)
       const key = realmKey(session.userId, account, project)
-      const assertCurrent = () => {
+      const assertCurrent = async () => {
         if (closing) throw failure('应用正在退出', 503)
         if (!account || identity() !== account || accountRevision !== generation) throw failure('账号已切换，原任务已停止', 403)
-        if ((currentProject() || 'default') !== project || (workspaceFiles?.referenceOwner?.(session.userId) || String(session.userId)) !== owner) throw failure('工作区已切换，请重新连接', 409)
+        if ((currentProject() || 'default') !== project || ((await workspaceFiles?.referenceOwner?.(session.userId)) || String(session.userId)) !== owner) throw failure('工作区已切换，请重新连接', 409)
         if (removingProjects.has(JSON.stringify([session.userId, project]))) throw failure('项目正在关闭', 409)
-        assertProject(project)
+        await assertProject(project)
       }
-      assertCurrent()
+      await assertCurrent()
       if (path.endsWith('/events') && method === 'GET') {
         const connectionId = url.searchParams.get('connectionId') || randomUUID(), viewId = url.searchParams.get('viewId') || connectionId
         const documentId = String(request.headers['x-miaoimg-document'] || '')
@@ -543,7 +577,7 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
       }
       if (['/api/agent/control/state','/api/agent/control/result'].includes(path) && method === 'POST') {
         const payload = await readJson(request)
-        assertCurrent()
+        await assertCurrent()
         if (path.endsWith('/state')) control.updateState(key, payload, generation)
         else control.result(key, payload, generation)
         json(response, 200, { ok: true }); return true
@@ -552,29 +586,29 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
     }
     const answerScope = path === '/api/agent/native/answer' && method === 'POST' ? {
       account: identity(), revision: accountRevision, project: currentProject() || 'default',
-      owner: workspaceFiles?.referenceOwner?.(session.userId) || String(session.userId),
+      owner: (await workspaceFiles?.referenceOwner?.(session.userId)) || String(session.userId),
     } : undefined
-    const assertAnswerScope = (state?: { account: unknown; revision: number; project: string }) => {
+    const assertAnswerScope = async (state?: { account: unknown; revision: number; project: string }) => {
       if (!answerScope) return
       if (closing) throw failure('应用正在退出', 503)
       if (!answerScope.account || identity() !== answerScope.account || accountRevision !== answerScope.revision) throw failure('账号已切换，原任务已停止', 403)
       if (request.headers['x-workspace-owner'] !== answerScope.owner) throw failure('工作区账号已切换，请刷新页面', 403)
-      if ((currentProject() || 'default') !== answerScope.project || (workspaceFiles?.referenceOwner?.(session.userId) || String(session.userId)) !== answerScope.owner) throw failure('工作区已切换，请重试', 409)
+      if ((currentProject() || 'default') !== answerScope.project || ((await workspaceFiles?.referenceOwner?.(session.userId)) || String(session.userId)) !== answerScope.owner) throw failure('工作区已切换，请重试', 409)
       if (state && (state.account !== answerScope.account || state.revision !== answerScope.revision || state.project !== answerScope.project)) throw failure('会话已切换，请重试', 409)
       if (removingProjects.has(JSON.stringify([session.userId, answerScope.project]))) throw failure('项目正在关闭', 409)
-      assertProject(answerScope.project)
+      await assertProject(answerScope.project)
     }
-    assertAnswerScope()
+    await assertAnswerScope()
     const state = await realm(session.userId, answerScope)
-    assertAnswerScope(state)
+    await assertAnswerScope(state)
     await refresh(state)
-    assertAnswerScope(state)
+    await assertAnswerScope(state)
     if (path === '/api/agent/list' && method === 'GET') {
-      const history = legacy.list(session.userId, new Set(state.files.keys())).filter(item => !state.files.has(item.file))
+      const history = (await legacy.list(session.userId, new Set(state.files.keys()))).filter(item => !state.files.has(item.file))
       for (const [file, item] of state.files) if (!item.metadata.parentFile && !item.metadata.deleted) history.push({ file, name: item.metadata.name, modified: item.metadata.updatedAt || item.metadata.createdAt, messageCount: 0 })
       history.sort((left, right) => String(right.modified).localeCompare(String(left.modified)))
       let latest = null
-      if (url.searchParams.get('includeLatest') === '1' && history[0]) { const item = state.files.get(history[0].file); latest = item ? await snapshot(state, item) : recentConversation({ ...legacy.get(session.userId, history[0].file), engine: 'pi-durable', historyRevision: 0 }) }
+      if (url.searchParams.get('includeLatest') === '1' && history[0]) { const item = (await state.files.get(history[0].file)); latest = item ? await snapshot(state, item) : recentConversation({ ...(await legacy.get(session.userId, history[0].file)), engine: 'pi-durable', historyRevision: 0 }) }
       json(response, 200, { code: 200, data: history, session: latest, engine: 'pi-durable' }); return true
     }
     if (path === '/api/agent/create' && method === 'POST') {
@@ -584,11 +618,11 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
     }
     if (path === '/api/agent/get' && method === 'GET') {
       const file = legacy.path(url.searchParams.get('sessionFile')), item = await locate(state, file)
-      json(response, 200, { code: 200, data: item ? await snapshot(state, item) : recentConversation({ ...legacy.get(session.userId, file), engine: 'pi-durable', historyRevision: 0 }) }); return true
+      json(response, 200, { code: 200, data: item ? await snapshot(state, item) : recentConversation({ ...(await legacy.get(session.userId, file)), engine: 'pi-durable', historyRevision: 0 }) }); return true
     }
     if (path === '/api/agent/history' && method === 'GET') {
       const file = legacy.path(url.searchParams.get('sessionFile')), item = await locate(state, file)
-      const full = item ? await snapshot(state, item, false) : { ...legacy.get(session.userId, file), historyRevision: 0 }
+      const full = item ? await snapshot(state, item, false) : { ...(await legacy.get(session.userId, file)), historyRevision: 0 }
       const end = full.messages.findIndex(message => message.id === url.searchParams.get('before'))
       if (end < 0) throw failure('这段历史已变动，请重新打开对话后查看', 409)
       const start = Math.max(0, end - visibleMessageLimit)
@@ -597,7 +631,7 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
     if (path === '/api/agent/observe' && method === 'GET') {
       const file = legacy.path(url.searchParams.get('sessionFile')), item = await locate(state, file)
       if (!item) throw failure('对话尚未迁移', 404)
-      await observe(state, item, response); return true
+      await observe(state, item, response, url.searchParams.get('observerId') || ''); return true
     }
     if (path === '/api/agent/native/input' && method === 'GET') {
       const inputId = String(url.searchParams.get('inputId') || '')
@@ -609,7 +643,7 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
       json(response, 200, { code: 200, data: { file, ...(submissionId === undefined ? { inputId } : { submissionId }), ...receipt } }); return true
     }
     const payload = await readJson(request, 4 * 1024 * 1024)
-    assertAnswerScope(state)
+    await assertAnswerScope(state)
     const file = payload.sessionFile ? legacy.path(payload.sessionFile) : ''
     if (path === '/api/agent/submit' && method === 'POST') {
       if (payload.memoryEnabled !== undefined && typeof payload.memoryEnabled !== 'boolean') throw failure('记忆开关必须为布尔值')
@@ -639,6 +673,7 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
             cursor = page.next
           } while (cursor)
         }
+        const observer = connectedObserver(state, item.id, payload.observerId)
         const registered = await model(state, payload, session)
         item.metadata = { ...await state.host.harness.snapshot(AgentMetadata, item.id, context), nativeId: item.id }
         const available = state.scope(() => createTools(session.userId, {}).map(tool => tool.name), item.metadata)
@@ -647,6 +682,8 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
         // Background jobs and canvas tools can commit while model preparation
         // awaits. Patch only this request's fields against the current document;
         // copying its earlier snapshot would roll those native commits back.
+        connectedObserver(state, item.id, payload.observerId)
+        state.textOwners.set(item.id, observer)
         await state.host.configure(item.id, { model: registered.ref, thinkingLevel: payload.thinkingLevel || 'off', tools: state.host.tools.filter(tool => selected.includes(tool.name)) }, current => clean({
           providerId: payload.providerId || 'miaoimg', modelId: payload.modelId, thinkingLevel: payload.thinkingLevel || 'off', contextWindow: registered.contextWindow, locale: resolveRequestLocale(request.headers['accept-language']) || 'zh-CN',
           ...(payload.memoryEnabled !== undefined ? { memoryEnabled: payload.memoryEnabled } : {}),
@@ -658,6 +695,7 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
           updatedAt: new Date().toISOString(),
         }))
         const metadata = await state.host.harness.snapshot(AgentMetadata, item.id, context)
+        connectedObserver(state, item.id, payload.observerId)
         if (payload.action === 'compact') { const taskId = await state.host.compact(item.id, compactInstructions); return { taskId, file } }
         const data = { id: requestId, content: prompt, mentions: Array.isArray(payload.mentions) ? payload.mentions : [], attachments: Array.isArray(payload.attachments) ? payload.attachments : [] }
         const content = state.scope(() => contextualText(data, state.userId), metadata)
@@ -668,7 +706,7 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
     }
     const questionId = /^q:(\d+):(\d+)$/.exec(String(payload.callId || ''))
     const item = file ? await locked(state, file, () => locate(state, file, true)) : questionId ? state.filesById.get(Number(questionId[1])) : null
-    assertAnswerScope(state)
+    await assertAnswerScope(state)
     if (item?.metadata.deleted) throw failure('对话已删除', 404)
     if (!item) return false // legacy mutation keeps its original semantics
     if (path === '/api/agent/native/input' && method === 'POST') {
@@ -677,13 +715,13 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
       const data = await locked(state, file, () => state.host.updateInput(item.id, payload.inputId, payload.action, submissionId))
       json(response, 200, { code: 200, data }); return true
     }
-    if (path === '/api/agent/native/stop' && method === 'POST') { await locked(state, file, () => state.host.stop(item.id)); json(response, 200, { code: 200, data: { stopped: true } }); return true }
+    if (path === '/api/agent/native/stop' && method === 'POST') { await locked(state, file, async () => { await state.host.stop(item.id); state.textOwners.delete(item.id); state.observerStopFailures.delete(item.id) }); json(response, 200, { code: 200, data: { stopped: true } }); return true }
     if (path === '/api/agent/native/answer' && method === 'POST') {
       const match = /^q:(\d+):(\d+)$/.exec(String(payload.callId || ''))
       if (!match || idOf(match[1]) !== item.id) throw failure('提问不属于当前对话', 403)
       const answer = payload.skipped || payload.cancelled ? { skipped: true } : payload.values && typeof payload.values === 'object' ? { values: payload.values } : { answer: String(payload.answer || '') }
-      const data = await state.scope(() => {
-        assertAnswerScope(state)
+      const data = await state.scope(async () => {
+        await assertAnswerScope(state)
         return state.host.answer(idOf(match[2]), answer, item.id)
       }, item.metadata)
       json(response, 200, { code: 200, data }); return true
@@ -694,7 +732,7 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
     }
     if (path === '/api/agent/delete' && method === 'DELETE') {
       const removed = await locked(state, file, () => state.host.remove(item.id))
-      for (const target of removed) { const cached = state.files.get(target.file); if (cached) cached.metadata.deleted = true }
+      for (const target of removed) { const cached = (await state.files.get(target.file)); if (cached) cached.metadata.deleted = true }
       await state.archive.flush()
       json(response, 200, { code: 200, data: { file, files: removed.map(target => target.file), removed: removed.length } }); return true
     }
@@ -706,6 +744,7 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
   }
   function closeRealm(state, stop) {
     if (closingRealms.has(state)) return closingRealms.get(state)
+    state.retiring = true
     if (realms.get(state.key) === state) realms.delete(state.key)
     // Register before any shutdown callback or asynchronous cleanup can run.
     const completed = Promise.withResolvers<void>(), pending = completed.promise

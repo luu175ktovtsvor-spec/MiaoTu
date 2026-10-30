@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { assertLegacySQLiteMaintenance } from './legacy-sqlite-maintenance.ts'
 // 工作区「多项目（一个账号下的多个工作区）」迁移。
 //
 //   node scripts/migrate-projects.ts               # 只报账（默认）
@@ -29,6 +30,8 @@ import {
   revertWorkspaceSchema, revertWorkspaceStateSchema, tableColumns,
 } from '../server/projects.ts'
 
+assertLegacySQLiteMaintenance()
+
 const args = process.argv.slice(2)
 const has = flag => args.includes(flag)
 const option = (name, fallback) => {
@@ -48,16 +51,16 @@ const number = value => Number(value || 0).toLocaleString('en-US')
 const step = title => console.log(`\n[${title}]`)
 
 // 只读打开：--report 不该顺手改库，写模式才开 WAL / 外键。
-function openStore(readOnly) {
+async function openStore(readOnly) {
   const db = new DatabaseSync(maintenance, readOnly ? { readOnly: true } : {})
-  if (!readOnly) db.exec('PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000')
+  if (!readOnly) await db.exec('PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000')
   return {
     db,
-    all: (sql, ...values) => db.prepare(sql).all(...values),
-    get: (sql, ...values) => db.prepare(sql).get(...values),
-    run: (sql, ...values) => db.prepare(sql).run(...values),
-    transaction(fn) { db.exec('BEGIN IMMEDIATE'); try { const result = fn(); db.exec('COMMIT'); return result } catch (error) { db.exec('ROLLBACK'); throw error } },
-    close: () => db.close(),
+    all: async (sql, ...values) => (await (await db.prepare(sql)).all(...values)),
+    get: async (sql, ...values) => (await (await db.prepare(sql)).get(...values)),
+    run: async (sql, ...values) => (await (await db.prepare(sql)).run(...values)),
+    async transaction(fn) { await db.exec('BEGIN IMMEDIATE'); try { const result = fn(); await db.exec('COMMIT'); return result } catch (error) { await db.exec('ROLLBACK'); throw error } },
+    close: async () => (await db.close()),
   }
 }
 
@@ -65,11 +68,11 @@ function openStore(readOnly) {
 // 这个脚本两个方向都做不成：往项目布局搬要读旧路径、退回去要写旧路径，两个落点都空了。
 // 顺序是死的——**项目迁移必须在前、内容寻址迁移在后**。跑反了直接拒绝，并且说清先做什么，
 // 免得它在半路上以「两处都缺」的样子停下来，让人以为字节丢了。
-function assertPathTreeLayout(store) {
-  const layout = mediaLayout(store)
+async function assertPathTreeLayout(store) {
+  const layout = (await mediaLayout(store))
   // blob 列可能还不存在（新代码还没启动过）：那种库一定没迁移，按 0 处理。
-  const migrated = tableColumns(store, 'workspace_files').includes('blob')
-    ? store.get('SELECT COUNT(*) AS n FROM workspace_files WHERE blob IS NOT NULL')?.n ?? 0
+  const migrated = (await tableColumns(store, 'workspace_files')).includes('blob')
+    ? (await store.get('SELECT COUNT(*) AS n FROM workspace_files WHERE blob IS NOT NULL'))?.n ?? 0
     : 0
   if (layout !== MEDIA_LAYOUT_BLOB && !migrated) return
   throw new Error(`工作区字节已经搬到内容寻址存储（<账号>/_blobs/，${migrated} 行索引指向 blob），这个脚本的旧路径树已经不在了，两个方向都做不了。
@@ -100,23 +103,23 @@ function assertMediaRoot(report) {
   if (!users) throw new Error(`媒体根目录 ${report.root} 下没有任何账号目录，八成是 OIP_MEDIA_ROOT 指错了；确认后重跑（本次一行都没动）`)
 }
 
-function report() {
-  const store = openStore(true)
+async function report() {
+  const store = (await openStore(true))
   try {
     console.log(`工作区多项目迁移报告\n  数据库 ${maintenance}`)
-    const current = projectLayoutReport(store, { root })
+    const current = (await projectLayoutReport(store, { root }))
     console.log('')
     printReport('当前状态', current)
     console.log(`\n  判断：${stage(current)}`)
-  } finally { store.close() }
+  } finally { await store.close() }
 }
 
 async function apply() {
-  const store = openStore(false)
-  assertPathTreeLayout(store)
+  const store = (await openStore(false))
+  await assertPathTreeLayout(store)
   try {
     console.log(`工作区多项目迁移 ${copyOnly ? '--copy-only' : '--apply'}\n  数据库 ${maintenance}`)
-    const before = projectLayoutReport(store, { root })
+    const before = (await projectLayoutReport(store, { root }))
     console.log('')
     printReport('迁移前', before)
     assertMediaRoot(before)
@@ -127,18 +130,18 @@ async function apply() {
       step('1/1 复制字节到 <MEDIA_ROOT>/<账号>/<项目>/ 并逐字节校验（表结构不动）')
       const copied = await copyProjectLayout(store, { direction: 'apply', root, allowMissing, copyOnly: true, batch })
       console.log('')
-      printReport('复制后', projectLayoutReport(store, { root }))
+      printReport('复制后', (await projectLayoutReport(store, { root })))
       console.log('\n--copy-only 完成：字节整份复制并校验过，源一个字节没删，表结构一个都没动。')
       console.log('此刻旧镜像、新镜像都能正常读写。确认无误后再跑一次 --apply（会跳过复制，只改结构并清理旧位置）。')
       return
     }
 
     step('1/5 建 projects 表')
-    ensureProjectsSchema(store)
-    console.log(`    完成，projects 表现有 ${number(store.get('SELECT COUNT(*) AS n FROM projects').n)} 行`)
+    await ensureProjectsSchema(store)
+    console.log(`    完成，projects 表现有 ${number((await store.get('SELECT COUNT(*) AS n FROM projects')).n)} 行`)
 
     step('2/5 workspace_state 升到项目维度')
-    const state = ensureWorkspaceStateSchema(store)
+    const state = (await ensureWorkspaceStateSchema(store))
     console.log(state.upgraded ? `    重建完成，${number(state.rows)} 行原样保留、全部归入默认项目` : '    结构已是项目维度，跳过')
 
     step('3/5 复制字节到 <MEDIA_ROOT>/<账号>/<项目>/ 并逐字节校验')
@@ -146,36 +149,36 @@ async function apply() {
     const copied = await copyProjectLayout(store, { direction: 'apply', root, allowMissing, copyOnly: true, batch })
 
     step('4/5 workspace_files 加项目维度（重建表，主键加 project_id）')
-    const files = addProjectDimension(store)
+    const files = (await addProjectDimension(store))
     console.log(files.upgraded ? `    重建完成，${number(files.rows)} 行原样保留、全部归入默认项目` : '    结构已是项目维度，跳过')
 
     step('5/5 建默认项目，再清理旧位置')
-    const created = store.run(`INSERT OR IGNORE INTO projects(user_id,id,name,created_at,last_opened_at)
+    const created = (await store.run(`INSERT OR IGNORE INTO projects(user_id,id,name,created_at,last_opened_at)
       SELECT DISTINCT user_id,?,?,?,NULL FROM (
         SELECT user_id FROM workspace_files UNION SELECT user_id FROM workspace_state WHERE user_id IS NOT NULL)`,
-    DEFAULT_PROJECT_ID, DEFAULT_PROJECT_NAME, new Date().toISOString())
-    console.log(`    新建默认项目 ${number(created.changes)} 个，projects 表现有 ${number(store.get('SELECT COUNT(*) AS n FROM projects').n)} 行`)
+    DEFAULT_PROJECT_ID, DEFAULT_PROJECT_NAME, new Date().toISOString()))
+    console.log(`    新建默认项目 ${number(created.changes)} 个，projects 表现有 ${number((await store.get('SELECT COUNT(*) AS n FROM projects')).n)} 行`)
 
     // 阶段 2：新布局已经整份校验过（上一步），这里只负责把旧的那一份删掉。
     const cleaned = await copyProjectLayout(store, { direction: 'apply', root, allowMissing, batch })
     pruneEmptyDirectories(cleaned.directories)
     console.log(`    复制阶段实际写入 ${number(copied.copied)} 行 / ${number(copied.copiedBytes)} 字节；收尾沿用 ${number(cleaned.reused)} 行、清理旧位置 ${number(cleaned.deleted)} 行`)
 
-    const after = projectLayoutReport(store, { root })
+    const after = (await projectLayoutReport(store, { root }))
     console.log('')
     printReport('迁移后', after)
     if (after.atOldOnly || after.atBoth) throw new Error(`迁移没走完：${after.atOldOnly} 行只在旧布局、${after.atBoth} 行两个布局都还在`)
     if (after.atNeither) console.log(`\n注意：${after.atNeither} 行索引在两个布局里都没有字节（--allow-missing 放行的），media-reconcile 会继续报出来，需要人工确认。`)
     console.log('\n--apply 完成。')
-  } finally { store.close() }
+  } finally { await store.close() }
 }
 
 async function rollback() {
-  const store = openStore(false)
-  assertPathTreeLayout(store)
+  const store = (await openStore(false))
+  await assertPathTreeLayout(store)
   try {
     console.log(`工作区多项目迁移 --rollback\n  数据库 ${maintenance}`)
-    const before = projectLayoutReport(store, { root })
+    const before = (await projectLayoutReport(store, { root }))
     console.log('')
     printReport('回滚前', before)
     assertMediaRoot(before)
@@ -186,7 +189,7 @@ async function rollback() {
       const copied = await copyProjectLayout(store, { direction: 'rollback', root, allowMissing, copyOnly: true, batch })
       // 先把每一行都核对到老布局，再动表结构：结构退回后就没有 project_id 可核对了。
       // 此刻项目布局那一份还没删，所以这些行是「两个布局都有」；只要没有「只在项目布局」的行就说明老布局齐了。
-      const placed = projectLayoutReport(store, { root })
+      const placed = (await projectLayoutReport(store, { root }))
       if (placed.atNewOnly) throw new Error(`回滚没走完：还有 ${placed.atNewOnly} 行只在项目布局，表结构保持原样未动`)
       console.log(`    逐行核对：${number(placed.atOldOnly + placed.atBoth)} 行字节都在老布局${placed.atNeither ? `；另有 ${number(placed.atNeither)} 行索引本来就没有字节（--allow-missing 放行）` : ''}`)
 
@@ -198,11 +201,11 @@ async function rollback() {
       }
 
       step('2/4 workspace_files 退回 (user_id,path) 主键')
-      const files = revertWorkspaceSchema(store)
+      const files = (await revertWorkspaceSchema(store))
       console.log(files.reverted ? `    重建完成，${number(files.rows)} 行原样保留` : '    结构已经是旧的，跳过')
 
       step('3/4 workspace_state 退回 (user_id) 主键')
-      const state = revertWorkspaceStateSchema(store)
+      const state = (await revertWorkspaceStateSchema(store))
       console.log(state.reverted ? `    重建完成，保留默认项目 ${number(state.kept)} 行${state.dropped ? `，丢弃其它项目的草稿 ${number(state.dropped)} 行（旧代码本来也读不到）` : ''}` : '    结构已经是旧的，跳过')
 
       // 结构退回之后再清理项目布局那一份：此刻老布局已经整份校验过，删源不会丢数据。
@@ -214,20 +217,20 @@ async function rollback() {
     }
 
     step('4/4 projects 表')
-    if (dropProjects) { dropProjectsTable(store); console.log('    已按 --drop-projects 删除') }
+    if (dropProjects) { await dropProjectsTable(store); console.log('    已按 --drop-projects 删除') }
     else console.log('    保留：旧代码不认这张表，留着才能在重新发布后恢复用户建过的项目；要一起清掉加 --drop-projects')
 
-    const after = projectLayoutReport(store, { root })
+    const after = (await projectLayoutReport(store, { root }))
     console.log('')
     printReport('回滚后', after)
     console.log('\n--rollback 完成。')
-  } finally { store.close() }
+  } finally { await store.close() }
 }
 
 try {
   if (mode === 'apply') await apply()
   else if (mode === 'rollback') await rollback()
-  else report()
+  else await report()
 } catch (error) {
   console.error(`\n迁移失败：${error?.message || error}`)
   process.exit(1)

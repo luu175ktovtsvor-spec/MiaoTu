@@ -52,14 +52,11 @@ import { warmMessageRenderer } from "./messageRenderer";
 
 const visible = defineModel<boolean>({ default: false });
 type OpenConversation = { key: number; name: string; file?: string; parentFile?: string; subAgents: AgentSubAgent[]; session: AgentConversation | null; draft?: AgentDraft; running: boolean; admitting?: boolean };
-// The legacy SDK keeps its stream renderer; native chats observe only when selected.
-const nativeMode = Boolean((window as any).miaoDesktop);
 const conversations = ref<OpenConversation[]>([]);
 // Native execution survives an unmounted chat; keep only the visible renderer.
-const mountedConversations = computed(() => nativeMode ? conversations.value.filter(item => item.key === conversationKey.value || item.admitting) : conversations.value);
+const mountedConversations = computed(() => conversations.value.filter(item => item.key === conversationKey.value || item.admitting));
 const conversationKey = ref(0);
 watch(conversationKey, key => {
-  if (!nativeMode) return;
   for (const item of conversations.value) if (item.key !== key) { item.session = null; item.subAgents = []; }
 }, { flush: 'post' });
 const selectedConversation = computed(() => conversations.value.find(item => item.key === conversationKey.value));
@@ -84,7 +81,7 @@ function showConversation(session: AgentConversation | null, activate = true) {
     ? conversations.value.find(item => item.file === session.file)
     : conversations.value.find(item => !item.file && !item.parentFile);
   if (existing) {
-    if (nativeMode && session) { existing.session = session; existing.subAgents = session.subAgents || []; existing.running = !!session.running; }
+    if (session) { existing.session = session; existing.subAgents = session.subAgents || []; existing.running = !!session.running; }
     if (activate) conversationKey.value = existing.key;
     return existing;
   }
@@ -120,9 +117,6 @@ function receiveAgentEvent(event: AgentEvent) {
     const current = parent.subAgents.find(agent => agent.file === event.agent.file);
     if (current) Object.assign(current, event.agent);
     else parent.subAgents.push(event.agent);
-    if (!nativeMode && event.agent.status === "running" && !conversations.value.some(item => item.file === event.agent.file)) {
-      showConversation({ ...event.agent, parentFile: parent.file, messages: [], running: true }, false);
-    }
     return;
   }
   if (event.type === "subAgentEvent") {
@@ -252,16 +246,12 @@ async function selectConversation(file: string) {
   const directory = workspaceStore.project?.directory;
   if (!directory || loading.value || historyLoading.value || file === sessionFile.value) return;
   const existing = conversations.value.find(item => item.file === file);
-  if (!nativeMode && existing?.running) {
-    conversationKey.value = existing.key;
-    return;
-  }
   const currentRequest = ++requestId;
   loading.value = true;
   try {
     const session = await readConversation(directory, file);
     if (currentRequest !== requestId) return;
-    if (existing && nativeMode) {
+    if (existing) {
       existing.session = session; existing.subAgents = session.subAgents || []; existing.running = !!session.running;
       conversationKey.value = existing.key;
     } else {

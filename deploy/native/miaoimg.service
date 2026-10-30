@@ -1,7 +1,7 @@
 [Unit]
 Description=MiaoImg native primary application services
-After=network-online.target miaoimg-catalog.service
-Wants=network-online.target miaoimg-catalog.service
+After=network-online.target miaoimg-catalog.service postgresql.service redis-server.service
+Wants=network-online.target miaoimg-catalog.service postgresql.service redis-server.service
 [Service]
 Type=simple
 User=miaoimg
@@ -9,7 +9,7 @@ Group=miaoimg
 WorkingDirectory=/opt/miaoimg/current
 EnvironmentFile=/etc/miaoimg/main.env
 Environment=NODE_OPTIONS=--use-env-proxy
-ExecStartPre=/usr/bin/test -s /opt/miaoimg/.oip/runtime-data/management.sqlite
+ExecStartPre=/opt/miaoimg/node-v22.23.4-linux-x64/bin/node /opt/miaoimg/current/scripts/check-data-services.ts
 ExecStartPre=/opt/miaoimg/node-v22.23.4-linux-x64/bin/node /opt/miaoimg/current/scripts/check-server-modules.ts
 ExecStart=/opt/miaoimg/node-v22.23.4-linux-x64/bin/node /opt/miaoimg/current/web/scripts/with_api.ts preview
 Restart=on-failure

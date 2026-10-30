@@ -1,7 +1,9 @@
+import { intlLocale, type ShellLang } from '../shellLanguage'
 import FeedbackNotice from '../components/FeedbackNotice'
 import { ArrowSquareOut, FilmStrip, FolderSimple, ImageSquare, MusicNotes, X } from '@phosphor-icons/react'
 import { useEffect, useMemo, useState } from 'react'
 import { studioText } from './studioText'
+import { dictText } from '../i18n'
 
 type ProjectItem = {
   id: string
@@ -28,7 +30,7 @@ type MediaItem = WorkspaceEntry & {
 type PersonalAssetLibraryProps = {
   csrf?: string
   owner?: string
-  lang: 'zh' | 'en'
+  lang: ShellLang
   project: string
   onOpenProject(id: string): void
 }
@@ -190,7 +192,7 @@ export default function PersonalAssetLibrary({ csrf, owner, lang, project, onOpe
             ['audio', '音频'],
           ] as const).map(([value, label]) => (
             <button key={value} type="button" aria-selected={filter === value} onClick={() => setFilter(value)}>
-              {studioText(label, lang)} <span>{counts[value]}</span>
+              {value === 'audio' ? dictText(lang, 'studio.assets.audio') : studioText(label, lang)} <span>{counts[value]}</span>
             </button>
           ))}
         </div>
@@ -235,7 +237,7 @@ export default function PersonalAssetLibrary({ csrf, owner, lang, project, onOpe
                 <span>{selected?.name || ''}</span>
                 <span>{readableSize(item.size)}</span>
               </span>
-              <span className="asset-card__time">{dateLabel(item.updatedAt, lang === 'en' ? 'en' : 'zh-CN')}</span>
+              <span className="asset-card__time">{dateLabel(item.updatedAt, intlLocale(lang))}</span>
             </button>
           ))}
         </div>

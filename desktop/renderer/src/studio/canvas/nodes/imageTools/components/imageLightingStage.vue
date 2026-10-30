@@ -2,7 +2,7 @@
   <div ref="viewport" class="lightingStage nodrag nopan nowheel" @pointerdown.stop @mousedown.stop @wheel.stop @dblclick.stop>
     <canvas ref="canvas" aria-hidden="true" @webglcontextlost.prevent="finishDrag(); unavailable = true" @webglcontextrestored="restoreContext" />
     <template v-if="!unavailable">
-      <span v-for="label in directionLabels" :key="label.text" class="directionLabel" :style="label.style">{{ label.text }}</span>
+      <span v-for="label in directionLabels" :key="label.text" class="directionLabel" :style="label.style">{{ translate(label.text) }}</span>
       <button
         v-for="handle in lightHandles"
         :key="handle.kind"
@@ -11,7 +11,7 @@
         :class="{ activeLight: activeLight === handle.kind }"
         :style="handle.style"
         :disabled="disabled"
-        :aria-label="`${handle.label}，水平方位 ${handle.azimuth} 度，俯仰 ${handle.elevation} 度；方向键调整，Shift 微调`"
+        :aria-label="translate('{label}，水平方位 {azimuth} 度，俯仰 {elevation} 度；方向键调整，Shift 微调', { label: handle.label, azimuth: handle.azimuth, elevation: handle.elevation })"
         :aria-pressed="activeLight === handle.kind"
         :title="translate('拖动调整光位；方向键调整，Shift 微调')"
         @click="emit('selectLight', handle.kind)"
@@ -21,7 +21,7 @@
         @pointercancel="finishDrag"
         @lostpointercapture="finishDrag"
         @keydown="adjustDirection($event, handle.kind)">
-        <span>{{ handle.label }}</span>
+        <span>{{ translate(handle.label) }}</span>
       </button>
       <span v-if="imageFailed" class="imageError" role="status">{{ translate('参考图加载失败') }}</span>
       <span class="stageHint">{{ translate('拖动光球调整光位 · 拖动空白旋转视角') }}</span>

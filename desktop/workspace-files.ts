@@ -7,31 +7,37 @@ import { WorkspaceFiles } from '../server/workspace-files.ts'
 import { withStreamedMedia } from '../server/media-files.ts'
 import { currentProject } from '../server/workspace-scope.ts'
 import { DEFAULT_PROJECT_ID, projectId } from '../server/projects.ts'
+import { preserveProvidersBeforeProjectRemoval } from '../server/text-providers.ts'
 
 // Desktop media stays on disk, including uploads and processing results.
 export class DesktopWorkspaceFiles extends WorkspaceFiles {
   localLargeFiles = true
   // 自定义模型是应用级配置，不属于任何一个画布项目；所有项目共用 default 作用域里的这一份。
   providerProject = () => DEFAULT_PROJECT_ID
+  async prepareProjectRemoval(userId, project) { await preserveProvidersBeforeProjectRemoval(this, userId, project) }
+  async removeProject(userId, project, options: { preserveDefault?: boolean } = {}) {
+    await this.prepareProjectRemoval(userId, project)
+    return (await super.removeProject(userId, project, options))
+  }
   // Enabled by the desktop host only after constructor migrations and account
   // restoration. Ordinary unbound projects retain LocalStore's shared semantics.
-  declare projectAccess: ((project: string) => void) | undefined
-  private projectForAccess(project: unknown) {
+  declare projectAccess: ((project: string) => void | Promise<void>) | undefined
+  private async projectForAccess(project: unknown) {
     const scope = projectId(project === undefined || project === null || project === '' ? currentProject() || DEFAULT_PROJECT_ID : project)
-    this.projectAccess?.(scope)
+    await this.projectAccess?.(scope)
     return scope
   }
-  scopeArgs(userId, project) { return super.scopeArgs(userId, this.projectForAccess(project)) }
-  projectRoot(userId, project, options: Record<string, any> = {}) { return super.projectRoot(userId, this.projectForAccess(project), options) }
+  async scopeArgs(userId, project) { return (await super.scopeArgs(userId, await this.projectForAccess(project))) }
+  async projectRoot(userId, project, options: Record<string, any> = {}) { return (await super.projectRoot(userId, (await this.projectForAccess(project)), options)) }
   async writeStream(userId, { path, project = currentProject() || 'default', mime, stream, revision = null, signal, overwrite = false, beforeCommit, onFileCommit }: Record<string, any>) {
     let target: string, absolute: string
     try {
       signal?.throwIfAborted()
-      this.store.project(project)
+      await this.store.project(project)
       target = this.path(path)
-      const current = this.store.get(`SELECT mime FROM workspace_files WHERE ${this.scopeWhere()} AND path=?`, ...this.scopeArgs(userId, project), target)
-      this.assertWriteTarget(userId, project, target, mime, current)
-      absolute = this.fileFor(userId, project, target, { create: true })
+      const current = (await this.store.get(`SELECT mime FROM workspace_files WHERE ${this.scopeWhere()} AND path=?`, ...(await this.scopeArgs(userId, project)), target))
+      await this.assertWriteTarget(userId, project, target, mime, current)
+      absolute = (await this.fileFor(userId, project, target, { create: true }))
     } catch (error) {
       // Pipeline does not yet own the source. Release file handles and downloaded
       // bodies, but let the HTTP handler send its error before closing an upload.
@@ -42,31 +48,31 @@ export class DesktopWorkspaceFiles extends WorkspaceFiles {
       }
       throw error
     }
-    return withStreamedMedia(stream, { path: absolute, signal }, ({ path: temp, size, sha256 }) => {
-      this.store.project(project)
+    return withStreamedMedia(stream, { path: absolute, signal }, async ({ path: temp, size, sha256 }) => {
+      await this.store.project(project)
       const nextRevision = randomUUID()
-      this.withDeferredBytes(() => {
+      await this.withDeferredBytes(async () => {
         signal?.throwIfAborted()
-        beforeCommit?.(size)
-        this.userMutationGuard?.(userId, project, { operation: 'write', path: target })
+        await beforeCommit?.(size)
+        await this.userMutationGuard?.(userId, project, { operation: 'write', path: target })
         // The destination may have changed while the stream was being read.
-        this.fileFor(userId, project, target)
-        const current = this.store.get(`SELECT revision,blob,storage,mime FROM workspace_files WHERE ${this.scopeWhere()} AND path=?`, ...this.scopeArgs(userId, project), target)
+        await this.fileFor(userId, project, target)
+        const current = (await this.store.get(`SELECT revision,blob,storage,mime FROM workspace_files WHERE ${this.scopeWhere()} AND path=?`, ...(await this.scopeArgs(userId, project)), target))
         if (!overwrite && revision !== (current?.revision ?? null)) throw Object.assign(new Error('文件已更新，请重新打开后再保存。'), { status: 409 })
-        this.assertWriteTarget(userId, project, target, mime, current)
+        await this.assertWriteTarget(userId, project, target, mime, current)
         if (mime === 'inode/directory') {
-          this.place(userId, project, target, mime, Buffer.alloc(0)); this.putIndex(userId, project, target, mime, 0, nextRevision, null); return
+          await this.place(userId, project, target, mime, Buffer.alloc(0)); await this.putIndex(userId, project, target, mime, 0, nextRevision, null); return
         }
         if (existsSync(absolute) && !statSync(absolute).isFile()) throw Object.assign(new Error('目标路径不是普通文件，请选择其他文件名。'), { status: 409 })
         const blob = sha256
         this.blobs.linkFromFile(userId, temp, blob, { copyFallback: true })
-        this.putIndex(userId, project, target, /^[\w.+-]+\/[\w.+-]+$/.test(mime) ? mime : 'application/octet-stream', size, nextRevision, blob)
-        if (current?.blob && current.blob !== blob) this.deferBytes(userId, project, [{ path: target, blob: current.blob }])
-        else if (current?.storage === 'disk' && !current.blob) this.deferBytes(userId, project, [{ path: target, blob: null }])
-        // A synchronous owner checkpoint commits with the new file index.
+        await this.putIndex(userId, project, target, /^[\w.+-]+\/[\w.+-]+$/.test(mime) ? mime : 'application/octet-stream', size, nextRevision, blob)
+        if (current?.blob && current.blob !== blob) await this.deferBytes(userId, project, [{ path: target, blob: current.blob }])
+        else if (current?.storage === 'disk' && !current.blob) await this.deferBytes(userId, project, [{ path: target, blob: null }])
+        // The awaited owner checkpoint commits with the new file index.
         // Its failure rolls back the reference as well, preserving old bytes.
-        onFileCommit?.({ path: target, mime, revision: nextRevision, size, sha256 })
-      })
+        await onFileCommit?.({ path: target, mime, revision: nextRevision, size, sha256 })
+      }, userId)
       return { revision: nextRevision, size, sha256 }
     })
   }
@@ -74,7 +80,7 @@ export class DesktopWorkspaceFiles extends WorkspaceFiles {
     return this.writeStream(userId, { path, mime, stream: createReadStream(source), signal, overwrite: options.overwrite ?? true, beforeCommit: options.beforeCommit })
   }
   async copyTo(userId, path, target) {
-    const file = this.locate(userId, path)
+    const file = (await this.locate(userId, path))
     if (file.diskPath) return copyFile(file.diskPath, target, constants.COPYFILE_FICLONE)
     const { writeFile } = await import('node:fs/promises')
     return writeFile(target, file.bytes)

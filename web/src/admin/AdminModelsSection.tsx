@@ -3,6 +3,7 @@ import { adminText } from "./i18n";
 import {
   buildMediaPriceSections,
   mediaPriceValues,
+  manualPriceTierCount,
   pricingModeLabel,
   type AdminModelRow,
 } from "./modelPricing";
@@ -69,7 +70,7 @@ export default function AdminModelsSection({
           <h2>{t("模型目录与积分")}</h2>
           <p>
             {t(
-              "所有妙图自营模型都在这里统一开关和调价。成本加成模型会显示当前自动报价，也可以直接改成固定积分价。",
+              "所有妙图自营模型都在这里统一开关和调价。自动报价模型显示当前计算结果，也可以按档位设定固定积分价。",
             )}
           </p>
         </div>
@@ -152,12 +153,9 @@ export default function AdminModelsSection({
               const high = values.length ? Math.max(...values) : null;
               const section = sections.get(model.id);
               const channels = Array.isArray(model.channels) ? model.channels : [];
-              const manual =
-                !["text"].includes(model.kind) &&
-                Boolean(
-                  settings?.prices?.[model.id]?.image ||
-                    settings?.prices?.[model.id]?.video,
-                );
+              const manualCount = manualPriceTierCount(settings, section);
+              const manual = manualCount > 0;
+              const partiallyManual = manual && manualCount < (section?.tiers.length || 0);
               return (
                 <article
                   className={`model-card ${enabled ? "" : "is-paused"}`}
@@ -197,7 +195,9 @@ export default function AdminModelsSection({
                       {model.configured ? t("通道已配置") : t("未配置通道")}
                     </span>
                     <span className={`model-policy ${manual ? "manual" : ""}`}>
-                      {manual
+                      {partiallyManual
+                        ? t("部分手动价")
+                        : manual
                         ? t("手动积分价")
                         : t(pricingModeLabel(model, costPolicy))}
                     </span>
@@ -206,7 +206,7 @@ export default function AdminModelsSection({
                   <div className="model-route-meta">
                     <div>
                       <span>{t("当前上游")}</span>
-                      <strong>{model.providerLabel || model.provider || t("未选择")}</strong>
+                      <strong>{t(model.providerLabel || model.provider || "未选择")}</strong>
                     </div>
                     <div>
                       <span>{t("上游模型 ID")}</span>
@@ -222,7 +222,7 @@ export default function AdminModelsSection({
                         return (
                           <div className="model-channel-row" key={channel.provider}>
                             <div className="model-channel-copy">
-                              <strong>{channel.providerLabel || channel.provider}</strong>
+                              <strong>{t(channel.providerLabel || channel.provider)}</strong>
                               <code>{channel.upstreamModelId || model.id}</code>
                               <span className={channelConfigured ? "is-ready" : ""}>
                                 {channelConfigured ? t("已配置") : t("未配置")}

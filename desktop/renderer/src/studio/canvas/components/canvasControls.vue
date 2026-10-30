@@ -92,7 +92,7 @@
                   class="toolButton"
                   text
                   :aria-label="translate('缩放选项')"
-                  @wheel.stop.prevent="$event.deltaY && applyZoom(Math.min(800, Math.max(20, zoomPercent - Math.sign($event.deltaY))))">
+                  @wheel.stop.prevent="$event.deltaY && applyZoom(Math.min(maxZoomPercent, Math.max(minZoomPercent, zoomPercent - Math.sign($event.deltaY))))">
                   {{ zoomPercent }}%
                 </el-button>
               </template>
@@ -100,8 +100,8 @@
                 <el-input-number
                   class="zoomInput"
                   :model-value="zoomPercent"
-                  :min="20"
-                  :max="800"
+                  :min="minZoomPercent"
+                  :max="maxZoomPercent"
                   :controls="false"
                   :aria-label="translate('缩放百分比')"
                   @change="applyZoom">
@@ -150,6 +150,9 @@
           </el-button>
         </el-tooltip>
         <span class="toolDivider" aria-hidden="true" />
+        <el-tooltip :showArrow="false" :content="translate('全部功能')" placement="top" :hideAfter="0" :enterable="false" :triggerKeys="[]">
+          <el-button class="toolButton" text :loading="toolsBusy" :disabled="!canvasId || !directory" :aria-label="translate('全部功能')" @click="emit('tools')"><icon-apps :size="18" /></el-button>
+        </el-tooltip>
         <el-tooltip :showArrow="false" :content="translate('撤销')" placement="top" :hideAfter="0" :enterable="false" :triggerKeys="[]">
           <el-button class="toolButton" text :disabled="!canUndo" :aria-label="translate('撤销')" @click="emit('undo')">
             <icon-arrow-back-up :size="17" />
@@ -167,7 +170,7 @@
         </el-tooltip>
         <span class="toolDivider" aria-hidden="true" />
         <shortcutPanel />
-        <el-tooltip v-if="settingsAvailable" :showArrow="false" :content="translate('设置')" placement="top" :hideAfter="0" :enterable="false" :triggerKeys="[]">
+        <el-tooltip :showArrow="false" :content="translate('设置')" placement="top" :hideAfter="0" :enterable="false" :triggerKeys="[]">
           <el-button class="toolButton" text :aria-label="translate('设置')" @click="openDesktopSettings">
             <icon-settings :size="17" />
           </el-button>
@@ -181,7 +184,7 @@
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from "vue";
 import { Panel, useVueFlow, type GraphNode, type XYPosition } from "@vue-flow/core";
 import { MiniMap } from "@vue-flow/minimap";
-import { IconMap, IconMagnet, IconSearch, IconFocusCentered, IconSettings, IconPlus, IconPointer, IconHandStop, IconArrowBackUp, IconArrowForwardUp } from "@tabler/icons-vue";
+import { IconMap, IconMagnet, IconSearch, IconApps, IconFocusCentered, IconSettings, IconPlus, IconPointer, IconHandStop, IconArrowBackUp, IconArrowForwardUp } from "@tabler/icons-vue";
 import { ElMessage } from "element-plus";
 import { arrangeCanvas } from "../arrangeCanvas";
 import shortcutPanel from "./shortcutPanel.vue";
@@ -196,20 +199,22 @@ const props = defineProps<{
   handMode?: boolean;
   canUndo?: boolean;
   canRedo?: boolean;
+  toolsBusy?: boolean;
 }>();
-const emit = defineEmits<{ addNode: [event: MouseEvent]; tool: [tool: "move" | "hand"]; undo: []; redo: []; search: [] }>();
+const emit = defineEmits<{ addNode: [event: MouseEvent]; tool: [tool: "move" | "hand"]; undo: []; redo: []; search: []; tools: [] }>();
 const snapEnabled = defineModel<boolean>("snapEnabled", { required: true });
 const showEdges = defineModel<boolean>("showEdges", { required: true });
 const assetsVisible = defineModel<boolean>("assetsVisible", { default: false });
 const showMap = ref(false);
 const zoomMenuVisible = ref(false);
-const settingsAvailable = "miaoDesktop" in window;
 function openDesktopSettings() {
   window.dispatchEvent(new Event("miao-desktop-settings"));
 }
 const flow = useVueFlow();
-const { viewport, zoomTo, zoomIn, zoomOut, fitView, getNodes, updateNode } = flow;
+const { viewport, minZoom, maxZoom, zoomTo, zoomIn, zoomOut, fitView, getNodes, updateNode } = flow;
 const zoomPercent = computed(() => Math.round(viewport.value.zoom * 100));
+const minZoomPercent = computed(() => Math.round(minZoom.value * 100));
+const maxZoomPercent = computed(() => Math.round(maxZoom.value * 100));
 const firstShortcutLabel = (binding: string) => shortcutLabel(getShortcutBindings(binding)[0] ?? "");
 const zoomInShortcut = computed(() => firstShortcutLabel(generalSettings.value.canvasShortcuts.zoomIn));
 const zoomOutShortcut = computed(() => firstShortcutLabel(generalSettings.value.canvasShortcuts.zoomOut));

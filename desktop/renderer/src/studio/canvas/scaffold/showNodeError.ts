@@ -1,7 +1,9 @@
 import { h } from "vue";
 import { ElMessage } from "element-plus";
 import nodeError from "./components/nodeError.vue";
-import { userFacingError, explainUserError } from "../../../../../../server/user-errors.ts";
+import { explainUserError } from "../../../../../../server/user-errors.ts";
+import { publicError } from "@/lib/publicError";
+import { translate } from "@miaoimg/i18n/vue";
 
 export function showNodeError(error: unknown, title: string) {
   if (error instanceof Error && error.name === "AbortError") return;
@@ -10,9 +12,9 @@ export function showNodeError(error: unknown, title: string) {
   const rawMessage = typeof detail === "string" && detail.trim() ? detail
     : error instanceof Error ? error.message : typeof error === "string" ? error : title;
   const status = Number((typed?.response as { status?: number } | undefined)?.status || (typed as { status?: number })?.status || 0);
-  const message = userFacingError(rawMessage, { status });
+  const message = publicError(rawMessage, { status });
   const supplied = typed?.errorExplanation || typed?.response?.data?.errorExplanation;
-  const fallback = explainUserError(rawMessage, { status });
+  const fallback = { ...explainUserError(rawMessage, { status }), summary: message };
   const toExplanation = (value: unknown) => {
     if (!value || typeof value !== "object") return fallback;
     const source = value as Record<string, unknown>;
@@ -28,7 +30,7 @@ export function showNodeError(error: unknown, title: string) {
       offset: 64,
       showClose: true,
       customClass: "nodeErrorMessage",
-      message: h(nodeError, { message: explanation.summary || message || title, explanation, signal: controller.signal }),
+      message: h(nodeError, { message: translate(explanation.summary || message || title), explanation, signal: controller.signal }),
       onClose: () => controller.abort(),
     });
   };

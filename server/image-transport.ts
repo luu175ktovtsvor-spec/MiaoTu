@@ -52,6 +52,7 @@ export function buildArkBody(request, config: Record<string, any> = {}) {
     ? request.references[0].value
     : request.references.map((item) => item.value)
   applyUpstreamControls(body, request)
+  if (request.model.provider === 'ark' && request.model.publicId === 'seedream-5.0-lite' && request.generation.controls?.webSearch === true) body.tools = [{ type: 'web_search' }]
   return body
 }
 

@@ -1,3 +1,7 @@
+/* Native window controls stay above teleported full-window editors. */
+.miao-desktop{--desktop-caption-left:0px;--desktop-caption-right:0px}
+.miao-desktop-darwin{--desktop-caption-left:116px}
+.miao-desktop-win32{--desktop-caption-right:140px}
 .miao-desktop #root{padding-top:0}.miao-desktop .studio-shell{min-height:100dvh}.miao-desktop .studio-app:has(.studio-main){height:100dvh;min-height:0}
 .miao-desktop-darwin .lib-toolbar{top:56px}
 .miao-desktop,.miao-desktop *{scrollbar-width:none}
@@ -19,13 +23,13 @@
    沿侧栏纵向排列，不进入画布，也不藏进账号弹层。 */
 .miao-desktop .studio-app{flex-direction:row;align-items:stretch}
 .miao-desktop .studio-app>.studio-app__body{display:flex;min-width:0;flex:1;height:100dvh;flex-direction:column;overflow:hidden}
-.miao-desktop .studio-settings-page{position:fixed;inset:56px 0 0 240px;z-index:11900;overflow:hidden;background:var(--color-abyss,#141414);pointer-events:auto}
+.miao-desktop .studio-settings-page{position:fixed;inset-block:56px 0;inset-inline:240px 0;z-index:11900;overflow:hidden;background:var(--color-abyss,#141414);pointer-events:auto}
 .miao-desktop .studio-settings-page>.el-overlay{position:absolute;inset:0;display:block;background:transparent!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
 .miao-desktop .studio-settings-page .el-overlay-dialog{position:absolute;inset:0;overflow:hidden;padding:0}
 .miao-desktop .studio-top__brand{display:none}
 .miao-desktop .studio-app:has(.desktop-edge-rail) .studio-top__history{display:none}
 .miao-desktop .studio-app:has(.desktop-edge-rail) .studio-top{padding-left:18px}
-.desktop-edge-rail{width:240px;flex:0 0 240px;height:100dvh;display:flex;flex-direction:column;align-items:stretch;padding:74px 12px 16px;border-right:1px solid var(--color-line);background:var(--color-canvas);color:var(--color-muted);-webkit-app-region:drag}
+.desktop-edge-rail{width:240px;flex:0 0 240px;height:100dvh;display:flex;flex-direction:column;align-items:stretch;padding:74px 12px 16px;border-inline-end:1px solid var(--color-line);background:var(--color-canvas);color:var(--color-muted);-webkit-app-region:drag}
 .desktop-edge-rail button{font:inherit;-webkit-app-region:no-drag;cursor:pointer}
 .desktop-edge-rail__masthead{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%}
 .desktop-edge-rail__brand{display:flex;width:100%;height:42px;align-items:center;justify-content:flex-start;gap:9px;padding:0 11px;border:1px solid var(--color-line);border-radius:10px;background:color-mix(in srgb,var(--color-elevate) 82%,transparent);color:var(--color-ink);font-size:13px!important;font-weight:600}
@@ -37,8 +41,8 @@
 .desktop-edge-rail__nav button,.desktop-edge-rail__account{position:relative;display:flex;width:100%;min-height:38px;align-items:center;justify-content:flex-start;gap:11px;padding:0 12px;border:0;border-radius:10px;background:transparent;color:var(--color-muted);font-size:13px!important;line-height:1}
 .desktop-edge-rail__nav button:hover,.desktop-edge-rail__account:hover{background:color-mix(in srgb,var(--color-elevate) 72%,transparent);color:var(--color-ink)}
 .desktop-edge-rail__nav button[aria-current="page"],.desktop-edge-rail__account[aria-current="page"]{background:var(--color-elevate);color:var(--color-ink)}
-.desktop-edge-rail__dot{position:absolute;top:9px;left:26px;width:7px;height:7px;border-radius:50%;background:var(--color-error,#e5484d);box-shadow:0 0 0 2px var(--color-surface)}
-.desktop-edge-rail__nav button[aria-current="page"]::before,.desktop-edge-rail__account[aria-current="page"]::before{position:absolute;left:-12px;width:2px;height:22px;border-radius:2px;background:var(--color-accent);content:""}
+.desktop-edge-rail__dot{position:absolute;top:9px;inset-inline-start:26px;width:7px;height:7px;border-radius:50%;background:var(--color-error,#e5484d);box-shadow:0 0 0 2px var(--color-surface)}
+.desktop-edge-rail__nav button[aria-current="page"]::before,.desktop-edge-rail__account[aria-current="page"]::before{position:absolute;inset-inline-start:-12px;width:2px;height:22px;border-radius:2px;background:var(--color-accent);content:""}
 .desktop-edge-rail__account{margin-top:auto}
 .desktop-edge-rail__changelog+.desktop-edge-rail__account{margin-top:4px}
 .desktop-edge-rail__group{margin:18px 0 6px;padding:0 12px;color:var(--color-muted);font-size:12px;opacity:.75}
@@ -46,7 +50,7 @@
 .miao-desktop .studio-home{grid-template-columns:minmax(0,1fr);min-height:calc(100dvh - 56px)}
 .miao-desktop .studio-home>nav{display:none}
 .miao-desktop .studio-home__main{padding-top:26px}
-@media(max-width:900px){.desktop-edge-rail{width:200px;flex-basis:200px;padding-inline:10px}.desktop-edge-rail__wordmark{display:none}.desktop-edge-rail__brand{flex:none;width:44px;justify-content:center}.miao-desktop .studio-app:has(.desktop-edge-rail) .studio-top{padding-left:12px}.miao-desktop .studio-settings-page{left:200px}}
+@media(max-width:900px){.desktop-edge-rail{width:200px;flex-basis:200px;padding-inline:10px}.desktop-edge-rail__wordmark{display:none}.desktop-edge-rail__brand{flex:none;width:44px;justify-content:center}.miao-desktop .studio-app:has(.desktop-edge-rail) .studio-top{padding-left:12px}.miao-desktop .studio-settings-page{inset-inline-start:200px}}
 
 /* 账号面板：沿用客户端近黑底、单层 1px 细框与亮白强调，层次只靠间距和一层抬升面表达。
    三个状态（登录 / 注册 / 已登录）共用同一套间距变量，控件尺寸与圆角也统一。 */

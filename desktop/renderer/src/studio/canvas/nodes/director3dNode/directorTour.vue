@@ -22,6 +22,11 @@ const storageKey = "miaoimg.director3dTour";
 const open = ref(localStorage.getItem(storageKey) !== "true");
 const steps = computed(() => [
   {
+    target: ".sceneOutline",
+    title: translate("布景与角色"),
+    description: translate("从布景库添加人偶、道具和场景。选中物体后调整属性；人偶还可以选择姿势并逐个调整关节。"),
+  },
+  {
     target: ".chatFooter",
     title: translate("生成场景与方案"),
     description: translate("描述场景模型、人物动作和镜头要求，再点击“生成方案”。画布上如果有链接的文本、图片和视频，可以通过 @ 引用。"),
@@ -34,7 +39,7 @@ const steps = computed(() => [
   {
     target: ".viewport",
     title: translate("第一人称取景"),
-    description: translate("点击三维画面后，用鼠标调整朝向。WASD 移动，空格上升，Shift 下降，滚轮调焦；左键或 Esc 退出取景。"),
+    description: translate("布景视角里拖动旋转、右键平移、滚轮缩放。切换到机位视角后点击画面，用 WASD 移动，滚轮调焦，Esc 退出取景。"),
   },
   {
     target: ".stagePanel .referenceList",
@@ -47,7 +52,7 @@ const steps = computed(() => [
     description: translate("用播放按钮和进度条检查动画；在这里调整画面比例、网格、天空与光照，让预演画面更符合你的想法。"),
   },
   {
-    target: '[aria-label="导出视频节点"]',
+    target: ".exportVideoButton",
     title: translate("导出到画布"),
     description: translate("选中方案后，点击这里导出视频节点。关键帧缩略图上的导出按钮可以生成图片节点。视频导出期间请保持窗口可见，完成后回到画布查看结果。"),
   },

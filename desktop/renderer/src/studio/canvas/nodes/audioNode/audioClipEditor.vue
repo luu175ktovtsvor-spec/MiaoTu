@@ -38,7 +38,7 @@ import audioPlayer from "./audioPlayer.vue";
 import { translate } from "@miaoimg/i18n/vue";
 
 type EditState = { groups: AudioSegment[][]; selectedIndex: number; playhead: number };
-const props = defineProps<{ src: string; disabled?: boolean }>();
+const props = defineProps<{ src: string; disabled?: boolean; sourceDuration?: number }>();
 const segments = defineModel<AudioSegment[]>({ required: true });
 const player = ref<InstanceType<typeof audioPlayer>>();
 const duration = ref(0);
@@ -71,18 +71,19 @@ const canSplit = computed(() => {
   return clip && playhead.value - clip.offset >= 0.01 && clip.offset + clip.length - playhead.value >= 0.01;
 });
 const canMerge = computed(() => !!activeSegment.value && groups.value.length > 1);
+let initialized = false;
 let playbackClipIndex = 0;
 let playbackPartIndex = 0;
 
 watch(() => props.src, () => {
-  duration.value = 0;
+  duration.value = 0; initialized = false;
   undoStack.value = redoStack.value = [];
   applyState({ groups: [], selectedIndex: 0, playhead: 0 });
 });
 watch(() => props.disabled, value => { if (value) pause(); });
 watch(() => player.value?.currentTime, updatePlayback);
 onBeforeUnmount(pause);
-defineExpose({ valid, pause });
+defineExpose({ valid, pause, getGroups: () => groups.value.map(group => group.map(range => ({ ...range }))) });
 
 function formatTime(value: number) {
   const safe = Math.round(Math.max(0, Number.isFinite(value) ? value : 0) * 100);
@@ -94,9 +95,10 @@ function pause() {
 }
 
 function readDuration(event: Event) {
-  const value = (event.currentTarget as HTMLAudioElement).duration;
+  const value = props.sourceDuration ?? (event.currentTarget as HTMLAudioElement).duration;
   duration.value = Number.isFinite(value) && value > 0 ? value : 0;
-  if (duration.value && !groups.value.length) {
+  if (duration.value && !initialized) {
+    initialized = true;
     const ranges = segments.value.length ? segments.value : [{ start: 0, end: duration.value }];
     applyState({ groups: ranges.map(range => [{ ...range }]), selectedIndex: 0, playhead: 0 });
   }

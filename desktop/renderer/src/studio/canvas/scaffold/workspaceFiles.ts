@@ -3,7 +3,7 @@ import type { NodeMediaValue } from "./values";
 import { useNodePreviewReady } from "./useNodePreviewReady";
 import { translate } from "@miaoimg/i18n/vue";
 import { isInternalAssetPath, isProtectedWorkspacePath, isWorkspacePath } from '../../../../../../server/workspace-path';
-import { assetFileType, ASSET_MAX_BYTES } from '../assetFile';
+import { assetFileType } from '../assetFile';
 import { guardWorkspaceFiles } from '@/lib/workspaceFiles';
 
 export interface WorkspaceFiles {
@@ -42,7 +42,7 @@ export async function readWorkspaceAsset(files: WorkspaceFiles, path: string, si
   const name = path.split('/').at(-1)!;
   const declared = assetFileType({ name, type: metadata.mime });
   const { kind, mimeType } = declared.kind || !mimeHint ? declared : assetFileType({ name, type: mimeHint });
-  if (!kind || !metadata.size || metadata.size > ASSET_MAX_BYTES || kind === 'text' && metadata.size > 10 * 1024 * 1024) throw new Error(`素材不支持导入或超过大小上限：${path}`);
+  if (!kind || !metadata.size || kind === 'text' && metadata.size > 10 * 1024 * 1024) throw new Error(`素材不支持导入或超过大小上限：${path}`);
   return { ...metadata, name, kind, mimeType };
 }
 

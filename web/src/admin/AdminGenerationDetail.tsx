@@ -1,4 +1,5 @@
 import { ADMIN_API_BASE } from './api-base'
+import { adminMediaTierLabel } from './modelPricing'
 // @ts-nocheck
 import { useEffect, useRef, useState } from 'react'
 import { isDiscardedAdminRequest } from './useAdminSession'
@@ -34,7 +35,7 @@ export default function AdminGenerationDetail({record:r,api,onRecord,lang}) {
  const parameters=isVideo?[
   [t('生成模式','Mode'),modes[p.mode]||p.mode||unknown],
   ...(p.creativeMode?[[t('创作模式','Creative mode'),creativeModes[p.creativeMode]||p.creativeMode]]:[]),
-  [t('清晰度 / 比例','Resolution / aspect ratio'),(p.resolution?sizeTier(p.resolution)||p.resolution:unknown)+' / '+(p.ratio||unknown)],
+  [t('清晰度 / 比例','Resolution / aspect ratio'),(p.resolution?adminMediaTierLabel({kind:'video'},p.resolution,t('自动','Auto')):unknown)+' / '+(p.ratio||unknown)],
   [t('请求 / 计费时长','Requested / billable duration'),(p.duration??unknown)+' / '+(p.billableDuration??unknown)+' s'],
   [t('参考图片 / 视频 / 音频数量','Reference image / video / audio count'),(p.referenceImages??unknown)+' / '+(p.videos?.length??unknown)+' / '+(p.audios?.length??unknown)],
   [t('参考视频 / 音频时长','Reference video / audio duration'),(p.videoSeconds??unknown)+' / '+(p.audioSeconds??unknown)+' s'],

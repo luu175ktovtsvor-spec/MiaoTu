@@ -4,7 +4,7 @@
     :mediaMeta="mediaMeta"
     :mediaMetaTitle="mediaMetaTitle"
     :topVisible="node.selected"
-    :bottomVisible="node.selected && (!!variationMode || editor?.mode === 'inpaint')"
+    :bottomVisible="node.selected && (!!variationMode || editor?.mode === 'inpaint' || preparedOutpaint.active && !editor?.mode)"
     topWidth="max-content"
     :bottomWidth="660"
     :downloadUrl="previewUrl"
@@ -13,6 +13,10 @@
     :style="{ width: previewUrl && imageWidth ? `${imageWidth + 2}px` : undefined }">
     <template v-if="editor?.mode" #top><div ref="paintToolbar" /></template>
     <template #topActions>
+      <imageIntentMenu v-if="previewUrl" :controller="imageIntents" :disabled="imageOutpaint.busy || imageOutpaint.state.visible || imageGeometry.state.visible || imageGeometry.busy || imageBusy || gridSplit?.splitting" />
+      <imageGeometryMenu v-if="previewUrl" :controller="imageGeometry" :disabled="imageOutpaint.busy || imageOutpaint.state.visible || imageBusy || imageIntents.busy || imageIntents.state.visible" />
+      <imageOutpaintMenu v-if="previewUrl" :controller="imageOutpaint" :disabled="imageBusy || imageIntents.busy || imageIntents.state.visible || imageGeometry.busy || imageGeometry.state.visible" />
+      <el-button v-if="layerEntryAvailable" :icon="IconLayersSubtract" text :loading="creatingLayerEntry" :disabled="imageBusy || gridSplit?.splitting" :title="translate('图层分离')" :aria-label="translate('图层分离')" @click.stop="createLayerEntry">{{ translate('图层分离') }}</el-button>
       <el-button v-if="generating || pendingInpaint" :icon="generating ? IconPlayerStop : IconPlayerPlay" text :title="generating ? translate('停止生成') : translate('继续取回')" :aria-label="generating ? translate('停止生成') : translate('继续取回')" @click="generating ? inpaintTask.stop() : resumeInpaint()">{{ generating ? translate('停止生成') : translate('继续取回') }}</el-button>
       <el-button v-if="previewUrl" :icon="IconSun" text :disabled="!previewUrl || imageBusy" :title="translate('打光')" :aria-label="translate('打光')" @click.stop="variationMode = variationMode === 'lighting' ? undefined : 'lighting'; editor?.cancel()" />
       <el-button v-if="previewUrl" :icon="IconCamera" text :disabled="!previewUrl || imageBusy" :title="translate('多角度')" :aria-label="translate('多角度')" @click.stop="variationMode = variationMode === 'angle' ? undefined : 'angle'; editor?.cancel()" />
@@ -32,7 +36,7 @@
         :title="translate('宫格切分')"
         :aria-label="translate('宫格切分')"
         @click.stop="gridSplit?.open($event)" />
-      <imagePresetMenu v-if="previewUrl" :disabled="imageBusy || !previewUrl" :loadModels="() => ai.getMediaModels()" />
+      <imagePresetMenu v-if="previewUrl" ref="presetMenu" :disabled="imageBusy || !previewUrl" :loadModels="() => ai.getMediaModels()" />
       <el-button v-if="previewUrl"
         :icon="IconPencil"
         :disabled="imageBusy || !previewUrl || gridSplit?.splitting"
@@ -66,13 +70,23 @@
       <uploadProgress v-if="dragUploadEntry" :entry="dragUploadEntry" @retry="retryDragUpload" @dismiss="dismissDragUpload" />
       <generationProgress :progress="inpaintTask.progress" :label="translate('图片生成进度')" />
     </div>
-    <template #bottom><div v-if="variationMode" ref="variationTarget" /><div v-else-if="editor?.mode === 'inpaint'" ref="inpaintTarget" /></template>
+    <template #bottom><div v-if="variationMode" ref="variationTarget" /><div v-else-if="editor?.mode === 'inpaint'" ref="inpaintTarget" /><div v-else-if="preparedOutpaint.active && !editor?.mode" ref="outpaintTarget" /></template>
   </nodeSkeleton>
   <imageInpaintPrompt
     v-if="editor?.mode === 'inpaint'"
     ref="inpaintPrompt"
     v-model:regionEdit="inpaintRegionEdit"
     :target="inpaintTarget"
+    :generate="generateInpaint"
+    :generating="generating"
+    :pending="pendingInpaint"
+    :cancel="inpaintTask.stop"
+    :disabled="uploading || uploadingDrag" />
+  <imageOutpaintPreparedPanel
+    v-if="preparedOutpaint.active && !editor?.mode && !variationMode"
+    ref="preparedPanel"
+    :controller="preparedOutpaint"
+    :target="outpaintTarget"
     :generate="generateInpaint"
     :generating="generating"
     :pending="pendingInpaint"
@@ -92,7 +106,7 @@
 <script setup lang="ts">
 import { useImagePreviewTools } from '../scaffold/useImagePreviewTools';
 import { computed, nextTick, onMounted, onScopeDispose, ref, watch } from "vue";
-import { IconPhoto, IconPhotoAi, IconVideo, IconClipboard, IconUpload, IconTransfer, IconLayoutGrid, IconBrush, IconPencil, IconSun, IconCamera, IconPanoramaHorizontal, IconPlayerStop, IconPlayerPlay } from "@tabler/icons-vue";
+import { IconPhoto, IconPhotoAi, IconVideo, IconClipboard, IconUpload, IconTransfer, IconLayoutGrid, IconBrush, IconPencil, IconSun, IconCamera, IconPanoramaHorizontal, IconPlayerStop, IconPlayerPlay, IconLayersSubtract } from "@tabler/icons-vue";
 import { ElButton, ElImageViewer, ElMessage } from "element-plus";
 import { nodeSkeleton, nodeTools, useNode, useNodeUpload, z, type NodeHandle, type NodeInpaintInput } from "@miaoimg/nodes-scaffold/runtime";
 import imageEditor from "@miaoimg/nodes-scaffold/imageEditor";
@@ -102,6 +116,17 @@ import generationProgress from "@miaoimg/nodes-scaffold/generationProgress";
 import { useInpaintTask } from "./imageTools/useInpaintTask";
 import { translate } from "@miaoimg/i18n/vue";
 import { useImageTools } from "./imageTools/useImageTools";
+import { useImageLayerEntry } from "./imageTools/useImageLayerEntry";
+import { useImageIntentActions } from "./imageTools/useImageIntentActions";
+import imageIntentMenu from "./imageTools/components/imageIntentMenu.vue";
+import { useImageGeometryActions } from "./imageTools/useImageGeometryActions";
+import imageGeometryMenu from "./imageTools/components/imageGeometryMenu.vue";
+import { usePreparedOutpaint } from "./imageTools/usePreparedOutpaint";
+import imageOutpaintPreparedPanel from "./imageTools/components/imageOutpaintPreparedPanel.vue";
+import { useImageOutpaintActions } from "./imageTools/useImageOutpaintActions";
+import imageOutpaintMenu from "./imageTools/components/imageOutpaintMenu.vue";
+import { useImagePaletteActions, combineCanvasToolExtensions } from "../useMediaPaletteActions";
+import { useNodeToolsContext } from "../scaffold/nodeTools";
 import imageLighting from './imageTools/components/imageLighting.vue';
 import imageMultiAngle from './imageTools/components/imageMultiAngle.vue';
 import imagePanorama from './imageTools/components/imagePanorama.vue';
@@ -112,7 +137,7 @@ import { useLinkedNode } from "../linkedNode";
 import { readClipboardFiles } from "@/lib/clipboard";
 import { beginUpload } from "../uploadStatus";
 import { mediaSizeLabel } from "../../../../../../server/media-size-label";
-import { assetFileType, ASSET_MAX_BYTES } from "../assetFile";
+import { assetFileType } from "../assetFile";
 import { useMediaTaskDelivery } from "../scaffold/useMediaTaskDelivery";
 import { useMediaPublication } from "../scaffold/mediaPublication";
 
@@ -129,11 +154,14 @@ const fileInput = ref<HTMLInputElement>();
 const variationMode = ref<'lighting' | 'angle'>();
 const variationTarget = ref<HTMLElement>();
 const panorama = ref<InstanceType<typeof imagePanorama>>();
+const presetMenu = ref<InstanceType<typeof imagePresetMenu>>();
 const gridSplit = ref<InstanceType<typeof imageGridSplit>>();
 const editor = ref<InstanceType<typeof imageEditor>>();
 const inpaintPrompt = ref<InstanceType<typeof imageInpaintPrompt>>();
 const paintToolbar = ref<HTMLElement>();
 const inpaintTarget = ref<HTMLElement>();
+const outpaintTarget = ref<HTMLElement>();
+const preparedPanel = ref<InstanceType<typeof imageOutpaintPreparedPanel>>();
 const inpaintRegionEdit = ref<"mask" | "annotation" | null>(null);
 const uploading = ref(false);
 const previewVisible = ref(false);
@@ -151,9 +179,47 @@ const { entry: dragUploadEntry, uploading: uploadingDrag, retry: retryDragUpload
 const outputFile = computed(() => outputs.value.image?.dataType === "IMAGE" ? outputs.value.image.value : undefined);
 const inpaintData = computed(() => node.data as { taskRequestId?: string });
 const delivery = useMediaTaskDelivery(node, outputs, "image");
+const preparedOutpaint = usePreparedOutpaint({ node, outputs, files, loadModels: () => ai.getMediaModels(true) });
 const inpaintTask = useInpaintTask({ nodeId: id, data: inpaintData, outputs, ai, delivery, prepare: prepareInpaint, applied: () => editor.value?.cancel() });
 const { generating, pending: pendingInpaint } = inpaintTask;
 const imageBusy = computed(() => uploading.value || uploadingDrag.value || generating.value || pendingInpaint.value);
+const { available: layerEntryAvailable, creating: creatingLayerEntry, create: createLayerEntry } = useImageLayerEntry({
+  node, hasImage: () => Boolean(outputFile.value), disabled: () => imageBusy.value || Boolean(gridSplit.value?.splitting),
+  loadModels: () => ai.getMediaModels(), onError: error => showError(error, translate("新建节点失败")),
+});
+const getImageNodeTools = useNodeToolsContext();
+const imageIntents = useImageIntentActions({
+  node, hasImage: () => Boolean(outputFile.value?.url),
+  disabled: () => imageBusy.value || imageOutpaint.busy || imageOutpaint.state.visible || imageGeometry.busy || imageGeometry.state.visible || Boolean(gridSplit.value?.splitting || editor.value?.busy || panorama.value?.busy || creatingLayerEntry.value),
+  loadModels: () => ai.getMediaModels(true), onError: error => showError(error, translate("新建节点失败")),
+  async prepareErase(input, signal) {
+    if (!editor.value) throw new Error(translate("图片编辑器尚未就绪，请确认原图已加载"));
+    variationMode.value = undefined;
+    await editor.value.start("inpaint"); await nextTick(); signal.throwIfAborted();
+    await getImageNodeTools().call({ nodeId: id, name: "node:setInpaintConfig", args: input }, signal);
+  },
+});
+const imageGeometry = useImageGeometryActions({
+  node, disabled: () => imageBusy.value || imageOutpaint.busy || imageOutpaint.state.visible || imageIntents.busy || imageIntents.state.visible || Boolean(gridSplit.value?.splitting || editor.value?.busy || panorama.value?.busy || creatingLayerEntry.value),
+  onError: error => showError(error, translate("图片处理失败")),
+});
+const imageOutpaint = useImageOutpaintActions({
+  node, disabled: () => imageBusy.value || imageIntents.busy || imageIntents.state.visible || imageGeometry.busy || imageGeometry.state.visible || Boolean(gridSplit.value?.splitting || editor.value?.busy || panorama.value?.busy || creatingLayerEntry.value),
+  loadModels: () => ai.getMediaModels(true), onError: error => showError(error, translate("新建节点失败")),
+});
+useImagePaletteActions({
+  node, hasImage: () => Boolean(outputFile.value?.url),
+  busy: () => imageBusy.value || imageOutpaint.busy || imageOutpaint.state.visible || imageIntents.busy || imageIntents.state.visible || imageGeometry.busy || imageGeometry.state.visible || Boolean(gridSplit.value?.splitting || editor.value?.busy || panorama.value?.busy || creatingLayerEntry.value),
+  inpaintAllowed: () => true,
+  ready: tool => ["image:lighting", "image:angle", "image:layers"].includes(tool) ? true
+    : tool === "image:mark" || tool === "image:inpaint" ? Boolean(editor.value)
+      : tool === "image:grid" ? Boolean(gridSplit.value) : tool.startsWith("image:preset:") ? Boolean(presetMenu.value) : Boolean(panorama.value),
+  lighting: () => { variationMode.value = "lighting"; editor.value?.cancel(); },
+  angle: () => { variationMode.value = "angle"; editor.value?.cancel(); },
+  mark: () => editor.value?.start("mark"), inpaint: () => editor.value?.start("inpaint"),
+  grid: event => gridSplit.value?.open(event), panorama: command => panorama.value?.selectAction(command),
+  layers: createLayerEntry, preset: preset => presetMenu.value?.apply(preset), extension: combineCanvasToolExtensions(imageIntents.extension, imageGeometry.extension, imageOutpaint.extension),
+});
 let disposed = false;
 onScopeDispose(() => { disposed = true; });
 onMounted(() => { if (inpaintData.value.taskRequestId) void resumeInpaint(); });
@@ -200,6 +266,7 @@ nodeEvent.on("delete", async () => {
 // 局部重绘用当前这张图当原图，按所选模型的通道参数（蒙版或标注）提交；
 // 结果写回本节点自己的目录，和普通生成的落盘方式一致。
 async function prepareInpaint(input: NodeInpaintInput, signal: AbortSignal) {
+  if (preparedOutpaint.active && !editor.value?.mode && !variationMode.value) return preparedOutpaint.prepare(input, signal);
   const instance = editor.value;
   const source = outputFile.value;
   if (!instance || !source) throw new Error(translate("请先进入局部重绘"));
@@ -231,6 +298,10 @@ nodeTools.register({
     signal?.throwIfAborted();
     return inpaintTask.start(() => {
       if (pendingInpaint.value) return generateInpaint(undefined, signal);
+      if (preparedOutpaint.active && !editor.value?.mode && !variationMode.value) {
+        if (!preparedPanel.value) throw new Error(translate("资源尚未就绪，请稍后重试"));
+        return preparedPanel.value.startGeneration(signal, true);
+      }
       if (!inpaintPrompt.value) throw new Error(translate("请先进入局部重绘"));
       return inpaintPrompt.value.startGeneration(signal, true);
     });
@@ -301,7 +372,7 @@ function uploadImage(event: Event) {
 function takeImage(file: File) {
   if (imageBusy.value) return;
   if (assetFileType(file).kind !== "image") return void ElMessage.error(translate("请选择图片文件"));
-  if (!file.size || file.size > ASSET_MAX_BYTES) return void ElMessage.error(translate("图片为空或超过当前工作区允许的大小"));
+  if (!file.size) return void ElMessage.error(translate("图片为空或超过当前工作区允许的大小"));
   // 和「拖文件进画布」走同一条通道：真上传进度的环形、失败可重试、写回 outputs 都由
   // useNodeUpload 统一处理。
   // ACT: 复制节点可能仍引用旧图片，替换输出不删除共享文件。

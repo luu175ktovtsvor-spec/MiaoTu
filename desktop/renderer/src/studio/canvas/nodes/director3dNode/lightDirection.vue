@@ -188,20 +188,20 @@ onMounted(() => {
   grid.material.transparent = true;
   grid.material.opacity = 0.22;
   scene.add(grid);
-  scene.add(new Mesh(new SphereGeometry(0.055, 12, 8), new MeshBasicMaterial({ color: 0x8d9db7 })));
-  const ring = new Mesh(new TorusGeometry(radius, 0.018, 6, 96), new MeshBasicMaterial({ color: 0x38bd83 }));
+  scene.add(new Mesh(new SphereGeometry(0.055, 12, 8), new MeshBasicMaterial({ color: 0x9a9aa0 })));
+  const ring = new Mesh(new TorusGeometry(radius, 0.018, 6, 96), new MeshBasicMaterial({ color: 0x8a8a90 }));
   ring.rotation.x = Math.PI / 2;
   scene.add(ring);
   const arc = Array.from({ length: 65 }, (_, index) => {
     const angle = -Math.PI / 2 + (index / 64) * Math.PI;
     return new Vector3(arcX, radius * Math.sin(angle), radius * Math.cos(angle));
   });
-  scene.add(new Line(new BufferGeometry().setFromPoints(arc), new LineBasicMaterial({ color: 0xed79b0 })));
-  sun = new Mesh(new SphereGeometry(0.12, 16, 12), new MeshBasicMaterial({ color: 0xffcc55 }));
+  scene.add(new Line(new BufferGeometry().setFromPoints(arc), new LineBasicMaterial({ color: 0x5f5f65 })));
+  sun = new Mesh(new SphereGeometry(0.12, 16, 12), new MeshBasicMaterial({ color: 0xffffff }));
   lightRay = new ArrowHelper(new Vector3(0, -1, 0), new Vector3(), radius - 0.35, 0xffcc55, 0.18, 0.1);
   heightGuide = new Line(
     new BufferGeometry().setFromPoints([new Vector3(), new Vector3(), new Vector3()]),
-    new LineBasicMaterial({ color: 0xffcc55, transparent: true, opacity: 0.35 })
+    new LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35 })
   );
   scene.add(sun, lightRay, heightGuide);
   resizeObserver = new ResizeObserver(() => {
@@ -276,10 +276,10 @@ onBeforeUnmount(() => {
         box-shadow: 0 0 0 2px var(--el-bg-color-overlay);
       }
       &.azimuth::after {
-        background: #38bd83;
+        background: #f2f2f3;
       }
       &.elevation::after {
-        background: #ed79b0;
+        background: #8a8a90;
       }
       &:active {
         cursor: grabbing;
@@ -296,7 +296,7 @@ onBeforeUnmount(() => {
     align-items: center;
     justify-content: space-between;
     padding: 4px 0;
-    color: #cc528d;
+    color: var(--el-text-color-secondary);
     font-size: 12px;
   }
   .angleControl {
@@ -307,7 +307,7 @@ onBeforeUnmount(() => {
       justify-content: space-between;
       font-size: 12px;
       .azimuthLabel {
-        color: #26996a;
+        color: var(--el-text-color-secondary);
       }
     }
   }

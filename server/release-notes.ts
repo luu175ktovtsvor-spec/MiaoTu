@@ -20,21 +20,29 @@ export const RELEASE_NOTE_SECTIONS = [
 const item = (zh: string, en: string): ReleaseNoteItem => ({ zh, en })
 
 export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
-  '3.2.0': {
-    title: { zh: '视频模式随时可选，Seedream 尺寸更全', en: 'Pick any video mode first, and more Seedream sizes' },
+  '3.2.1': {
+    title: { zh: '导演台升级与视频片段重拍', en: 'An upgraded director and video segment retakes' },
     features: [
-      item('Seedance 2.5 可以延长视频。', 'Seedance 2.5 can now extend videos.'),
-      item('视频节点新增「编辑视频」「延长视频」：在支持的模型下，一键新建连好这段视频、选好模式的生成节点。', 'Video nodes add Edit video and Extend video: with a supporting model, one click creates a generation node already linked to the clip and set to that mode.'),
-      item('Agent 工作时可以继续输入，新消息会作为引导在当前这一步完成后接着处理，不会打断它；不需要时可以撤回。', 'You can keep typing while the Agent works: new messages guide it once the current step finishes, without interrupting, and can be withdrawn.'),
-      item('Agent 知道每个模型支持哪些模式、各需要什么素材，还能直接生成分镜、使用图片快捷预设和查看整组预计积分。', 'The Agent now knows which modes each model supports and what media they need, and can create storyboards, use image quick presets and check the estimated credits for a whole group.'),
+      item('导演台新增人物、道具和布景预设，可调整姿势、机位、运镜和动画时间轴，并导出图片或预演视频。', 'The director adds character, prop and set presets, with pose, camera, camera movement and animation timeline controls, plus image and previs video export.'),
+      item('导演台助手可根据指令调整场景、人物动作和运镜，修改过程与多个方案可以查看、切换和继续编辑。', 'The director assistant can adjust scenes, character actions and camera movement from your instructions, with visible steps and multiple plans to review, switch and edit.'),
+      item('视频新增「片段重拍」：选择要修改的时间范围，为片段填写要求，完成后与原片其余部分拼接，可选择保留原声。', 'Videos add Segment retake: choose time ranges, describe the changes, and join the results with the rest of the original clip, with an option to keep its audio.'),
+      item('视频节点可直接新建「编辑视频」或「延长视频」任务，自动连接原视频并选好支持的模式。', 'Video nodes can create Edit video or Extend video tasks, automatically connecting the original clip and selecting a supported mode.'),
+      item('可以配置自己的文本模型，供文本节点、创作助手和导演台使用。', 'Configure your own text models for text nodes, the creative assistant and the director.'),
+      item('Agent 工作时可以继续补充要求，后续消息会在当前步骤完成后接着处理，也可以撤回。', 'Add instructions while the Agent works; follow-up messages are handled after the current step and can be withdrawn.'),
     ],
     improvements: [
-      item('Seedream 每个清晰度都补齐 8 种比例，新增 21:9；5.0 Lite 的 3K 和 4.0 的 1K 可以搭配任意比例。', 'Every Seedream resolution now offers eight ratios, including 21:9, and 3K on Seedream 5.0 Lite and 1K on Seedream 4.0 work with any ratio.'),
-      item('Agent 对话重新整理：运行时底部一直显示「处理中」和用时，读写画布等步骤收进「处理过程」，需要时点开查看；思考内容可以展开。', 'The Agent conversation is reorganised: while it works, the bottom of the chat shows what it is doing and for how long, and steps such as reading the canvas are tucked under Process, ready to expand. Its thinking can be expanded too.'),
-      item('模型选择改成简洁的列表，模型标识大小统一。', 'The model picker is now a simple list with evenly sized model logos.'),
+      item('Mac 安装包采用 Apple 开发者签名并完成公证。', 'Mac installers are signed with an Apple Developer ID and notarized.'),
+      item('画布工具、节点操作和参考素材入口重新整理，模式按已连接素材启用，提示更简洁。', 'Canvas tools, node actions and reference controls are reorganized, with modes enabled by connected media and more concise hints.'),
+      item('模型选择器统一显示模型标识，长名称和窄窗口下为文字、图标与箭头分别留出空间。', 'Model pickers consistently show model logos and reserve space for text, icons and arrows when names are long or windows are narrow.'),
+      item('图片与视频参数按当前模型提供比例、清晰度、时长和声音选项，预计积分随所选参数更新。', 'Image and video settings offer the ratios, resolutions, durations and audio options supported by the selected model, with estimates following your choices.'),
+      item('设置中的 21 种界面语言覆盖首页、项目、资产、画布和原生菜单，切换后保持一致。', 'The 21 interface languages cover Home, Projects, Assets, the canvas and native menus, staying consistent when switched.'),
     ],
     fixes: [
-      item('修复视频节点在连入素材前只能用文生视频、连入后总被切到全能参考的问题，现在可以先选图生视频、首尾帧等模式再连素材。', 'Fixed video nodes only allowing text-to-video before media was connected and then always switching to omni reference. You can now pick image-to-video, first and last frames or another mode first, then connect the media.'),
+      item('修复切换视频模型后保留不兼容模式或参数、导致无法发送的问题。', 'Fixed incompatible modes or settings remaining after switching video models and preventing submission.'),
+      item('修复退出豆包或 Dola 登录后，节点仍显示对应模型的问题。', 'Fixed nodes continuing to list Doubao or Dola models after signing out.'),
+      item('修复部分图片参考、透明背景和附加选项组合无法提交或预计积分不更新的问题。', 'Fixed some combinations of image references, transparent backgrounds and extra options blocking submission or leaving credit estimates unchanged.'),
+      item('页面或网络断开后停止 Agent 文本推理，减少意外用量；已受理的图片和视频任务仍可继续取回。', 'Agent text inference stops when the page or network disconnects to reduce unintended usage; accepted image and video tasks remain recoverable.'),
+      item('修复部分界面的漏翻文字、节点编辑卡片遮挡和模型名称显示问题。', 'Fixed untranslated text in several views, overlapping node edit cards and model name display issues.'),
     ],
   },
   '3.1.14': {

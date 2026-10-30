@@ -1,6 +1,7 @@
 <template>
   <teleport :to="target ?? 'body'" :disabled="!target">
   <el-card v-show="!!target" class="inpaintPrompt" shadow="never" :bodyStyle="{ padding: '14px 16px 12px' }">
+    <slot name="header" />
     <promptInput v-model="promptModel" v-model:text="prompt" :references="[]" expandable />
     <div class="promptFooter">
       <el-select
@@ -14,18 +15,23 @@
         :noDataText="modelsNeedSignIn ? translate('登录后可选择模型') : translate('暂无可用于局部重绘的图片模型')"
         placement="top-start"
         @visible-change="visible => visible && loadModels().catch(error => showNodeError(error, translate('模型读取失败')))">
-        <template #prefix><icon-sparkles :size="17" /></template>
-        <el-option v-for="item in models" :key="JSON.stringify([item.providerId, item.modelId])" :label="item.label || item.modelId" :value="JSON.stringify([item.providerId, item.modelId])" />
+        <template #prefix><modelIcon :model="selectedModel?.modelId || nodeModelValueId(model)" :size="16" /></template>
+        <el-option v-if="model && !selectedModel" :label="nodeModelValueLabel(model)" :value="model" disabled>
+          <span class="modelOptionContent"><modelIcon :model="nodeModelValueId(model)" :size="16" /><span class="modelOptionText">{{ nodeModelValueLabel(model) }}</span></span>
+        </el-option>
+        <el-option v-for="item in models" :key="JSON.stringify([item.providerId, item.modelId])" :label="item.label || item.modelId" :value="JSON.stringify([item.providerId, item.modelId])">
+          <span class="modelOptionContent"><modelIcon :model="item.modelId" :size="16" /><span class="modelOptionText">{{ item.label || item.modelId }}</span></span>
+        </el-option>
       </el-select>
-      <el-popover trigger="click" placement="top-start" :width="260" :disabled="disabled || generating || !selectedModel" :showArrow="false">
+      <el-popover v-if="!fixedSize" trigger="click" placement="top-start" :width="260" :disabled="disabled || generating || !selectedModel" :showArrow="false">
         <template #reference>
           <el-button class="settingsButton" text size="small" :disabled="disabled || generating || !selectedModel" :aria-label="translate('局部重绘设置')">
-            <span>{{ ratio || translate('比例') }} · {{ size ? sizeTier(size) || translate('自动') : translate('清晰度') }} · {{ translate('1 张') }}</span>
+            <span>{{ fixedSize ? mediaSizeLabel(fixedSize, '', translate('自动')) : `${ratio || translate('比例')} · ${size ? sizeTier(size) || translate('自动') : translate('清晰度')}` }} · {{ translate('1 张') }}</span>
             <icon-chevron-up :size="14" aria-hidden="true" />
           </el-button>
         </template>
         <div class="inpaintSettings nodrag nopan nowheel" @pointerdown.stop @mousedown.stop @dblclick.stop @keydown.stop @wheel.stop>
-          <label>
+          <label v-if="!fixedSize">
             <span>{{ translate('清晰度') }}</span>
             <el-select v-model="size" :disabled="disabled || generating" :aria-label="translate('局部重绘清晰度')">
               <el-option v-for="item in sizeOptions" :key="item" :label="mediaSizeLabel(item, '', translate('自动'))" :value="item" />
@@ -39,10 +45,12 @@
           </label>
         </div>
       </el-popover>
+      <span v-else class="fixedCanvasSize">{{ mediaSizeLabel(fixedSize, '', translate('自动')) }} · {{ translate('1 张') }}</span>
+      <slot name="estimate" />
       <el-button
         class="sendButton"
         :icon="generating ? IconPlayerStop : IconArrowUp"
-        :disabled="!generating && (disabled || !pending && (!prompt.trim() || !selectedModel))"
+        :disabled="!generating && (disabled || !pending && (sendDisabled || !prompt.trim() || !selectedModel))"
         :title="generating ? translate('停止生成') : pending ? translate('继续取回') : translate('重绘')"
         :aria-label="generating ? translate('停止生成') : pending ? translate('继续取回') : translate('重绘')"
         @click="generating ? cancel() : startGeneration()" />
@@ -54,13 +62,15 @@
 <script setup lang="ts">
 import { computed, onMounted, onScopeDispose, ref, watch } from "vue";
 import { ElButton, ElCard, ElOption, ElPopover, ElSelect } from "element-plus";
-import { IconArrowUp, IconChevronUp, IconPlayerStop, IconSparkles } from "@tabler/icons-vue";
+import { IconArrowUp, IconChevronUp, IconPlayerStop } from "@tabler/icons-vue";
+import { modelIcon } from "@miaoimg/model-icons";
 import { translate } from "@miaoimg/i18n/vue";
 import { nodeTools, z } from "../nodeTools";
 import { useNodeAi, type NodeInpaintInput, type NodeMediaModel } from "../nodeAi";
 import { isSignInRequired, showNodeError } from "../showNodeError";
 import promptInput from "./promptInput.vue";
 import { mediaSizeLabel, sizeTier } from "../../../../../../../server/media-size-label";
+import { nodeModelValueId, nodeModelValueLabel } from "../localModelLabel";
 
 const props = defineProps<{
   generate: (input?: NodeInpaintInput, signal?: AbortSignal) => Promise<void>;
@@ -69,6 +79,11 @@ const props = defineProps<{
   pending: boolean;
   disabled?: boolean;
   target?: HTMLElement;
+  maskOnly?: boolean;
+  fixedSize?: string;
+  initialConfig?: { providerId: string; modelId: string; prompt: string; size: string; ratio: string };
+  modelFilter?: (model: NodeMediaModel) => boolean;
+  sendDisabled?: boolean;
 }>();
 // 只有带区域编辑通道的模型才进这个列表：蒙版通道（GPT 图片编辑）或标注通道（Seedream 5.0）。
 // 服务端对没有通道的模型会直接拒绝 edit，所以这里不列出来，界面上也不写解释。
@@ -84,7 +99,7 @@ const modelsLoading = ref(false);
 const modelsNeedSignIn = ref(false);
 const generating = computed(() => props.generating);
 const selectedModel = computed(() => models.value.find(item => JSON.stringify([item.providerId, item.modelId]) === model.value));
-const sizeOptions = computed(() => selectedModel.value?.imageSizes || []);
+const sizeOptions = computed(() => props.fixedSize ? [props.fixedSize] : selectedModel.value?.imageSizes || []);
 const ratioOptions = computed(() => selectedModel.value?.imageRatios || []);
 let modelsRequest: Promise<void> | undefined;
 let disposed = false;
@@ -104,7 +119,17 @@ onMounted(() => loadModels().catch(error => { if (!disposed) showNodeError(error
 onScopeDispose(() => {
   disposed = true;
 });
-defineExpose({ generating, startGeneration });
+const configuration = computed<NodeInpaintInput | undefined>(() => selectedModel.value ? {
+  providerId: selectedModel.value.providerId, modelId: selectedModel.value.modelId, prompt: prompt.value,
+  size: props.fixedSize || size.value, ratio: props.fixedSize ? "" : ratio.value,
+} : undefined);
+watch(() => props.initialConfig, input => {
+  if (!input) return;
+  model.value = JSON.stringify([input.providerId, input.modelId]);
+  size.value = props.fixedSize || input.size; ratio.value = props.fixedSize ? "" : input.ratio;
+  if (prompt.value !== input.prompt) { prompt.value = input.prompt; promptModel.value = input.prompt.split("\n").map(text => [{ type: "Write", text }]); }
+}, { deep: true, immediate: true });
+defineExpose({ generating, startGeneration, configuration });
 
 function loadModels() {
   if (modelsRequest) return modelsRequest;
@@ -112,7 +137,7 @@ function loadModels() {
   modelsRequest = ai.getMediaModels().then(items => {
     if (disposed || generating.value) return;
     // 没有区域编辑通道的图片模型不进列表，避免选了之后只能得到服务端拒绝。
-    models.value = items.filter(item => item.type === "image" && item.regionEdit);
+    models.value = items.filter(item => item.type === "image" && item.regionEdit && (!props.maskOnly || item.regionEdit === "mask") && (!props.modelFilter || props.modelFilter(item)));
     if (!model.value) {
       const first = models.value[0];
       model.value = first ? JSON.stringify([first.providerId, first.modelId]) : "";
@@ -131,14 +156,15 @@ async function startGeneration(signal?: AbortSignal, toolCall = false) {
   signal?.throwIfAborted();
   const choice = selectedModel.value;
   if (disposed || generating.value || props.disabled) throw new Error('节点正在处理');
+  if (!props.pending && props.sendDisabled) throw new Error(translate("请等待预计积分计算完成"));
   if (!props.pending && (!choice || !prompt.value.trim())) throw new Error('请先配置模型、提示词和选区');
   try {
     await props.generate(props.pending ? undefined : {
       providerId: choice!.providerId,
       modelId: choice!.modelId,
       prompt: prompt.value.trim(),
-      size: size.value,
-      ratio: ratio.value,
+      size: props.fixedSize || size.value,
+      ratio: props.fixedSize ? "" : ratio.value,
     }, signal);
   } catch (error) {
     if (toolCall) throw error;
@@ -146,7 +172,7 @@ async function startGeneration(signal?: AbortSignal, toolCall = false) {
   }
 }
 
-function currentConfig() { return { config: { providerId: selectedModel.value?.providerId, modelId: selectedModel.value?.modelId, prompt: prompt.value, size: size.value, ratio: ratio.value, regionEdit: regionEdit.value }, models: models.value }; }
+function currentConfig() { return { config: { providerId: selectedModel.value?.providerId, modelId: selectedModel.value?.modelId, prompt: prompt.value, size: props.fixedSize || size.value, ratio: props.fixedSize ? "" : ratio.value, regionEdit: regionEdit.value }, models: models.value }; }
 nodeTools.register({
   name: 'getInpaintConfig', description: '进入 editImageMarks 的 inpaint 模式后读取局部重绘配置与真实模型能力，仅查询不生成。', parameters: z.strictObject({}),
   async execute() { await loadModels(); return currentConfig(); },
@@ -159,7 +185,7 @@ nodeTools.register({
     await loadModels(); signal?.throwIfAborted();
     const choice = models.value.find(item => item.providerId === args.providerId && item.modelId === args.modelId);
     if (!choice) throw new Error('请选择 getInpaintConfig 返回的模型');
-    if (args.size !== undefined && !choice.imageSizes?.includes(args.size)) throw new Error('当前模型不支持该分辨率');
+    if (args.size !== undefined && (props.fixedSize ? args.size !== props.fixedSize : !choice.imageSizes?.includes(args.size))) throw new Error('当前模型不支持该分辨率');
     if (args.ratio !== undefined && !choice.imageRatios?.includes(args.ratio)) throw new Error('当前模型不支持该比例');
     model.value = JSON.stringify([args.providerId, args.modelId]);
     if (args.size !== undefined) size.value = args.size;

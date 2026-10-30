@@ -243,14 +243,14 @@ function skillFilePath(name, relative?: any) {
   return relative ? `${SKILL_ROOT}/${name}/${relative}` : `${SKILL_ROOT}/${name}/SKILL.md`
 }
 
-export function listInstalledSkills(workspaceFiles, userId) {
+export async function listInstalledSkills(workspaceFiles, userId) {
   const prefix = `${SKILL_ROOT}/`
-  return [...new Set(workspaceFiles.list(userId)
+  return [...new Set((await workspaceFiles.list(userId))
     .filter(entry => entry.path.startsWith(prefix) && entry.path.endsWith('/SKILL.md'))
     .map(entry => entry.path.slice(prefix.length, -'/SKILL.md'.length)))]
 }
 
-export function installSkillPackage({ workspaceFiles, userId, fileName, bytes, force = false }: Record<string, any>) {
+export async function installSkillPackage({ workspaceFiles, userId, fileName, bytes, force = false }: Record<string, any>) {
   const safeName = String(fileName || '')
   if (!safeName || safeName.length > 128 || /[\\/]/.test(safeName)) throw invalid('技能文件名无效')
   if (!bytes?.byteLength) throw invalid('技能文件不能为空')
@@ -264,7 +264,7 @@ export function installSkillPackage({ workspaceFiles, userId, fileName, bytes, f
   if ([...files.keys()].some(path => !path.startsWith(prefix))) throw invalid('技能资源必须位于 SKILL.md 所在目录内')
 
   let frontmatter
-  try { frontmatter = parseFrontmatter(new TextDecoder('utf-8', { fatal: true }).decode(files.get(manifest))) }
+  try { frontmatter = parseFrontmatter(new TextDecoder('utf-8', { fatal: true }).decode((await files.get(manifest)))) }
   catch (error) { if (error?.status) throw error; throw invalid('SKILL.md 内容不是有效的 UTF-8 文本') }
   const name = frontmatter.name
   if (typeof name !== 'string' || !SKILL_NAME_PATTERN.test(name)) throw invalid('SKILL.md 的 name 必须是 1 到 64 个字母、数字、点、下划线或短横线，且以字母或数字开头')
@@ -274,19 +274,19 @@ export function installSkillPackage({ workspaceFiles, userId, fileName, bytes, f
   const version = frontmatter.metadata?.version
 
   // 「已安装」以 SKILL.md 为准：只有引用文件残留的目录算残留，直接覆盖，不当成已有版本。
-  const entries = workspaceFiles.list(userId)
+  const entries = (await workspaceFiles.list(userId))
   const installed = entries.some(entry => entry.path === skillFilePath(name))
-  if (installed && !force) requireNewerVersion(readInstalledSkillVersion(workspaceFiles, userId, name), version, `技能「${name}」`)
+  if (installed && !force) requireNewerVersion((await readInstalledSkillVersion(workspaceFiles, userId, name)), version, `技能「${name}」`)
   const target = `${SKILL_ROOT}/${name}`
   const prepared = [...files].map(([path, bytes]) => ({ path: skillFilePath(name, path.slice(prefix.length)), mime: 'text/markdown', bytes }))
-  const installedFiles = workspaceFiles.replaceTree(userId, target, prepared, {
+  const installedFiles = (await workspaceFiles.replaceTree(userId, target, prepared, {
     expected: entries.filter(entry => entry.path === target || entry.path.startsWith(target + '/')),
-  })
+  }))
   return { name, description, version: typeof version === 'string' ? version : '', files: installedFiles.files, replaced: installed }
 }
 
-function readInstalledSkillVersion(workspaceFiles, userId, name) {
+async function readInstalledSkillVersion(workspaceFiles, userId, name) {
   // bytes 是 Uint8Array，必须过一层 Buffer 才能按 utf8 解码。
-  try { return parseFrontmatter(Buffer.from(workspaceFiles.read(userId, skillFilePath(name)).bytes).toString('utf8')).metadata?.version }
+  try { return parseFrontmatter(Buffer.from((await workspaceFiles.read(userId, skillFilePath(name))).bytes).toString('utf8')).metadata?.version }
   catch { return undefined }
 }
