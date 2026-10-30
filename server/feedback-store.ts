@@ -159,7 +159,7 @@ export async function createFeedbackStore(store: Store) {
       const clause = where.length ? `WHERE ${where.join(' AND ')}` : ''
       const total = Number((await store.get(`SELECT COUNT(*) AS n FROM feedback_issues i LEFT JOIN users u ON u.id=i.user_id ${clause}`, ...args))?.n || 0)
       const rows = (await store.all(`SELECT i.*,u.name AS user_name,u.email AS user_email,${counts} FROM feedback_issues i LEFT JOIN users u ON u.id=i.user_id ${clause} ORDER BY i.admin_unread>0 DESC,i.updated_at DESC LIMIT ? OFFSET ?`, ...args, limit, (page - 1) * limit))
-      const stats = (await store.get("SELECT SUM(status='open') AS open,SUM(status='closed') AS closed,SUM(admin_unread>0) AS unread FROM feedback_issues")) || {}
+      const stats = (await store.get("SELECT SUM(CASE WHEN status='open' THEN 1 ELSE 0 END) AS open,SUM(CASE WHEN status='closed' THEN 1 ELSE 0 END) AS closed,SUM(CASE WHEN admin_unread>0 THEN 1 ELSE 0 END) AS unread FROM feedback_issues")) || {}
       return { items: rows.map(row => summary(row, true)), total, page, limit, stats: { open: Number(stats.open || 0), closed: Number(stats.closed || 0), unread: Number(stats.unread || 0) } }
     },
     async getForAdmin(id: string) {

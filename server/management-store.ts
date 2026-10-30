@@ -2312,8 +2312,8 @@ export class ManagementStore {
   async reconciliation(filters: Record<string, any> = {}) {
     const records = (await this.records(filters, true))
     const summary = (await this.get("SELECT COUNT(*) requests, COALESCE(SUM(CASE WHEN provider IS NOT NULL AND provider<>'' THEN 1 ELSE 0 END),0) providerRows, COALESCE(SUM(CASE WHEN upstream_request_id IS NOT NULL AND upstream_request_id<>'' THEN 1 ELSE 0 END),0) linkedRows, COALESCE(SUM(CASE WHEN usage IS NOT NULL AND usage<>'' THEN 1 ELSE 0 END),0) usageRows, COALESCE(SUM(CASE WHEN status='succeeded' THEN charged_points ELSE 0 END),0) chargedPoints FROM generations"))
-    const costRow=(await this.get("SELECT COALESCE(SUM(retained_cost),0) upstreamCostRmb, SUM(CASE WHEN retained_cost IS NULL THEN 1 ELSE 0 END) missingCostRows, COALESCE(SUM(charged_points),0) chargedAllPoints, COALESCE(SUM(CASE WHEN retained_cost IS NOT NULL THEN charged_points ELSE 0 END),0) costMatchedPoints FROM "+RETAINED_COST_ROWS))
-    return { ...records, reconciliation: { ...summary, unlinkedRows: Number(summary.providerRows) - Number(summary.linkedRows), upstreamCostRmb: Math.round(Number(costRow.upstreamCostRmb) * 10000) / 10000, missingCostRows: Number(costRow.missingCostRows), chargedAllPoints: Math.round(Number(costRow.chargedAllPoints) * 100) / 100, marginRmb: Math.round((Number(costRow.costMatchedPoints) * Number(process.env.ZPAY_POINT_PRICE_CENTS || 100) / 100 - Number(costRow.upstreamCostRmb)) * 10000) / 10000, scope: '全库关联统计不随列表筛选变化；成功实扣单列统计。成本按价目与实测单价推算；差额仅将有成本留档请求的实扣积分按当前充值兑换价折元减同批推算成本，缺成本及文本成本未纳入，并非支付收入或账单毛利。' } }
+    const costRow=(await this.get("SELECT COALESCE(SUM(retained_cost),0) upstreamCostRmb, SUM(CASE WHEN retained_cost IS NULL THEN 1 ELSE 0 END) missingCostRows, COALESCE(SUM(charged_points),0) chargedAllPoints, COALESCE(SUM(CASE WHEN retained_cost IS NOT NULL THEN charged_points ELSE 0 END),0) costMatchedPoints, SUM(CASE WHEN retained_cost IS NOT NULL THEN 1 ELSE 0 END) costMatchedRows FROM "+RETAINED_COST_ROWS))
+    return { ...records, reconciliation: { ...summary, unlinkedRows: Number(summary.providerRows) - Number(summary.linkedRows), upstreamCostRmb: Number(costRow.costMatchedRows) > 0 ? Math.round(Number(costRow.upstreamCostRmb) * 10000) / 10000 : null, missingCostRows: Number(costRow.missingCostRows), chargedAllPoints: Math.round(Number(costRow.chargedAllPoints) * 100) / 100, marginRmb: Number(costRow.costMatchedRows) > 0 ? Math.round((Number(costRow.costMatchedPoints) * Number(process.env.ZPAY_POINT_PRICE_CENTS || 100) / 100 - Number(costRow.upstreamCostRmb)) * 10000) / 10000 : null, scope: '全库关联统计不随列表筛选变化；成功实扣单列统计。成本按价目与实测单价推算；差额仅将有成本留档请求的实扣积分按当前充值兑换价折元减同批推算成本，缺成本及文本成本未纳入，并非支付收入或账单毛利。' } }
   }
   async userStats(userId, { from = '', to = '' }: Record<string, any> = {}) {
     if (!(await this.user(userId))) throw failure('用户不存在', 404)
@@ -2353,7 +2353,7 @@ export class ManagementStore {
       disabledUsers: (await this.get("SELECT COUNT(*) n FROM users WHERE status='disabled'")).n,
       emailVerifiedUsers: (await this.get("SELECT COUNT(*) n FROM users WHERE email_verified=1")).n,
       ...stats,
-      upstreamCostRmb: cost,
+      upstreamCostRmb: Number(money.matchedRows) > 0 ? cost : null,
       ledgerConsumedPoints: (await this.generationCreditSummary()).spent,
       reservedUserPoints: Math.round(Number(holds.points)*100)/100,
       textCharges: (await this.textChargeSummary()),
@@ -2361,7 +2361,7 @@ export class ManagementStore {
       shortfallPoints: Math.round(Number(shortfalls.points)*100)/100,
       chargedPointsRmb: charged,
       succeededChargedPointsRmb: Math.round(Number(stats.succeededPoints || 0) * 100) / 100,
-      marginRmb: Math.round((Number(money.matchedPoints) * Number(process.env.ZPAY_POINT_PRICE_CENTS || 100) / 100 - cost) * 10000) / 10000,
+      marginRmb: Number(money.matchedRows) > 0 ? Math.round((Number(money.matchedPoints) * Number(process.env.ZPAY_POINT_PRICE_CENTS || 100) / 100 - cost) * 10000) / 10000 : null,
       costMatchedRows: Number(money.matchedRows),
       costMatchedPoints: Number(money.matchedPoints),
       pointPriceRmb: Number(process.env.ZPAY_POINT_PRICE_CENTS || 100) / 100,
