@@ -816,7 +816,7 @@ export async function submitQueuedVideo(job, { management, env = process.env, fe
       lastUpstreamRequest = upstreamRequest
       signal?.throwIfAborted()
       task = request.model.provider === 'suihe'
-        ? await createSuiheTask(upstreamRequest, { env, fetchImpl: dispatchFetch, signal, subKey: suiheAssetSubKey(job.user_id) })
+        ? await createSuiheTask(upstreamRequest, { env, fetchImpl: dispatchFetch, discoveryFetch: fetchImpl, signal, subKey: suiheAssetSubKey(job.user_id) })
         : request.model.provider === 'ark'
         ? await createArkVideoTask(upstreamRequest, { env, fetchImpl: dispatchFetch, signal })
         : request.model.provider === 'metaso'
