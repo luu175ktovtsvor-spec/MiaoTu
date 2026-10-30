@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process'
 import { randomBytes, X509Certificate } from 'node:crypto'
 import { access, chmod, copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
-import { basename, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const desktop = fileURLToPath(new URL('../', import.meta.url))
@@ -25,6 +25,24 @@ const extractMessages = {
   codesign_extract_interrupted: 'Certificate extraction was interrupted or timed out',
   codesign_extract_unknown_failure: 'Certificate extraction failed; raw tool output omitted',
 } as const
+const signingMessages = {
+  codesign_keychain_interaction_denied: 'codesign could not access the signing identity without interaction',
+  codesign_keychain_internal_error: 'codesign reported an internal keychain signing error',
+  codesign_identity_or_chain_unavailable: 'codesign could not use the identity or its certificate chain',
+  codesign_timestamp_unavailable: 'codesign could not obtain a trusted timestamp',
+  codesign_signature_invalid: 'codesign reported invalid or incomplete signed resources',
+  codesign_entitlements_invalid: 'codesign rejected the entitlements',
+  codesign_bundle_format_invalid: 'codesign rejected a bundle or code object format',
+  codesign_extended_attributes_rejected: 'codesign rejected resource-fork or Finder metadata',
+  codesign_command_failed: 'codesign failed; raw command and tool output omitted',
+  notary_signature_preflight_failed: 'electron-notarize rejected the existing code signature before submission',
+  notary_archive_failed: 'electron-notarize could not create its submission archive',
+  notary_submit_failed: 'Apple notarization submission or processing failed',
+  notary_staple_failed: 'electron-notarize could not staple the returned ticket',
+  notary_tool_unavailable: 'The notarization command-line tool was unavailable',
+} as const
+type BuildBoundary = 'signAsync' | 'builder-notarization' | 'afterSign' | 'verified'
+const buildApplications = new Map<string, { app: string; boundary: BuildBoundary }>()
 const fail = (code: string): never => { throw new SigningFailure(code) }
 let stage = 'initialization'
 let proofWrites = Promise.resolve()
@@ -200,12 +218,53 @@ export async function withDesktopBuildDirectory<T>(action: () => Promise<T>): Pr
   try { return await action() } finally { process.chdir(previous) }
 }
 
+export function classifyDependencySigningError(error: unknown) {
+  const value = error as { message?: unknown; cmd?: unknown; stderr?: unknown; code?: unknown; signal?: unknown }
+  const raw = typeof value?.message === 'string' ? value.message : ''
+  const commandLine = typeof value?.cmd === 'string' ? value.cmd : raw.startsWith('Command failed: ') ? raw.split('\n', 1)[0].slice(16) : ''
+  // The command is inspected only for a fixed tool/operation. Do not classify
+  // credential or path text in its arguments as a diagnostic cause.
+  const body = (raw.startsWith('Command failed: ') ? raw.includes('\n') ? raw.slice(raw.indexOf('\n') + 1) : '' : raw)
+    + (typeof value?.stderr === 'string' ? '\n' + value.stderr : '')
+  const isCodesign = /^(?:\/usr\/bin\/)?codesign(?:\s|$)/.test(commandLine)
+  let toolCode: keyof typeof signingMessages | undefined, operation: string | undefined
+  let exitCode = typeof value?.code === 'number' && Number.isInteger(value.code) && value.code >= 0 && value.code <= 255 ? value.code : undefined
+  if (/^Failed to staple your application with code:/.test(body)) {
+    toolCode = 'notary_staple_failed'; operation = 'staple'
+  } else if (/^Failed to zip application, exited with code:/.test(body)) { toolCode = 'notary_archive_failed'; operation = 'archive' }
+  else if (/^Failed to notarize via notarytool/.test(body)) { toolCode = 'notary_submit_failed'; operation = 'notary-submit' }
+  else if (/^notarytool is not available/.test(body)) { toolCode = 'notary_tool_unavailable'; operation = 'notary-submit' }
+  else if (/^Failed to (?:display codesign info on|codesign) your application with code:/.test(body)) { toolCode = 'notary_signature_preflight_failed'; operation = 'notary-signature-check' }
+  else if (isCodesign) {
+    operation = /(?:^|\s)--sign(?:=|\s)|(?:^|\s)-s(?:\s|$)/.test(commandLine) ? 'sign'
+      : /(?:^|\s)--verify(?:\s|$)|(?:^|\s)-v{1,4}(?:\s|$)/.test(commandLine) ? 'verify' : 'display'
+    toolCode = /User interaction is not allowed|CSSMERR_CSP_NO_USER_INTERACTION|errSecInteractionNotAllowed/i.test(body) ? 'codesign_keychain_interaction_denied'
+      : /errSecInternalComponent/.test(body) ? 'codesign_keychain_internal_error'
+        : /specified item could not be found in the keychain|CSSMERR_TP_NOT_TRUSTED|unable to build chain to self-signed root/i.test(body) ? 'codesign_identity_or_chain_unavailable'
+          : /timestamp (?:service|server)|unable to obtain (?:a )?timestamp|timestamp.*(?:not available|unavailable)|timestamp request.*failed/i.test(body) ? 'codesign_timestamp_unavailable'
+            : /resource fork, Finder information|similar detritus not allowed/i.test(body) ? 'codesign_extended_attributes_rejected'
+              : /invalid.*entitlements|entitlements.*(?:invalid|not permitted|malformed)/i.test(body) ? 'codesign_entitlements_invalid'
+                : /bundle format.*(?:unrecognized|invalid)|not a bundle/i.test(body) ? 'codesign_bundle_format_invalid'
+                  : /not signed at all|code object is not signed|sealed resource.*(?:missing|invalid)|unsealed contents|code or signature.*modified|invalid signature/i.test(body) ? 'codesign_signature_invalid'
+                    : 'codesign_command_failed'
+  }
+  if (!toolCode) return undefined
+  if (exitCode === undefined) {
+    const code = Number(/^Failed to (?:staple your application with code:|zip application, exited with code:|(?:display codesign info on|codesign) your application with code:)\s*(\d{1,3})(?=\s|$)/.exec(body)?.[1])
+    if (Number.isInteger(code) && code >= 0 && code <= 255) exitCode = code
+  }
+  const signal = typeof value?.signal === 'string' && ['SIGTERM', 'SIGKILL', 'SIGABRT', 'SIGINT'].includes(value.signal) ? value.signal : undefined
+  const status = toolCode === 'notary_submit_failed' ? /"status"\s*:\s*"(Accepted|Invalid|Rejected|In Progress)"/.exec(body)?.[1] : undefined
+  return { toolCode, operation, ...(exitCode === undefined ? {} : { exitCode }), ...(signal ? { signal } : {}), ...(status ? { notaryStatus: status } : {}), message: signingMessages[toolCode] }
+}
+
 export function safeSigningDiagnostic(error: unknown) {
   const value = error as { name?: unknown; code?: unknown; message?: unknown; errors?: unknown }
   const names = new Set(['Error', 'TypeError', 'RangeError', 'SyntaxError', 'AggregateError', 'ValidationError', 'InvalidConfigurationError', 'SigningFailure', 'ExecError', 'TimeoutError', 'AbortError'])
   const codes = new Set(['ERR_ELECTRON_BUILDER_INVALID_CONFIGURATION', 'ERR_MODULE_NOT_FOUND', 'MODULE_NOT_FOUND', 'ERR_REQUIRE_ESM', 'ERR_REQUIRE_ASYNC_MODULE', 'ERR_INVALID_ARG_TYPE', 'ERR_INVALID_ARG_VALUE', 'ERR_PACKAGE_PATH_NOT_EXPORTED', 'ERR_UNKNOWN_FILE_EXTENSION', 'ENOENT', 'EACCES', 'EPERM', 'ENOTDIR', 'ENOSPC', 'ETIMEDOUT', 'ECONNRESET', 'ENOEXEC', 'ENOTFOUND'])
   const type = typeof value?.name === 'string' && names.has(value.name) ? value.name : 'Error'
-  const code = error instanceof SigningFailure ? error.code : typeof value?.code === 'string' && codes.has(value.code) ? value.code : undefined
+  const dependency = error instanceof SigningFailure ? undefined : classifyDependencySigningError(error)
+  const code = error instanceof SigningFailure ? error.code : typeof value?.code === 'string' && codes.has(value.code) ? value.code : dependency?.toolCode
   const raw = typeof value?.message === 'string' ? value.message : ''
   // Never copy a raw message, argv, schema data/params, cause or stack. These
   // exact schema paths and constant messages are safe even for tool failures.
@@ -213,6 +272,7 @@ export function safeSigningDiagnostic(error: unknown) {
   const schemaPaths = new Set<string>()
   let message = 'Unclassified packaging failure; raw tool output omitted'
   if (error instanceof SigningFailure) message = error.tool ? extractMessages[error.tool.toolCode] : 'Controlled release verification failed'
+  else if (dependency) message = dependency.message
   else if (/Hook module path[\s\S]*resolves outside[\s\S]*workspace root/.test(raw)) {
     message = 'Configured build hook resolves outside the desktop workspace'
     if (raw.includes('windows-resources.js')) schemaPaths.add('/afterPack')
@@ -228,7 +288,37 @@ export function safeSigningDiagnostic(error: unknown) {
     const path = typeof item?.instancePath === 'string' ? item.instancePath : ''
     if (knownPaths.some(known => path === '/' + known.replaceAll('.', '/'))) schemaPaths.add(path)
   }
-  return { type, ...(code ? { code } : {}), ...(schemaPaths.size ? { schemaPaths: [...schemaPaths] } : {}), ...(error instanceof SigningFailure && error.tool ? error.tool : {}), message }
+  return { type, ...(code ? { code } : {}), ...(schemaPaths.size ? { schemaPaths: [...schemaPaths] } : {}), ...(dependency || {}), ...(error instanceof SigningFailure && error.tool ? error.tool : {}), message }
+}
+
+export async function observedAppSigning(architecture: string, app: string, sign: () => Promise<void>, emit: (check: Record<string, unknown>) => Promise<void> = record) {
+  const candidate = resolve(app)
+  buildApplications.set(architecture, { app: candidate, boundary: 'signAsync' })
+  await emit({ stage: 'build', checkpoint: 'signAsync-start', architecture, at: new Date().toISOString() })
+  try { await sign() }
+  catch (error) {
+    await emit({ stage: 'build', checkpoint: 'signAsync-failed', architecture, at: new Date().toISOString(), diagnostic: safeSigningDiagnostic(error) }).catch(() => {})
+    throw error
+  }
+  buildApplications.set(architecture, { app: candidate, boundary: 'builder-notarization' })
+  await emit({ stage: 'build', checkpoint: 'signAsync-complete-await-builder-notarization', architecture, at: new Date().toISOString() })
+}
+
+export async function readOnlySignatureState(app: string, team: string, inspect = command) {
+  const safePath = resolve(app).startsWith(join(desktop, 'release') + sep) && app.endsWith('.app')
+  if (!safePath) return { inspected: false, reason: 'outside_candidate_app_directory' }
+  let signatureVerified = false, details = ''
+  try { await inspect('/usr/bin/codesign', ['--verify', '--deep', '--strict', '--verbose=2', app], 'failure_readonly_signature', { timeout: 30_000 }); signatureVerified = true } catch { /* status only */ }
+  try { const result = await inspect('/usr/bin/codesign', ['--display', '--verbose=4', app], 'failure_readonly_signature_details', { timeout: 15_000 }); details = result.stdout + result.stderr } catch { /* status only */ }
+  return { inspected: true, signatureVerified, detailsAvailable: Boolean(details), developerIdAuthority: /^Authority=Developer ID Application:/m.test(details), expectedTeam: Boolean(team) && /^TeamIdentifier=(\S+)$/m.exec(details)?.[1] === team, hardenedRuntime: /flags=.*\(.*runtime.*\)/.test(details), timestamp: /^Timestamp=\S/m.test(details) }
+}
+
+async function recordFailedBuildState() {
+  const state = await readState()
+  for (const [architecture, context] of buildApplications) if (context.boundary !== 'verified') {
+    const signature = await readOnlySignatureState(context.app, state.team || '')
+    await record({ stage: 'build', checkpoint: 'failure-readonly-signature-state', architecture, boundary: context.boundary, ...signature })
+  }
 }
 
 export function assertVerifiedBuildProof(value: Proof, commit: string, certificateSha1: string) {
@@ -269,10 +359,18 @@ async function build() {
   const signed = new Set<string>()
   await record({ stage: 'build', builderWorkingDirectory: 'desktop', relativeHooksResolveFromProject: true })
   await withDesktopBuildDirectory(() => packageApp({ projectDir: desktop, publish: 'never', targets: Platform.MAC.createTarget(['dmg', 'zip'], Arch.arm64, Arch.x64), config: signedBuilderConfig(state.sha1,
-    async options => { if (options.keychain !== state.keychain || options.identity !== state.sha1) fail('builder_signing_identity_changed'); await signAsync({ ...options, identity: state.sha1, keychain: state.keychain, identityValidation: false }) },
+    async options => {
+      if (options.keychain !== state.keychain || options.identity !== state.sha1) fail('builder_signing_identity_changed')
+      const architecture = architectures.find(arch => basename(dirname(options.app)) === arch.directory)?.binary || 'unknown'
+      await observedAppSigning(architecture, options.app, () => signAsync({ ...options, identity: state.sha1, keychain: state.keychain, identityValidation: false }))
+    },
     async context => {
       const architecture = context.arch === Arch.arm64 ? 'arm64' : context.arch === Arch.x64 ? 'x86_64' : fail('unexpected_packaging_architecture')
-      await verifyApplication(join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`), architecture, `before-archive-${architecture}`)
+      const app = join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`)
+      buildApplications.set(architecture, { app, boundary: 'afterSign' })
+      await record({ stage: 'build', checkpoint: 'afterSign-entered-builder-notarization-returned', architecture, at: new Date().toISOString() })
+      await verifyApplication(app, architecture, `before-archive-${architecture}`)
+      buildApplications.set(architecture, { app, boundary: 'verified' })
       signed.add(architecture)
     }) }))
   if (signed.size !== 2) fail('both_apps_must_pass_before_archive_hook')
@@ -398,6 +496,7 @@ async function main(action: string) {
     else fail('unknown_signing_stage')
     if (action !== 'proof') { const value = await proof(); value.stages.push(action); await mkdir(paths().proofDirectory, { recursive: true }); await writeFile(paths().proof, JSON.stringify(value, null, 2) + '\n') }
   } catch (error) {
+    if (action === 'build') await recordFailedBuildState().catch(() => {})
     const diagnostic = safeSigningDiagnostic(error)
     const value = preserveFirstSigningFailure(await proof(), { stage, code: diagnostic.code || 'signing_or_packaging_failed', diagnostic })
     await mkdir(paths().proofDirectory, { recursive: true }); await writeFile(paths().proof, JSON.stringify(value, null, 2) + '\n')
