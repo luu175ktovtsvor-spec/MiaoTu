@@ -79,8 +79,10 @@ body[data-miaoimg-settings-ui] {
   --el-font-size-base:calc(14px * var(--canvas-font-scale,1));
 }
 
-html[data-client-scheme="light"] body[data-miaoimg-canvas-ui],
-html[data-client-scheme="light"] body[data-miaoimg-settings-ui] {
+/* Preserve the existing custom-background treatment. Standard light appearance
+   below inherits the shared client palette instead of maintaining another copy. */
+html[data-client-scheme="light"][data-client-appearance="custom"] body[data-miaoimg-canvas-ui],
+html[data-client-scheme="light"][data-client-appearance="custom"] body[data-miaoimg-settings-ui] {
   --color-abyss:#f7f7f7;
   --color-canvas:#f5f5f5;
   --color-surface:#ffffff;
@@ -137,6 +139,78 @@ html[data-client-scheme="light"] body[data-miaoimg-settings-ui] {
   --canvas-accent-ink:#ffffff;
   --canvas-node-border:#e3e3e3;
   --canvas-node-border-selected:#8a8a8a;
+}
+
+html[data-client-scheme="light"]:not([data-client-appearance="custom"]) body[data-miaoimg-canvas-ui],
+html[data-client-scheme="light"]:not([data-client-appearance="custom"]) body[data-miaoimg-settings-ui] {
+  --color-abyss:inherit;
+  --color-canvas:inherit;
+  --color-surface:inherit;
+  --color-elevate:inherit;
+  --color-overlay:inherit;
+  --color-ink:inherit;
+  --color-body:inherit;
+  --color-muted:inherit;
+  --color-faint:inherit;
+  --color-line:inherit;
+  --color-line-strong:inherit;
+  --color-hover:inherit;
+  --color-soft:inherit;
+  --color-grid:inherit;
+  --canvas-bg:var(--color-canvas);
+  --canvas-surface:var(--color-surface);
+  --canvas-node:var(--color-surface);
+  --canvas-field:var(--color-abyss);
+  --canvas-line:var(--color-line);
+  --canvas-hover-line:var(--color-line-strong);
+  --canvas-text:var(--color-ink);
+  --canvas-body:var(--color-body);
+  --canvas-muted:var(--color-muted);
+  --canvas-faint:var(--color-faint);
+  --canvas-soft:var(--color-soft);
+  --canvas-hover:var(--color-hover);
+  --canvas-group-fill:rgba(0,0,0,.035);
+  --canvas-group-border:rgba(0,0,0,.10);
+  --canvas-shadow:0 2px 5px rgba(0,0,0,.08);
+  --canvas-backdrop:rgba(0,0,0,.34);
+  --canvas-panel-paint:var(--color-surface);
+  --canvas-node-paint:var(--color-surface);
+  --miaoimg-glass-node:var(--color-surface);
+  --miaoimg-glass-panel:var(--color-surface);
+  --miaoimg-glass-line:var(--color-line);
+  --miaoimg-canvas-grid:var(--color-grid);
+  --el-fill-color:var(--color-elevate);
+  --el-fill-color-light:var(--color-elevate);
+  --el-fill-color-lighter:var(--color-abyss);
+  --el-fill-color-extra-light:var(--color-soft);
+  --el-fill-color-dark:color-mix(in srgb,var(--color-ink) 10%,var(--color-surface));
+  --el-fill-color-darker:color-mix(in srgb,var(--color-ink) 14%,var(--color-surface));
+  --el-border-color:var(--color-line);
+  --el-border-color-light:var(--color-line);
+  --el-border-color-lighter:color-mix(in srgb,var(--color-line) 75%,var(--color-surface));
+  --el-border-color-dark:var(--color-line-strong);
+  --el-border-color-darker:var(--color-line-strong);
+  --el-border-color-extra-light:color-mix(in srgb,var(--color-line) 55%,var(--color-surface));
+  --el-color-primary:var(--color-accent);
+  --el-color-primary-light-3:color-mix(in srgb,var(--color-accent) 72%,var(--color-surface));
+  --el-color-primary-light-5:color-mix(in srgb,var(--color-accent) 52%,var(--color-surface));
+  --el-color-primary-light-7:color-mix(in srgb,var(--color-accent) 32%,var(--color-surface));
+  --el-color-primary-light-8:color-mix(in srgb,var(--color-accent) 22%,var(--color-surface));
+  --el-color-primary-light-9:color-mix(in srgb,var(--color-accent) 8%,transparent);
+  --el-color-primary-dark-2:color-mix(in srgb,var(--color-accent) 82%,var(--color-ink));
+  --el-color-warning:var(--canvas-text);
+  --el-color-warning-light-3:color-mix(in srgb,var(--canvas-text) 72%,var(--canvas-surface));
+  --el-color-warning-light-5:color-mix(in srgb,var(--canvas-text) 52%,var(--canvas-surface));
+  --el-color-warning-light-7:color-mix(in srgb,var(--canvas-text) 32%,var(--canvas-surface));
+  --el-color-warning-light-8:color-mix(in srgb,var(--canvas-text) 22%,var(--canvas-surface));
+  --el-color-warning-light-9:var(--color-soft);
+  --el-color-warning-dark-2:color-mix(in srgb,var(--canvas-text) 82%,#000000);
+  --canvas-accent-ink:var(--color-accent-ink);
+  --canvas-node-border:var(--color-line);
+  --canvas-node-border-selected:var(--color-line-strong);
+}
+html[data-client-scheme="light"]:not([data-client-appearance="custom"]) body[data-miaoimg-canvas-ui] .miaoimgApp .vue-flow__edge.selected .vue-flow__edge-path {
+  stroke:var(--el-color-primary);
 }
 body[data-miaoimg-canvas-ui] .miaoimgApp {
   background: var(--canvas-bg);
@@ -458,17 +532,17 @@ body[data-miaoimg-canvas-ui] .el-tag { --el-tag-bg-color: var(--canvas-soft); --
 body[data-miaoimg-canvas-ui] .el-card { --el-card-bg-color: var(--canvas-surface); --el-card-border-color: var(--canvas-line); }
 
 /* Agent: one outer panel, quiet message surfaces, one rounded composer. */
-body[data-miaoimg-canvas-ui] .floatingAgent { border-radius: 18px; overflow: hidden; }
+body[data-miaoimg-canvas-ui] #agentPanel.floatingAgent:not(.docked) { border: 1px solid var(--canvas-line); border-radius: 28px; overflow: hidden; box-shadow: 0 4px 10px rgb(0 0 0 / .1); }
 body[data-miaoimg-canvas-ui] .floatingAgent.docked { border-radius: 18px; }
 body[data-miaoimg-canvas-ui] .floatingAgent :is(.agent,.agentConversation,.messageViewport,.agentMenu,.messageList) { background: transparent; }
-body[data-miaoimg-canvas-ui] .floatingAgent .agentMenu { border-bottom: 0; padding: 12px 14px; }
-body[data-miaoimg-canvas-ui] .floatingAgent .messageInput { margin: 10px 12px 12px; border: 1px solid var(--canvas-line); border-radius: 14px; background: var(--canvas-field); box-shadow: none; }
+body[data-miaoimg-canvas-ui] .floatingAgent .agentMenu { height: 52px; box-sizing: border-box; border-bottom: 0; padding: 12px; }
+body[data-miaoimg-canvas-ui] .floatingAgent .messageInput { width: calc(100% - 16px); margin: 4px 8px 8px; border: 1px solid var(--canvas-line); border-radius: 20px; background: var(--canvas-surface); box-shadow: 0 4px 5px rgb(0 0 0 / .04); }
 body[data-miaoimg-canvas-ui] .floatingAgent .messageInput:focus-within { border-color: color-mix(in srgb,var(--el-color-primary) 40%,transparent); }
 body[data-miaoimg-canvas-ui] .floatingAgent :is(.senderEditor,.senderActions) { background: transparent; border: 0; }
 body[data-miaoimg-canvas-ui] .floatingAgent :is(.messageContent,.messageText) { color: var(--color-ink); }
 body[data-miaoimg-canvas-ui] .floatingAgent .userMessage .messageContent { padding: 0; border-radius: 0; background: transparent; }
-body[data-miaoimg-canvas-ui] .floatingAgent .welcomeSuggestion { border: 1px solid var(--canvas-line); border-radius: 12px; background: var(--color-soft); }
-body[data-miaoimg-canvas-ui] .floatingAgent .welcomeSuggestion:hover { border-color: var(--canvas-hover-line); background: var(--color-hover); }
+body[data-miaoimg-canvas-ui] .floatingAgent .composerSuggestion { background: var(--canvas-soft); }
+body[data-miaoimg-canvas-ui] .floatingAgent .composerSuggestion:hover:not(:disabled) { background: var(--canvas-hover); }
 body[data-miaoimg-canvas-ui] :is(.toolCall,.questionCard,.attachmentList,.mentionPopup,.subAgentMenu,.agentContextPopover) { border-color: var(--canvas-line); border-radius: 12px; background: var(--canvas-surface); color: var(--color-body); }
 body[data-miaoimg-canvas-ui] :is(.toolData.toolPlain,.sourceEditor,.textPreview pre,.messageText pre) { border: 1px solid var(--canvas-line); border-radius: 10px; background: var(--canvas-field); }
 body[data-miaoimg-canvas-ui] :is(.questionOptions button,.mentionItem,.skillItem,.historyItem,.assetEntry) { border-radius: 10px; }
@@ -517,7 +591,7 @@ body[data-miaoimg-canvas-ui] ::-webkit-scrollbar-track { background: transparent
   body[data-miaoimg-canvas-ui] .nodeSkeleton .titleBar .nodeActions { visibility: visible; }
   body[data-miaoimg-canvas-ui] .canvasToolbarCard { border-radius: 12px; }
   body[data-miaoimg-canvas-ui] .canvasMenu { border-radius: 12px; }
-  body[data-miaoimg-canvas-ui] .floatingAgent { border-radius: 16px; }
+  body[data-miaoimg-canvas-ui] #agentPanel.floatingAgent:not(.docked) { border-radius: 16px; }
   body[data-miaoimg-canvas-ui] .settingsDialog .sidebar { border-inline-end: 0; border-bottom: 1px solid var(--color-hover); }
   body[data-miaoimg-canvas-ui] .nodeSkeleton.emptyGeneration .floatingSlot.bottomSlot.mobileSheet {
     position: fixed !important;
@@ -542,6 +616,7 @@ body[data-miaoimg-canvas-ui] ::-webkit-scrollbar-track { background: transparent
 body[data-miaoimg-canvas-ui] .floatingAgent .messageInput:focus-within { outline: none; }
 body[data-miaoimg-canvas-ui] .floatingAgent .sendButton { background: var(--el-color-primary); color: var(--canvas-accent-ink); border-radius: 999px; }
 body[data-miaoimg-canvas-ui] .floatingAgent .sendButton:disabled { background: #464646; color: #a3a3a3; }
+html[data-client-scheme="light"] body[data-miaoimg-canvas-ui] .floatingAgent .sendButton:disabled { background: var(--el-fill-color-dark); color: var(--el-text-color-placeholder); }
 body[data-miaoimg-canvas-ui] .miaoimgApp .groupNode.selected { border-color: var(--el-color-primary); }
 .studio-shell.studio-app { --studio-warm: var(--color-accent); --studio-paper: var(--color-ink); --studio-muted: var(--color-muted); --studio-line: var(--color-line); }
 .studio-shell.studio-app .studio-lang button[aria-pressed="true"] { background: var(--color-accent); color: var(--color-accent-ink); }

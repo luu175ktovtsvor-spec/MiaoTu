@@ -5,6 +5,7 @@ import { hasImageLayerPricing, imageLayerDimensions, hasPngAlphaChannel } from '
 import { localizeErrorResponse } from './i18n.ts'
 import { cloudWorkspaceStorageEnabled } from './cloud-storage-policy.ts'
 import { createDesktopMedia } from './desktop-media.ts'
+import { ShowcaseContent } from './showcase-content.ts'
 import { proxyVideoContent } from './video-content-proxy.ts'
 import { IMAGE_PROXY_MAX_BYTES, isAllowedImageProxyUrl, proxyImage } from './image-content-proxy.ts'
 import { isWorkspaceRequest } from './canvas-document.ts'
@@ -78,16 +79,18 @@ const DEFAULT_ARK_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3'
 const DEFAULT_YUNSHU_BASE_URL = 'https://api.zzyppz.cn/v1'
 const MAX_BODY_BYTES = 200 * 1024 * 1024
 const SMALL_BODY_BYTES = 256 * 1024
-// The web build emits the reviewed showcase catalog and prompt shards into
-// web/dist. Keep this path configurable for source checkouts and alternate
-// deployment layouts; media itself remains on the public static asset route.
-const showcaseRoot = process.env.OIP_SHOWCASE_ROOT || join(process.cwd(), 'web', 'dist')
 const showcasePublicOrigin = String(
   process.env.OIP_PUBLIC_ORIGIN
     || String(process.env.OIP_PUBLIC_ORIGINS || '').split(',')[0]
     || `http://127.0.0.1:${process.env.OIP_WEB_PORT || '4173'}`
     || '',
 ).trim().replace(/\/$/, '')
+const showcaseContent = new ShowcaseContent({
+  directory: join(process.env.OIP_DATA_DIR || '.oip/runtime-data', 'catalog', 'showcase'),
+  fetchFile: (path, signal) => fetch(new URL(path, showcasePublicOrigin), { signal, redirect: 'error' }),
+})
+const showcaseRoot = (metadataOnly = false) => metadataOnly ? showcaseContent.catalog() : showcaseContent.searchCatalog()
+const archiveTranslations = () => showcaseContent.archiveTranslations()
 const showcaseAssetFetch = async (path, signal) => {
   if (!showcasePublicOrigin) throw Object.assign(new Error('精选媒体地址未配置'), { status: 503 })
   return fetch(new URL(String(path || '/'), showcasePublicOrigin), {
@@ -117,7 +120,7 @@ workspaceFiles.userMutationGuard = desktopMedia.assertWorkspaceMutation
 workspaceFiles.userListFilter = desktopMedia.filterWorkspaceEntries
 const probeReferenceMedia = createReferenceMediaProbe({ workspaceFiles, secret: async () => (await management.referenceSecret()), publicOrigin: process.env.OIP_PUBLIC_ORIGIN })
 const materializeReference = createReferenceMaterializer({ workspaceFiles, secret: async () => (await management.referenceSecret()), publicOrigin: process.env.OIP_PUBLIC_ORIGIN })
-const mcpApi = createMcpApi({ management, workspaceFiles, showcaseRoot, showcaseAssetFetch })
+const mcpApi = createMcpApi({ management, workspaceFiles, showcaseRoot, archiveTranslations, showcaseAssetFetch })
 const aiCompat = createAiCompat({ management, workspaceFiles })
 const shortTextApi = createShortTextApi({ management, workspaceFiles })
 

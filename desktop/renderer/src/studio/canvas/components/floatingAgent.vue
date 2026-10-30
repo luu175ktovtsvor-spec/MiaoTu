@@ -59,9 +59,9 @@ function workspaceBounds() {
 const viewport = reactive(workspaceBounds());
 const gap = computed(() => Math.min(15, viewport.width / 2, viewport.height / 2));
 const maxWidth = computed(() => Math.max(0, viewport.width - (docked.value ? 0 : gap.value * 2)));
-const preferredWidth = ref(360);
+const preferredWidth = ref(400);
 const width = computed(() => Math.min(preferredWidth.value, maxWidth.value));
-const preferredHeight = ref<number>();
+const preferredHeight = ref<number>(640);
 const height = computed(() =>
   docked.value ? viewport.height : Math.min(preferredHeight.value ?? Math.max(0, viewport.height - 96), viewport.height - gap.value * 2)
 );
@@ -228,11 +228,11 @@ onBeforeUnmount(() => {
   max-width: 100vw;
   max-height: 100dvh;
   border: 1px solid var(--miaoimg-glass-line);
-  border-radius: var(--ui-radius-large, 12px);
+  border-radius: 28px;
   background: var(--miaoimg-glass-panel);
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
-  box-shadow: none;
+  box-shadow: 0 4px 10px rgb(0 0 0 / .1);
 
   &.docked {
     border-width: 0 0 0 1px;

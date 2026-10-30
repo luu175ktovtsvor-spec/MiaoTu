@@ -44,6 +44,8 @@ import { LOCAL_MEDIA_SITES, localMediaKind, localMediaSite } from './local-media
 import { fileContentHeaders, forwardedFileHeaders } from '../server/file-content-policy.ts'
 import { serveFileContent } from '../server/file-response.ts'
 import { HttpIncomingRequests } from '../server/http-request-lifetime.ts'
+import { createLibraryTools } from '../server/library-tools.ts'
+import { ShowcaseContent } from '../server/showcase-content.ts'
 import { createDesktopEntryHtml } from './entry-html.ts'
 
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2', '.ico': 'image/x-icon' }
@@ -114,6 +116,12 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
     store.activeAccount = cloud.account
     tasks?.accountChanged()
   }, changeSession: commit => native?.changeSession ? native.changeSession(commit) : Promise.resolve().then(commit) })
+  const showcaseContent = new ShowcaseContent({ directory: join(directory, 'catalog', 'showcase'), fetchFile: (path, signal) => cloud.publicFile(path, { signal }) })
+  const libraryTools = createLibraryTools({ showcaseRoot: (metadataOnly = false) => metadataOnly ? showcaseContent.catalog() : showcaseContent.searchCatalog(), archiveTranslations: () => showcaseContent.archiveTranslations(), maximumLimit: 24,
+    fetchImpl: (url, options) => cloud.request(new URL(String(url)).pathname + new URL(String(url)).search, { anonymous: true, signal: options?.signal }),
+    env: { OIP_ARCHIVE_API_URL: cloud.origin },
+  })
+  const libraryQuery = libraryTools[0], libraryCategories = libraryTools[1]
   await cloud.restore()
   process.env.OIP_ARCHIVE_API_URL = cloud.origin
   process.env.OIP_ARCHIVE_ASSET_BASE_URL = cloud.origin
@@ -173,7 +181,7 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
     fetchPublicText: (url, signal, { offset, limit, contentHash }: Record<string, any> = {}) => requestWeb('webFetch', { url, offset, limit, contentHash }, signal),
     searchWeb: (query, limit, signal) => requestWeb('webSearch', { query, limit }, signal),
   }
-  agent = createAgentApi({ customProviderFetch: createCustomProviderFetch({ allowPrivate: true, fetchImpl: requestFetch || fetch }), showcaseRoot: webRoot, showcaseAssetFetch: (path, signal) => cloud.publicFile(path, { signal, headers: { accept: 'image/*' } }), durableDirectory: join(directory, 'agent-runtime'), durableIdentity: () => cloud.account || 'local', durableProjectAccess: async project => (await store.project(project)), nativeAgentScope: computer.scope, nativeConversationDefaults: parent => ({ localDirectory: parent?.localDirectory || computer.status().directory }), webTools, localSkills, additionalTools: (userId, runtime) => [...computer.tools(userId, runtime), ...workspaceCatalogTools], additionalInstructions: computer.instructions, nativeAgentPrompt: createPiAgentPrompt({ directory, status: computer.status }), workspaceFiles: files, ensureMediaTools: () => tools.ensure(), resolveTextSettings: (_env, id = 'gpt-6.1-sol') => {
+  agent = createAgentApi({ customProviderFetch: createCustomProviderFetch({ allowPrivate: true, fetchImpl: requestFetch || fetch }), showcaseRoot: (metadataOnly = false) => metadataOnly ? showcaseContent.catalog() : showcaseContent.searchCatalog(), archiveTranslations: () => showcaseContent.archiveTranslations(), showcaseAssetFetch: (path, signal) => cloud.publicFile(path, { signal, headers: { accept: 'image/*' } }), durableDirectory: join(directory, 'agent-runtime'), durableIdentity: () => cloud.account || 'local', durableProjectAccess: async project => (await store.project(project)), nativeAgentScope: computer.scope, nativeConversationDefaults: parent => ({ localDirectory: parent?.localDirectory || computer.status().directory }), webTools, localSkills, additionalTools: (userId, runtime) => [...computer.tools(userId, runtime), ...workspaceCatalogTools], additionalInstructions: computer.instructions, nativeAgentPrompt: createPiAgentPrompt({ directory, status: computer.status }), workspaceFiles: files, ensureMediaTools: () => tools.ensure(), resolveTextSettings: (_env, id = 'gpt-6.1-sol') => {
     const modelEntry = ownTextModelById(id)
     const enabled = Boolean(cloud.account) && !cloud.authenticationExpired && !cloud.sessionChanging
     return { enabled, reason: enabled ? '' : 'login-required', apiKey: modelToken, baseUrl: address + '/v1', providerId: 'miaoimg', modelId: id, modelEntry, protocol: modelEntry?.protocol, contextWindow: modelEntry?.contextWindow, maxOutputTokens: modelEntry?.maxOutputTokens, ...(modelEntry?.reasoningEffort ? { reasoningEffort: modelEntry.reasoningEffort } : {}) }
@@ -196,7 +204,7 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
   const nodes = createNodePlugins({ workspaceFiles: files }), exts = createExtPlugins({ workspaceFiles: files })
   const ffmpeg = createFfmpegExec({ workspaceFiles: files, workspaceKey: () => userSession().user.workspaceKey })
   const exportPlugin = createPluginExport({ workspaceFiles: files })
-  mcp = createMcpApi({ showcaseRoot: webRoot, showcaseAssetFetch: (path, signal) => cloud.publicFile(path, { signal, headers: { accept: 'image/*' } }), management: {
+  mcp = createMcpApi({ showcaseRoot: (metadataOnly = false) => metadataOnly ? showcaseContent.catalog() : showcaseContent.searchCatalog(), archiveTranslations: () => showcaseContent.archiveTranslations(), showcaseAssetFetch: (path, signal) => cloud.publicFile(path, { signal, headers: { accept: 'image/*' } }), management: {
     userByMcpToken: async value => { const access = (await mcpAccess()); return mcpAvailable() && access.enabled && access.token === value ? 'local' : null },
     mcpTokenInfo: async () => { const access = (await mcpAccess()), available = mcpAvailable(); return { hasToken: Boolean(available && access.token), enabled: Boolean(available && access.enabled) } },
   }, workspaceFiles: files, webTools, ensureMediaTools: () => tools.ensure(),
@@ -444,6 +452,33 @@ export async function startDesktopRuntime({ directory, getSafeStorage, credentia
         response.writeHead(remote.status, { 'content-type': 'application/json', 'cache-control': 'no-cache' })
         if (remote.body) await pipeline(Readable.fromWeb(remote.body), response); else response.end()
         return
+      }
+      if (url.pathname === '/api/library/catalog' && request.method === 'GET') {
+        const controller = new AbortController(); response.on('close', () => controller.abort())
+        json(response, 200, await libraryCategories.execute({ media: url.searchParams.get('media') || 'all' }, { signal: controller.signal })); return
+      }
+      if (url.pathname === '/api/library/items' && request.method === 'GET') {
+        const controller = new AbortController(); response.on('close', () => controller.abort())
+        const media = url.searchParams.get('media') || 'all'
+        if (!['all', 'image', 'video'].includes(media)) throw Object.assign(new Error('媒体类型无效'), { status: 400 })
+        if (media !== 'image' && url.searchParams.get('fresh') === '1') await showcaseContent.catalog(true)
+        const result = await libraryQuery.execute({ source: 'all', media, query: url.searchParams.get('q') || '', tag: url.searchParams.get('tag') || '', tool: url.searchParams.get('tool') || '',
+          sort: url.searchParams.get('sort') || 'newest', limit: Number(url.searchParams.get('limit') || 24), offset: Number(url.searchParams.get('offset') || 0) }, { signal: controller.signal })
+        json(response, 200, { total: result.total, offset: result.offset, limit: result.limit, media, partial: result.partial,
+          dataset_version: result.datasetVersion, dataset_ready: result.datasetReady,
+          items: result.items.map(item => ({ ...item, tweet_id: item.id, prompt_text: item.prompt, tweet_url: item.sourceUrl, created_at: item.createdAt })) }); return
+      }
+      if (url.pathname === '/api/library/showcase' && request.method === 'GET') {
+        if (url.searchParams.get('cached') === '1') {
+          const cached = await showcaseContent.cachedCatalog()
+          if (cached) json(response, 200, cached); else response.writeHead(204).end()
+          return
+        }
+        json(response, 200, await showcaseContent.catalog(url.searchParams.get('fresh') === '1')); return
+      }
+      const showcaseFilm = url.pathname.match(/^\/api\/library\/showcase\/films\/([A-Za-z0-9_-]{1,120})$/)
+      if (showcaseFilm && request.method === 'GET') {
+        json(response, 200, await showcaseContent.detail(url.searchParams.get('version') || '', showcaseFilm[1])); return
       }
       const archiveVideo = url.pathname.match(/^\/api\/library\/videos\/(\d{10,24})\/(\d{1,2})$/)
       if (archiveVideo && ['GET', 'HEAD'].includes(request.method)) {

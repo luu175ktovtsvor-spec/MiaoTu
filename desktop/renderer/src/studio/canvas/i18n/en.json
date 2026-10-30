@@ -3406,7 +3406,7 @@
   "查看工作区文件": "List workspace files",
   "读取工作区文件": "Read workspace file",
   "写入工作区文件": "Write workspace file",
-  "检索灵感库": "Search inspiration library",
+  "检索灵感库": "Search library",
   "同名画布已存在，请换个名称后重试": "A canvas with this name already exists. Choose another name and try again.",
   "加载更早的消息": "Load earlier messages",
   "正在恢复任务状态，已提交的任务仍在后台执行…": "Reconnecting to your task. Accepted work is still running in the background…",

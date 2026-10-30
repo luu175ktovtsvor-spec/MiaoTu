@@ -1,24 +1,16 @@
 <template>
-  <div class="agentConversation">
+  <div class="agentConversation" :class="{ isEmpty }">
     <div class="messageViewport">
       <div ref="messageList" class="messageList" role="region" :aria-label="translate('对话消息')" tabindex="0">
-        <div v-if="!messages.length && !disabled" class="messageBubble">
+        <div v-if="isEmpty" class="messageBubble agentEmptyState">
           <section class="welcomeMessage" :aria-label="translate('开始新对话')">
             <div class="welcomeHeader">
               <span class="welcomeIcon" aria-hidden="true"><span class="welcomeLogo" :style="{ maskImage: `url(${logoUrl})` }" /></span>
               <div>
-                <p class="welcomeLabel">{{ translate('你好，我是妙图助手') }}</p>
                 <h3>{{ translate('从一个想法开始') }}</h3>
               </div>
             </div>
             <p class="welcomeDescription">{{ translate('聊聊你的故事、画面或镜头，让我们一起把想法落到画布上。') }}</p>
-            <div class="welcomeSuggestions">
-              <el-button v-for="item in welcomeSuggestions" :key="item.label" class="welcomeSuggestion" text bg :disabled="locked" :aria-label="translate('填入提示：{0}', { 0: item.label })" @click="fillPrompt(item.prompt)">
-                <component :is="item.icon" :size="19" aria-hidden="true" />
-                <span class="suggestionContent"><strong>{{ item.label }}</strong><span>{{ item.description }}</span></span>
-                <icon-arrow-up-right class="suggestionArrow" :size="15" aria-hidden="true" />
-              </el-button>
-            </div>
           </section>
         </div>
         <div class="messageSpace" :style="{ height: `${messageVirtualizer.getTotalSize()}px` }">
@@ -109,25 +101,30 @@
     </div>
     <div v-if="lastFailure && !turnRunning" class="compactionStatus" role="alert"><span>{{ translate(lastFailure.message) }}</span></div>
     <div class="messageInput">
+      <div v-if="isEmpty" class="composerSuggestions">
+        <el-button v-for="item in welcomeSuggestions" :key="item.label" class="composerSuggestion" text :disabled="locked" :aria-label="translate('填入提示：{0}', { 0: item.label })" :title="item.description" @click="fillPrompt(item.prompt)">
+          <component :is="item.icon" :size="14" aria-hidden="true" /><span>{{ item.label }}</span>
+        </el-button>
+      </div>
       <div v-if="editingId" class="editingBanner"><span>{{ translate('编辑消息') }}</span><el-button text size="small" :disabled="busy" @click="cancelEdit">{{ translate('取消') }}</el-button></div>
       <div
         class="senderResizeHandle"
         role="separator"
         aria-orientation="horizontal"
         :aria-label="translate('调整输入框高度')"
-        aria-valuemin="44"
+        aria-valuemin="64"
         :aria-valuemax="senderMaxHeight"
         :aria-valuenow="senderHeight"
         tabindex="0"
         :title="translate('拖动调整输入框高度')"
-        @focus="senderHeight = sender?.chatElement.rollBox.clientHeight ?? 44"
+        @focus="senderHeight = sender?.chatElement.rollBox.clientHeight ?? 64"
         @pointerdown="startSenderResize"
         @pointermove="moveSenderResize"
         @pointerup="stopSenderResize"
         @pointercancel="stopSenderResize"
         @lostpointercapture="stopSenderResize"
-        @keydown.up.prevent="setSenderHeight((sender?.chatElement.rollBox.clientHeight ?? 44) + 16)"
-        @keydown.down.prevent="setSenderHeight((sender?.chatElement.rollBox.clientHeight ?? 44) - 16)" />
+        @keydown.up.prevent="setSenderHeight((sender?.chatElement.rollBox.clientHeight ?? 64) + 16)"
+        @keydown.down.prevent="setSenderHeight((sender?.chatElement.rollBox.clientHeight ?? 64) - 16)" />
       <attachmentList v-if="draftAttachments.length" class="draftAttachments" :attachments="draftAttachments" :directory="directory" removable restorable :disabled="locked" @remove="draftAttachments.splice($event, 1)" @restore="restoreTextAttachment" />
       <div ref="senderElement" class="senderEditor" @keydown.capture="handleSenderKeydown"></div>
       <teleport v-for="target in draftMentionTargets" :key="target.key" :to="target.element"><mentionThumbnail v-bind="mentionThumbnailProps(target.mention)" :directory="directory"><icon-photo :size="14" /></mentionThumbnail></teleport>
@@ -192,7 +189,7 @@ import axios from "axios";
 import {
   IconArrowUp, IconArrowDown, IconAtom, IconCopy, IconChevronRight,
   IconCircleDashed, IconPencil, IconPlayerStopFilled, IconX, IconLoader2,
-  IconTrash, IconDots, IconLayoutGrid, IconMovie, IconPhoto, IconArrowUpRight, IconUsersGroup, IconPaperclip,
+  IconTrash, IconDots, IconLayoutGrid, IconMovie, IconPhoto, IconUsersGroup, IconPaperclip,
 } from "@tabler/icons-vue";
 import { ElDropdown, ElDropdownItem, ElDropdownMenu, ElMessage } from "element-plus";
 import logoUrl from "@miaoimg/assets/logo.svg";
@@ -269,6 +266,7 @@ const restoringAttachment = ref(false);
 const locked = computed(() => props.disabled || deletingId.value !== undefined || restoringAttachment.value || stopping.value);
 type QueuedAgentMessage = AgentPendingInput;
 const queuedMessages = ref<QueuedAgentMessage[]>((props.initialSession?.pendingInputs || []).map(item => ({ id: item.entryId || item.id, submissionId: item.submissionId, prompt: item.content, attachments: item.attachments || [], mentions: item.mentions || [], status: 'queued', mode: item.mode || 'steer' })));
+const isEmpty = computed(() => !messages.value.length && !queuedMessages.value.length && !props.disabled);
 for (const item of props.initialDraft?.pendingInputs || []) if (!queuedMessages.value.some(current => current.id === item.id)) queuedMessages.value.push({ ...item, status: item.status === 'sending' ? 'failed' : item.status });
 const pendingInputAction = ref<string>();
 // Receipts survive removal from the visible queue for this mounted chat. A late
@@ -368,8 +366,8 @@ const mentionMenuRef = ref<InstanceType<typeof mentionMenu>>();
 const mentionQuery = ref<string>();
 let mentionPosition: { node: ReturnType<xSender["getCurrentNode"]>; remove: number } | undefined;
 let insertingMentions = false;
-const senderHeight = ref(44);
-const senderMaxHeight = ref(Math.max(44, window.innerHeight / 2));
+const senderHeight = ref(64);
+const senderMaxHeight = ref(Math.max(64, window.innerHeight / 2));
 let senderResize: { pointerId: number; y: number; height: number } | undefined;
 const selectedModel = ref(pendingMessage?.model ?? props.initialDraft?.model ?? (props.initialSession?.providerId && props.initialSession.modelId
   ? JSON.stringify([props.initialSession.providerId, props.initialSession.modelId]) : textModelSettings.value));
@@ -1087,8 +1085,8 @@ async function deleteMessage(item: AgentMessage) {
 
 function setSenderHeight(height: number) {
   if (!sender) return;
-  senderMaxHeight.value = Math.max(44, window.innerHeight / 2);
-  senderHeight.value = Math.max(44, Math.min(senderMaxHeight.value, Math.round(height)));
+  senderMaxHeight.value = Math.max(64, window.innerHeight / 2);
+  senderHeight.value = Math.max(64, Math.min(senderMaxHeight.value, Math.round(height)));
   sender.chatElement.rollBox.style.height = `${senderHeight.value}px`;
 }
 
@@ -1243,7 +1241,7 @@ watch(senderElement, (element, _previous, onCleanup) => {
   const instance = new xSender(element, {
     autoFocus: false,
     placeholder: senderPlaceholder(),
-    chatStyle: { minHeight: "44px", maxHeight: "50vh", fontSize: "14px", lineHeight: "24px" },
+    chatStyle: { minHeight: "64px", maxHeight: "50vh", fontSize: "14px", lineHeight: "24px" },
     keyboardSendFun: event => event.key === "Enter" && !event.shiftKey && !event.isComposing,
     keyboardWrapFun: event => event.key === "Enter" && event.shiftKey && !event.isComposing,
   });
@@ -1393,73 +1391,19 @@ watch(() => !props.initialSession?.parentFile && !!workspaceStore.pendingAgentMe
     .welcomeMessage {
       display: flex;
       flex-direction: column;
-      gap: 18px;
-      padding: 28px 16px 16px;
-      max-width: var(--agent-content-width);
+      align-items: center;
+      gap: 10px;
+      max-width: 560px;
       margin: 0 auto;
+      padding: 24px 16px 20px;
       box-sizing: border-box;
+      text-align: center;
       color: var(--el-text-color-primary);
-
-      .welcomeHeader {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-
-        .welcomeIcon {
-          display: grid;
-          place-items: center;
-          flex-shrink: 0;
-          width: 42px;
-          height: 42px;
-          border-radius: var(--ui-radius-large);
-          background: var(--el-color-primary-light-9);
-          color: var(--el-color-primary);
-
-          .welcomeLogo {
-            width: 28px;
-            height: 28px;
-            background: currentColor;
-            mask-size: contain;
-            mask-position: center;
-            mask-repeat: no-repeat;
-          }
-        }
-
-        .welcomeLabel { margin: 0 0 4px; font-size: 12px; color: var(--el-text-color-secondary); }
-        h3 { margin: 0; font-size: 18px; font-weight: 600; line-height: 1.4; }
-      }
-
-      .welcomeDescription { margin: 0; font-size: 13px; line-height: 1.7; color: var(--el-text-color-regular); }
-
-      .welcomeSuggestions {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-
-        .welcomeSuggestion {
-          height: auto;
-          margin: 0;
-          padding: 12px;
-          text-align: left;
-          white-space: normal;
-          line-height: 1.5;
-
-          > span { display: flex; align-items: center; gap: 12px; width: 100%; min-width: 0; }
-          svg { flex-shrink: 0; color: var(--el-text-color-secondary); }
-          .suggestionContent {
-            display: flex;
-            flex: 1;
-            flex-direction: column;
-            gap: 2px;
-            min-width: 0;
-            strong { font-size: 13px; font-weight: 500; }
-            span { font-size: 12px; color: var(--el-text-color-secondary); }
-          }
-          .suggestionArrow { color: var(--el-text-color-placeholder); }
-        }
-      }
-
-      .welcomeHint { margin: 0; font-size: 12px; line-height: 1.6; color: var(--el-text-color-secondary); }
+      .welcomeHeader { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+      .welcomeIcon { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--el-fill-color-light); color: var(--el-text-color-primary); }
+      .welcomeLogo { width: 24px; height: 24px; background: currentColor; mask-size: contain; mask-position: center; mask-repeat: no-repeat; }
+      h3 { margin: 0; font-size: 16px; font-weight: 500; line-height: 24px; }
+      .welcomeDescription { margin: 0; max-width: 30em; color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.6; }
     }
 
     .messageRow {
@@ -1471,7 +1415,7 @@ watch(() => !props.initialSession?.parentFile && !!workspaceStore.pendingAgentMe
       max-width: calc(var(--agent-content-width) + 40px);
       margin: 0 auto;
       box-sizing: border-box;
-      padding: 8px 20px 24px;
+      padding: 8px 16px 20px;
 
       .messageActions {
         display: flex;
@@ -1572,7 +1516,7 @@ watch(() => !props.initialSession?.parentFile && !!workspaceStore.pendingAgentMe
     .messageContent {
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 8px;
       min-width: 0;
       max-width: 100%;
       overflow-wrap: anywhere;
@@ -1622,7 +1566,7 @@ watch(() => !props.initialSession?.parentFile && !!workspaceStore.pendingAgentMe
       .messageText {
         white-space: pre-wrap;
         font-size: 14px;
-        line-height: 1.75;
+        line-height: 25px;
       }
 
       .messageError {
@@ -1670,7 +1614,7 @@ watch(() => !props.initialSession?.parentFile && !!workspaceStore.pendingAgentMe
   .messageInput {
     --chat-text: var(--el-text-color-primary);
     --chat-text-placeholder: var(--el-text-color-placeholder);
-    --chat-rect-padding: 14px;
+    --chat-rect-padding: 10px;
     --chat-mention-text: var(--el-color-primary);
     position: relative;
     flex-shrink: 0;
@@ -1710,6 +1654,11 @@ watch(() => !props.initialSession?.parentFile && !!workspaceStore.pendingAgentMe
     .draftAttachments {
       padding: 12px 12px 0;
     }
+
+    .composerSuggestions { display: flex; flex-wrap: wrap; gap: 5px; padding: 9px 9px 0; }
+    .composerSuggestion.el-button { height: 27px; margin: 0; padding: 0 8px; border: 0; border-radius: 999px; background: var(--el-fill-color-light); color: var(--el-text-color-regular); font-size: 11px; }
+    .composerSuggestion.el-button > span { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
+    .composerSuggestion.el-button:hover:not(:disabled) { background: var(--el-fill-color); color: var(--el-text-color-primary); }
 
     .senderEditor {
       min-width: 0;
@@ -1761,7 +1710,7 @@ watch(() => !props.initialSession?.parentFile && !!workspaceStore.pendingAgentMe
       align-items: center;
       gap: 6px;
       min-width: 0;
-      padding: 4px 10px 10px;
+      padding: 2px 8px 8px;
 
       > * { flex-shrink: 0; }
 
@@ -1794,8 +1743,8 @@ watch(() => !props.initialSession?.parentFile && !!workspaceStore.pendingAgentMe
       }
 
       .sendButton {
-        width: 34px;
-        height: 34px;
+        width: 32px;
+        height: 32px;
         border: none;
         flex: none;
       }
@@ -1857,7 +1806,7 @@ watch(() => !props.initialSession?.parentFile && !!workspaceStore.pendingAgentMe
 
     &.userMessage .messageBubble {
       padding: 9px 14px;
-      border-radius: 16px 16px 4px 16px;
+      border-radius: 12px;
       background: var(--el-fill-color);
     }
 
@@ -1951,15 +1900,11 @@ watch(() => !props.initialSession?.parentFile && !!workspaceStore.pendingAgentMe
   }
 }
 
-.agentConversation .welcomeMessage {
-  .welcomeSuggestions { gap: 2px; }
-  .welcomeSuggestions .welcomeSuggestion.el-button {
-    padding: 10px 12px;
-    border: 0;
-    border-radius: 10px;
-    background: transparent;
-    &:hover:not(.is-disabled), &:focus-visible { background: var(--el-fill-color); }
-  }
+
+.agentConversation.isEmpty {
+  .messageList { display: flex; flex-direction: column; justify-content: flex-end; scrollbar-gutter: auto; }
+  .agentEmptyState { flex: 0 0 auto; }
+  .messageSpace { flex-shrink: 0; }
 }
 
 .agentConversation {

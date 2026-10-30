@@ -2,18 +2,17 @@ import Hls from 'hls.js/light'
 import { useEffect, useRef, useState } from 'react'
 import { useLang } from '../i18n'
 import { studioText } from '../studio/studioText'
-import adaptive from './adaptive.json'
-import prepared from './playback.json'
+import type { FilmPlayback } from '../../../../server/showcase-schema'
 
-export default function VideoPlayer({ source, poster, title }: { source: string; poster: string; title: string }) {
+export default function VideoPlayer({ source, poster, title, playback }: { source: string; poster: string; title: string; playback?: FilmPlayback }) {
   const ref = useRef<HTMLVideoElement>(null)
   const { lang } = useLang()
   const [error, setError] = useState(false)
   const [attempt, setAttempt] = useState(0)
   useEffect(() => {
     const video = ref.current!
-    const entry = (adaptive as Record<string, { master: string; manifest: string; low: string }>)[source]
-    const fallback = (prepared as Record<string, string>)[source] || source
+    const entry = playback?.adaptive
+    const fallback = playback?.fallback || source
     let engine: Hls | undefined
     const blobs: string[] = []
     let disposed = false
@@ -67,7 +66,7 @@ export default function VideoPlayer({ source, poster, title }: { source: string;
       engine?.destroy(); blobs.forEach(URL.revokeObjectURL)
       video.pause(); video.removeAttribute('src'); video.load()
     }
-  }, [source, attempt])
+  }, [source, playback, attempt])
   return <div className="inspiration-player">
     <video ref={ref} poster={poster} aria-label={title} controls playsInline preload="none" />
     {error && <button className="inspiration-player-error" onClick={() => setAttempt(value => value + 1)}>{studioText('播放失败 · 点击重试', lang)}</button>}

@@ -12,7 +12,7 @@ export const toolLabels: Record<string, string> = {
   connectNodes: "连接节点", deleteEdges: "删除连线", selectNodes: "选中节点", arrangeCanvas: "整理画布", fitCanvas: "适合屏幕",
   editDocument: "修改文档", readDocument: "读取文档", openDocument: "打开文档", getDocument: "读取文档", writeDocument: "修改文档",
   inspectVideo: "查看视频画面", inspectReference: "查看参考素材", probeMedia: "读取媒体信息", ffmpeg: "处理媒体", ffprobe: "读取媒体信息",
-  messageSubAgent: "补充子任务", waitSubAgents: "等待子任务", stopSubAgent: "停止子任务", getSubAgents: "查看子任务", delegate: "委派团队成员", teamResources: "读取团队资料", askUser: "提问", report: "上报进展", subAgent: "执行子任务", listWorkspaceFiles: "查看工作区文件", readWorkspaceFile: "读取工作区文件", writeWorkspaceFile: "写入工作区文件", searchInspirationLibrary: "检索创作精选",
+  messageSubAgent: "补充子任务", waitSubAgents: "等待子任务", stopSubAgent: "停止子任务", getSubAgents: "查看子任务", delegate: "委派团队成员", teamResources: "读取团队资料", askUser: "提问", report: "上报进展", subAgent: "执行子任务", listWorkspaceFiles: "查看工作区文件", readWorkspaceFile: "读取工作区文件", writeWorkspaceFile: "写入工作区文件", searchInspirationLibrary: "检索灵感库", getInspirationLibraryCatalog: "灵感库",
 };
 Object.assign(toolLabels, Object.fromEntries(canvasOperations.map(tool => [tool.name, tool.label])));
 const nodeActions: Record<string, string> = { "node:setText": "写入文本", "node:getConfig": "读取节点配置", "node:setConfig": "更新节点配置", "node:processVideo": "剪辑视频", "node:processAudio": "处理音频", "node:splitImageGrid": "图片宫格切分", "node:editImageMarks": "编辑图片标记", "node:saveOutputAsAsset": "保存素材", "node:prepareImageVariation": "创建图片编辑节点" };

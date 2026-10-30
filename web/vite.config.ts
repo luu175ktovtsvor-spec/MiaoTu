@@ -37,9 +37,9 @@ function archiveAssetsPlugin() {
 // Keep the catalog and prompt shards as build assets so the API can search
 // them without importing the renderer bundle or copying the full media set.
 function showcaseAgentManifestPlugin() {
-  const catalog = resolve(WEB_DIR, '../desktop/renderer/src/library/showcase.json')
-  const promptDir = resolve(WEB_DIR, '../desktop/renderer/public/inspiration/prompts')
-  const translationDir = resolve(WEB_DIR, '../desktop/renderer/public/inspiration/translations')
+  const catalog = resolve(WEB_DIR, '../content/showcase/catalog.json')
+  const promptDir = resolve(WEB_DIR, '../content/showcase/prompts')
+  const translationDir = resolve(WEB_DIR, '../content/showcase/translations')
   return {
     name: 'miaoimg-showcase-agent-manifest',
     generateBundle() {

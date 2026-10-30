@@ -251,8 +251,10 @@ export class CloudGateway {
   async publicFile(path, { method = 'GET', headers = {}, signal }: Record<string, any> = {}) {
     const url = new URL(path, this.origin)
     const archiveMedia = /^\/(images|previews|thumbs|_oip\/sessions|showcase)\//.test(url.pathname)
+    const archiveTranslations = url.pathname === '/library-content/archive/translations.json'
+    const showcaseContent = /^\/library-content\/showcase\/(?:current\.json|releases\/[a-f0-9]{64}\/(?:search\.json|films\/[A-Za-z0-9_-]{1,120}\.json))$/.test(url.pathname)
     const showcasePoster = /^\/landing\/film-[\w-]+\.webp$/.test(url.pathname)
-    if (url.origin !== this.origin || !['GET','HEAD'].includes(method) || !(archiveMedia || showcasePoster)) throw new Error('灵感库文件地址无效')
+    if (url.origin !== this.origin || !['GET','HEAD'].includes(method) || !(archiveMedia || showcasePoster || showcaseContent || archiveTranslations)) throw new Error('灵感库文件地址无效')
     return this.fetch(url, { method, headers, redirect: 'error', signal: AbortSignal.any([this.lifetime.signal, signal || AbortSignal.timeout(/^\/api\/imagine\/(login-password|email\/|password\/reset)/.test(url.pathname) ? 20000 : 120000)]) })
   }
   async archiveVideo(tweetId, index, { method = 'GET', range, signal }: Record<string, any> = {}) {

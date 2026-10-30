@@ -38,29 +38,12 @@ function archiveAssetsPlugin() {
   }
 }
 
-// The desktop Agent runs beside the renderer and needs the same reviewed film
-// catalog that the "视频精选" tab displays. Keep one source of truth in
-// src/library/showcase.json, then expose a small runtime-readable copy in the
-// renderer build without embedding prompt bodies a second time.
-function showcaseAgentManifestPlugin() {
-  return {
-    name: 'miaoimg-showcase-agent-manifest',
-    generateBundle() {
-      this.emitFile({
-        type: 'asset',
-        fileName: 'showcase-agent.json',
-        source: readFileSync(resolve(WEB_DIR, 'src/library/showcase.json')),
-      })
-    },
-  }
-}
-
 const studioDir = resolve(WEB_DIR, 'src/studio/canvas')
 const scaffoldDir = resolve(studioDir, 'scaffold')
 
 export default defineConfig({
   base: './',
-  plugins: [react(), vue(), components({ resolvers: [ElementPlusResolver(), (name) => name.startsWith('Icon') ? { name, from: '@tabler/icons-vue' } : undefined] }), tailwindcss(), rendererOnlyPlugin(), archiveImagesPlugin(), archiveAssetsPlugin(), showcaseAgentManifestPlugin()],
+  plugins: [react(), vue(), components({ resolvers: [ElementPlusResolver(), (name) => name.startsWith('Icon') ? { name, from: '@tabler/icons-vue' } : undefined] }), tailwindcss(), rendererOnlyPlugin(), archiveImagesPlugin(), archiveAssetsPlugin()],
   resolve: {
     dedupe: ["zod", "micromark", "micromark-util-decode-string", "htmlparser2", "marked"],
     alias: [

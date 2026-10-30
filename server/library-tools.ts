@@ -85,6 +85,7 @@ function normalizeItem(item) {
     author: String(item?.author || ''),
     tool: String(item?.tool || ''),
     prompt: String(item?.prompt_text || ''),
+    translationAvailable: Boolean(item?.translations?.['zh-Hans']),
     translations: item?.translations && typeof item.translations === 'object' ? item.translations : {},
     sourceUrl: String(item?.tweet_url || ''),
     createdAt: item?.created_at || null,
@@ -108,10 +109,10 @@ function queryTerms(value) {
   return normalizedSearchText(value).split(' ').filter(Boolean).slice(0, 24)
 }
 
-function requestLimit(value) {
+function requestLimit(value, maximum = MAX_LIMIT) {
   const number = Number(value)
   const fallback = Number.isFinite(number) && number > 0 ? number : 5
-  return Math.min(MAX_LIMIT, Math.max(1, Math.floor(fallback)))
+  return Math.min(maximum, Math.max(1, Math.floor(fallback)))
 }
 
 function requestOffset(value) {
@@ -124,7 +125,12 @@ function showcaseManifestPath(root) {
   return base ? resolve(base, SHOWCASE_MANIFEST) : ''
 }
 
-async function readShowcaseManifest(root) {
+async function readShowcaseManifest(root, metadataOnly = false) {
+  if (typeof root === 'function') {
+    const value = await root(metadataOnly)
+    if (!value || !Array.isArray(value.films)) return null
+    return { signature: value.version, value, prompts: new Map(), translations: new Map() } as ShowcaseManifest
+  }
   const path = showcaseManifestPath(root)
   if (!path) return null
   let fileStat
@@ -210,9 +216,11 @@ function showcaseTagMatch(film, tag) {
   return [film?.theme, ...categories].filter(Boolean).some(item => normalizedSearchText(item).includes(label))
 }
 
-async function searchShowcase({ root, args: inputArgs = {} }: { root: string; args?: Record<string, any> }) {
+async function searchShowcase({ root, args: inputArgs = {} }: { root: any; args?: Record<string, any> }) {
   const args = inputArgs || {}
-  const cachedManifest = await readShowcaseManifest(root)
+  if (args.media === 'image') return { available: true, datasetReady: true, datasetVersion: 'images-only', total: 0, offset: requestOffset(args.offset), limit: requestLimit(args.limit, args._maxLimit), items: [] }
+  const metadataOnly = Boolean(args._countOnly && !String(args.query || args.q || '').trim())
+  const cachedManifest = await readShowcaseManifest(root, metadataOnly)
   if (!cachedManifest) return { available: false, total: 0, offset: 0, limit: 0, items: [] }
   const manifest = cachedManifest.value
   const promptReads: ShardReads<PromptShard> = new Map()
@@ -224,8 +232,8 @@ async function searchShowcase({ root, args: inputArgs = {} }: { root: string; ar
   // original prompt, not only the film title and summary shown in the card.
   const candidates = await Promise.all(manifest.films.map(async film => ({
     film,
-    prompt: film.hasPrompt ? await readShowcasePrompt(root, film.promptFile, film.id, cachedManifest.prompts, promptReads) : '',
-    translation: film.translationFile ? await readShowcaseTranslation(root, film.translationFile, film.id, cachedManifest.translations, translationReads) : {},
+    prompt: metadataOnly ? '' : typeof film.prompt === 'string' ? film.prompt : film.hasPrompt ? await readShowcasePrompt(root, film.promptFile, film.id, cachedManifest.prompts, promptReads) : '',
+    translation: metadataOnly ? {} : film.translations ? { zhHans: film.translations['zh-Hans'] || '', en: film.translations.en || '' } : film.translationFile ? await readShowcaseTranslation(root, film.translationFile, film.id, cachedManifest.translations, translationReads) : {},
   })))
   const matched = candidates.filter(({ film, prompt, translation }) => {
     const text = `${showcaseFilmText(film)} ${normalizedSearchText(prompt)} ${normalizedSearchText(translation.zhHans)} ${normalizedSearchText(translation.en)}`
@@ -234,8 +242,8 @@ async function searchShowcase({ root, args: inputArgs = {} }: { root: string; ar
       && showcaseTagMatch(film, tag)
   })
   const offset = requestOffset(args.offset)
-  const limit = requestLimit(args.limit)
-  const page = matched.slice(offset, offset + limit)
+  const limit = requestLimit(args.limit, args._maxLimit)
+  const page = metadataOnly ? [] : matched.slice(offset, offset + limit)
   const items = []
   for (const { film, prompt, translation } of page) {
     const poster = String(film.poster || '').replace(/^\/+/, '').split('?')[0]
@@ -256,10 +264,11 @@ async function searchShowcase({ root, args: inputArgs = {} }: { root: string; ar
       caseUrl: String(film.caseUrl || ''),
       sourceId: String(film.sourceId || film.id || ''),
       images: poster ? [{ id: `showcase:${film.id}:poster`, index: 0, url: '', local: poster }] : [],
+      playback: film.playback,
       videos: video ? [{ id: `showcase:${film.id}:video`, index: 0, url: '', local: video, poster: poster || null }] : [],
     })
   }
-  return { available: true, datasetReady: true, datasetVersion: String(manifest.sourceRevision || manifest.reviewedAt || ''), total: matched.length, offset, limit, items }
+  return { available: true, datasetReady: true, datasetVersion: String(manifest.version || manifest.sourceRevision || manifest.reviewedAt || ''), total: matched.length, offset, limit, items }
 }
 
 async function readResponse(response) {
@@ -267,7 +276,7 @@ async function readResponse(response) {
   return JSON.parse(bytes.toString('utf8'))
 }
 
-async function fetchLibrary(fetchImpl, env, args, signal) {
+async function fetchLibrary(fetchImpl, env, args, signal, archiveTranslations) {
   const url = new URL(`${archiveBaseUrl(env)}/api/prompts`)
   const query = String(args.query || args.q || '').trim().slice(0, 200)
   const tag = String(args.tag || '').trim().slice(0, 160)
@@ -275,7 +284,9 @@ async function fetchLibrary(fetchImpl, env, args, signal) {
   if (query) url.searchParams.set('q', query)
   if (tag) url.searchParams.set('tag', tag)
   if (tool) url.searchParams.set('tool', tool)
-  url.searchParams.set('limit', String(requestLimit(args.limit)))
+  if (['image', 'video'].includes(args.media)) url.searchParams.set('media', args.media)
+  if (['newest', 'oldest'].includes(args.sort)) url.searchParams.set('sort', args.sort)
+  url.searchParams.set('limit', String(requestLimit(args.limit, args._maxLimit)))
   const offset = requestOffset(args.offset)
   if (offset > 0) url.searchParams.set('offset', String(offset))
   const response = await fetchImpl(url, { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15_000)]) : AbortSignal.timeout(15_000), headers: { accept: 'application/json', 'user-agent': 'MiaoImgAgent/1.0' } })
@@ -293,6 +304,15 @@ async function fetchLibrary(fetchImpl, env, args, signal) {
         : '档案检索的版本口径尚未确认；当前请求不能把检索结果交付为档案原文，也不能保存参考图。',
       409,
     )
+  }
+  if (archiveTranslations && data.items?.some(item => !item.translations?.['zh-Hans'])) {
+    const overlays = await archiveTranslations()
+    for (const item of data.items) {
+      const entry = overlays[String(item.tweet_id)]
+      if (!entry || entry.sourceSha256 !== createHash('sha256').update(String(item.prompt_text || '')).digest('hex')) continue
+      item.translations ||= {}
+      for (const locale of ['zh-Hans', 'en']) if (!item.translations[locale]?.trim() && entry[locale]?.trim()) item.translations[locale] = entry[locale]
+    }
   }
   return {
     datasetVersion,
@@ -315,6 +335,7 @@ function localArchivePath(env, local) {
 }
 
 function localShowcasePath(root, local) {
+  if (typeof root !== 'string') return null
   const source = String(local || '').replace(/^\/+/, '').split('?')[0]
   if (!source || (!source.startsWith('showcase/') && !source.startsWith('landing/'))) return null
   const configuredRoot = String(root || '').trim()
@@ -443,10 +464,11 @@ function requestedReferenceIndexes(args, candidateCount) {
 
 const LIBRARY_TOOLS = [{
   name: 'searchInspirationLibrary',
-  description: `只读检索当前创作精选，默认搜索全部可用来源；可用 source 指定来源。按关键词、标签、工具/模型筛选，返回有限条提示词及图片/视频地址；source=all 可能返回 partial:true 与来源错误字段，必须说明结果范围。可用 saveReference:true 保存第一张图，或 saveReference:数字 / saveReferences:[索引] 一次保存最多 ${MAX_SAVED_REFERENCES} 张图。不会调用生图模型。`,
+  description: `只读检索灵感库，默认搜索全部可用来源；可用 source 指定来源。按图片/视频、关键词、标签、工具/模型筛选，返回原始提示词与已有译文，返回有限条提示词及图片/视频地址；source=all 可能返回 partial:true 与来源错误字段，必须说明结果范围。可用 saveReference:true 保存第一张图，或 saveReference:数字 / saveReferences:[索引] 一次保存最多 ${MAX_SAVED_REFERENCES} 张图。不会调用生图模型。`,
   parameters: {
     type: 'object', additionalProperties: false,
     properties: {
+      media: { type: 'string', enum: ['all', 'image', 'video'], description: '媒体类型；image 仅图片，video 仅视频，默认 all。检索结果包含原文、译文及可用参考素材。' },
       query: { type: 'string', description: '关键词或画面描述' },
       tag: { type: 'string', description: '受控标签，格式 dimension:value' },
       tool: { type: 'string', description: '工具/模型字段筛选' },
@@ -459,21 +481,21 @@ const LIBRARY_TOOLS = [{
       saveReferences: { type: 'array', items: { type: 'integer', minimum: 0 }, minItems: 1, maxItems: MAX_SAVED_REFERENCES, description: `按检索结果中扁平图片候选的 0 起始索引选择图片，最多 ${MAX_SAVED_REFERENCES} 张；超限或索引无效会报错。` },
     },
   },
-  async run({ fetchImpl, env, showcaseRoot, showcaseAssetFetch, workspaceFiles, userId, signal }: Record<string, any>, args: Record<string, any> = {}) {
+  async run({ fetchImpl, env, showcaseRoot, showcaseAssetFetch, workspaceFiles, userId, signal, archiveTranslations }: Record<string, any>, args: Record<string, any> = {}) {
     const source = ['archive', 'showcase'].includes(String(args.source || '')) ? String(args.source) : 'all'
     let result: any
     if (source === 'archive') {
-      result = await fetchLibrary(fetchImpl, env, args, signal)
+      result = await fetchLibrary(fetchImpl, env, args, signal, archiveTranslations)
     } else if (source === 'showcase') {
       result = await searchShowcase({ root: showcaseRoot, args })
       if (!result.available) throw failure('精选目录暂时不可用', 503)
     } else {
-      const limit = requestLimit(args.limit)
+      const limit = requestLimit(args.limit, args._maxLimit)
       const offset = requestOffset(args.offset)
       let archiveResult = null
       let archiveError = null
       try {
-        archiveResult = await fetchLibrary(fetchImpl, env, { ...args, limit, offset }, signal)
+        archiveResult = await fetchLibrary(fetchImpl, env, { ...args, limit, offset }, signal, archiveTranslations)
       } catch (error) {
         if (signal?.aborted) throw error
         archiveError = error
@@ -483,7 +505,7 @@ const LIBRARY_TOOLS = [{
       let showcaseResult = null
       let showcaseError = null
       try {
-        const value = await searchShowcase({ root: showcaseRoot, args: { ...args, limit, offset: showcaseOffset } })
+        const value = await searchShowcase({ root: showcaseRoot, args: { ...args, limit, offset: showcaseOffset, _countOnly: Boolean(archiveResult && offset + limit <= archiveTotal) } })
         if (value?.available) showcaseResult = value
         else showcaseError = failure('精选目录暂时不可用', 503)
       } catch (error) {
@@ -549,13 +571,33 @@ const LIBRARY_TOOLS = [{
   },
 }]
 
+LIBRARY_TOOLS.push({
+  name: 'getInspirationLibraryCatalog',
+  description: '只读查看灵感库的图片/视频分类、可筛选标签和模型。先用这里返回的标签值，再调用 searchInspirationLibrary 检索。stats 是档案文件统计；媒体记录数以对应 media 检索返回的 total 为准。不会生成媒体或修改画布。',
+  parameters: { type: 'object', additionalProperties: false, properties: { media: { type: 'string', enum: ['all', 'image', 'video'], description: '仅图片、仅视频或全部；默认 all' } } },
+  async run({ fetchImpl, env, showcaseRoot, signal }: Record<string, any>, args: Record<string, any> = {}) {
+    const media = ['image', 'video'].includes(args.media) ? args.media : 'all'
+    const response = await fetchImpl(archiveBaseUrl(env) + '/api/catalog', { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15_000)]) : AbortSignal.timeout(15_000) })
+    if (!response.ok) { await response.body?.cancel(); throw failure('灵感库暂时不可用', 503) }
+    const archive = await readResponse(response)
+    let featured: any = null
+    if (media !== 'image') { try { featured = (await readShowcaseManifest(showcaseRoot, true))?.value } catch {} }
+    const tools = new Map<string, any>((archive.tools || []).map(item => [item.tool, item]))
+    for (const film of featured?.films || []) if (film.model && !tools.has(film.model)) tools.set(film.model, { tool: film.model, count: 0 })
+    return { media, mediaTypes: ['image', 'video'], dataset_version: archive.dataset_version, showcase_version: featured?.version || null, partial: media !== 'image' && !featured,
+      tools: [...tools.values()], stats: archive.stats,
+      tags: [...(archive.tags || []), ...(featured?.themes || []).map(theme => ({ value: 'theme:' + theme.id,
+        label_zh: theme.category[0], label_en: theme.category[1] || theme.category[0], count: featured.films.filter(film => film.theme === theme.id).length }))] }
+  },
+} as any)
+
 export const libraryToolMetadata = LIBRARY_TOOLS.map(({ name, description, parameters }: Record<string, any>) => ({ name, description, parameters }))
 
-export function createLibraryTools({ workspaceFiles, fetchImpl = fetch, env = () => process.env, showcaseRoot = '', showcaseAssetFetch, userId = '', signal }: Record<string, any> = {}) {
+export function createLibraryTools({ workspaceFiles, fetchImpl = fetch, env = () => process.env, showcaseRoot = '', showcaseAssetFetch, userId = '', signal, maximumLimit = MAX_LIMIT, archiveTranslations }: Record<string, any> = {}) {
   const runtimeEnv = typeof env === 'function' ? env() : env
   const resolveUserId = typeof userId === 'function' ? userId : () => userId
   return LIBRARY_TOOLS.map(({ name, description, parameters, run }: Record<string, any>) => ({
     name, description, parameters,
-    execute: (args: Record<string, any> = {}, call: Record<string, any> = {}) => run({ fetchImpl, env: runtimeEnv, showcaseRoot, showcaseAssetFetch, workspaceFiles, userId: call.userId || resolveUserId(call), signal: call.signal || signal }, args),
+    execute: (args: Record<string, any> = {}, call: Record<string, any> = {}) => run({ fetchImpl, env: runtimeEnv, showcaseRoot, showcaseAssetFetch, archiveTranslations, workspaceFiles, userId: call.userId || resolveUserId(call), signal: call.signal || signal }, { ...args, _maxLimit: Math.min(48, Math.max(1, maximumLimit)) }),
   }))
 }

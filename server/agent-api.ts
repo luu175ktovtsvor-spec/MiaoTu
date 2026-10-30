@@ -420,7 +420,7 @@ async function dispatchToolCall(call, { serverToolMap, sendEvent, signal, toolLo
   }
 }
 
-export function createAgentApi({ management, workspaceFiles, env = () => process.env, fetchImpl = fetch, showcaseRoot = '', showcaseAssetFetch, customProviderFetch, resolveTextSettings = textSettings, webTools, webToolsForUser, localSkills, ensureMediaTools, assertTextAccess, additionalTools = () => [], additionalInstructions = () => '', nativeAgentPrompt, nativeAgentScope, nativeConversationDefaults, durableDirectory, durableIdentity, durableProjectAccess }: Record<string, any>) {
+export function createAgentApi({ management, workspaceFiles, env = () => process.env, fetchImpl = fetch, showcaseRoot = '', archiveTranslations, showcaseAssetFetch, customProviderFetch, resolveTextSettings = textSettings, webTools, webToolsForUser, localSkills, ensureMediaTools, assertTextAccess, additionalTools = () => [], additionalInstructions = () => '', nativeAgentPrompt, nativeAgentScope, nativeConversationDefaults, durableDirectory, durableIdentity, durableProjectAccess }: Record<string, any>) {
   const incomingRequests = new HttpIncomingRequests('Agent 服务正在关闭，请稍后重试')
   let closing: Promise<void> | undefined
   const activeTurns = new Map()
@@ -493,7 +493,7 @@ export function createAgentApi({ management, workspaceFiles, env = () => process
     const { writeSkill, removeSkill } = createSkillStore({ workspaceFiles: toolFiles, localSkills })
     const sharedTools = createSharedTools({ workspaceFiles: toolFiles, fetchImpl, userId, webTools, localSkills,
       webToolsForUser: webToolsForUser || (management ? userId => createCloudWebTools({ management, userId, fetchImpl, beforeRequest: runtime.beforeWebRequest }) : undefined) })
-    const libraryTools = createLibraryTools({ workspaceFiles: toolFiles, fetchImpl, env, showcaseRoot, showcaseAssetFetch, userId, signal: runtime.signal })
+    const libraryTools = createLibraryTools({ archiveTranslations, workspaceFiles: toolFiles, fetchImpl, env, showcaseRoot, showcaseAssetFetch, userId, signal: runtime.signal })
     const sharedTool = (name) => sharedTools.find(tool => tool.name === name)
     const mediaTools = createMediaTools({ workspaceFiles: toolFiles, userId, signal: runtime.signal, beforeExecute: ensureMediaTools })
     return [

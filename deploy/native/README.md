@@ -12,7 +12,8 @@
 | 单元 | 内容 |
 | --- | --- |
 | `miaoimg.service` | 页面服务 4173、图片 API 4175、管理 API 4184；启动前检查 PostgreSQL、Redis、导入标记并运行 `scripts/check-server-modules.ts`；停止时等已受理任务收尾 |
-| `miaoimg-catalog.service` | 桌面灵感库/案例目录 4176 |
+| `miaoimg-catalog.service` | 桌面灵感库只读档案目录 4176 |
+| `miaoimg-library-content.service` | 独立精选内容与视频封面 4177 |
 | `miaoimg-sync.timer` | 每六小时检查公开目录和素材更新，只重启目录服务，不重启生成/计费主进程 |
 | `miaoimg-backup.timer` | 每天上海时间 04:15 后随机十分钟，生成并校验唯一账号库快照 |
 | Nginx | 官网与管理后台静态文件、媒体 Range、鉴权后的内部媒体直出、API 反代；配置在本目录 `nginx*.conf` |
@@ -121,3 +122,7 @@ DNS 变更时保留旧值与 TTL，核对所有 A/AAAA、www、支付回调和�
   1. 用 `/Applications/Clash Verge.app/Contents/MacOS/verge-mihomo` 单独起临时进程，配置从用户订阅里挑一个节点生成，只监听本机端口。
   2. SSH 和 rsync 加 `ProxyCommand nc -X 5 -x 127.0.0.1:<端口> %h %p`（rsync 可用 PATH 里的 ssh 包装脚本）。
   3. 不改用户正在用的 Clash 配置和选中节点；用完关闭临时进程，删除它的配置（内含节点凭据）。
+
+## 灵感库内容发布
+
+图片/视频分类、独立内容版本、封面缓存及内置 Agent API 见[灵感库与内容发布](../../docs/灵感库与内容发布.md)。素材内容发布不重打客户端包，也不改桌面更新源。新增服务先在独立端口验收，再配置 `library-content.conf` 并回读资源类型。

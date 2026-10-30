@@ -50,7 +50,10 @@ export function firstImageSources(item) {
 }
 
 function posterForVideo(item, video) {
-  if (video?.poster) return assetUrl(video.poster)
+  if (video?.poster) {
+    const path = assetUrl(video.poster)
+    return /^images\/\d+\/video_\d+\.jpg$/.test(video.poster) ? `${path}?v=archive-poster-1` : path
+  }
   if (isImageLikeUrl(video?.url)) return video.url
   const first = item.images?.[0]
   return first ? imageSources(first)[0] : null

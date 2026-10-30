@@ -12,9 +12,42 @@
       @keydown.enter="saveName"
       @keydown.esc.prevent="editingName = false"
       @blur="saveName" />
-    <span v-else class="conversationName">
-      <span class="conversationTitle" :class="{ readOnly: parentFile }" :title="name" :tabindex="sessionFile && !parentFile ? 0 : -1" @dblclick="editName" @keydown.enter.prevent="editName">{{ name }}</span>
-    </span>
+    <span v-else-if="parentFile" class="conversationName"><span class="conversationTitle readOnly" :title="name">{{ name }}</span></span>
+    <el-popover v-else v-model:visible="historyVisible" trigger="click" placement="bottom-start" :width="280" :showArrow="false" @show="emit('history')">
+      <template #reference>
+        <button class="conversationName conversationHistoryTrigger" type="button" :aria-label="translate('历史对话')" :aria-expanded="historyVisible" :title="translate('历史对话')" @keydown.f2.prevent="editName">
+          <span class="conversationTitle" :title="name" @dblclick.stop="editName">{{ name }}</span>
+          <icon-loader-2 v-if="loading" :size="12" class="is-loading" aria-hidden="true" />
+          <icon-chevron-down v-else :size="12" aria-hidden="true" />
+        </button>
+      </template>
+      <el-input v-model="historyQuery" class="historySearch" :placeholder="translate('搜索')" :aria-label="translate('搜索')" :prefix-icon="IconSearch" clearable />
+      <div class="historyList" role="group" :aria-label="translate('历史对话')">
+        <p v-if="!history.length" class="historyTips" role="status">{{ loading ? translate("正在加载对话…") : translate("暂无历史对话，点击“新建对话”开始。") }}</p>
+        <div
+          v-for="item in filteredHistory"
+          :key="item.file"
+          class="historyItem"
+          :class="{ selected: item.file === sessionFile }">
+          <button
+            class="historySelect"
+            type="button"
+            :aria-current="item.file === sessionFile ? 'true' : undefined"
+            :title="item.name"
+            @click="selectConversation(item.file)">
+            <icon-message-circle :size="16" />
+            <span class="historyContent"><span class="historyName">{{ displayName(item.name) }}</span><span v-if="historyDate(item.modified)" class="historyDate">{{ historyDate(item.modified) }}</span></span>
+            <icon-check v-if="item.file === sessionFile" :size="15" />
+          </button>
+          <el-button class="historyAction" text circle :aria-label="translate('重命名对话 {0}', { 0: item.name })" :title="translate('重命名对话')" @click.stop="renameHistory(item)">
+            <icon-pencil :size="14" />
+          </el-button>
+          <el-button class="historyAction" text circle :aria-label="translate('删除历史对话 {0}', { 0: item.name })" :title="translate('删除对话')" @click.stop="emit('remove', item.file)">
+            <icon-x :size="14" />
+          </el-button>
+        </div>
+      </div>
+    </el-popover>
     <div class="menuActions">
       <el-popover v-if="subAgents?.length" v-model:visible="subAgentsVisible" trigger="click" placement="bottom-end" :width="340" :showArrow="false" :popperStyle="{ maxWidth: 'calc(100vw - 24px)' }">
         <template #reference>
@@ -44,39 +77,10 @@
           </ul>
         </div>
       </el-popover>
-      <el-button v-if="!parentFile" text circle :aria-label="translate('新建对话')" :title="translate('新建对话')" @click="emit('newChat')"><icon-message-plus :size="17" /></el-button>
-      <el-popover v-if="!parentFile" v-model:visible="historyVisible" trigger="click" placement="bottom-end" :width="280" :showArrow="false" @show="emit('history')">
-        <template #reference>
-          <el-button text circle :loading="loading" :icon="IconHistory" :aria-label="translate('历史对话')" :title="translate('历史对话')" />
-        </template>
-        <div class="historyList" role="group" :aria-label="translate('历史对话')">
-          <p v-if="!history.length" class="historyTips" role="status">{{ loading ? translate("正在加载对话…") : translate("暂无历史对话，点击“新建对话”开始。") }}</p>
-          <div
-            v-for="item in history"
-            :key="item.file"
-            class="historyItem"
-            :class="{ selected: item.file === sessionFile }">
-            <button
-              class="historySelect"
-              type="button"
-              :aria-current="item.file === sessionFile ? 'true' : undefined"
-              :title="item.name"
-              @click="selectConversation(item.file)">
-              <icon-message-circle :size="16" />
-              <span class="historyName">{{ displayName(item.name) }}</span>
-              <icon-check v-if="item.file === sessionFile" :size="15" />
-            </button>
-            <el-button class="historyAction" text circle :aria-label="translate('重命名对话 {0}', { 0: item.name })" :title="translate('重命名对话')" @click.stop="renameHistory(item)">
-              <icon-pencil :size="14" />
-            </el-button>
-            <el-button class="historyAction" text circle :aria-label="translate('删除历史对话 {0}', { 0: item.name })" :title="translate('删除对话')" @click.stop="emit('remove', item.file)">
-              <icon-x :size="14" />
-            </el-button>
-          </div>
-        </div>
-      </el-popover>
+      <el-button v-if="!parentFile" text circle :aria-label="translate('新建对话')" :title="translate('新建对话')" @click="emit('newChat')"><icon-circle-plus :size="17" /></el-button>
+
       <slot name="actions" />
-      <el-button text circle :aria-label="translate('关闭对话')" :title="translate('关闭')" @click="emit('close')"><icon-x :size="17" /></el-button>
+      <el-button text circle :aria-label="translate('关闭对话')" :title="translate('关闭')" @click="emit('close')"><icon-minus :size="17" /></el-button>
     </div>
   </header>
 </template>
@@ -86,9 +90,9 @@ import { computed, nextTick, ref, watch } from "vue";
 import { ElMessageBox, type InputInstance } from "element-plus";
 import type { AgentHistory } from "./types";
 import type { AgentSubAgent } from "@miaoimg/server/agent/types";
-import { translate } from "@miaoimg/i18n/vue";
+import { locale, translate } from "@miaoimg/i18n/vue";
 import {
-  IconMessagePlus, IconHistory,
+  IconCirclePlus, IconChevronDown, IconMinus, IconSearch, IconLoader2,
   IconX, IconPencil,
   IconMessageCircle, IconCheck,
   IconArrowLeft, IconUsersGroup,
@@ -109,6 +113,16 @@ function displayName(value: string) {
 
 const emit = defineEmits<{ newChat: []; history: []; select: [file: string]; rename: [file: string, name: string]; remove: [file: string]; close: []; openSubAgent: [file: string]; back: [] }>();
 const historyVisible = ref(false);
+const historyQuery = ref("");
+const filteredHistory = computed(() => {
+  const query = historyQuery.value.trim().toLocaleLowerCase();
+  return query ? props.history.filter(item => displayName(item.name).toLocaleLowerCase().includes(query)) : props.history;
+});
+const historyDateFormatter = computed(() => new Intl.DateTimeFormat(locale.value, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }));
+function historyDate(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : historyDateFormatter.value.format(date);
+}
 const subAgentsVisible = ref(false);
 const editingName = ref(false);
 const nameDraft = ref("");
@@ -121,6 +135,7 @@ const subAgentStatusLabels = computed<Record<string, string>>(() => ({
 watch(() => [props.sessionFile, props.parentFile], () => {
   editingName.value = false;
   historyVisible.value = false;
+  historyQuery.value = "";
   subAgentsVisible.value = false;
 });
 
@@ -136,6 +151,7 @@ function selectSubAgent(file: string) {
 
 async function editName() {
   if (!props.sessionFile || props.parentFile) return;
+  historyVisible.value = false;
   nameDraft.value = props.name;
   editingName.value = true;
   await nextTick();
@@ -164,7 +180,7 @@ async function renameHistory(item: AgentHistory) {
 .agentMenu {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   flex-shrink: 0;
   min-width: 0;
   padding: 12px 12px 0;
@@ -184,7 +200,7 @@ async function renameHistory(item: AgentHistory) {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 500;
 
     .conversationTitle {
@@ -194,7 +210,31 @@ async function renameHistory(item: AgentHistory) {
     }
   }
 
+  .conversationHistoryTrigger {
+    flex: 0 1 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    width: fit-content;
+    max-width: 100%;
+    min-width: 0;
+    height: 28px;
+    padding: 0 6px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--el-text-color-primary);
+    text-align: left;
+    cursor: pointer;
+    font-family: inherit;
+    .conversationTitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    svg { flex-shrink: 0; color: var(--el-text-color-secondary); }
+    &:hover { background: var(--el-fill-color-light); }
+    &:focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: 1px; }
+  }
+
   .menuActions {
+    margin-inline-start: auto;
     display: flex;
     flex-shrink: 0;
     gap: 4px;
@@ -322,6 +362,7 @@ async function renameHistory(item: AgentHistory) {
   }
 }
 
+.historySearch { margin-bottom: 8px; }
 .historyList {
   display: flex;
   flex-direction: column;
@@ -348,6 +389,9 @@ async function renameHistory(item: AgentHistory) {
       color: var(--el-color-primary);
       background: var(--el-fill-color-light);
     }
+
+    .historyContent { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; }
+    .historyDate { color: var(--el-text-color-secondary); font-size: 11px; line-height: 16px; }
 
     .historySelect {
       display: flex;

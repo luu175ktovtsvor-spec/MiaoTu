@@ -11,6 +11,18 @@ const luminance = (color: string) => channels(color).map(value => {
 }).reduce((sum, value, index) => sum + value * [.2126, .7152, .0722][index], 0)
 const mix = (color: string, target: number, amount: number) => '#' + channels(color).map(value => Math.round(value + (target - value) * amount).toString(16).padStart(2, '0')).join('')
 
+// Neutral surfaces share one source across the shell, canvas and body-mounted
+// controls. Keep the canvas slightly below the page and the panels fully white.
+const lightTokens = {
+  '--color-abyss': '#f7f7f7', '--color-canvas': '#f5f5f5',
+  '--color-surface': '#ffffff', '--color-elevate': '#f2f2f2', '--color-overlay': '#ffffff',
+  '--color-ink': '#141414', '--color-body': '#262626',
+  '--color-muted': 'rgba(0, 0, 0, .55)', '--color-faint': '#919191',
+  '--color-line': '#e3e3e3', '--color-line-strong': '#c4c4c4',
+  '--color-hover': 'rgba(0, 0, 0, .05)', '--color-soft': 'rgba(0, 0, 0, .03)',
+  '--color-grid': '#dedede',
+}
+
 export function normalizeAppearance(ui: Record<string, unknown> = {}) {
   return {
     theme: (['system', 'light', 'dark', 'custom'].includes(String(ui.theme)) ? ui.theme : 'system') as AppearanceMode,
@@ -20,11 +32,12 @@ export function normalizeAppearance(ui: Record<string, unknown> = {}) {
 }
 
 export function appearancePalette(ui: ReturnType<typeof normalizeAppearance>, systemDark: boolean) {
-  const background = ui.theme === 'custom' ? ui.backgroundColor : (ui.theme === 'dark' || (ui.theme === 'system' && systemDark)) ? defaultBackground : '#f4f4f6'
+  const background = ui.theme === 'custom' ? ui.backgroundColor : (ui.theme === 'dark' || (ui.theme === 'system' && systemDark)) ? defaultBackground : '#f7f7f7'
   const light = luminance(background) > .179
+  const standardLight = light && ui.theme !== 'custom'
   const base = background === defaultBackground
   const surface = base ? '#18181a' : mix(background, 255, light ? .64 : .06)
-  const accent = light && ui.primaryColor === '#f2f2f2' ? '#25252c' : ui.primaryColor
+  const accent = light && ui.primaryColor === '#f2f2f2' ? standardLight ? '#262626' : '#25252c' : ui.primaryColor
   const foreground = light ? '24 24 29' : '255 255 255'
   return {
     scheme: light ? 'light' : 'dark',
@@ -42,6 +55,7 @@ export function appearancePalette(ui: ReturnType<typeof normalizeAppearance>, sy
       '--color-grid': `rgb(${foreground} / ${light ? '.16' : '.10'})`,
       '--color-accent': accent, '--color-accent-ink': luminance(accent) > .179 ? '#151515' : '#ffffff',
       '--color-brass': accent, '--color-brass-strong': accent, '--color-brass-soft': `color-mix(in srgb, ${accent} 12%, transparent)`,
+      ...(standardLight ? lightTokens : {}),
     },
   }
 }

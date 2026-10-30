@@ -1,7 +1,7 @@
 <template>
   <component v-if="renderer" :is="renderer" :tool="tool" :directory="directory" @copy="emit('copy', $event)" />
   <el-text v-if="rendererError" type="danger">{{ translate('工具界面加载失败，请停止后重试：') }}{{ rendererError }}</el-text>
-  <section v-if="tool.name !== 'askUser' || !renderer" class="toolCall" :class="{ outcomeUnknown: tool.outcomeUnknown }" :data-status="tool.status">
+  <section v-if="tool.name !== 'askUser' || !renderer" class="toolCall" :class="{ outcomeUnknown: tool.outcomeUnknown, collapsed }" :data-status="tool.status">
     <button class="toolToggle" type="button" :aria-expanded="!collapsed" @click="collapsed = !collapsed">
       <span class="toolHeader" :data-status="tool.status">
         <component :is="statusIcon" :size="15" class="statusIcon" :class="{ spinning: tool.status === 'running' }" />
@@ -10,7 +10,7 @@
         <span class="toolState">{{ tool.outcomeUnknown ? translate('结果待确认') : tool.name === 'subAgent' && tool.status === 'success' ? translate('调用已返回') : toolStatusLabels[tool.status] }}</span>
         <icon-chevron-right :size="14" class="detailArrow" :class="{ expanded: !collapsed }" />
       </span>
-      <span v-if="toolTarget" class="toolTarget">{{ toolTarget }}</span>
+      <span v-if="toolTarget && (!collapsed || tool.status !== 'success' || tool.outcomeUnknown)" class="toolTarget">{{ toolTarget }}</span>
       <span v-if="outcome" class="toolOutcome" :title="outcome">{{ outcome }}</span>
     </button>
     <div v-if="!collapsed && detailLines.length" class="toolDetails">
@@ -142,6 +142,8 @@ const detailLines = computed(() => {
   background: transparent;
   overflow: hidden;
   .toolToggle { display: flex; flex-direction: column; gap: 3px; min-width: 0; width: 100%; box-sizing: border-box; padding: 8px 10px; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; font: inherit; }
+  &.collapsed[data-status="success"]:not(.outcomeUnknown) { border-color: transparent; }
+  &.collapsed[data-status="success"]:not(.outcomeUnknown) .toolToggle { padding-top: 6px; padding-bottom: 6px; }
   .toolToggle:hover { background: var(--el-fill-color-extra-light); }
   .toolToggle:focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: -2px; }
   .toolTarget, .toolOutcome { min-width: 0; padding-left: 21px; font-size: 11px; line-height: 1.5; color: var(--el-text-color-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; box-sizing: border-box; }

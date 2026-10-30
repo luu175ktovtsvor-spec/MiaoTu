@@ -70,7 +70,7 @@ function localizedPrompt(item, lang) {
     : item.translations?.en || item.prompt_text
 }
 
-export function usePromptArchiveApi() {
+export function usePromptArchiveApi({ media = 'all', unified = false } = {}) {
   // lang 是界面语言；案例数据只有中/英两份（zh-Hans / en），数据选择用 contentLang。
   const { lang: uiLang } = useLang()
   const lang = contentLang(uiLang)
@@ -89,7 +89,7 @@ export function usePromptArchiveApi() {
   const [selectedAuthor, setSelectedAuthor] = useState('')
   const [selectedTag, setSelectedTag] = useState('')
   const [sortOrder, setSortOrder] = useState('newest')
-  const [selectedMedia, setSelectedMedia] = useState('all')
+  const [selectedMedia, setSelectedMedia] = useState(media)
   const requestGenerationRef = useRef(0)
   const loadMoreControllerRef = useRef(null)
   const galleryRequest = useMemo(
@@ -100,7 +100,7 @@ export function usePromptArchiveApi() {
   useEffect(() => {
     const controller = new AbortController()
     Promise.all([
-      fetchApiJson('./api/catalog', { signal: controller.signal }),
+      fetchApiJson(unified ? `./api/library/catalog?media=${media}` : './api/catalog', { signal: controller.signal }),
       fetch('./dims.json', { signal: controller.signal }).then((response) => response.ok ? response.json() : {}),
     ]).then(([nextCatalog, nextDims]) => {
       setCatalog(nextCatalog)
@@ -109,7 +109,7 @@ export function usePromptArchiveApi() {
       if (loadError.name !== 'AbortError') setError(loadError.message)
     })
     return () => controller.abort()
-  }, [retryToken])
+  }, [retryToken, unified, media])
 
   const requestUrl = useCallback((offset = 0) => {
     const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset), sort: sortOrder })
@@ -118,8 +118,9 @@ export function usePromptArchiveApi() {
     if (selectedAuthor) params.set('author', selectedAuthor)
     if (selectedTag) params.set('tag', selectedTag)
     if (selectedMedia !== 'all') params.set('media', selectedMedia)
-    return `./api/prompts?${params}`
-  }, [search.submitted, selectedAuthor, selectedTag, selectedTool, selectedMedia, sortOrder])
+    if (unified && offset === 0) params.set('fresh', '1')
+    return `./api/${unified ? 'library/items' : 'prompts'}?${params}`
+  }, [search.submitted, selectedAuthor, selectedTag, selectedTool, selectedMedia, sortOrder, unified])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -142,6 +143,7 @@ export function usePromptArchiveApi() {
         { signal: controller.signal },
       )
       if (!session && selectedMedia !== 'all' && payload.media !== selectedMedia) throw new Error(studioText('媒体分类服务尚未更新，请稍后重试。', uiLang))
+      if (payload.partial) setError(studioText('加载失败，请重试', uiLang))
       return { payload, session }
     }
 
@@ -220,7 +222,7 @@ export function usePromptArchiveApi() {
     setSelectedAuthor('')
     setSelectedTag('')
     setSortOrder('newest')
-    setSelectedMedia('all')
+    setSelectedMedia(media)
   }, [])
 
   return {
@@ -259,6 +261,6 @@ export function usePromptArchiveApi() {
     hasMore: !gallerySession && items.length < total,
     loadMore,
     resetFilters,
-    hasActiveFilters: !gallerySession && Boolean(search.submitted || selectedTool || selectedAuthor || selectedTag || selectedMedia !== 'all' || sortOrder !== 'newest'),
+    hasActiveFilters: !gallerySession && Boolean(search.submitted || selectedTool || selectedAuthor || selectedTag || selectedMedia !== media || sortOrder !== 'newest'),
   }
 }
