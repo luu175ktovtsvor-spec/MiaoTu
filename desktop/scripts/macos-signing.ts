@@ -9,12 +9,22 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 const desktop = fileURLToPath(new URL('../', import.meta.url))
 const repository = resolve(desktop, '..')
 const requireDesktop = createRequire(join(desktop, 'package.json'))
-const repositoryName = 'luu175ktovtsvor-spec/miaoimg'
+const repositoryName = 'luu175ktovtsvor-spec/MiaoTu'
 const profile = 'miaoimg-release-notary'
 const architectures = [{ name: 'arm64', binary: 'arm64', directory: 'mac-arm64' }, { name: 'x64', binary: 'x86_64', directory: 'mac' }]
 type SigningState = { keychain: string; searchList: string[]; sha1?: string; team?: string }
 type Proof = { commit?: string; startedAt: string; checks: Record<string, unknown>[]; stages: string[]; failure?: { stage: string; code: string; diagnostic?: ReturnType<typeof safeSigningDiagnostic> }; complete?: boolean; cleanup?: boolean }
-class SigningFailure extends Error { code: string; constructor(code: string) { super(code); this.code = code } }
+type ExtractDiagnostic = { toolCode: keyof typeof extractMessages; exitCode?: number }
+class SigningFailure extends Error { code: string; tool?: ExtractDiagnostic; constructor(code: string, tool?: ExtractDiagnostic) { super(code); this.code = code; this.tool = tool } }
+const extractMessages = {
+  codesign_extract_path_not_found: 'Certificate extraction target or prefix was not found; use --extract-certificates=<prefix>',
+  codesign_extract_arguments_invalid: 'Certificate extraction arguments were rejected by codesign',
+  codesign_extract_unsigned_target: 'Certificate extraction requires a signed code object',
+  codesign_extract_output_permission_denied: 'Certificate extraction output directory is not writable',
+  codesign_extract_chain_unavailable: 'Signing certificate chain could not be extracted',
+  codesign_extract_interrupted: 'Certificate extraction was interrupted or timed out',
+  codesign_extract_unknown_failure: 'Certificate extraction failed; raw tool output omitted',
+} as const
 const fail = (code: string): never => { throw new SigningFailure(code) }
 let stage = 'initialization'
 let proofWrites = Promise.resolve()
@@ -56,8 +66,27 @@ async function command(file: string, args: string[], label: string, options: { e
     }
     child.stdout.on('data', chunk => collect('stdout', chunk)); child.stderr.on('data', chunk => collect('stderr', chunk))
     child.on('error', () => { clearTimeout(timer); reject(new SigningFailure(`${label}_could_not_start`)) })
-    child.on('close', code => { clearTimeout(timer); code === 0 && !overflow ? done({ stdout, stderr }) : reject(new SigningFailure(`${label}_failed`)) })
+    child.on('close', code => {
+      clearTimeout(timer)
+      const extractsCertificate = file === '/usr/bin/codesign' && args.some(arg => arg === '--extract-certificates' || arg.startsWith('--extract-certificates='))
+      code === 0 && !overflow ? done({ stdout, stderr }) : reject(new SigningFailure(`${label}_failed`, extractsCertificate ? classifyCertificateExtraction(stderr, code) : undefined))
+    })
   })
+}
+
+export function certificateExtractionArguments(prefix: string, app: string) {
+  // codesign's prefix is an optional long-option argument: it requires '='.
+  return ['--display', `--extract-certificates=${prefix}`, app]
+}
+export function classifyCertificateExtraction(stderr: string, exitCode: number | null): ExtractDiagnostic {
+  let toolCode: ExtractDiagnostic['toolCode'] = 'codesign_extract_unknown_failure'
+  if (exitCode === null) toolCode = 'codesign_extract_interrupted'
+  else if (/No such file or directory/i.test(stderr)) toolCode = 'codesign_extract_path_not_found'
+  else if (/Usage:\s*codesign|unknown option|unrecognized option|invalid argument|option.*requires/i.test(stderr)) toolCode = 'codesign_extract_arguments_invalid'
+  else if (/not signed at all|code object is not signed/i.test(stderr)) toolCode = 'codesign_extract_unsigned_target'
+  else if (/Permission denied|Operation not permitted|Read-only file system/i.test(stderr)) toolCode = 'codesign_extract_output_permission_denied'
+  else if (/no certificates|cannot extract|unable to extract|does not contain.*certificate/i.test(stderr)) toolCode = 'codesign_extract_chain_unavailable'
+  return { toolCode, ...(Number.isInteger(exitCode) && exitCode! >= 0 && exitCode! <= 255 ? { exitCode: exitCode! } : {}) }
 }
 
 export function certificateIdentity(pem: string, team: string, now = Date.now()) {
@@ -140,7 +169,7 @@ async function verifyApplication(app: string, architecture: string, label: strin
   const details = display.stdout + display.stderr
   if (!details.includes(`TeamIdentifier=${state.team}`) || !details.includes('Authority=Developer ID Application:') || !/flags=.*\(.*runtime.*\)/.test(details) || !/Timestamp=/.test(details)) fail(`${label}_distribution_signature_required`)
   const prefix = join(paths().privateDirectory, `certificate-${label.replace(/[^a-z\d-]/gi, '-')}-`)
-  await command('/usr/bin/codesign', ['--display', '--extract-certificates', prefix, app], `${label}_extract_signing_certificate`)
+  await command('/usr/bin/codesign', certificateExtractionArguments(prefix, app), `${label}_extract_signing_certificate`)
   const cert = new X509Certificate(await readFile(prefix + '0'))
   if (cert.fingerprint.replaceAll(':', '').toUpperCase() !== state.sha1 || !cert.issuer.split('\n').includes('OU=G2')) fail(`${label}_wrong_signing_certificate`)
   const info = join(app, 'Contents', 'Info.plist')
@@ -183,7 +212,7 @@ export function safeSigningDiagnostic(error: unknown) {
   const knownPaths = ['mac', 'mac.identity', 'mac.sign', 'mac.notarize', 'mac.type', 'mac.hardenedRuntime', 'mac.entitlements', 'mac.entitlementsInherit', 'dmg', 'dmg.sign', 'forceCodeSigning', 'afterPack', 'afterSign', 'directories', 'directories.app', 'directories.output', 'files', 'publish', 'appId', 'productName', 'electronVersion', 'extraMetadata', 'asar']
   const schemaPaths = new Set<string>()
   let message = 'Unclassified packaging failure; raw tool output omitted'
-  if (error instanceof SigningFailure) message = 'Controlled release verification failed'
+  if (error instanceof SigningFailure) message = error.tool ? extractMessages[error.tool.toolCode] : 'Controlled release verification failed'
   else if (/Hook module path[\s\S]*resolves outside[\s\S]*workspace root/.test(raw)) {
     message = 'Configured build hook resolves outside the desktop workspace'
     if (raw.includes('windows-resources.js')) schemaPaths.add('/afterPack')
@@ -199,7 +228,33 @@ export function safeSigningDiagnostic(error: unknown) {
     const path = typeof item?.instancePath === 'string' ? item.instancePath : ''
     if (knownPaths.some(known => path === '/' + known.replaceAll('.', '/'))) schemaPaths.add(path)
   }
-  return { type, ...(code ? { code } : {}), ...(schemaPaths.size ? { schemaPaths: [...schemaPaths] } : {}), message }
+  return { type, ...(code ? { code } : {}), ...(schemaPaths.size ? { schemaPaths: [...schemaPaths] } : {}), ...(error instanceof SigningFailure && error.tool ? error.tool : {}), message }
+}
+
+export function assertVerifiedBuildProof(value: Proof, commit: string, certificateSha1: string) {
+  if (value.failure) fail('build_has_recorded_failure')
+  if (value.commit !== commit || !/^[a-f\d]{40}$/i.test(commit)) fail('build_receipt_commit_mismatch')
+  if (!/^[A-F\d]{40}$/.test(certificateSha1)) fail('build_receipt_certificate_missing')
+  if (!value.stages.includes('build')) fail('build_completion_receipt_missing')
+  for (const arch of architectures) {
+    const receipt = value.checks.find(check => check.stage === 'build' && check.label === `before-archive-${arch.binary}` && check.architecture === arch.binary)
+    if (!receipt || receipt.certificateSha1 !== certificateSha1 || receipt.credentialProtection !== 'local-key'
+      || receipt.deepStrictSignature !== true || receipt.hardenedRuntime !== true || receipt.timestamp !== true || receipt.stapled !== true || receipt.gatekeeper !== 'accepted'
+      || receipt.notarization !== 'Accepted by electron-notarize before afterSign') fail(`before_archive_receipt_missing_${arch.name}`)
+  }
+  const completion = value.checks.find(check => check.stage === 'build' && check.appTicketBeforeZip === true && Array.isArray(check.verifiedArchitectures)
+    && check.verifiedArchitectures.length === 2 && architectures.every(arch => (check.verifiedArchitectures as unknown[]).includes(arch.binary)))
+  if (!completion) fail('both_architectures_build_receipt_missing')
+}
+async function verifyBuild() {
+  const state = await readState()
+  assertVerifiedBuildProof(await proof(), required('GITHUB_SHA'), state.sha1 || '')
+}
+
+export function preserveFirstSigningFailure(value: Proof, attempted: NonNullable<Proof['failure']>) {
+  if (!value.failure) value.failure = attempted
+  else value.checks.push({ stage: attempted.stage, blockedByPrimaryFailure: true, diagnostic: attempted.diagnostic })
+  return value
 }
 
 async function build() {
@@ -267,6 +322,9 @@ export async function refreshUpdateMetadata(directory: string, expectedVersion: 
 }
 
 async function finalize() {
+  // No builder imports here: a zero exit code altered by a dependency's exit
+  // hook cannot substitute for completed verification of both architectures.
+  await verifyBuild()
   const metadata = JSON.parse(await readFile(join(desktop, 'package.json'), 'utf8')), release = join(desktop, 'release'), artifacts: string[] = []
   for (const arch of architectures) {
     const stem = `${metadata.productName}-${metadata.version}-${arch.name}`, app = join(release, arch.directory, `${metadata.productName}.app`)
@@ -283,7 +341,7 @@ async function finalize() {
   const publish = join(release, 'publish')
   if (await exists(publish)) fail('publish_directory_must_start_empty')
   await mkdir(publish)
-  const publicName = (name: string) => name.replace(`${metadata.productName}-`, 'MiaoImg-')
+  const publicName = (name: string) => name.replace(`${metadata.productName}-`, `${repositoryName.split('/')[1]}-`) // GitHub strips non-ASCII asset characters; official downloads retain productName.
   for (const artifact of artifacts) for (const suffix of ['', '.blockmap']) await copyFile(join(release, artifact + suffix), join(publish, publicName(artifact) + suffix))
   latest.files = latest.files.map(entry => ({ ...entry, url: publicName(entry.url) })); latest.path = publicName(latest.path)
   await writeFile(join(publish, 'latest-mac.yml'), yaml.dump(latest, { lineWidth: -1, noRefs: true }))
@@ -333,6 +391,7 @@ async function main(action: string) {
     if (action === 'preflight') await preflight()
     else if (action === 'prepare') await prepare()
     else if (action === 'build') await build()
+    else if (action === 'verify-build') await verifyBuild()
     else if (action === 'finalize') await finalize()
     else if (action === 'cleanup') await cleanup()
     else if (action === 'proof') await sanitizedProof()
@@ -340,7 +399,7 @@ async function main(action: string) {
     if (action !== 'proof') { const value = await proof(); value.stages.push(action); await mkdir(paths().proofDirectory, { recursive: true }); await writeFile(paths().proof, JSON.stringify(value, null, 2) + '\n') }
   } catch (error) {
     const diagnostic = safeSigningDiagnostic(error)
-    const value = await proof(); value.failure = { stage, code: diagnostic.code || 'signing_or_packaging_failed', diagnostic }
+    const value = preserveFirstSigningFailure(await proof(), { stage, code: diagnostic.code || 'signing_or_packaging_failed', diagnostic })
     await mkdir(paths().proofDirectory, { recursive: true }); await writeFile(paths().proof, JSON.stringify(value, null, 2) + '\n')
     // Do not print child-process arguments, Apple account errors or secret values.
     console.error(`macOS release stage failed: ${JSON.stringify(value.failure)}`); process.exitCode = 1

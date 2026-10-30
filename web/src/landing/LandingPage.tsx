@@ -3,6 +3,7 @@ import { type RefObject, useEffect, useRef, useState } from 'react'
 import { writeClipboard } from '../clipboard'
 import { useLang } from '../i18n'
 import { landingCopy } from './copy'
+import { productName as desktopProductName } from '../../../desktop/package.json'
 import { getMacInstallState, usePublishedRelease } from './usePublishedRelease'
 import './landing.css'
 import VideoShowcase from './VideoShowcase'
@@ -61,7 +62,7 @@ export default function LandingPage() {
   }
   const versionSuffix = version ? `-${version}` : ''
   const downloads = [
-    ['macOS', c.apple, `miaoimg-desktop-mac-arm64${versionSuffix}.dmg`, AppleLogo], ['macOS', c.intel, `miaoimg-desktop-mac-x64${versionSuffix}.dmg`, AppleLogo], ['Windows', c.win, `miaoimg-desktop-windows${versionSuffix}.exe`, WindowsLogo],
+    ['macOS', c.apple, `miaoimg-desktop-mac-arm64${versionSuffix}.dmg`, AppleLogo, 'arm64.dmg'], ['macOS', c.intel, `miaoimg-desktop-mac-x64${versionSuffix}.dmg`, AppleLogo, 'x64.dmg'], ['Windows', c.win, `miaoimg-desktop-windows${versionSuffix}.exe`, WindowsLogo, 'Windows-x64.exe'],
   ] as const
   return <div className="miao-site" id="top" ref={site}>
     <header className={`site-header${scrolled ? ' is-scrolled' : ''}`}>
@@ -123,7 +124,7 @@ export default function LandingPage() {
             <div className="site-download-aura" aria-hidden="true"/>
             <div className="site-section-heading"><img className="site-download-logo" src="/miaoimg-logo.png" width="56" height="56" alt=""/><p className="site-kicker">{c.downloadKicker}</p><h2>{c.downloadTitle[0]} <span>{c.downloadTitle[1]}</span></h2><p>{c.downloadBody}</p></div>
             <p className="site-release-version">{version ? `${c.currentVersion} ${version}` : failed ? c.releaseUnavailable : c.releaseLoading} · <a href="/changelog">{c.changelog}</a></p>
-            <div className="site-download-grid">{downloads.map(([os, label, file, Icon]) => <article key={file}><Icon size={26} weight="fill"/><div><h3>{os}</h3><p>{label}</p></div><a className="site-button site-button-outline" href={`${base}${file}`} aria-label={`${c.downloadButton} · ${os} ${label}`}>{c.downloadButton}<DownloadSimple size={15}/></a></article>)}</div>
+            <div className="site-download-grid">{downloads.map(([os, label, file, Icon, packageSuffix]) => <article key={file}><Icon size={26} weight="fill"/><div><h3>{os}</h3><p>{label}</p></div><a className="site-button site-button-outline" href={`${base}${file}`} download={version ? `${desktopProductName}-${version}-${packageSuffix}` : undefined} aria-label={`${c.downloadButton} · ${os} ${label}`}>{c.downloadButton}<DownloadSimple size={15}/></a></article>)}</div>
             <div className="site-mac-notice"><strong>{c.macNoticeTitle}</strong><p>{macNotice}</p><ol>{macOpenSteps.map(step => <li key={step}>{step}</li>)}</ol>{macInstallState === 'unsigned' && <a href="https://support.apple.com/zh-cn/102445" target="_blank" rel="noreferrer">{c.appleHelp}<ArrowUpRight size={13}/></a>}</div>
             {macInstallState === 'unsigned' && <details className="site-install-help"><summary>{c.installHelp}</summary><div><p>{c.installText} <a href={`${base}install-mac.sh`} target="_blank" rel="noreferrer">{c.viewScript}<ArrowUpRight size={13}/></a></p><div className="site-command"><code>{installCommand}</code><button onClick={copyCommand} aria-label={c.copy}>{copyState === 'copied' ? <Check size={17}/> : <Copy size={17}/>}</button></div><p role="status" className="site-copy-status">{copyState === 'copied' ? c.copied : copyState === 'failed' ? c.copyFailed : ''}</p></div></details>}
           </div>

@@ -16,6 +16,8 @@ const transient = new RegExp(`\\.(?:${transientExtensions.join('|')})(?:[.-].*)?
 export function isDesktopResourcePath(value: string) {
   const parts = value.replaceAll('\\', '/').toLowerCase().split('/').filter(part => part && part !== '.')
   if (parts.includes('..') || parts.some(part => excludedDirectories.includes(part))) return false
+  // The signing driver runs in CI from source; it has no desktop runtime role.
+  if (parts.join('/') === 'desktop/scripts/macos-signing.ts') return false
   if (['server', 'desktop'].includes(parts[0]) && runtimeDirectories.includes(parts[1])) return false
   const name = parts.at(-1) || ''
   if (excludedNames.includes(name) || database.test(name) || privateFile.test(name) || transient.test(name) || name.endsWith('~')) return false

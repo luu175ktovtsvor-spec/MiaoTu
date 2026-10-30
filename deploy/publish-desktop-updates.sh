@@ -9,7 +9,7 @@ REMOTE_HOST=${REMOTE_HOST:-root}
 REMOTE_DIR=${REMOTE_DIR:-/opt/miaoimg/desktop-downloads/updates}
 PUBLIC_BASE=${PUBLIC_BASE:-https://miaoimg.cn/desktop-downloads/updates}
 SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
-RELEASE_DIR=$(CDPATH='' cd -- "$SCRIPT_DIR/../desktop/release" && pwd)
+RELEASE_DIR=$(CDPATH='' cd -- "${MIAO_DESKTOP_RELEASE_DIR:-$SCRIPT_DIR/../desktop/release}" && pwd)
 case "$VERSION" in *[!0-9.]*|'') echo "版本号不合法：$VERSION" >&2; exit 2 ;; esac
 if [ "${DEPLOY_CONFIRM:-}" != "I-am-the-release-manager" ]; then
   echo "拒绝发布：更新源会推给所有已安装的用户，只有发布负责人带口令执行。" >&2

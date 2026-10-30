@@ -1,6 +1,6 @@
 {
   "name": "miaoimg",
-  "version": "1.3.5",
+  "version": "1.3.6",
   "private": true,
   "description": "妙图桌面创作工具、官网与服务端",
   "engines": {
@@ -26,7 +26,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/luu175ktovtsvor-spec/miaoimg.git"
+    "url": "git+https://github.com/luu175ktovtsvor-spec/MiaoTu.git"
   },
   "license": "MIT",
   "dependencies": {

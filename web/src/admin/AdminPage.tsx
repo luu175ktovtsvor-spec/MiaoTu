@@ -162,15 +162,15 @@ const externalDestinationGroups = [
         "id": "source",
         "zh": "代码仓库",
         "en": "Source repository",
-        "host": "github.com/luu175ktovtsvor-spec/miaoimg",
-        "href": "https://github.com/luu175ktovtsvor-spec/miaoimg"
+        "host": "github.com/luu175ktovtsvor-spec/MiaoTu",
+        "href": "https://github.com/luu175ktovtsvor-spec/MiaoTu"
       },
       {
         "id": "builds",
         "zh": "安装包构建 · Actions",
         "en": "Installer builds · Actions",
-        "host": "github.com/luu175ktovtsvor-spec/miaoimg/actions",
-        "href": "https://github.com/luu175ktovtsvor-spec/miaoimg/actions"
+        "host": "github.com/luu175ktovtsvor-spec/MiaoTu/actions",
+        "href": "https://github.com/luu175ktovtsvor-spec/MiaoTu/actions"
       }
     ]
   }

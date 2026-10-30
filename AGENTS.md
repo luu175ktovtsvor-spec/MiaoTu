@@ -4,7 +4,7 @@
 
 ## 项目是什么
 
-妙图是以桌面创作为主体的 AI 图片/视频创作产品，`main/` 是唯一维护的源码仓库，主分支为 `ChineseMain`：
+妙图是以桌面创作为主体的 AI 图片/视频创作产品，国内源码位于 `ChineseMain/`，对应分支为 `ChineseMain`；海外源码位于 `OverseasMain/`，对应分支为 `OverseasMain`：
 
 - **桌面客户端**（Electron）：本机画布、节点、文档、Agent、素材与成品都保存在用户电脑。
 - **官网与管理后台**：`https://miaoimg.cn/` 是官网，`https://admin.miaoimg.cn/`（及 `/manage`）是管理后台。
@@ -29,8 +29,13 @@
 
 ## 分支与区域
 
-- `ChineseMain`：当前妙图产品，安装包名称为“妙图”，服务继续部署在美国。
-- `OverseasMain`：从当前完整代码复制，供海外市场开发，目标部署区域为英国；英国环境在实际接入时单独配置。以下生产拓扑描述的是 `ChineseMain` 的现有美国环境。
+国内 `MiaoTu` 与海外 `MiaoImg` 是两个独立 GitHub 仓库，本地也各自独立 `.git`；禁止把海外版放在国内仓库分支里。
+
+完整命名与发布对照见 [国内与海外版本约定](docs/国内与海外版本约定.md)。
+
+- `ChineseMain/` / `ChineseMain`：产品和安装包名称“妙图”，GitHub 仓库地址名 `MiaoTu`，官网 `miaoimg.cn`，美国服务器。
+- `OverseasMain/` / `OverseasMain`：产品和安装包名称 `MiaoImg`，GitHub 仓库名 `MiaoImg`，官网 `miaoimg.com`，目标英国服务器。海外接入独立进行，不把复制代码当成已经部署。
+- 下面的生产拓扑描述国内版现有美国环境；执行前按当前工作区核对对应产品线，禁止交叉部署。
 
 ## 生产拓扑
 

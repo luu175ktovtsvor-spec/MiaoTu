@@ -72,6 +72,8 @@ jobs:
           npm --prefix desktop run prepare:app
       - name: G2 签名、公证 App 并打包两种架构
         run: node desktop/scripts/macos-signing.ts build
+      - name: 独立核对两架构构建和 App 公证收据
+        run: node desktop/scripts/macos-signing.ts verify-build
       - name: 公证 DMG、核对两架构 App 与 ZIP 并重建最终更新元数据
         run: node desktop/scripts/macos-signing.ts finalize
       - name: 实际启动匹配架构安装包并验收
@@ -80,7 +82,8 @@ jobs:
           MIAO_ACCEPT_PASSWORD: ${{ secrets.MIAO_ACCEPT_PASSWORD }}
         run: |
           if [ "$(uname -m)" = arm64 ]; then bundle=desktop/release/mac-arm64; else bundle=desktop/release/mac; fi
-          node desktop/scripts/accept-login.ts "$bundle/妙图.app/Contents/MacOS/妙图" "$RUNNER_TEMP/desktop-proof"
+          product=$(node -p "JSON.parse(require('fs').readFileSync('desktop/package.json','utf8')).productName")
+          node desktop/scripts/accept-login.ts "$bundle/$product.app/Contents/MacOS/$product" "$RUNNER_TEMP/desktop-proof"
       - name: 清理临时钥匙串和所有签名私密文件
         if: always()
         run: node desktop/scripts/macos-signing.ts cleanup

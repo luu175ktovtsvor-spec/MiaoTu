@@ -59,7 +59,8 @@ jobs:
           $destination = Join-Path $env:RUNNER_TEMP 'MiaoLoginInstalled'
           $installed = Start-Process -FilePath $installer -ArgumentList '/S', "/D=$destination" -Wait -PassThru
           if ($installed.ExitCode -ne 0) { throw "Installer exited with $($installed.ExitCode)" }
-          $app = Join-Path $destination '妙图.exe'
+          $productName = (Get-Content 'desktop/package.json' -Raw | ConvertFrom-Json).productName
+          $app = Join-Path $destination ($productName + '.exe')
           if (-not (Test-Path $app)) { throw 'Installed application missing' }
           Get-Process | Where-Object { $_.Path -eq $app } | Stop-Process
           node desktop/scripts/accept-login.ts $app (Join-Path $env:RUNNER_TEMP 'login-proof')
@@ -79,7 +80,7 @@ jobs:
       # GitHub Release 资产。正式更新源仍是 miaoimg.cn；取回后由发布者删除
       # 这个 Release 和 tag，不把它当用户下载位置。
       - name: 保存 Windows 安装包到临时 Release
-        if: always() && hashFiles('desktop/release/latest.yml') != ''
+        if: success() && hashFiles('desktop/release/latest.yml') != ''
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: desktop-build-${{ github.run_id }}
@@ -88,11 +89,13 @@ jobs:
           gh release delete $env:RELEASE_TAG --yes --cleanup-tag 2>$null
           $publish = Join-Path $env:RUNNER_TEMP 'miaoimg-release-assets'
           New-Item -ItemType Directory -Force -Path $publish | Out-Null
-          Get-ChildItem 'desktop/release/妙图-*-Windows-x64.exe', 'desktop/release/妙图-*.blockmap' | ForEach-Object {
-            $name = $_.Name -replace '^妙图-', 'MiaoImg-'
+          $productName = (Get-Content 'desktop/package.json' -Raw | ConvertFrom-Json).productName
+          $transportPrefix = ($env:GITHUB_REPOSITORY -split '/')[1]
+          Get-ChildItem "desktop/release/$productName-*-Windows-x64.exe", "desktop/release/$productName-*.blockmap" | ForEach-Object {
+            $name = $_.Name -replace ('^' + [regex]::Escape($productName) + '-'), ($transportPrefix + '-')
             Copy-Item $_.FullName (Join-Path $publish $name)
           }
-          (Get-Content 'desktop/release/latest.yml' -Raw).Replace('妙图-', 'MiaoImg-') |
+          (Get-Content 'desktop/release/latest.yml' -Raw).Replace(($productName + '-'), ($transportPrefix + '-')) |
             Set-Content (Join-Path $publish 'latest.yml') -NoNewline -Encoding utf8NoBOM
           $assets = Get-ChildItem -File $publish | ForEach-Object { $_.FullName }
           gh release create $env:RELEASE_TAG `
