@@ -57,3 +57,12 @@ desktop/release/
 desktop/.tools/
 
 .claude/
+
+# Local reference checkouts, creative material and ad-hoc acceptance output stay outside source.
+/参考源码/
+/coverage/
+/tmp/
+/temp/
+/test-results/
+/playwright-report/
+*.tsbuildinfo
