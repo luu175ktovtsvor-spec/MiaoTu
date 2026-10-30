@@ -32,7 +32,7 @@ function useReveal(ref: RefObject<HTMLDivElement | null>) {
 export default function LandingPage() {
   const { lang, setLang } = useLang()
   const c = landingCopy[lang] || landingCopy.en
-  const { version, failed } = usePublishedRelease()
+  const { version, downloadRevisions } = usePublishedRelease()
   const [scrolled, setScrolled] = useState(false)
   const site = useRef<HTMLDivElement>(null)
   useReveal(site)
@@ -91,8 +91,7 @@ export default function LandingPage() {
           <div className="site-download-panel" data-reveal>
             <div className="site-download-aura" aria-hidden="true"/>
             <div className="site-section-heading"><img className="site-download-logo" src="/miaoimg-logo.png" width="56" height="56" alt=""/><p className="site-kicker">{c.downloadKicker}</p><h2>{c.downloadTitle[0]} <span>{c.downloadTitle[1]}</span></h2><p>{c.downloadBody}</p></div>
-            <p className="site-release-version">{version ? `${c.currentVersion} ${version}` : failed ? c.releaseUnavailable : c.releaseLoading} · <a href="/changelog">{c.changelog}</a></p>
-            <div className="site-download-grid">{downloads.map(([os, label, file, Icon, packageSuffix]) => <article key={file}><Icon size={26} weight="fill"/><div><h3>{os}</h3><p>{label}</p></div><a className="site-button site-button-outline" href={`${base}${file}`} download={version ? `${desktopProductName}-${version}-${packageSuffix}` : undefined} aria-label={`${c.downloadButton} · ${os} ${label}`}>{c.downloadButton}<DownloadSimple size={15}/></a></article>)}</div>
+            <div className="site-download-grid">{downloads.map(([os, label, file, Icon, packageSuffix]) => <article key={file}><Icon size={26} weight="fill"/><div><h3>{os}</h3><p>{label}</p></div><a className="site-button site-button-outline" href={`${base}${file}${downloadRevisions[packageSuffix] ? `?sha=${encodeURIComponent(downloadRevisions[packageSuffix])}` : ''}`} download={version ? `${desktopProductName}-${version}-${packageSuffix}` : undefined} aria-label={`${c.downloadButton} · ${os} ${label}`}>{c.downloadButton}<DownloadSimple size={15}/></a></article>)}</div>
           </div>
         </div>
       </section>

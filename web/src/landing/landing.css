@@ -294,6 +294,3 @@
 .site-changelog article ul{margin:0;padding-left:18px;display:grid;gap:9px;color:var(--site-muted);font-size:14.5px;line-height:1.75}
 .site-changelog article li::marker{color:var(--site-faint)}
 @media (max-width:760px){.site-changelog{padding-top:96px}.site-changelog-list>li{grid-template-columns:1fr;gap:12px}.site-changelog-version{position:static;flex-direction:row;align-items:center}}
-
-.site-release-version{color:var(--site-muted);font-size:14px;margin:0 0 18px}
-.site-release-version a{text-decoration:underline;text-underline-offset:3px}
