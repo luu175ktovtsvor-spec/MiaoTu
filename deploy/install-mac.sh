@@ -98,13 +98,32 @@ SOURCE="$MNT/妙图.app"
 [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$SOURCE/Contents/Info.plist")" = "${VERSION}" ] || fail '镜像内版本与正式更新源不一致。'
 lipo -archs "$SOURCE/Contents/MacOS/妙图" | tr ' ' '\n' | /usr/bin/grep -qx "${CPU}" || fail '镜像内芯片架构不匹配。'
 codesign --verify --deep --strict "$SOURCE" || fail '应用完整性检查失败，未安装。'
-if [ "$VERIFY_ONLY" -eq 1 ]; then echo "已核对版本、芯片、文件大小、SHA-512 和应用完整性：${VERSION}（${ARCH}）。尚未安装或验证 Apple 公证。"; exit 0; fi
+SIGNED=0
+if awk -v version="$VERSION" 'BEGIN { split(version,a,"."); exit !(a[1]>3 || (a[1]==3 && (a[2]>2 || (a[2]==2 && a[3]>=1)))) }'; then
+  SIGNED=1
+  TEAM=$(codesign -dv --verbose=4 "$SOURCE" 2>&1 | awk -F= '$1 == "TeamIdentifier" { print $2 }')
+  [ "$TEAM" = 92Q29PMV22 ] || fail '应用签名团队不匹配，未安装。'
+  codesign --verify --strict "$TMP/miao.dmg" || fail '安装镜像签名检查失败。'
+  xcrun stapler validate "$TMP/miao.dmg" >/dev/null || fail '安装镜像缺少有效 Apple 公证票据。'
+  xcrun stapler validate "$SOURCE" >/dev/null || fail '应用缺少有效 Apple 公证票据。'
+  spctl --assess --type open --context context:primary-signature "$TMP/miao.dmg" || fail '系统未接受安装镜像，未安装。'
+  spctl --assess --type execute "$SOURCE" || fail '系统未接受应用，未安装。'
+fi
+if [ "$VERIFY_ONLY" -eq 1 ]; then
+  if [ "$SIGNED" -eq 1 ]; then echo "已核对版本、芯片、SHA-512、签名团队、Apple 公证票据和系统评估：${VERSION}（${ARCH}）。尚未安装或验证首次打开。"
+  else echo "已核对版本、芯片、文件大小、SHA-512 和应用完整性：${VERSION}（${ARCH}）。尚未安装或验证 Apple 公证。"; fi
+  exit 0
+fi
 mkdir -p "$TARGET"
 STAGE=$(mktemp -d "$TARGET/.miaoimg-install.XXXXXX")
 ditto "$SOURCE" "$STAGE/new.app"
 codesign --verify --deep --strict "$STAGE/new.app" || fail '应用复制后校验失败。'
-# Only the verified MiaoImg copy is affected; never disable global Gatekeeper.
-xattr -dr com.apple.quarantine "$STAGE/new.app" || fail '无法处理此应用的下载隔离标记，请按官网系统设置说明打开。'
+if [ "$SIGNED" -eq 1 ]; then
+  spctl --assess --type execute "$STAGE/new.app" || fail '系统未接受复制后的应用，未安装。'
+else
+  # Compatibility for historical unsigned packages only.
+  xattr -dr com.apple.quarantine "$STAGE/new.app" || fail '无法处理此应用的下载隔离标记，请按官网系统设置说明打开。'
+fi
 if [ -e "$APP" ]; then mv "$APP" "$STAGE/previous.app"; fi
 mv "$STAGE/new.app" "$APP"
 REPLACED=1
