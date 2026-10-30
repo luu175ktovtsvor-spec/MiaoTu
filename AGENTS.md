@@ -27,6 +27,11 @@
 
 业务代码用 TypeScript（React 用 `.tsx`），Node 直接运行 TS，最低 22.19；改到的旧 `.mjs` 随改动迁移，不维护新旧两份实现。`tsconfig.json` 检查服务端，`web/tsconfig.json` 检查官网与后台。Python 运维脚本保留原语言。
 
+## 分支与区域
+
+- `ChineseMain`：当前妙图产品，安装包名称为“妙图”，服务继续部署在美国。
+- `海外分支`：从当前完整代码复制，供海外市场开发，目标部署区域为英国；英国环境在实际接入时单独配置。以下生产拓扑描述的是 `ChineseMain` 的现有美国环境。
+
 ## 生产拓扑
 
 - 全部妙图服务在美国 `172.93.164.68`（SSH 别名 `root`），原生 Nginx + systemd + Node/Python，部署方法见 [deploy/native/README.md](deploy/native/README.md)。

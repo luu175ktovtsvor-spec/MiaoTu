@@ -17,7 +17,6 @@
     "data:pull:db": "node scripts/run_python.ts scripts/fetch_dataset.py --db-only",
     "dev": "npm run desktop:dev",
     "dev:web": "npm --prefix web run dev",
-    "status": "node scripts/run_python.ts skills/img-gen-prompts/scripts/miaoimg.py status",
     "build": "npm --prefix desktop run prepare:app",
     "build:web": "npm --prefix web run build",
     "preview": "npm run desktop:dev",

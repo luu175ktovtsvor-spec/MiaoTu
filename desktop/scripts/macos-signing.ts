@@ -13,7 +13,7 @@ const repositoryName = 'luu175ktovtsvor-spec/miaoimg'
 const profile = 'miaoimg-release-notary'
 const architectures = [{ name: 'arm64', binary: 'arm64', directory: 'mac-arm64' }, { name: 'x64', binary: 'x86_64', directory: 'mac' }]
 type SigningState = { keychain: string; searchList: string[]; sha1?: string; team?: string }
-type Proof = { commit?: string; startedAt: string; checks: Record<string, unknown>[]; stages: string[]; failure?: { stage: string; code: string }; complete?: boolean; cleanup?: boolean }
+type Proof = { commit?: string; startedAt: string; checks: Record<string, unknown>[]; stages: string[]; failure?: { stage: string; code: string; diagnostic?: ReturnType<typeof safeSigningDiagnostic> }; complete?: boolean; cleanup?: boolean }
 class SigningFailure extends Error { code: string; constructor(code: string) { super(code); this.code = code } }
 const fail = (code: string): never => { throw new SigningFailure(code) }
 let stage = 'initialization'
@@ -162,6 +162,46 @@ export function signedBuilderConfig(sha1: string, sign: (options: any) => Promis
   if (!/^[A-F\d]{40}$/.test(sha1)) fail('explicit_certificate_SHA1_required')
   return { forceCodeSigning: true, mac: { identity: sha1, type: 'distribution', hardenedRuntime: true, notarize: true, sign }, dmg: { sign: true }, afterSign }
 }
+
+// Builder's relative lifecycle hooks use process.cwd(), even with projectDir.
+// Match the former `npm --prefix desktop run package:mac` working directory.
+export async function withDesktopBuildDirectory<T>(action: () => Promise<T>): Promise<T> {
+  const previous = process.cwd()
+  process.chdir(desktop)
+  try { return await action() } finally { process.chdir(previous) }
+}
+
+export function safeSigningDiagnostic(error: unknown) {
+  const value = error as { name?: unknown; code?: unknown; message?: unknown; errors?: unknown }
+  const names = new Set(['Error', 'TypeError', 'RangeError', 'SyntaxError', 'AggregateError', 'ValidationError', 'InvalidConfigurationError', 'SigningFailure', 'ExecError', 'TimeoutError', 'AbortError'])
+  const codes = new Set(['ERR_ELECTRON_BUILDER_INVALID_CONFIGURATION', 'ERR_MODULE_NOT_FOUND', 'MODULE_NOT_FOUND', 'ERR_REQUIRE_ESM', 'ERR_REQUIRE_ASYNC_MODULE', 'ERR_INVALID_ARG_TYPE', 'ERR_INVALID_ARG_VALUE', 'ERR_PACKAGE_PATH_NOT_EXPORTED', 'ERR_UNKNOWN_FILE_EXTENSION', 'ENOENT', 'EACCES', 'EPERM', 'ENOTDIR', 'ENOSPC', 'ETIMEDOUT', 'ECONNRESET', 'ENOEXEC', 'ENOTFOUND'])
+  const type = typeof value?.name === 'string' && names.has(value.name) ? value.name : 'Error'
+  const code = error instanceof SigningFailure ? error.code : typeof value?.code === 'string' && codes.has(value.code) ? value.code : undefined
+  const raw = typeof value?.message === 'string' ? value.message : ''
+  // Never copy a raw message, argv, schema data/params, cause or stack. These
+  // exact schema paths and constant messages are safe even for tool failures.
+  const knownPaths = ['mac', 'mac.identity', 'mac.sign', 'mac.notarize', 'mac.type', 'mac.hardenedRuntime', 'mac.entitlements', 'mac.entitlementsInherit', 'dmg', 'dmg.sign', 'forceCodeSigning', 'afterPack', 'afterSign', 'directories', 'directories.app', 'directories.output', 'files', 'publish', 'appId', 'productName', 'electronVersion', 'extraMetadata', 'asar']
+  const schemaPaths = new Set<string>()
+  let message = 'Unclassified packaging failure; raw tool output omitted'
+  if (error instanceof SigningFailure) message = 'Controlled release verification failed'
+  else if (/Hook module path[\s\S]*resolves outside[\s\S]*workspace root/.test(raw)) {
+    message = 'Configured build hook resolves outside the desktop workspace'
+    if (raw.includes('windows-resources.js')) schemaPaths.add('/afterPack')
+  } else if (/Invalid configuration object\./.test(raw)) {
+    message = 'electron-builder rejected the configuration schema'
+    for (const match of raw.matchAll(/\bconfiguration\.([A-Za-z][A-Za-z\d]*(?:\.[A-Za-z][A-Za-z\d]*)*)/g)) if (knownPaths.includes(match[1])) schemaPaths.add('/' + match[1].replaceAll('.', '/'))
+  } else if (code === 'ERR_MODULE_NOT_FOUND' || code === 'MODULE_NOT_FOUND' || /Cannot find (?:module|package)/.test(raw)) message = 'Build hook or dependency module could not be resolved'
+  else if (/Cannot find package\.json/.test(raw)) message = 'Application package metadata was not found'
+  else if (/notari[sz]|notarytool/i.test(raw)) message = 'Apple notarization operation failed'
+  else if (/No identity found for signing|cannot find valid.*identity|Identity name is specified/i.test(raw)) message = 'Signing identity was not found in the isolated keychain'
+  else if (code === 'ERR_INVALID_ARG_TYPE' || code === 'ERR_INVALID_ARG_VALUE') message = 'Build API received an invalid argument type or value'
+  if (Array.isArray(value?.errors)) for (const item of value.errors) {
+    const path = typeof item?.instancePath === 'string' ? item.instancePath : ''
+    if (knownPaths.some(known => path === '/' + known.replaceAll('.', '/'))) schemaPaths.add(path)
+  }
+  return { type, ...(code ? { code } : {}), ...(schemaPaths.size ? { schemaPaths: [...schemaPaths] } : {}), message }
+}
+
 async function build() {
   const state = await readState()
   if (!state.sha1 || !state.team || !await exists(state.keychain)) fail('prepared_signing_identity_required')
@@ -172,13 +212,14 @@ async function build() {
   process.env.APPLE_KEYCHAIN = state.keychain; process.env.APPLE_KEYCHAIN_PROFILE = profile
   const { build: packageApp, Platform, Arch } = requireDesktop('electron-builder'), { signAsync } = requireDesktop('@electron/osx-sign')
   const signed = new Set<string>()
-  await packageApp({ projectDir: desktop, publish: 'never', targets: Platform.MAC.createTarget(['dmg', 'zip'], Arch.arm64, Arch.x64), config: signedBuilderConfig(state.sha1,
+  await record({ stage: 'build', builderWorkingDirectory: 'desktop', relativeHooksResolveFromProject: true })
+  await withDesktopBuildDirectory(() => packageApp({ projectDir: desktop, publish: 'never', targets: Platform.MAC.createTarget(['dmg', 'zip'], Arch.arm64, Arch.x64), config: signedBuilderConfig(state.sha1,
     async options => { if (options.keychain !== state.keychain || options.identity !== state.sha1) fail('builder_signing_identity_changed'); await signAsync({ ...options, identity: state.sha1, keychain: state.keychain, identityValidation: false }) },
     async context => {
       const architecture = context.arch === Arch.arm64 ? 'arm64' : context.arch === Arch.x64 ? 'x86_64' : fail('unexpected_packaging_architecture')
       await verifyApplication(join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`), architecture, `before-archive-${architecture}`)
       signed.add(architecture)
-    }) })
+    }) }))
   if (signed.size !== 2) fail('both_apps_must_pass_before_archive_hook')
   await record({ stage: 'build', verifiedArchitectures: [...signed], appTicketBeforeZip: true })
 }
@@ -298,10 +339,11 @@ async function main(action: string) {
     else fail('unknown_signing_stage')
     if (action !== 'proof') { const value = await proof(); value.stages.push(action); await mkdir(paths().proofDirectory, { recursive: true }); await writeFile(paths().proof, JSON.stringify(value, null, 2) + '\n') }
   } catch (error) {
-    const value = await proof(); value.failure = { stage, code: error instanceof SigningFailure ? error.code : 'signing_or_packaging_failed' }
+    const diagnostic = safeSigningDiagnostic(error)
+    const value = await proof(); value.failure = { stage, code: diagnostic.code || 'signing_or_packaging_failed', diagnostic }
     await mkdir(paths().proofDirectory, { recursive: true }); await writeFile(paths().proof, JSON.stringify(value, null, 2) + '\n')
     // Do not print child-process arguments, Apple account errors or secret values.
-    console.error(`macOS release stage failed: ${value.failure.stage}/${value.failure.code}`); process.exitCode = 1
+    console.error(`macOS release stage failed: ${JSON.stringify(value.failure)}`); process.exitCode = 1
   }
 }
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) await main(process.argv[2] || '')

@@ -1,6 +1,6 @@
 ---
 name: img-gen-taste
-description: Develop art direction for image generation with curated style cards distilled from the MiaoImg prompt library. Use when choosing or comparing visual directions, improving an existing generation prompt, or translating a subject, use case, or supplied image into a compact creative spec. Use img-gen-prompts for real archive examples, exact source prompts, or gallery browsing.
+description: Develop art direction for image generation with curated style cards distilled from the MiaoImg prompt library. Use when choosing or comparing visual directions, improving an existing generation prompt, or translating a subject, use case, or supplied image into a compact creative spec. Use MiaoImg’s built-in inspiration-library workflow for real references and exact source prompts.
 ---
 
 # Img Gen Taste
@@ -53,8 +53,8 @@ alternatives alongside a non-experimental direction.
 
 ## Return the hand-off contract
 
-Use this exact key and field structure so `$img-gen-prompts` can consume the
-result without reinterpretation:
+Use this exact key and field structure to keep the chosen visual direction
+explicit when handing off to image creation or reference selection:
 
 ```yaml
 creative_spec:
@@ -78,8 +78,10 @@ technical-looking details that the direction does not require.
 ## Hand off real-reference requests
 
 When the user asks to see examples, compare images, inspect original prompts,
-find similar archive records, or browse a gallery, invoke `$img-gen-prompts`
-with the original request and `creative_spec`. Preserve source prompts exactly;
+find similar archive records, or browse references, use MiaoImg’s built-in
+`inspiration-library` method and `searchInspirationLibrary` tool. Keep the
+original request as the search query and use `creative_spec` as brief context;
+only pass parameters that the available tool actually supports. Preserve source prompts exactly;
 write improvements as separate derived prompts. Do not send a mixed bundle of
 retrieved images to a generator automatically—use only coherent references the
 user selected or that provide uniquely relevant visual evidence.
