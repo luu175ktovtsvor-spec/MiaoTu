@@ -40,6 +40,9 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
+      - name: 在临时 runner 独立 anchor 中让公证票据走 TCP
+        # Scoped adaptation of https://github.com/actions/runner-images/issues/14924
+        run: node desktop/scripts/macos-signing.ts transport-prepare
       - name: 检查 G2 签名、公证和原生验收配置
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
@@ -84,6 +87,9 @@ jobs:
           if [ "$(uname -m)" = arm64 ]; then bundle=desktop/release/mac-arm64; else bundle=desktop/release/mac; fi
           product=$(node -p "JSON.parse(require('fs').readFileSync('desktop/package.json','utf8')).productName")
           node desktop/scripts/accept-login.ts "$bundle/$product.app/Contents/MacOS/$product" "$RUNNER_TEMP/desktop-proof"
+      - name: 清除自己的临时 anchor 并释放自己的 PF 引用
+        if: always()
+        run: node desktop/scripts/macos-signing.ts transport-cleanup
       - name: 清理临时钥匙串和所有签名私密文件
         if: always()
         run: node desktop/scripts/macos-signing.ts cleanup

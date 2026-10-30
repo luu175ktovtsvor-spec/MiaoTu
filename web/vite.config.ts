@@ -5,6 +5,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { archiveImagesPlugin, blockPrivateArchive } from './scripts/archiveMiddleware.ts'
+import { landingFirstPaintPlugin } from './scripts/landingFirstPaintPlugin.tsx'
 
 const WEB_DIR = fileURLToPath(new URL('.', import.meta.url))
 const API_PORT = globalThis.process?.env.OIP_API_PORT || '8787'
@@ -57,7 +58,7 @@ function showcaseAgentManifestPlugin() {
 
 export default defineConfig({
   base: './',
-  plugins: [react(), tailwindcss(), archiveImagesPlugin(), archiveAssetsPlugin(), showcaseAgentManifestPlugin()],
+  plugins: [landingFirstPaintPlugin(WEB_DIR), react(), tailwindcss(), archiveImagesPlugin(), archiveAssetsPlugin(), showcaseAgentManifestPlugin()],
   server: {
     // Never inherit Vite's dual-stack `localhost` default: it lets the dev
     // server bind [::1] while an unrelated process owns IPv4 on the same port,

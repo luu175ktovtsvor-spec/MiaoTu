@@ -1,18 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { dict, dictText, LangContext } from './i18n'
+import { initialLandingLanguage } from './landing/initialLandingLanguage.mjs'
 import { SHELL_SETTINGS_KEY, normalizeShellLang, readStoredLanguage, shellLangForStored, writeStoredLanguage } from './shellLanguage'
 
 // 语言来源，按优先级：URL 上明确要求的中/EN → 之前保存的选择 → 中文。
 function initialShellLang() {
   const bootstrapped = globalThis.__OIP_INITIAL_LANG__
-  if (normalizeShellLang(bootstrapped)) return bootstrapped
-  try {
-    const requested = normalizeShellLang(new URLSearchParams(window.location.search).get('lang'))
-    if (requested) return requested
-  } catch {
-    // URL unavailable during non-browser rendering — fall through to the stored setting.
-  }
-  return shellLangForStored(readStoredLanguage()) || 'zh'
+  return normalizeShellLang(bootstrapped) ? bootstrapped : initialLandingLanguage()
 }
 
 export function LangProvider({ children }) {

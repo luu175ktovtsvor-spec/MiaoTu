@@ -1,7 +1,7 @@
 // Controlled CI-only Developer ID packaging. Never use the user's login keychain.
 import { spawn } from 'node:child_process'
 import { randomBytes, X509Certificate } from 'node:crypto'
-import { access, chmod, copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, chmod, copyFile, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { basename, dirname, join, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -13,6 +13,10 @@ const repositoryName = 'luu175ktovtsvor-spec/MiaoTu'
 const profile = 'miaoimg-release-notary'
 const architectures = [{ name: 'arm64', binary: 'arm64', directory: 'mac-arm64' }, { name: 'x64', binary: 'x86_64', directory: 'mac' }]
 type SigningState = { keychain: string; searchList: string[]; sha1?: string; team?: string }
+type TicketTransportState = { anchor: string; ruleFile: string; mainRules: string; anchorCleared?: boolean; enableAttempted?: boolean; token?: string; tokenReleased?: boolean }
+type TicketPf = (args: string[]) => Promise<{ stdout: string; stderr: string }>
+type SaveTicketTransport = (state: TicketTransportState) => Promise<void>
+export const ticketTransportRule = 'block return out quick proto udp from any to any port 443 label "miaoimg-staple"\n'
 type Proof = { commit?: string; startedAt: string; checks: Record<string, unknown>[]; stages: string[]; failure?: { stage: string; code: string; diagnostic?: ReturnType<typeof safeSigningDiagnostic> }; complete?: boolean; cleanup?: boolean }
 type ExtractDiagnostic = { toolCode: keyof typeof extractMessages; exitCode?: number }
 class SigningFailure extends Error { code: string; tool?: ExtractDiagnostic; constructor(code: string, tool?: ExtractDiagnostic) { super(code); this.code = code; this.tool = tool } }
@@ -51,7 +55,7 @@ function paths() {
   const temp = process.env.RUNNER_TEMP, run = process.env.GITHUB_RUN_ID, attempt = process.env.GITHUB_RUN_ATTEMPT
   if (!temp || !/^\d+$/.test(run || '') || !/^\d+$/.test(attempt || '')) fail('missing_isolated_runner_context')
   const privateDirectory = join(resolve(temp), `miaoimg-macos-signing-${run}-${attempt}`)
-  return { privateDirectory, preflightDirectory: privateDirectory + '-preflight', state: join(privateDirectory, 'state.json'), proofDirectory: join(resolve(temp), 'desktop-proof'), proof: join(resolve(temp), 'desktop-proof', 'macos-signing.json') }
+  return { privateDirectory, preflightDirectory: privateDirectory + '-preflight', state: join(privateDirectory, 'state.json'), networkState: privateDirectory + '-network.json', networkRule: privateDirectory + '-network.rules', proofDirectory: join(resolve(temp), 'desktop-proof'), proof: join(resolve(temp), 'desktop-proof', 'macos-signing.json') }
 }
 function assertCi() {
   if (process.platform !== 'darwin' || process.env.GITHUB_ACTIONS !== 'true' || process.env.GITHUB_REPOSITORY !== repositoryName || process.env.GITHUB_REF !== 'refs/heads/ChineseMain' || !/^[a-f\d]{40}$/i.test(process.env.GITHUB_SHA || '')) fail('controlled_macos_release_context_required')
@@ -72,6 +76,93 @@ async function record(check: Record<string, unknown>) {
   })
   proofWrites = next.catch(() => {})
   await next
+}
+
+function validTransportAnchor(anchor: string) { return /^com\.apple\/miaoimg-staple-\d{1,20}-\d{1,6}-[a-f\d]{8}$/.test(anchor) && anchor.length < 64 }
+function validTransportToken(token: string) { return /^\d{1,20}$/.test(token) && BigInt(token) > 0n && BigInt(token) <= 0xffffffffffffffffn }
+
+// Callers provide PF explicitly so offline fixtures never invoke the host's PF.
+// The existing wildcard entry is required: never load/flush the main ruleset.
+export async function enableTicketTransport(anchor: string, ruleFile: string, pf: TicketPf, save: SaveTicketTransport) {
+  if (!validTransportAnchor(anchor)) fail('ticket_transport_anchor_invalid')
+  const mainRules = (await pf(['-s', 'rules'])).stdout
+  if (!/^anchor "com\.apple\/\*"(?: all)?\s*$/m.test(mainRules)) fail('ticket_transport_existing_anchor_entry_required')
+  if ((await pf(['-a', anchor, '-s', 'rules'])).stdout.trim()) fail('ticket_transport_anchor_not_empty')
+  const state: TicketTransportState = { anchor, ruleFile, mainRules }
+  await save(state) // Ownership precedes mutation, including a partially failed load.
+  try {
+    await pf(['-a', anchor, '-f', ruleFile])
+    const loaded = (await pf(['-a', anchor, '-s', 'rules'])).stdout.trim()
+    if (!/^block return out quick proto udp from any to any port (?:= )?443 label "miaoimg-staple"$/.test(loaded)) fail('ticket_transport_own_rule_not_verified')
+    if ((await pf(['-s', 'rules'])).stdout !== mainRules) fail('ticket_transport_main_rules_changed')
+    state.enableAttempted = true; await save(state)
+    const enabled = await pf(['-E'])
+    const tokens = [...(enabled.stdout + '\n' + enabled.stderr).matchAll(/^\s*Token\s*:\s*(\d{1,20})\s*$/gm)].map(match => match[1])
+    if (tokens.length !== 1 || !validTransportToken(tokens[0])) fail('ticket_transport_enable_token_unavailable')
+    state.token = tokens[0]; await save(state)
+    if (!/^Status:\s+Enabled\b/m.test((await pf(['-s', 'info'])).stdout)) fail('ticket_transport_pf_not_enabled')
+    if ((await pf(['-s', 'rules'])).stdout !== mainRules) fail('ticket_transport_main_rules_changed')
+    return state
+  } catch (error) {
+    // The in-memory lease can still release its token if persistence failed.
+    await disableTicketTransport(state, pf, save).catch(() => {})
+    throw error
+  }
+}
+
+export async function disableTicketTransport(state: TicketTransportState, pf: TicketPf, save: SaveTicketTransport) {
+  if (!validTransportAnchor(state.anchor) || state.token && !validTransportToken(state.token)) fail('ticket_transport_cleanup_state_invalid')
+  let problem: unknown, blockedPackets: number | undefined
+  try {
+    const fields = (await pf(['-a', state.anchor, '-s', 'labels'])).stdout.trim().split(/\s+/)
+    if (fields[0] === 'miaoimg-staple' && /^\d+$/.test(fields[2] || '') && Number.isSafeInteger(Number(fields[2]))) blockedPackets = Number(fields[2])
+  } catch { /* Counters are optional; never obstruct release of owned resources. */ }
+  if (!state.anchorCleared) try {
+    await pf(['-a', state.anchor, '-F', 'rules'])
+    if ((await pf(['-a', state.anchor, '-s', 'rules'])).stdout.trim()) fail('ticket_transport_anchor_not_cleared')
+    state.anchorCleared = true; await save(state)
+  } catch (error) { problem = error }
+  if (state.token && !state.tokenReleased) try {
+    await pf(['-X', state.token]); state.tokenReleased = true; await save(state)
+  } catch (error) { problem ||= error }
+  if (state.enableAttempted && !state.token) problem ||= new SigningFailure('ticket_transport_own_enable_token_unknown')
+  try { if ((await pf(['-s', 'rules'])).stdout !== state.mainRules) fail('ticket_transport_main_rules_changed') } catch (error) { problem ||= error }
+  if (problem) throw problem
+  return { anchorCleared: true, ownEnableReferenceReleased: !state.enableAttempted || state.tokenReleased === true, ...(blockedPackets === undefined ? {} : { blockedUdp443Packets: blockedPackets }), mainRulesUnchanged: true }
+}
+
+function assertHostedTransport() {
+  if (process.env.RUNNER_ENVIRONMENT !== 'github-hosted') fail('ticket_transport_github_hosted_runner_required')
+}
+const ticketPf: TicketPf = args => command('/usr/bin/sudo', ['-n', '/sbin/pfctl', ...args], args[0] === '-E' ? 'ticket_transport_enable' : args[0] === '-X' ? 'ticket_transport_release_reference' : args.includes('-f') ? 'ticket_transport_load_own_anchor' : args.includes('-F') ? 'ticket_transport_clear_own_anchor' : 'ticket_transport_inspect', { timeout: 15_000 })
+async function saveTicketTransport(state: TicketTransportState) {
+  const path = paths().networkState
+  await writeFile(path + '.next', JSON.stringify(state), { mode: 0o600 })
+  await rename(path + '.next', path)
+}
+
+async function prepareTicketTransport() {
+  assertHostedTransport()
+  const path = paths()
+  if (await exists(path.networkState) || await exists(path.networkState + '.next') || await exists(path.networkRule)) fail('ticket_transport_must_start_empty')
+  await writeFile(path.networkRule, ticketTransportRule, { mode: 0o600, flag: 'wx' })
+  const anchor = `com.apple/miaoimg-staple-${required('GITHUB_RUN_ID')}-${required('GITHUB_RUN_ATTEMPT')}-${randomBytes(4).toString('hex')}`
+  await enableTicketTransport(anchor, path.networkRule, ticketPf, saveTicketTransport)
+  await record({ stage: 'transport-prepare', scope: 'github-hosted-job-only', existingWildcardAnchor: true, ownRuleVerified: true, pfEnabled: true, mainRulesUnchanged: true, http3CauseConfirmed: false })
+}
+async function cleanupTicketTransport() {
+  assertHostedTransport()
+  const path = paths()
+  if (!await exists(path.networkState)) {
+    await rm(path.networkState + '.next', { force: true })
+    await rm(path.networkRule, { force: true })
+    await record({ stage: 'transport-cleanup', notConfigured: true }); return
+  }
+  const state: TicketTransportState = JSON.parse(await readFile(path.networkState, 'utf8'))
+  if (!state.anchor.startsWith(`com.apple/miaoimg-staple-${required('GITHUB_RUN_ID')}-${required('GITHUB_RUN_ATTEMPT')}-`) || state.ruleFile !== path.networkRule) fail('ticket_transport_cleanup_ownership_mismatch')
+  const cleaned = await disableTicketTransport(state, ticketPf, saveTicketTransport)
+  await rm(path.networkRule, { force: true }); await rm(path.networkState); await rm(path.networkState + '.next', { force: true })
+  await record({ stage: 'transport-cleanup', ...cleaned })
 }
 async function command(file: string, args: string[], label: string, options: { env?: NodeJS.ProcessEnv; cwd?: string; timeout?: number } = {}) {
   return new Promise<{ stdout: string; stderr: string }>((done, reject) => {
@@ -255,7 +346,11 @@ export function classifyDependencySigningError(error: unknown) {
   }
   const signal = typeof value?.signal === 'string' && ['SIGTERM', 'SIGKILL', 'SIGABRT', 'SIGINT'].includes(value.signal) ? value.signal : undefined
   const status = toolCode === 'notary_submit_failed' ? /"status"\s*:\s*"(Accepted|Invalid|Rejected|In Progress)"/.exec(body)?.[1] : undefined
-  return { toolCode, operation, ...(exitCode === undefined ? {} : { exitCode }), ...(signal ? { signal } : {}), ...(status ? { notaryStatus: status } : {}), message: signingMessages[toolCode] }
+  const networkCode = toolCode === 'notary_staple_failed' ? /Error Domain=NSURLErrorDomain Code=(-1001|-1003|-1005|-1009|-1200|-1202)(?=\D|$)/.exec(body)?.[1] : undefined
+  const ticketFailure = toolCode === 'notary_staple_failed' ? networkCode ? 'network_error'
+    : /Record not found/.test(body) ? 'ticket_record_not_found'
+      : /CloudKit.s response is inconsistent/.test(body) ? 'unexpected_ticket_service_response' : undefined : undefined
+  return { toolCode, operation, ...(exitCode === undefined ? {} : { exitCode }), ...(signal ? { signal } : {}), ...(status ? { notaryStatus: status } : {}), ...(networkCode ? { networkCode: Number(networkCode) } : {}), ...(ticketFailure ? { ticketFailure } : {}), message: signingMessages[toolCode] }
 }
 
 export function safeSigningDiagnostic(error: unknown) {
@@ -486,7 +581,9 @@ async function sanitizedProof() {
 async function main(action: string) {
   assertCi(); stage = action
   try {
-    if (action === 'preflight') await preflight()
+    if (action === 'transport-prepare') await prepareTicketTransport()
+    else if (action === 'transport-cleanup') await cleanupTicketTransport()
+    else if (action === 'preflight') await preflight()
     else if (action === 'prepare') await prepare()
     else if (action === 'build') await build()
     else if (action === 'verify-build') await verifyBuild()

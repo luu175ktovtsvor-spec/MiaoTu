@@ -1,4 +1,4 @@
-import { AppleLogo, ArrowDown, ArrowRight, ArrowUpRight, Check, Copy, DownloadSimple, FolderOpen, Images, Sparkle, VideoCamera, WindowsLogo } from '@phosphor-icons/react'
+import { AppleLogo, ArrowRight, ArrowUpRight, Check, Copy, DownloadSimple, FolderOpen, Images, Sparkle, VideoCamera, WindowsLogo } from '@phosphor-icons/react'
 import { type RefObject, useEffect, useRef, useState } from 'react'
 import { writeClipboard } from '../clipboard'
 import { useLang } from '../i18n'
@@ -8,6 +8,7 @@ import { getMacInstallState, usePublishedRelease } from './usePublishedRelease'
 import './landing.css'
 import VideoShowcase from './VideoShowcase'
 import CanvasFilm from './CanvasFilm'
+import { LandingHeader, LandingHero } from './LandingHero'
 import UiClip, { type UiClipName } from './UiClip'
 import { MIAO_MANUAL_URL } from '../lib/productLinks'
 const base = '/desktop-downloads/updates/'
@@ -65,28 +66,9 @@ export default function LandingPage() {
     ['macOS', c.apple, `miaoimg-desktop-mac-arm64${versionSuffix}.dmg`, AppleLogo, 'arm64.dmg'], ['macOS', c.intel, `miaoimg-desktop-mac-x64${versionSuffix}.dmg`, AppleLogo, 'x64.dmg'], ['Windows', c.win, `miaoimg-desktop-windows${versionSuffix}.exe`, WindowsLogo, 'Windows-x64.exe'],
   ] as const
   return <div className="miao-site" id="top" ref={site}>
-    <header className={`site-header${scrolled ? ' is-scrolled' : ''}`}>
-      <div className="site-header-inner">
-        <a className="site-brand" href="/" aria-label="妙图 MiaoImg"><img src="/miaoimg-logo.png" width="30" height="30" alt="" /><span>妙图<small>MiaoImg</small></span></a>
-        <nav aria-label={c.nav}><a href="#canvas">{c.workflow}</a><a href="#features">{c.agent}</a><a href="#films">{c.examples}</a><a href={MIAO_MANUAL_URL} target="_blank" rel="noreferrer">{c.guide}<ArrowUpRight size={12}/></a><a href="/changelog">{c.changelog}</a></nav>
-        <div className="site-header-actions"><div className="site-language" role="group" aria-label={c.lang}>
-          <button aria-pressed={lang === 'zh'} onClick={() => setLang('zh')}>中</button><button aria-pressed={lang === 'en'} onClick={() => setLang('en')}>EN</button>
-        </div><a className="site-button site-button-small" href="#download">{c.download}<ArrowDown size={13} /></a></div>
-      </div>
-    </header>
+    <LandingHeader lang={lang} setLang={setLang} scrolled={scrolled}/>
     <main>
-      <section className="site-hero">
-        <div className="site-hero-aura" aria-hidden="true"/>
-        <div className="site-container site-hero-copy">
-          <p className="site-eyebrow"><span className="site-eyebrow-brand">{c.eyebrow}</span><span className="site-eyebrow-sep" aria-hidden="true"/>{c.eyebrowTag}</p>
-          <h1 data-lang={lang}>{c.heroTitle[0]}<br /><span>{c.heroTitle[1]}</span></h1>
-          <p className="site-hero-body">{c.heroBody}</p>
-          <div className="site-hero-actions"><a className="site-button" href="#download">{c.download}<ArrowDown size={16} /></a><a className="site-button site-button-ghost" href="#canvas">{c.explore}<ArrowRight size={16} /></a></div>
-          <p className="site-hero-platforms"><AppleLogo size={14} weight="fill"/><WindowsLogo size={14} weight="fill"/>{c.platforms}</p>
-        </div>
-        <div className="site-container site-hero-film"><CanvasFilm lang={lang}/></div>
-        <ol className="site-container site-steps" aria-label={c.workflow}>{c.steps.map(([title, body], i) => <li key={title} data-reveal style={{ ['--i' as string]: i }}><span className="site-step-index">0{i + 1}</span><div><h3>{title}</h3><p>{body}</p></div>{i < 2 && <i className="site-step-line" aria-hidden="true"/>}</li>)}</ol>
-      </section>
+      <LandingHero lang={lang} film={<CanvasFilm lang={lang}/>}/>
 
       <section className="site-section site-canvas" id="canvas">
         <div className="site-container">
