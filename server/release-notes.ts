@@ -38,6 +38,7 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
       item('设置中的 21 种界面语言覆盖首页、项目、资产、画布和原生菜单，切换后保持一致。', 'The 21 interface languages cover Home, Projects, Assets, the canvas and native menus, staying consistent when switched.'),
     ],
     fixes: [
+      item('修复任务尚未真正提交时取消，积分可能未正常退还的问题。', 'Fixed credits not being fully refunded when cancelling a task before it was actually submitted.'),
       item('修复切换视频模型后保留不兼容模式或参数、导致无法发送的问题。', 'Fixed incompatible modes or settings remaining after switching video models and preventing submission.'),
       item('修复退出豆包或 Dola 登录后，节点仍显示对应模型的问题。', 'Fixed nodes continuing to list Doubao or Dola models after signing out.'),
       item('修复部分图片参考、透明背景和附加选项组合无法提交或预计积分不更新的问题。', 'Fixed some combinations of image references, transparent backgrounds and extra options blocking submission or leaving credit estimates unchanged.'),
