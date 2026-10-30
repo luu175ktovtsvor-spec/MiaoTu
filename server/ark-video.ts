@@ -29,7 +29,7 @@ export function arkVideoReady(env = process.env) {
 }
 
 export function arkVideoContent(request) {
-  const parts: Array<Record<string, any>> = [{ type: 'text', text: request.prompt }]
+  const parts: Array<Record<string, any>> = request.prompt ? [{ type: 'text', text: request.prompt }] : []
   // Preserve the role supplied by the canvas. A lone last_frame is valid for
   // the optional-tail-frame mode and must not be re-labelled first_frame.
   if (request.firstFrame) {

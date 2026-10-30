@@ -130,7 +130,10 @@ export function createAiCompat({ management, workspaceFiles, generate, probeRefe
         // 尺寸表带上 value/ratio 对照，节点侧按比例挑尺寸要用（pickSize）。
         sizes: model.sizes || [],
         creditsPerImageBySize: imageCreditsBySize(pricingModel),
+        supportsEdit: Boolean(model.supportsEdit),
         supportsTransparent: Boolean(model.supportsTransparent),
+        transparentInput: model.transparentInput ?? null,
+        referenceRoles: model.referenceRoles || [],
         supportsLayerDecomposition: Boolean(model.supportsLayerDecomposition),
         regionEdit: model.regionEdit ?? null,
         optimizePromptModes: model.optimizePromptModes || [],
@@ -163,6 +166,7 @@ export function createAiCompat({ management, workspaceFiles, generate, probeRefe
         formats: model.formats || [],
         audio: model.audio ?? false,
         keyframes: model.keyframes || 0,
+        ...(model.maxReferenceVoices ? { referenceVoices: model.referenceVoices || [], maxReferenceVoices: model.maxReferenceVoices } : {}),
         referenceLimits: model.referenceLimits || { image: model.maxReferences || 1, video: 0, audio: 0, frames: 0 },
         referenceInputs: model.referenceInputs || {},
         maxDurationByMode: model.maxDurationByMode || {},

@@ -1,6 +1,7 @@
 import { forEachAsync, mapAsync } from './async-collections.ts'
 import { CloudDatabase } from './cloud-database.ts'
 import { redisRuntime } from './redis-runtime.ts'
+import { hasImageLayerPricing, settleImageLayers, IMAGE_LAYER_UNCONFIRMED_BASIS } from './image-layer-pricing.ts'
 import { TextBilling, normalizeTextBilling } from './text-billing.ts'
 import { finiteCost, costEvidence } from './cost-evidence.ts'
 import { mergeOperatingSettings } from './operating-settings.ts'
@@ -356,6 +357,8 @@ export class ManagementStore {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         PRIMARY KEY(user_id,library,sha256));
+      CREATE TABLE IF NOT EXISTS suihe_library_references(user_id TEXT NOT NULL,library TEXT NOT NULL,reference_id TEXT NOT NULL,sha256 TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,PRIMARY KEY(user_id,library,reference_id));
+      INSERT OR IGNORE INTO suihe_library_references(user_id,library,reference_id,sha256,created_at) SELECT user_id,library,reference_id,sha256,created_at FROM suihe_library_assets WHERE reference_id<>'';
       CREATE INDEX IF NOT EXISTS gen_time ON generations(created_at DESC);
       CREATE INDEX IF NOT EXISTS audit_time ON audit(created_at DESC);`)
     for (const statement of [
@@ -664,7 +667,7 @@ export class ManagementStore {
           if (!price.video || typeof price.video !== 'object' || Array.isArray(price.video)) throw failure('视频计费无效')
           for (const [resolution, value] of Object.entries(price.video)) {
             if (!modelPriceSizes(id).some(value => value.toLowerCase() === resolution.toLowerCase())) throw failure(`分辨率 ${resolution} 不属于该模型`)
-            price.video[resolution] = credits(value, 0.01, 10000)
+            price.video[resolution] = credits(value, 0.01, 10000, 10000)
           }
         }
       }
@@ -1700,6 +1703,13 @@ export class ManagementStore {
       }
     }))
   }
+  async registerSuiheLibraryReference(userId, library, referenceId, sha256 = '') {
+    if (!userId || !referenceId || !['cloud','whitelist'].includes(library)) throw failure('素材库引用格式无效', 422)
+    await this.run('INSERT OR IGNORE INTO suihe_library_references(user_id,library,reference_id,sha256,created_at) VALUES(?,?,?,?,?)', userId, library, referenceId, sha256, new Date().toISOString())
+  }
+  async suiheLibraryReference(userId, library, referenceId) {
+    return (await this.get('SELECT reference_id AS referenceId,sha256 FROM suihe_library_references WHERE user_id=? AND library=? AND reference_id=?', userId, library, referenceId)) || null
+  }
   async suiheLibraryAsset(userId, library, sha256) {
     return (await this.get('SELECT reference_id AS referenceId,status FROM suihe_library_assets WHERE user_id=? AND library=? AND sha256=?', userId, library, sha256)) || null
   }
@@ -1708,6 +1718,7 @@ export class ManagementStore {
     await this.run(`INSERT INTO suihe_library_assets(user_id,library,sha256,reference_id,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)
       ON CONFLICT(user_id,library,sha256) DO UPDATE SET reference_id=excluded.reference_id,status=excluded.status,updated_at=excluded.updated_at`,
     userId, library, sha256, referenceId, status, now, now)
+    if (referenceId) await this.registerSuiheLibraryReference(userId, library, referenceId, sha256)
   }
   async forgetSuiheLibraryAsset(userId, library, sha256) {
     await this.run('DELETE FROM suihe_library_assets WHERE user_id=? AND library=? AND sha256=?', userId, library, sha256)
@@ -1807,7 +1818,10 @@ export class ManagementStore {
   async publicGeneration(row, accessToken = '') {
     const parameters = parse(row.parameters)
     delete parameters.videoPricing
+    delete parameters.imageLayerPricing
+    delete parameters.imageLayerSettlement
     delete parameters.upstreamImagePricing
+    delete parameters.suiheContract
     delete parameters.suiheCost
     delete parameters.upstreamProvider
     delete parameters.imageResultPending
@@ -1906,6 +1920,7 @@ export class ManagementStore {
   }
   // 终态回来时补全同一条留档：上游原始返回、用量、成本、失败原因。
   async finishUpstreamCall(generationId, { response = null, usage = null, cost = null, estimatedCredits = null, upstreamRequestId = '', status = 'ok', error = '' }: Record<string, any> = {}) {
+    if (cost?.basis === IMAGE_LAYER_UNCONFIRMED_BASIS) await this.run('UPDATE upstream_calls SET cost_rmb=NULL,cost_basis=?,cost_detail=? WHERE generation_id=?', IMAGE_LAYER_UNCONFIRMED_BASIS, auditJson(cost, 12000), generationId)
     const row = (await this.get('SELECT id,status FROM upstream_calls WHERE generation_id=? ORDER BY created_at DESC LIMIT 1', generationId))
     if (row && ['ok','succeeded','failed_after_submit','cancelled_after_submit'].includes(row.status) && ['submitted','submission_unknown'].includes(status)) return row.id
     if (!row) {
@@ -1992,17 +2007,20 @@ export class ManagementStore {
       if (!g || g.status !== GENERATION_STATES.RUNNING) throw failure('生成记录已结算',409)
       if (workerId && g.lease_id !== workerId) throw failure('原任务保存租约已变更', 409)
       assertTransition(g.status, GENERATION_STATES.SUCCEEDED)
-      const count = parse(g.parameters).count || 1
+      const parameters = parse(g.parameters)
+      const count = parameters.count || 1
       const savedArtifacts = artifacts.slice(0, count)
       const reserved = Number(g.reserved_points || g.points || 0)
       // 积分保留一位小数：按实际张数结算，少生成才退差，不做整数进位。
       // 图片单价保留两位小数（豆包是原价 + 0.15），少生成时按张数比例退还，不向 0.1 取整。
       const precision = g.provider === 'suihe' ? 10000 : 100
-      const charged = savedArtifacts.length >= count ? reserved : Math.max(0.01, Math.round(reserved * savedArtifacts.length / count * precision) / precision)
+      const layerSettlement = hasImageLayerPricing(parameters.imageLayerPricing) ? settleImageLayers(parameters.imageLayerPricing, savedArtifacts, reserved) : null
+      if (layerSettlement) parameters.imageLayerSettlement = layerSettlement
+      const charged = layerSettlement ? layerSettlement.chargedCredits : savedArtifacts.length >= count ? reserved : Math.max(0.01, Math.round(reserved * savedArtifacts.length / count * precision) / precision)
       const refund = Math.round((reserved - charged) * precision) / precision
       if (g.user_id && refund > 0) {
         await this.run('UPDATE users SET points=ROUND(points+?,4) WHERE id=?',refund,g.user_id)
-        await this.ledger(g.user_id,refund,'未生成张数退还',id)
+        await this.ledger(g.user_id,refund,layerSettlement ? '图片结算退还' : '未生成张数退还',id)
       }
       if (!savedArtifacts.length) throw failure('上游没有返回可保存的图片', 502)
       const expiresAt = new Date(Date.now() + this.artifactTtlMs()).toISOString()
@@ -2017,7 +2035,6 @@ export class ManagementStore {
         if (parse(g.parameters).desktopDelivery !== 1) await this.run('INSERT INTO artifact_expiry(artifact_id,expires_at) VALUES(?,?)', artifactId, expiresAt)
         return { id:artifactId, url:`/api/imagine/result/${artifactId}`, mime:a.mime, format:a.mime.split('/')[1] }
       }))
-      const parameters = parse(g.parameters)
       const imageCost = estimateUpstreamCostRmb({ model: modelForGeneration(g.model,parameters,g.provider), count: savedArtifacts.length, parameters })
       await this.run("UPDATE generations SET status='succeeded',error=NULL,points=?,charged_points=?,finished_at=?,usage=?,upstream_cost=?,upstream_model=?,upstream_request_id=?,upstream_status=?,lease_id=NULL,lease_at=NULL,expires_at=NULL WHERE id=?",charged,charged,new Date().toISOString(),metadata.usage ? JSON.stringify(metadata.usage) : g.usage,imageCost ? JSON.stringify(imageCost) : g.upstream_cost || null,metadata.upstreamModel || g.upstream_model,metadata.upstreamRequestId || g.upstream_request_id || null,metadata.upstreamStatus ?? g.upstream_status ?? null,id)
       for (const key of ['imageResultPending','imageResultRetry','imageResultExpiredAt','submissionUncertain','submissionDiagnosticId']) delete parameters[key]
@@ -2286,6 +2303,7 @@ export class ManagementStore {
   }
   async recordedGenerationCost(g) {
     const saved=g.upstream_cost ? parse(g.upstream_cost) : null
+    if (saved?.basis === IMAGE_LAYER_UNCONFIRMED_BASIS) return saved
     if (finiteCost(saved?.rmb)!==null) return saved
     if (g.status!=='succeeded') return null
     const call=(await this.get("SELECT cost_detail,cost_rmb,cost_basis FROM upstream_calls WHERE generation_id=? AND status IN ('ok','succeeded') AND cost_rmb IS NOT NULL ORDER BY created_at DESC,id DESC LIMIT 1",g.id))

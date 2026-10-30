@@ -1,3 +1,4 @@
+import { usesSuiheReplyContract } from './suihe-contract.ts'
 import { createHash } from 'node:crypto'
 import { runtimeSecret } from './runtime-secrets.ts'
 import { assertProviderRequestAllowed } from './provider-safety.ts'
@@ -24,7 +25,7 @@ function responseError(response: Response, data, submitting=false) {
   const message = String(data?.error?.message || (typeof data?.error === 'string' ? data.error : '') || data?.error_detail?.message || data?.fail_reason || data?.message || detail || `穗禾请求失败（${response.status}）`).slice(0,500)
   return fail(message, {
     upstreamStatus:response.status,upstreamRequestId:response.headers.get('x-request-id') || '',
-    upstreamMessage:message,upstreamCode:String(data?.error?.code || data?.error_detail?.code || data?.code || '').slice(0,100),
+    upstreamMessage:message,upstreamCode:String(data?.code || data?.error_detail?.code || data?.error?.code || '').slice(0,100),
     status:response.status>=500?502:response.status,transient:response.status>=500||response.status===429,
     ...(submitting&&response.status>=500?{submissionUncertain:true}:{})})
 }
@@ -71,7 +72,8 @@ export async function estimateSuiheVideo(request, {env=process.env,fetchImpl=fet
   const config=suiheSettings(env)
   if(!config.apiKey) throw fail('视频报价服务尚未配置',{status:503,submissionNotStarted:true})
   const p=request.parameters || {}
-  const duration=Number(request.billableDuration ?? request.duration)
+  const duration=usesSuiheReplyContract(request) && request.mode === 'edit'
+    ? Math.ceil(Number(request.billableDuration ?? request.duration)) : Number(request.billableDuration ?? request.duration)
   const resolution=String(request.resolution).toLowerCase()
   const creativeMode=String(request.creativeMode || p.creativeMode || 'super_economy')
   // Keep the quote contract aligned with the paid submission contract. The
@@ -124,12 +126,12 @@ export async function referenceBlob(source:string,kind:string,{fetchImpl,signal,
     const chunks=[];let size=0
     for await(const chunk of response.body as any) {
       size+=chunk.length
-      if(size >= max) throw fail('参考素材超过穗禾上传上限',{status:422,submissionNotStarted:true})
+      if(size > max) throw fail('参考素材超过穗禾上传上限',{status:422,submissionNotStarted:true})
       chunks.push(chunk)
     }
     bytes=Buffer.concat(chunks)
   }
-  if(!bytes.length || bytes.length >= max) throw fail('参考素材为空或超过上传上限',{status:422,submissionNotStarted:true})
+  if(!bytes.length || bytes.length > max) throw fail('参考素材为空或超过上传上限',{status:422,submissionNotStarted:true})
   return new Blob([new Uint8Array(bytes)],{type:mime})
 }
 
@@ -180,15 +182,18 @@ export async function createSuiheTask(request, {env=process.env,fetchImpl=fetch,
     if (Array.isArray(functionModes) && body.function_mode) {
       if (!functionModes.includes(body.function_mode)) throw fail('当前模型不支持这个视频参考模式',{status:422,submissionNotStarted:true})
     }
-    if(firstFrame) files.push({field:'first_frame',value:firstFrame,kind:'image'})
-    if(lastFrame) files.push({field:'end_frame',value:lastFrame,kind:'image'})
+    if(firstFrame) { if(isLibraryReference(firstFrame)) body.first_frame_url=firstFrame; else files.push({field:'first_frame',value:firstFrame,kind:'image'}) }
+    if(lastFrame) { if(isLibraryReference(lastFrame)) body.end_frame_url=lastFrame; else files.push({field:'end_frame',value:lastFrame,kind:'image'}) }
     const imageReferences = [...new Set<string>([request.image,...request.images||[]].filter(Boolean))]
-    const libraryMaterials = body.function_mode === 'omni_reference' ? imageReferences.filter(isLibraryReference) : []
+    const acceptsImageReferences = body.function_mode === 'omni_reference' || body.function_mode === 'video_edit'
+    const libraryMaterials = acceptsImageReferences ? imageReferences.filter(isLibraryReference) : []
     if (libraryMaterials.length) body.materials = libraryMaterials.map(url => ({type:'image',url}))
-    if(body.function_mode==='omni_reference') imageReferences.filter(value => !isLibraryReference(value)).forEach((value,index)=>files.push({field:`image_file_${index+1}`,value,kind:'image'}))
+    if(acceptsImageReferences) imageReferences.filter(value => !isLibraryReference(value)).forEach((value,index)=>files.push({field:`image_file_${index+1}`,value,kind:'image'}))
     for(const [index,value] of (request.videos||[]).entries()) files.push({field:`video_file_${index+1}`,value,kind:'video'})
     for(const [index,value] of (request.audios||[]).entries()) files.push({field:`audio_file_${index+1}`,value,kind:'audio'})
-    if(Number(parameters.videoSeconds)>0) body.reference_video_duration=request.mode==='edit'?Math.round(request.billableDuration):parameters.videoSeconds
+    if(Number(parameters.videoSeconds)>0) body.reference_video_duration=request.mode==='edit'
+      ? usesSuiheReplyContract(request) ? Number(request.billableDuration) : Math.round(request.billableDuration)
+      : parameters.videoSeconds
     if(parameters.returnLastFrame!==undefined&&parameters.returnLastFrame!==null) body.return_last_frame=parameters.returnLastFrame
   } else {
     const generation=request.generation || {}
@@ -203,20 +208,20 @@ export async function createSuiheTask(request, {env=process.env,fetchImpl=fetch,
     for(const item of request.references||[]) files.push({field:'images',value:item.value,kind:'image',bytes:item.bytes,mime:item.mime})
   }
   // Keep the transport honest: every admitted reference must become exactly
-  // one multipart file, and no file may be silently dropped or invented while
-  // adapting the canvas request to Suihe's field names.
+  // one multipart file (library references remain URL fields), without silently
+  // dropping or inventing an input while adapting Suihe's field names.
   const expectedFirstFrame = video ? (request.firstFrame || (request.mode === 'singleImage' ? request.image || request.images?.[0] : '')) : ''
-  const expectedImageFiles = video && body.function_mode === 'omni_reference'
+  const expectedImageFiles = video && ['omni_reference','video_edit'].includes(body.function_mode)
     ? [...new Set<string>([request.image, ...(request.images || [])].filter(Boolean))].filter(value => !isLibraryReference(value)).length : 0
-  const expectedFileCount = (expectedFirstFrame ? 1 : 0) + (video && lastFrame ? 1 : 0) + expectedImageFiles
+  const expectedFileCount = (expectedFirstFrame && !isLibraryReference(expectedFirstFrame) ? 1 : 0) + (video && lastFrame && !isLibraryReference(lastFrame) ? 1 : 0) + expectedImageFiles
     + (video ? (request.videos || []).length + (request.audios || []).length : (request.references || []).length)
   if (files.length !== expectedFileCount || files.some(file => !String(file.value || '').trim())) {
     throw fail('参考素材没有完整进入穗禾上传队列，请重新连接素材后重试',{status:422,submissionNotStarted:true})
   }
   let payload:BodyInit,headers:Record<string,string>={authorization:`Bearer ${config.apiKey}`}
-  // Library materials live in the uploader's sub-key namespace; resolve
-  // them, and the resulting task, in that same namespace.
-  if(body.materials && subKey) headers['x-integrator-sub-key']=String(subKey)
+  // Carry the uploader namespace for supplier tracking. Generation and task
+  // lookup do not authorize by Sub-Key; app-owned registration does that.
+  if(subKey) headers['x-integrator-sub-key']=String(subKey)
   let sentFields = body
   const sentFiles:Array<Record<string,any>>=[]
   if(files.length) {

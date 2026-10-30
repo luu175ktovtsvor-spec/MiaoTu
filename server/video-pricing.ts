@@ -6,11 +6,31 @@ export const VIDEO_PRICING_VERSION = 'video-cost-plus-2026-10-26-simple'
 export const GROK_VIDEO_USD = Object.freeze({
   'grok-imagine-video': {'480p':0.05,'720p':0.07},
   'grok-imagine-video-1.5': {'480p':0.08,'720p':0.14,'1080p':0.25},
+  // Current gateway canonicalizes Lite to the 1.5 price family. The 480p
+  // ledger confirms $0.08 before the existing 0.5 multiplier. Keep the gateway
+  // estimate until its Lite family is fixed and reconciled; official Lite
+  // list prices ($0.02/$0.03/$0.14) are not this channel's current tariff.
+  'grok-imagine-video-1.5-lite': {'480p':0.08,'720p':0.14,'1080p':0.25},
+})
+// Current gateway bills output video only. Existing I2V ledger rows confirm
+// no separate image surcharge; its deployed CalculateVideoCost has no media
+// input units. Freeze zeros for new tasks, retaining official tariffs only as
+// audit context. Old snapshots missing input fields retain their old estimate.
+export const GROK_VIDEO_INPUT_IMAGE_USD = Object.freeze({
+  'grok-imagine-video': 0,
+  'grok-imagine-video-1.5': 0,
+  'grok-imagine-video-1.5-lite': 0,
+})
+export const GROK_VIDEO_OFFICIAL_INPUT_USD = Object.freeze({
+  image: { 'grok-imagine-video': 0.002, 'grok-imagine-video-1.5': 0.01, 'grok-imagine-video-1.5-lite': 0.01 },
+  videoPerSecond: 0.01,
 })
 // Current media key belongs to Sub2API group 13; verified read-only 2026-10-26.
 // This is gateway procurement accounting, not a claim about subscription cash cost.
 export const GROK_VIDEO_MULTIPLIER = 0.5
-export const DEFAULT_VIDEO_PRICING = Object.freeze({ metasoRmbPerCredit: 0.0108, markupPerSecond: 0.1, paymentFeePercent:null, serverMonthlyRmb:null, serverAnnualUsd:null, usdToRmb:null, monthlyBillableVideoSeconds:null, otherRmbPerSecond:null, serverAllocationMode:'video_seconds', monthlyMediaRequests:null })
+// Customer tariff policy is separate from the actual gateway procurement rate.
+export const GROK_VIDEO_CUSTOMER_MULTIPLIER = 0.2
+export const DEFAULT_VIDEO_PRICING = Object.freeze({ metasoRmbPerCredit: 0.0108, markupPerSecond: 0.1, grokCustomerMultiplier: GROK_VIDEO_CUSTOMER_MULTIPLIER, paymentFeePercent:null, serverMonthlyRmb:null, serverAnnualUsd:null, usdToRmb:null, monthlyBillableVideoSeconds:null, otherRmbPerSecond:null, serverAllocationMode:'video_seconds', monthlyMediaRequests:null })
 export const METASO_VIDEO_CREDITS = Object.freeze({
   'MiniMax-H3': {
     '480p': { withoutVideo: 6.82, withVideo: 6.82, longOutput: 13.64, longThreshold: 15 },
@@ -27,7 +47,7 @@ let effectivePolicy: Record<string, any> = { ...DEFAULT_VIDEO_PRICING }
 export function setVideoPricing(policy: Record<string, any> = {}) {
   effectivePolicy = { ...DEFAULT_VIDEO_PRICING, ...policy }
 }
-export function videoPricingSnapshot(): Record<string, any> { return { version: VIDEO_PRICING_VERSION, ...effectivePolicy, pricingFormula:'supplier_plus_output', serverAllocationMode:'none', supplierPricing: structuredClone({metasoTiers:METASO_VIDEO_CREDITS,arkFast:{noVideoRmbPerMillion:37,withVideoRmbPerMillion:22},ark25:SEEDANCE25_PRICING,grok:{rates:GROK_VIDEO_USD,multiplier:GROK_VIDEO_MULTIPLIER,rmbPerUsd:Number(effectivePolicy.usdToRmb)||7.2,source:'current_gateway_media_group'},h3:{freeImages:5,extraImageCredits:5.7,contextCredits:5.7},pixels:PIXELS,minimumTokens480p:FLOOR_480}) } }
+export function videoPricingSnapshot(): Record<string, any> { return { version: VIDEO_PRICING_VERSION, ...effectivePolicy, pricingFormula:'supplier_plus_output', serverAllocationMode:'none', extensionOutputBudget:'source_plus_extension', supplierPricing: structuredClone({metasoTiers:METASO_VIDEO_CREDITS,arkFast:{noVideoRmbPerMillion:37,withVideoRmbPerMillion:22},ark25:SEEDANCE25_PRICING,grok:{rates:GROK_VIDEO_USD,inputImageUsd:GROK_VIDEO_INPUT_IMAGE_USD,inputVideoUsd:0,inputBillingSource:'current_gateway_output_only',officialInputTariffs:GROK_VIDEO_OFFICIAL_INPUT_USD,customerMultiplier:Number(effectivePolicy.grokCustomerMultiplier),modelSources:{'grok-imagine-video-1.5-lite':'current_gateway_1_5_family_fallback'},multiplier:GROK_VIDEO_MULTIPLIER,rmbPerUsd:Number(effectivePolicy.usdToRmb)||7.2,source:'current_gateway_media_group'},h3:{freeImages:5,extraImageCredits:5.7,contextCredits:5.7},pixels:PIXELS,minimumTokens480p:FLOOR_480}) } }
 export function videoExpenses(policy=videoPricingSnapshot()) {
   const known = key => policy[key] !== null && policy[key] !== undefined && policy[key] !== '' && Number.isFinite(Number(policy[key]))
   const monthlyServerRmb = known('serverMonthlyRmb') ? Number(policy.serverMonthlyRmb) : known('serverAnnualUsd') && known('usdToRmb') && Number(policy.usdToRmb)>0 ? Number(policy.serverAnnualUsd)*Number(policy.usdToRmb)/12 : null
@@ -43,12 +63,14 @@ export function videoExpenses(policy=videoPricingSnapshot()) {
 }
 export function isCostPlusVideo(id) { return Boolean(METASO_VIDEO_CREDITS[id] || FAST_IDS.has(id) || isSeedance25(id) || GROK_VIDEO_USD[id]) }
 export function normalizeVideoPricing(value: Record<string, any> = {}) {
-  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !['metasoRmbPerCredit','markupPerSecond','paymentFeePercent','serverMonthlyRmb','serverAnnualUsd','usdToRmb','monthlyBillableVideoSeconds','otherRmbPerSecond','serverAllocationMode','monthlyMediaRequests'].includes(key))) throw Error('视频定价设置无效')
+  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !['metasoRmbPerCredit','markupPerSecond','grokCustomerMultiplier','paymentFeePercent','serverMonthlyRmb','serverAnnualUsd','usdToRmb','monthlyBillableVideoSeconds','otherRmbPerSecond','serverAllocationMode','monthlyMediaRequests'].includes(key))) throw Error('视频定价设置无效')
   const next = { ...DEFAULT_VIDEO_PRICING, ...value }
   if (!Number.isFinite(Number(next.metasoRmbPerCredit)) || Number(next.metasoRmbPerCredit) < 0.008798 || Number(next.metasoRmbPerCredit) > 1) throw Error('秘塔积分成本需为 0.008798 至 1 元')
   if (!Number.isFinite(Number(next.markupPerSecond)) || Number(next.markupPerSecond) < 0.1 || Number(next.markupPerSecond) > 100) throw Error('视频每输出秒加价不能低于 0.10 元')
+  const grokCustomerMultiplier: unknown = next.grokCustomerMultiplier
+  if (!['number', 'string'].includes(typeof grokCustomerMultiplier) || typeof grokCustomerMultiplier === 'string' && !grokCustomerMultiplier.trim() || !Number.isFinite(Number(grokCustomerMultiplier)) || Number(grokCustomerMultiplier) < 0 || Number(grokCustomerMultiplier) > 100) throw Error('视频定价设置无效')
   if (!['none','video_seconds','all_media_requests'].includes(next.serverAllocationMode)) throw Error('服务器分摊方式无效')
-  const result = { serverAllocationMode:next.serverAllocationMode, metasoRmbPerCredit: Math.round(Number(next.metasoRmbPerCredit)*1e6)/1e6, markupPerSecond: Math.round(Number(next.markupPerSecond)*100)/100 }
+  const result = { serverAllocationMode:next.serverAllocationMode, grokCustomerMultiplier:Math.round(Number(next.grokCustomerMultiplier)*1e6)/1e6, metasoRmbPerCredit: Math.round(Number(next.metasoRmbPerCredit)*1e6)/1e6, markupPerSecond: Math.round(Number(next.markupPerSecond)*100)/100 }
   for (const [key, max] of Object.entries({paymentFeePercent:50,serverMonthlyRmb:1000000,serverAnnualUsd:1000000,usdToRmb:100,monthlyBillableVideoSeconds:10000000000,otherRmbPerSecond:10000,monthlyMediaRequests:10000000000})) {
     const value=next[key]
     if(value===null || value===undefined || value==='') { result[key]=null;continue }
@@ -86,12 +108,13 @@ export function costPlusVideoCost({ model, parameters = {}, usage, seconds }: Re
     const usd=pricing.rates[id]?.[resolution]
     if (!(usd>0)) throw Error('该视频分辨率尚无已核准的价格')
     const perSecondRmb=usd*pricing.multiplier*pricing.rmbPerUsd
-    const inputPerSecondRmb=0.01*pricing.multiplier*pricing.rmbPerUsd
+    const inputPerSecondRmb=(pricing.inputVideoUsd ?? 0.01)*pricing.multiplier*pricing.rmbPerUsd
     const images=nonnegative(parameters.referenceImages)
-    const imageRmb=images*inputPerSecondRmb
+    const inputPerImageRmb=(pricing.inputImageUsd?.[id] ?? 0.01)*pricing.multiplier*pricing.rmbPerUsd
+    const imageRmb=images*inputPerImageRmb
     const rawRmb=output*perSecondRmb+input*inputPerSecondRmb+imageRmb
     return {rmb:Math.round(rawRmb*10000)/10000,rawRmb,outputSeconds:output,markupPerSecond:snapshot.markupPerSecond,usageBased:false,
-      basis:'gateway_grok_video_tariff_snapshot',detail:{perSecondRmb,inputPerSecondRmb,outputSeconds:output,inputSeconds:input,images,imageRmb,contextIrRmb:0,perSecondUsd:usd,multiplier:pricing.multiplier,rmbPerUsd:pricing.rmbPerUsd,pricingPolicy:snapshot,expenses,source:'gateway_tariff_estimate'}}
+      basis:'gateway_grok_video_tariff_snapshot',detail:{perSecondRmb,inputPerSecondRmb,inputPerImageRmb,inputBillingSource:pricing.inputBillingSource || 'legacy_input_tariff_estimate',outputSeconds:output,inputSeconds:input,images,imageRmb,contextIrRmb:0,perSecondUsd:usd,multiplier:pricing.multiplier,procurementMultiplier:pricing.multiplier,customerMultiplier:pricing.customerMultiplier ?? pricing.multiplier,rmbPerUsd:pricing.rmbPerUsd,pricingPolicy:snapshot,expenses,source:pricing.modelSources?.[id] || 'gateway_tariff_estimate'}}
   }
   if (METASO_VIDEO_CREDITS[id]) {
     const supplier = snapshot.supplierPricing
@@ -158,6 +181,20 @@ export function costPlusVideoCost({ model, parameters = {}, usage, seconds }: Re
 export function costPlusVideoEstimate(input) {
   const cost = costPlusVideoCost(input)
   if (!cost) return null
+  // Procurement always remains at the gateway multiplier. Only customer
+  // pricing uses the separately frozen sales multiplier; old snapshots without
+  // it retain their original tariff. Never derive profit from the sales rate.
+  const id = String(input.model?.publicId || input.model?.id || input.model || '')
+  const grok = GROK_VIDEO_USD[id] ? cost.detail.pricingPolicy?.supplierPricing?.grok : null
+  const customerMultiplier = grok?.customerMultiplier ?? grok?.multiplier
+  const customerOutputPerSecond = grok
+    ? cost.detail.perSecondUsd * customerMultiplier * grok.rmbPerUsd : cost.detail.perSecondRmb
+  const customerInputPerSecond = grok
+    ? (grok.inputVideoUsd ?? 0.01) * customerMultiplier * grok.rmbPerUsd : cost.detail.inputPerSecondRmb
+  const customerImageRmb = grok
+    ? Number(cost.detail.images || 0) * (grok.inputImageUsd?.[id] ?? 0.01) * customerMultiplier * grok.rmbPerUsd : cost.detail.imageRmb
+  const customerCostRmb = grok
+    ? cost.outputSeconds * customerOutputPerSecond + Number(cost.detail.inputSeconds || 0) * customerInputPerSecond + customerImageRmb : cost.rawRmb
   const manualRate = Number(input?.parameters?.manualVideoCreditsPerSecond)
   if (Number.isFinite(manualRate) && manualRate >= 0.01) {
     const output = Number(cost.outputSeconds || input.parameters?.billableDuration || input.parameters?.duration || 0)
@@ -165,11 +202,11 @@ export function costPlusVideoEstimate(input) {
     const images = Number(cost.detail?.images || input.parameters?.referenceImages || 0)
     const isH3 = String(input?.model?.publicId || input?.model?.id || input?.model || '') === 'MiniMax-H3'
     const simple=cost.detail.pricingPolicy?.pricingFormula==='supplier_plus_output' || cost.detail.pricingSnapshot?.version==='suihe-quoted-cost-2026-10-26'
-    const extraImageCredits = simple ? Number(cost.detail.imageRmb||0)+Number(cost.detail.contextIrRmb||0) : isH3 ? Math.max(0, images - 5) * 5.7 : 0
+    const extraImageCredits = simple ? Number(customerImageRmb||0)+Number(cost.detail.contextIrRmb||0) : isH3 ? Math.max(0, images - 5) * 5.7 : 0
     if(simple) {
-      const inputCost=cost.detail.referenceCostRmb ?? Number(cost.detail.inputPerSecondRmb ?? cost.detail.perSecondRmb ?? 0)*inputSeconds
+      const inputCost=cost.detail.referenceCostRmb ?? Number(customerInputPerSecond ?? cost.detail.perSecondRmb ?? 0)*inputSeconds
       const points=Math.max(0.0001,Math.round((output*manualRate+inputCost+extraImageCredits)*10000)/10000)
-      return {points,count:1,duration:output,usageBased:false,policyVersion:'admin-manual-video-price',breakdown:{durationSeconds:output,resolution:input.parameters?.resolution,perSecond:manualRate,outputPerSecond:manualRate,inputVideoSeconds:inputSeconds,inputVideoPerSecond:inputSeconds>0?inputCost/inputSeconds:0,inputImageCredits:cost.detail.imageRmb||0,contextCredits:cost.detail.contextIrRmb||0,billingSource:'admin_manual_price',minimum:0.0001,rounding:'round-0.0001'}}
+      return {points,count:1,duration:output,usageBased:false,policyVersion:'admin-manual-video-price',breakdown:{durationSeconds:output,resolution:input.parameters?.resolution,perSecond:manualRate,outputPerSecond:manualRate,inputVideoSeconds:inputSeconds,inputVideoPerSecond:inputSeconds>0?inputCost/inputSeconds:0,inputImageCredits:customerImageRmb||0,contextCredits:cost.detail.contextIrRmb||0,billingSource:'admin_manual_price',minimum:0.0001,rounding:'round-0.0001'}}
     }
     const points = Math.max(0.01, Math.ceil(((output + inputSeconds) * manualRate + extraImageCredits) * 100 - 1e-8) / 100)
     return {
@@ -193,13 +230,13 @@ export function costPlusVideoEstimate(input) {
   }
   const expenses = cost.detail.expenses
   const simple=cost.detail.pricingPolicy?.pricingFormula==='supplier_plus_output' || cost.detail.pricingSnapshot?.version==='suihe-quoted-cost-2026-10-26'
-  const requiredRevenue = simple ? cost.rawRmb+cost.outputSeconds*cost.markupPerSecond : (cost.rawRmb + expenses.rmbPerRequest + cost.outputSeconds * (cost.markupPerSecond+expenses.rmbPerOutputSecond))/(1-expenses.paymentFeePercent/100)
+  const requiredRevenue = simple ? customerCostRmb+cost.outputSeconds*cost.markupPerSecond : (customerCostRmb + expenses.rmbPerRequest + cost.outputSeconds * (cost.markupPerSecond+expenses.rmbPerOutputSecond))/(1-expenses.paymentFeePercent/100)
   const points = simple ? Math.max(0.0001,Math.round(requiredRevenue*10000)/10000) : Math.max(0.01, Math.ceil(requiredRevenue*100 - 1e-8)/100)
   const inputSeconds = cost.detail.inputSeconds
-  const perSecond = cost.detail.perSecondRmb ?? cost.rawRmb / Math.max(1, cost.outputSeconds+inputSeconds)
+  const perSecond = customerOutputPerSecond ?? customerCostRmb / Math.max(1, cost.outputSeconds+inputSeconds)
   return {
     points, count: 1, duration: cost.outputSeconds, usageBased: cost.usageBased, policyVersion: VIDEO_PRICING_VERSION,
-    breakdown: { durationSeconds: cost.outputSeconds, resolution: input.parameters?.resolution, perSecond: simple?perSecond+cost.markupPerSecond:(perSecond+cost.markupPerSecond+expenses.rmbPerOutputSecond)/(1-expenses.paymentFeePercent/100), outputPerSecond: simple?perSecond+cost.markupPerSecond:(perSecond+cost.markupPerSecond+expenses.rmbPerOutputSecond)/(1-expenses.paymentFeePercent/100), inputVideoSeconds: inputSeconds, inputVideoPerSecond: cost.detail.inputPerSecondRmb ?? perSecond, inputImageCredits: cost.detail.imageRmb || 0, contextCredits: cost.detail.contextIrRmb || 0, billingSource: cost.usageBased ? 'upstream_usage' : 'parameter_reserve', usageTokens: cost.detail.tokens || 0, minimum: simple?0.0001:0.01, rounding: simple?'round-0.0001':'ceil-0.01', settlesActualUsage: !GROK_VIDEO_USD[String(input.model?.publicId||input.model?.id||input.model)] },
+    breakdown: { durationSeconds: cost.outputSeconds, resolution: input.parameters?.resolution, perSecond: simple?perSecond+cost.markupPerSecond:(perSecond+cost.markupPerSecond+expenses.rmbPerOutputSecond)/(1-expenses.paymentFeePercent/100), outputPerSecond: simple?perSecond+cost.markupPerSecond:(perSecond+cost.markupPerSecond+expenses.rmbPerOutputSecond)/(1-expenses.paymentFeePercent/100), inputVideoSeconds: inputSeconds, inputVideoPerSecond: customerInputPerSecond ?? perSecond, inputImageCredits: customerImageRmb || 0, contextCredits: cost.detail.contextIrRmb || 0, billingSource: cost.usageBased ? 'upstream_usage' : 'parameter_reserve', usageTokens: cost.detail.tokens || 0, minimum: simple?0.0001:0.01, rounding: simple?'round-0.0001':'ceil-0.01', settlesActualUsage: !GROK_VIDEO_USD[String(input.model?.publicId||input.model?.id||input.model)] },
   }
 }
 export function adminVideoPricing(): Record<string, any> {

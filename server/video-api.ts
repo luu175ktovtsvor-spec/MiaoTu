@@ -1,4 +1,4 @@
-import { mapAsync } from './async-collections.ts'
+import { SUIHE_VIDEO_CONTRACT_VERSION, suiheVideoContractSnapshot } from './suihe-contract.ts'
 import { cloudWorkspaceStorageEnabled } from './cloud-storage-policy.ts'
 import { isSeedance25 } from './seedance25.ts'
 import { recordDesktopMediaOutput } from './desktop-media.ts'
@@ -73,7 +73,7 @@ function isSuiheLibraryReference(value) {
 }
 
 function suiheLibraryReferences(source) {
-  return [source?.image, ...(Array.isArray(source?.images) ? source.images : [])].filter(isSuiheLibraryReference)
+  return [source?.image, ...(Array.isArray(source?.images) ? source.images : []), source?.firstFrame, source?.lastFrame].filter(isSuiheLibraryReference)
 }
 
 function modelModes(model) {
@@ -131,7 +131,7 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
         : value
       return Boolean(String(item || '').trim())
     })
-  const grokFramePromptOptional = model.id === 'grok-imagine-video-1.5'
+  const grokFramePromptOptional = Boolean(model.parameterRules?.promptOptionalWithImage)
     && (String(payload.image || '').trim()
       || String(payload.firstFrame || '').trim()
       || String(payload.lastFrame || '').trim()
@@ -139,8 +139,12 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
       || hasNonEmptyReference(payload.keyframes)
       || hasNonEmptyReference(payload.referenceVoices)
       || hasNonEmptyReference(payload.voiceIds))
+  const arkReferencePromptOptional = model.provider === 'ark' && Boolean(model.parameterRules?.promptOptionalWithReferences)
+    && !['text', 'edit', 'extend'].includes(String(payload.mode || 'text'))
+    && (String(payload.image || '').trim() || String(payload.firstFrame || '').trim() || String(payload.lastFrame || '').trim()
+      || hasNonEmptyReference(payload.images) || hasNonEmptyReference(payload.videos) || String(payload.video || '').trim() || hasNonEmptyReference(payload.audios))
   if (model.provider === 'suihe' && [...prompt].length > 4000) throw failure('视频描述不能超过 4000 个字符', 422)
-  if (prompt.length < (model.provider === 'suihe' ? 1 : 2) && !grokFramePromptOptional) throw failure('请先输入视频描述', 422)
+  if (prompt.length < (model.provider === 'suihe' ? 1 : 2) && !grokFramePromptOptional && !arkReferencePromptOptional) throw failure('请先输入视频描述', 422)
   const config = videoSettings(env, model)
   if (!config.enabled) throw failure('模型调用暂不可用，请稍后再试', 503)
   if (model.provider === 'ark') {
@@ -167,12 +171,18 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
   const hasFrames = rawFrames !== undefined
   const frameDuration = hasFrames ? rawFrames / 24 : undefined
   const mode = Array.isArray(payload.mode) ? 'image' : String(payload.mode || 'text').trim() || 'text'
-  if (!supportsMode(model, mode)) throw failure(`当前模型不支持生成模式 ${mode}`, 422)
+  const legacySuiheExtension = model.provider === 'suihe' && isSeedance25(model) && mode === 'extend' && payload.submissionState !== undefined && !payload.suiheContract
+  if (!supportsMode(model, mode) && !legacySuiheExtension) throw failure(`当前模型不支持生成模式 ${mode}`, 422)
   const suppliedDuration = payload.duration === undefined || payload.duration === '' ? undefined : Number(payload.duration)
   // 没选时长时不补 5 秒。编辑会沿用成片时长：Seedance 2.5 官方用 -1，Grok 编辑不传 duration。
   const inheritsDuration = mode === 'edit' && (model.provider === 'grok' || isSeedance25(model))
   if (!hasFrames && suppliedDuration === undefined && !inheritsDuration) throw failure('请选择视频时长', 422)
-  const rawDuration = frameDuration ?? suppliedDuration ?? (isSeedance25(model) && mode === 'edit' ? -1 : undefined)
+  const newSuiheEdit = model.provider === 'suihe' && isSeedance25(model) && mode === 'edit' && (payload.suiheContract?.version === SUIHE_VIDEO_CONTRACT_VERSION || payload.submissionState === undefined)
+  const sourceHint = Number(payload.editVideoSeconds || payload.suiheContract?.editSourceSeconds || payload.videoSeconds) || 4
+  // Suihe accepts a positive integer outer hint, not Ark's internal -1. The
+  // original media is still validated independently; this never clips it.
+  const rawDuration = newSuiheEdit ? Math.max(4,Math.min(30,Math.round(sourceHint)))
+    : frameDuration ?? suppliedDuration ?? (isSeedance25(model) && mode === 'edit' ? -1 : undefined)
   const allowedDurations = Array.isArray(model.durations) && model.durations.length ? model.durations : null
   // 火山方舟用 -1 表示由模型自己选时长。只在该型号目录写了 -1 时放行。
   const automaticDuration = !hasFrames && rawDuration === -1 && Boolean(allowedDurations?.includes(-1) || (isSeedance25(model) && mode === 'edit'))
@@ -229,14 +239,14 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
   const requestedVideos = uniqueUrls(payload.videos)
   const requestedAudios = uniqueUrls(payload.audios)
   const rawVoices = Array.isArray(payload.referenceVoices) ? payload.referenceVoices : Array.isArray(payload.voiceIds) ? payload.voiceIds : []
-  if (rawVoices.length > 3) throw failure('预设声音最多支持 3 个', 422)
+  const voiceLimit = Number(model.maxReferenceVoices) || 0
+  if (rawVoices.length > voiceLimit && rawVoices.length) throw failure(voiceLimit ? `预设声音最多支持 ${voiceLimit} 个` : '当前模型不支持预设声音', 422)
   const referenceVoices = rawVoices.map((value) => {
     const voiceId = typeof value === 'object' ? value?.voice_id ?? value?.voiceId : value
     const normalized = String(voiceId || '').trim()
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(normalized)) throw failure('预设声音标识无效', 422)
-    return normalized
+    return normalized.toLowerCase()
   })
-  if (referenceVoices.length && model.id !== 'grok-imagine-video-1.5') throw failure('当前模型不支持预设声音', 422)
   const firstFrame = String(payload.firstFrame || '').trim()
   const lastFrame = String(payload.lastFrame || '').trim()
   const keyframesPayload = payload.keyframes === undefined ? [] : payload.keyframes
@@ -252,7 +262,7 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
     if (!Number.isFinite(timestamp) || timestamp <= 0 || timestamp >= rawDuration || Math.abs(timestamp * 3 - Math.round(timestamp * 3)) > 1e-6) {
       throw failure('keyframe 时间必须在视频内部并对齐 1/3 秒网格', 422)
     }
-    return { image: { url }, timestamp_s: Math.round(timestamp * 1000) / 1000 }
+    return { image: { url }, timestamp_s: Math.round(timestamp * 3) / 3 }
   })
   const keyframeSlots = new Set(keyframes.map((item) => Math.round(item.timestamp_s * 3)))
   if (keyframeSlots.size !== keyframes.length) throw failure('keyframe 时间不能重复', 422)
@@ -266,9 +276,10 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
   const audios = requestedAudios
   const libraryReferences = [...images, ...frameEntries].filter(isSuiheLibraryReference)
   if (libraryReferences.length && model.provider !== 'suihe') throw failure('人物白名单或云端素材只能用于穗禾模型', 422)
-  if (libraryReferences.length && (mode !== 'image' || frameEntries.some(isSuiheLibraryReference))) throw failure('人物白名单或云端素材请放在全能参考模式中', 422)
+  if (libraryReferences.length && !(['image','singleImage','edit'].includes(mode) || isFrameMode(mode))) throw failure('人物白名单或云端素材请放在全能参考模式中', 422)
   const videoLimit = (mode === 'edit' || mode === 'extend') ? Math.max(1, limits.video ?? 0) : (limits.video ?? 0)
   const video = videos[0] || ''
+  if (legacySuiheExtension && (videos.length !== 1 || images.length || frameEntries.length || audios.length)) throw failure('当前模式不支持图片参考', 422)
   const referenceImageCount = frameEntries.length + images.length
   const modeReferences = model.parameterRules?.referencesByMode?.[mode]
   if (modeReferences) {
@@ -293,7 +304,7 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
   // 首尾帧不能再带额外参考图，参考模式里也不能再出现首尾帧字段。官方给的替代做法是
   // 在参考模式的描述里点名哪张参考图当首帧，所以这里直接拦住而不是悄悄丢掉素材。
   if (model.provider === 'ark' || model.provider === 'suihe') {
-    if ((model.provider === 'suihe' || isSeedance25(model)) && lastFrame && !firstFrame) throw failure('首尾帧模式需要首帧，请补充首帧图片', 422)
+    if (lastFrame && !firstFrame) throw failure('首尾帧模式需要首帧，请补充首帧图片', 422)
     if (isFrameMode(mode) && images.length) throw failure('首尾帧模式不能同时带参考图；要用参考图请换成混合参考模式，并在描述里指定首帧', 422)
     if (mode === 'image' && frameEntries.length) throw failure('混合参考模式不能再指定首尾帧，请在描述里说明哪张参考图当首帧', 422)
   }
@@ -344,11 +355,19 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
     ratio = 'adaptive'
   }
   if (isSeedance20(model) && videos.length && Number(payload.videoSeconds) > 15) throw failure('Seedance 2.0 系列参考视频总时长不能超过 15 秒', 422)
+  // Metaso's H3 page allows one reference video up to 15.5 s, but multiple
+  // videos must total <=15 s; reference audio must total <=15 s as well.
+  // prepareVideoRequest replaces these values with probed original durations
+  // before reserving credits. Reuse the existing localized duration messages.
+  if (model.provider === 'metaso' && model.id === 'MiniMax-H3') {
+    if (videos.length > 1 && Number(payload.videoSeconds) > 15) throw failure('参考视频时长不能超过 15 秒；原素材未被截短', 422)
+    if (audios.length && Number(payload.audioSeconds) > 15) throw failure('参考音频时长不能超过 15 秒；原素材未被截短', 422)
+  }
   if (isSeedance25(model) && videos.length && Number(payload.videoSeconds) > 30) throw failure('Seedance 2.5 参考视频总时长不能超过 30 秒', 422)
   if (isSeedance25(model) && audios.length && Number(payload.audioSeconds) > 30) throw failure('Seedance 2.5 参考音频总时长不能超过 30 秒', 422)
   // 方舟 2.0 fast 带参考时没有 1080p。Grok 1.5 的单图生视频可以 1080p；
   // 参考图、尾帧或关键帧属于参考生视频，官方最高 720p。
-  const grokReferenceCapped = model.id === 'grok-imagine-video-1.5' && (mode === 'image' || keyframes.length > 0 || Boolean(lastFrame))
+  const grokReferenceCapped = model.id === 'grok-imagine-video-1.5' && (mode === 'image' || keyframes.length > 0 || Boolean(lastFrame) || referenceVoices.length > 0)
   if (resolution === '1080p' && ((model.provider === 'ark' && !isSeedance25(model) && (referenceImageCount || keyframes.length)) || grokReferenceCapped)) {
     throw failure('带参考图、尾帧或关键帧时最高支持 720p', 422)
   }
@@ -399,25 +418,35 @@ export function validateVideoRequest(payload: Record<string, any> = {}, env = pr
   if (videos.length && pricing.billReferenceVideoSeconds && videoSeconds <= 0) throw failure('参考视频需要提供实际时长（秒）', 422)
   if (model.provider === 'grok' && mode === 'edit' && videoSeconds > 8.7) throw failure('Grok 视频编辑输入最长 8.7 秒', 422)
   if (model.provider === 'grok' && mode === 'extend' && (videoSeconds < 2 || videoSeconds > 15)) throw failure('Grok 视频延长输入必须为 2–15 秒', 422)
-  // 编辑输出继承输入视频时长；续写只按新增片段计输出，输入视频
-  // 另按真实秒数计入成本。官方编辑/续写输出最高 720p。
+  // 新快照的续写预算覆盖源视频+新增片段；传给上游的duration仍只指新增片段。
+  // 旧快照不补标志、不重算已接受预算。编辑/续写计价按输出最高720p。
+  const videoPricing = isCostPlusVideo(model.publicId || model.id)
+    ? payload.videoPricing && typeof payload.videoPricing === 'object' && !Array.isArray(payload.videoPricing) ? payload.videoPricing : videoPricingSnapshot()
+    : undefined
   const longestDuration = allowedDurations ? Math.max(...allowedDurations.filter((item) => item > 0)) : duration
   // -1 的成片秒数要等生成结束才知道。预扣按该型号最长秒数，结算再按实际用量退差。
   const billableDuration = isSeedance25(model) && mode === 'edit'
-    ? Number(payload.editVideoSeconds || videoSeconds)
+    ? Number(payload.editVideoSeconds || (model.provider === 'suihe' && payload.suiheContract?.version === SUIHE_VIDEO_CONTRACT_VERSION ? payload.suiheContract.editSourceSeconds : 0) || videoSeconds)
     : model.provider === 'grok' && mode === 'edit'
     ? videoSeconds
+    : model.provider === 'grok' && mode === 'extend' && videoPricing?.extensionOutputBudget === 'source_plus_extension'
+    ? Math.round((videoSeconds + Number(duration)) * 1000) / 1000
     : hasFrames ? frameDuration : duration === -1 ? longestDuration : duration
   const billingResolution = model.provider === 'grok' && (mode === 'edit' || mode === 'extend')
     ? '720p'
     : resolution
   const billableReferenceImages = referenceImageCount + keyframes.length
-  const videoPricing = isCostPlusVideo(model.publicId || model.id) ? videoPricingSnapshot() : undefined
-  const cost = estimateVideoCost(model, { duration, billableDuration, resolution: billingResolution, ratio, videoSeconds, audioSeconds: Number(payload.audioSeconds)||0, generateAudio, referenceImages: billableReferenceImages, contextIr, videoPricing })
+  const suiheContract = model.provider === 'suihe'
+    ? payload.suiheContract?.version === SUIHE_VIDEO_CONTRACT_VERSION ? payload.suiheContract : payload.submissionState === undefined ? suiheVideoContractSnapshot(model) : undefined
+    : undefined
+  if (suiheContract && mode === 'edit') suiheContract.editSourceSeconds = billableDuration
+  const frozenSuiheCost = model.provider === 'suihe' ? payload.submissionState !== undefined && payload.suiheCost
+    ? payload.suiheCost : suihePricingSnapshot(model,{resolution,creativeMode}) : undefined
+  const cost = estimateVideoCost(model, { ...(frozenSuiheCost ? {suiheCost:frozenSuiheCost} : {}), duration, billableDuration, resolution: billingResolution, ratio, videoSeconds, audioSeconds: Number(payload.audioSeconds)||0, generateAudio, referenceImages: billableReferenceImages, contextIr, videoPricing })
   return {
     model, prompt, mode, duration, billableDuration, resolution, ratio, image, images, videos, video, audios, referenceVoices, firstFrame, lastFrame, keyframes, generateAudio, creativeMode, contextIr, cost, arkOptions,
     // 服务端落盘要用这次请求的节点目录；只保留安全的相对路径。
-    parameters: { ...(videoPricing ? {videoPricing} : {}), upstreamProvider:model.provider, ...(model.provider==='suihe'?{suiheCost:suihePricingSnapshot(model,{resolution,creativeMode})}:{}), referenceHistory: normalizeReferenceHistory(payload.referenceHistory), outputDirectory: safeOutputDirectory(payload.outputDirectory), mode, duration, billableDuration, resolution, ratio: ratio || null, image: image || null, images, videos, video: video || null, audios, referenceVoices, firstFrame: firstFrame || null, lastFrame: lastFrame || null, keyframes, generateAudio, creativeMode: creativeMode || null, videoSeconds, audioSeconds:Number(payload.audioSeconds)||0, referenceImages: billableReferenceImages, frames: rawFrames ?? null, seed: seed ?? null, cameraFixed: cameraFixed ?? null, returnLastFrame: returnLastFrame ?? null, webSearch, ...(contextIr === false ? { contextIr } : {}) },
+    parameters: { ...(videoPricing ? {videoPricing} : {}), ...(suiheContract ? {suiheContract} : {}), upstreamProvider:model.provider, ...(frozenSuiheCost?{suiheCost:frozenSuiheCost}:{}), referenceHistory: normalizeReferenceHistory(payload.referenceHistory), outputDirectory: safeOutputDirectory(payload.outputDirectory), mode, duration, billableDuration, resolution: model.provider === 'grok' && ['edit','extend'].includes(mode) && videoPricing?.extensionOutputBudget === 'source_plus_extension' ? billingResolution : resolution, ratio: ratio || null, image: image || null, images, videos, video: video || null, audios, referenceVoices, firstFrame: firstFrame || null, lastFrame: lastFrame || null, keyframes, generateAudio, creativeMode: creativeMode || null, videoSeconds, audioSeconds:Number(payload.audioSeconds)||0, referenceImages: billableReferenceImages, frames: rawFrames ?? null, seed: seed ?? null, cameraFixed: cameraFixed ?? null, returnLastFrame: returnLastFrame ?? null, webSearch, ...(contextIr === false ? { contextIr } : {}) },
   }
 }
 
@@ -447,7 +476,7 @@ function taskId(data) { return String(data?.id || data?.request_id || data?.requ
 function taskStatus(data) { return String(data?.status || data?.state || '').toLowerCase() }
 function videoUrl(data) { return String(data?.video_url || data?.videoUrl || data?.url || data?.video?.url || data?.output?.url || data?.data?.video?.url || '').trim() }
 
-async function referenceProviderRequest(request, userId, materializeReference, { inlineArkImages = false }: Record<string, any> = {}) {
+function referenceProviderRequest(request, userId, materializeReference, { inlineArkImages = false }: Record<string, any> = {}) {
   if (!materializeReference) return Promise.resolve(request)
   // Ark prefers the existing signed asset URL: multi-megabyte Base64 bodies
   // can stall the task-create upload. Inline only after an explicit reference
@@ -459,7 +488,7 @@ async function referenceProviderRequest(request, userId, materializeReference, {
   const delivery = new Map()
   const converted = new Map()
   const convert = (value, kind, inline = inlineImages) => {
-    if (!value) return Promise.resolve(value)
+    if (!value || isSuiheLibraryReference(value)) return Promise.resolve(value)
     const key = JSON.stringify([value, kind, inline])
     if (converted.has(key)) return converted.get(key)
     const promise = Promise.resolve(materializeReference(value, userId, { kind, inline })).then((item) => {
@@ -479,7 +508,7 @@ async function referenceProviderRequest(request, userId, materializeReference, {
     convert(request.video, 'video'),
     convert(request.firstFrame, 'image'),
     convert(request.lastFrame, 'image'),
-    Promise.all((await mapAsync((request.keyframes || []), async (item) => ({ ...item, image: { ...(item.image || {}), url: await convert(item.image?.url || item.url, 'image') } })))),
+    Promise.all((request.keyframes || []).map(async (item) => ({ ...item, image: { ...(item.image || {}), url: await convert(item.image?.url || item.url, 'image') } }))),
   ]).then(([image, images, videos, audios, video, firstFrame, lastFrame, keyframes]) => ({ ...request, image, images, videos, audios, video, firstFrame, lastFrame, keyframes, _referenceDelivery: delivery }))
 }
 
@@ -537,7 +566,6 @@ export async function createSub2ApiVideo(request, { env = process.env, fetchImpl
   if (!editing && request.generateAudio !== undefined) body.generate_audio = Boolean(request.generateAudio)
   if (!editing && !extending) {
     if (request.resolution) body.resolution = request.resolution
-    if (request.ratio) body.aspect_ratio = request.ratio
   }
   // With several references, xAI expects every image in reference_images and
   // no duplicated pinned image. A single image is the image-to-video input.
@@ -557,6 +585,11 @@ export async function createSub2ApiVideo(request, { env = process.env, fetchImpl
   if (Array.isArray(request.referenceVoices) && request.referenceVoices.length) {
     body.reference_audios = request.referenceVoices.map((voice_id) => ({ voice_id }))
   }
+  // Bare first-frame requests are image-to-video even when a frame-mode UI
+  // supplied image. Adding reference voices or pinned frames changes the API
+  // request into reference-to-video, where aspect_ratio is supported.
+  const imageToVideo = body.image && !body.reference_images && !body.last_frame && !body.keyframes && !body.reference_audios
+  if (!editing && !extending && request.ratio && !imageToVideo) body.aspect_ratio = request.ratio
   if (request.video) body.video = { url: request.video }
   const path = request.mode === 'edit' ? '/v1/videos/edits' : request.mode === 'extend' ? '/v1/videos/extensions' : '/v1/videos/generations'
   const response = await createMediaProviderFetch({ env, fetchImpl })(`${config.baseUrl}${path}`, { method: 'POST', headers: { authorization: `Bearer ${config.apiKey}`, 'content-type': 'application/json' }, body: JSON.stringify(body), signal })
@@ -610,7 +643,7 @@ function identity(payload: Record<string, any> = {}) {
  * 预览用（estimateVideoCredits）和真正下单（createVideo）都走这一条，
  * 保证「界面上显示的积分」和「请求时预扣的积分」是同一个数字。
  */
-export async function prepareVideoRequest(payload, session, { env = process.env, probeReferenceMedia, signal }: Record<string, any> = {}) {
+export async function prepareVideoRequest(payload, session, { env = process.env, probeReferenceMedia, management, suiheFetch = fetch, signal }: Record<string, any> = {}) {
   signal?.throwIfAborted()
   const modelForProbe = modelById(String(payload.model || '').trim())
   const needsMediaProbe = Boolean(probeReferenceMedia && (payload.video || (Array.isArray(payload.videos) && payload.videos.length) || (Array.isArray(payload.audios) && payload.audios.length)))
@@ -620,21 +653,9 @@ export async function prepareVideoRequest(payload, session, { env = process.env,
     ? { ...payload, audioSeconds:0, videoSeconds: String(payload.mode || '') === 'extend' && modelForProbe?.provider === 'grok' ? 2 : 1 }
     : { ...payload, audioSeconds:0 }
   let request = validateVideoRequest(validationPayload, env)
-  // 云枢 Classic 的 image 首帧路径实测沿用输入比例；reference_images
-  // 可按所选比例生成。保留首帧语义，不静默改参考模式或裁切用户素材。
-  if (request.model.id === 'grok-imagine-video' && request.mode === 'singleImage' && request.ratio) {
-    if (!probeReferenceMedia) throw failure('参考图比例校验服务不可用，已阻止生成', 503)
-    const source = await probeReferenceMedia(request.image || request.images[0], session?.userId, 'image', { signal })
-    signal?.throwIfAborted()
-    const [width, height] = request.ratio.split(':').map(Number)
-    if (!(source?.width > 0 && source?.height > 0)) throw failure('无法读取参考图尺寸，已阻止生成', 422)
-    if (Math.abs((source.width / source.height) / (width / height) - 1) > 0.03) {
-      throw failure(`当前普通 Grok 单图通道会沿用参考图比例（${source.width}×${source.height}），与所选 ${request.ratio} 不一致；请切换“混合参考”，或使用同比例参考图`, 422)
-    }
-  }
   const libraryReferences = request.model.provider === 'suihe' ? suiheLibraryReferences(request) : []
   if (libraryReferences.length) {
-    await assertSuiheLibraryReferences({ userId: session?.userId, references: libraryReferences, env, signal })
+    await assertSuiheLibraryReferences({ userId: session?.userId, store: management, references: libraryReferences, env, fetchImpl: suiheFetch, signal })
     signal?.throwIfAborted()
   }
   const imageUrls = uniqueUrls([request.image, ...request.images, request.firstFrame, request.lastFrame, ...request.keyframes.map(item => item.image.url)]).filter(url => !isSuiheLibraryReference(url))
@@ -687,7 +708,7 @@ export async function prepareVideoRequest(payload, session, { env = process.env,
   }
   if(request.model.provider==='suihe') {
     signal?.throwIfAborted()
-    const quote=await estimateSuiheVideo(request,{env})
+    const quote=await estimateSuiheVideo(request,{env,fetchImpl:suiheFetch})
     signal?.throwIfAborted()
     const generationSnapshot=suihePricingSnapshot(request.model,{resolution:quote.generationResolution,creativeMode:quote.creativeMode})
     request.parameters.suiheCost={...request.parameters.suiheCost,preEstimate:{...quote,
@@ -703,14 +724,20 @@ async function routeNewVideo(payload, management, env) {
   const settings = (await management.settings())
   const model = activeModelForSettings(payload.model, settings, env)
   if (!model?.video || model.internalOnly || settings.models?.[model.publicId || model.id] === false) throw failure('当前视频模型未开放', 403)
-  // The server owns routing. Never trust channel markers from the caller.
-  return { ...payload, __provider: model.provider, upstreamProvider: model.provider }
+  // New orders own their tariff snapshot. A caller cannot select an old price
+  // or omit the extension budget flag; queue replay calls validation directly.
+  const fresh = { ...payload }
+  delete fresh.videoPricing
+  delete fresh.suiheContract
+  delete fresh.suiheCost
+  delete fresh.submissionState
+  return { ...fresh, __provider: model.provider, upstreamProvider: model.provider }
 }
 
 export async function estimateVideoCredits(payload, session, { management, env = process.env, probeReferenceMedia, signal }: Record<string, any> = {}) {
   if (!session) throw failure('请先登录再查看积分', 401)
   if (management) payload = (await routeNewVideo(payload, management, env))
-  const request = await prepareVideoRequest(payload, session, { env, probeReferenceMedia, signal })
+  const request = await prepareVideoRequest(payload, session, { env, probeReferenceMedia, management, signal })
   return {
     model: request.model.publicId || request.model.id,
     points: request.cost.points,
@@ -736,7 +763,7 @@ export async function createVideo(payload, session, { management, env = process.
   if (preparePayload) payload = preparePayload(payload)
   if (!(await management.settings()).videoEnabled) throw failure('管理员尚未开启视频生成', 503)
   payload = (await routeNewVideo(payload, management, env))
-  const request = await prepareVideoRequest(payload, session, { env, probeReferenceMedia, signal })
+  const request = await prepareVideoRequest(payload, session, { env, probeReferenceMedia, management, signal })
   request.parameters.workspaceProject = currentProject() || DEFAULT_PROJECT_ID
   request.parameters.referenceVideoCount = request.parameters.videos.length
   request.parameters.referenceAudioCount = request.parameters.audios.length
@@ -775,17 +802,21 @@ export async function submitQueuedVideo(job, { management, env = process.env, fe
       // refreshes its TTL and ensures a transient provider fetch timeout never
       // reuses the URL that just failed.
       let upstreamRequest = await referenceProviderRequest(request, job.user_id, materializeReference, { inlineArkImages: attempt > 0 })
-      // Suihe fails omni-reference images that may show a person unless they
-      // come from the account's whitelist; prepare that library server-side.
-      // Library calls use the plain fetch: they are not the paid submission.
-      if (request.model.provider === 'suihe' && request.mode === 'image') {
+      // New tasks prepare every admitted image slot automatically. Old
+      // snapshots retain omni-reference-only preparation; accepted tasks poll
+      // their original task instead of returning through this dispatch path.
+      // Storage can have its own charge; it must not mark video generation dispatched.
+      const expandedImagePreparation = request.parameters.suiheContract?.imageLibraryPreparation === 'all_image_slots'
+      const automaticImageMode = request.mode === 'image' || expandedImagePreparation && ['singleImage','startEndRequired','endFrameOptional','startFrameOptional','edit'].includes(request.mode)
+      if (request.model.provider === 'suihe' && automaticImageMode) {
         upstreamRequest = await whitelistReferenceImages(upstreamRequest, { userId: job.user_id, store: management, env, fetchImpl, signal,
           readBytes: value => referenceBlob(value, 'image', { fetchImpl, signal }) })
       }
+      if (request.model.provider === 'suihe' && suiheLibraryReferences(upstreamRequest).length) await assertSuiheLibraryReferences({userId:job.user_id,store:management,references:suiheLibraryReferences(upstreamRequest),env,fetchImpl,signal})
       lastUpstreamRequest = upstreamRequest
       signal?.throwIfAborted()
       task = request.model.provider === 'suihe'
-        ? await createSuiheTask(upstreamRequest, { env, fetchImpl: dispatchFetch, signal, subKey: suiheLibraryReferences(upstreamRequest).length ? suiheAssetSubKey(job.user_id) : '' })
+        ? await createSuiheTask(upstreamRequest, { env, fetchImpl: dispatchFetch, signal, subKey: suiheAssetSubKey(job.user_id) })
         : request.model.provider === 'ark'
         ? await createArkVideoTask(upstreamRequest, { env, fetchImpl: dispatchFetch, signal })
         : request.model.provider === 'metaso'

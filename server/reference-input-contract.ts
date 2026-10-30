@@ -19,14 +19,19 @@ export function referenceInputPolicy(model, kind, mode = '') {
       maxBytes: 30 * MB, exclusiveMaxBytes: true, mimes: ARK_IMAGE_MIMES,
       minEdge: 15, maxPixels: 36_000_000, minRatio: 1 / 16, maxRatio: 16,
     }
-    // Existing Yunshu/Grok channel guard; not a claim about official model limits.
+    // These GPT models and the deployed gateway's multipart reader both
+    // accept 50 MB per image part; keep other gateway models on their own cap.
+    if (model?.provider === 'yunshu' && ['gpt-image-2', 'gpt-image-2.5-sunburst', 'gpt-image-2.5-flare'].includes(model.id)) {
+      return { maxBytes: 50 * MB, mimes: COMMON_IMAGE_MIMES }
+    }
+    // Existing guard for other Yunshu/Grok models; not an official model limit.
     // Do not expand an unverified channel merely because direct-provider docs differ.
     return { maxBytes: 30 * MB, mimes: COMMON_IMAGE_MIMES }
   }
   if (model?.provider === 'suihe' && model.video) {
-    if (kind === 'image') return { maxBytes: 30 * MB, exclusiveMaxBytes: true, mimes: ARK_IMAGE_MIMES, minEdge: 300, maxEdge: 6000, minRatio: 0.4, maxRatio: 2.5 }
-    if (kind === 'video') return { maxBytes: 200 * MB, exclusiveMaxBytes: true, minDuration: 2, maxDuration: isSeedance25(model) ? 30 : 15, minEdge: 300, maxEdge: 6000, minPixels: 407_696, maxPixels: 8_295_044, minRatio: 0.4, maxRatio: 2.5, minFps: 24, maxFps: 60, formats: ['mp4', 'mov'] }
-    if (kind === 'audio') return { maxBytes: 15 * MB, exclusiveMaxBytes: true, minDuration: 2, maxDuration: isSeedance25(model) ? 30 : 15, formats: ['wav', 'mp3'] }
+    if (kind === 'image') return { maxBytes: 30 * MB, mimes: ARK_IMAGE_MIMES, minEdge: 300, maxEdge: 6000, minRatio: 0.4, maxRatio: 2.5 }
+    if (kind === 'video') return { maxBytes: 200 * MB, minDuration: 2, maxDuration: isSeedance25(model) ? 30 : 15, minEdge: 300, maxEdge: 6000, minPixels: 407_696, maxPixels: 8_295_044, minRatio: 0.4, maxRatio: 2.5, minFps: 24, maxFps: 60, formats: ['mp4', 'mov'] }
+    if (kind === 'audio') return { maxBytes: 15 * MB, minDuration: 2, maxDuration: isSeedance25(model) ? 30 : 15, formats: ['wav', 'mp3'] }
   }
   if (model?.provider === 'grok' && model.video) {
     if (kind === 'image') return { maxBytes: 30 * MB, mimes: COMMON_IMAGE_MIMES }
@@ -96,6 +101,11 @@ export function assertReferenceInput(model, kind, metadata, mode = '') {
   const limit = referenceInputPolicy(model, kind, mode)
   const title = kind === 'image' ? '参考图片' : kind === 'video' ? '参考视频' : '参考音频'
   if (!metadata || !Number.isFinite(metadata.sizeBytes) || metadata.sizeBytes <= 0) invalid(title + '内容为空或无法读取')
+  if (model?.provider === 'suihe' && ['video','audio'].includes(kind) && (!Number.isFinite(metadata.duration) || metadata.duration <= 0)) invalid(title + '内容为空或无法读取')
+  // H3's cumulative video/audio limits must use actual probed durations.
+  // An absent/NaN duration cannot be treated as zero and pass the total cap.
+  if (model?.provider === 'metaso' && model.id === 'MiniMax-H3' && (kind === 'video' || kind === 'audio')
+    && (!Number.isFinite(metadata.duration) || metadata.duration <= 0)) invalid(title + '内容为空或无法读取')
   if (limit.maxBytes && (limit.exclusiveMaxBytes ? metadata.sizeBytes >= limit.maxBytes : metadata.sizeBytes > limit.maxBytes)) {
     invalid(title + (limit.exclusiveMaxBytes ? '需小于 ' : '不能超过 ') + limit.maxBytes / MB + 'MB；请处理后重新上传，原素材未被压缩')
   }

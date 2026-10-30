@@ -1,3 +1,4 @@
+import { hasImageLayerPricing, imageLayerDimensions, hasPngAlphaChannel } from './image-layer-pricing.ts'
 import { forEachAsync, mapAsync } from './async-collections.ts'
 import { candidateMode, candidateRequestAllowed } from './candidate-safety.ts'
 import { redisRuntime } from './redis-runtime.ts'
@@ -45,7 +46,7 @@ import {
   publicModelCatalog,
   publicVideoCatalog,
 } from './image-models.ts'
-import { estimateGenerationCost, estimateUpstreamCostRmb, imageCreditsBySize, imageCreditsPerImage, imagePricingSnapshot } from './generation-cost.ts'
+import { estimateGenerationCost, estimateUpstreamCostRmb, imageCreditsBySize, imageCreditsPerImage, imagePricingSnapshot, imageLayerPricingSnapshot } from './generation-cost.ts'
 import { editPrompt, validateEdit } from './image-edit-contract.ts'
 import { supportedImageMime } from './result-cache.ts'
 import { collectImageArtifacts, ImageResultError, readImageArtifact, type ImageResultMetadata } from './image-artifacts.ts'
@@ -273,8 +274,10 @@ async function prepareImageRequest(payload, session, env = process.env) {
   // Actual format/dimensions are read from the original bytes. No thumbnail,
   // canvas draw, or encoder participates in this path.
   for (const reference of request.references) {
+    if (request.generation.layerDecomposition && !imageLayerDimensions(reference.bytes)) throw failure('当前模型不支持这个参考图片格式，请转换后重新上传', 422)
     const metadata = await probeImageBytes(reference.bytes, 'image')
-    assertReferenceInput(request.model, 'image', { ...metadata, mime: reference.mime })
+    const policyModel = request.generation.layerDecomposition ? { ...request.model, parameterRules: { ...request.model.parameterRules, referenceInputsByMode: { layer: { image: { mimes: ['image/png', 'image/jpeg'], minPixels: 262144 } } } } } : request.model
+    assertReferenceInput(policyModel, 'image', { ...metadata, mime: reference.mime }, request.generation.layerDecomposition ? 'layer' : '')
     reference.metadata = metadata
   }
   if (request.model.provider === 'ark' && resolved[WORKSPACE_REFERENCE_SOURCES]?.length === request.references.length) {
@@ -321,21 +324,26 @@ async function validateRequest(payload, env = process.env): Promise<Record<strin
   if (model.provider==='ark' && model.maxCombinedImages && parsedReferences.length + generation.count > model.maxCombinedImages) {
     throw Object.assign(new Error(`参考图数量 + 生成张数不能超过 ${model.maxCombinedImages} 张`), { status: 422 })
   }
+  // GPT Image 的透明背景文生图、图生图都可以，只要求输出带透明通道的格式。
+  if (generation.background === 'transparent' && model.provider !== 'ark' && !['png', 'webp'].includes(generation.format)) {
+    throw Object.assign(new Error('透明背景需要输出 png 或 webp 格式'), { status: 422 })
+  }
   // 火山官方透明背景限制：仅图生图、单张带透明通道的输入图、输出 png。
-  if (generation.background === 'transparent') {
+  if (generation.background === 'transparent' && model.provider === 'ark') {
     if (parsedReferences.length !== 1) throw Object.assign(new Error('透明背景只支持单张参考图的图生图'), { status: 422 })
     if (generation.format !== 'png') throw Object.assign(new Error('透明背景需要输出 png 格式'), { status: 422 })
     if (edit) throw Object.assign(new Error('透明背景不能和局部重绘一起使用'), { status: 422 })
     const reference = parsedReferences[0]
-    if (reference.mime === 'image/png') {
-      const colorType = reference.bytes[25]
-      if (colorType !== 4 && colorType !== 6) throw Object.assign(new Error('透明背景需要输入带透明通道的 png 图片'), { status: 422 })
-    }
+    if (reference.mime !== 'image/png' || !hasPngAlphaChannel(reference.bytes)) throw Object.assign(new Error('透明背景需要输入带透明通道的 png 图片'), { status: 422 })
   }
   const roles = payload.referenceRoles || []
   if (!Array.isArray(roles) || (roles.length && roles.length !== references.length) || roles.some(role => !REFERENCE_ROLES.some(item => item.value === role))) throw failure('参考图分工无效')
   const pricing = (await management.costPolicy()).models[model.publicId || model.id]
   if (!pricing) throw failure('当前模型定价待确认', 503)
+  if (layerDecomposition) {
+    generation.imageLayerPricing = imageLayerPricingSnapshot(model, { ...generation, referenceCount: parsedReferences.length })
+    if (!generation.imageLayerPricing) throw failure('当前模型定价待确认', 503)
+  }
   return { prompt: editPrompt(compileReferencePrompt(prompt, roles), edit), referenceRoles: roles, model, edit, references: parsedReferences, generation, cost: estimateGenerationCost({ model, generation, referenceCount: parsedReferences.length, price: pricing }) }
 }
 
@@ -407,6 +415,7 @@ function requestFromJob(job) {
       ratio: parameters.ratio || '',
       quality: parameters.quality,
       upstreamImagePricing:parameters.upstreamImagePricing,
+      imageLayerPricing:parameters.imageLayerPricing,
       suiheCost:parameters.suiheCost,
       upstreamProvider:parameters.upstreamProvider,
       referenceCount:parameters.referenceCount,
@@ -504,7 +513,9 @@ async function executeGeneration(generationId, request, env, signal: AbortSignal
     try { await syncCanvasGeneration(generationId, { management, workspaceFiles }) } catch (error) { console.warn('[canvas] 图片回写待恢复', error?.message) }
     // 上游留档：发出参数、上游返回摘要、用量与成本，供以后从真实账单反推单价。
     try {
-      const cost = estimateUpstreamCostRmb({ model: request.model, count: finished.length, parameters: request.generation || {} })
+      const cost = hasImageLayerPricing(request.generation?.imageLayerPricing)
+        ? (await management.recordedGenerationCost((await management.get('SELECT * FROM generations WHERE id=?', generationId))))
+        : estimateUpstreamCostRmb({ model: request.model, count: finished.length, parameters: request.generation || {} })
       await management.recordUpstreamCall({
         generationId,
         provider: request.model.provider,
@@ -1158,7 +1169,7 @@ const server = createServer(withRequestProject(async (request, response) => {
     if (session?.role !== 'user') throw failure('请先登录', 401)
     if (request.method === 'GET') {
       const library = url.searchParams.get('library') || 'whitelist'
-      await json(response, 200, { ok: true, ...(await listSuiheAssets({ userId: session.userId, library, page: url.searchParams.get('page'), pageSize: url.searchParams.get('pageSize') })) })
+      await json(response, 200, { ok: true, ...(await listSuiheAssets({ userId: session.userId, store: management, library, page: url.searchParams.get('page'), pageSize: url.searchParams.get('pageSize') })) })
       return
     }
     if (request.method === 'POST') {
@@ -1170,7 +1181,7 @@ const server = createServer(withRequestProject(async (request, response) => {
       const file = (await workspaceFiles.locate(session.userId, path, project))
       const content = (await workspaceFiles.read(session.userId, path, project))
       if (content.revision !== file.revision) throw failure('素材已更新，请重新选择后上传', 409)
-      await json(response, 200, { ok: true, ...(await uploadSuiheAsset({ userId: session.userId, bytes: content.bytes, mime: file.mime, name: payload?.name || path.split('/').at(-1), library })) })
+      await json(response, 200, { ok: true, ...(await uploadSuiheAsset({ userId: session.userId, store: management, bytes: content.bytes, mime: file.mime, name: payload?.name || path.split('/').at(-1), library })) })
       return
     }
   }
