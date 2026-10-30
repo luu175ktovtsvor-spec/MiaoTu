@@ -166,6 +166,8 @@ const adminEnglish: Record<string, string> = {
   "已关闭": "Closed",
   "已发现": "Present",
   "已取消": "Cancelled",
+  "复制标识": "Copy identifier",
+  "复制失败，请选中标识手动复制": "Copy failed. Select the identifier and copy it manually.",
   "已复制": "Copied",
   "已完成": "Completed",
   "已提交": "Submitted",
