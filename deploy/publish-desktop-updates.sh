@@ -3,14 +3,14 @@ set -Eeuo pipefail
 # 发布桌面版更新源：已安装的妙图读取 latest.yml（Windows）和 latest-mac.yml（macOS），
 # 安装包和官网的正式下载文件名都带版本号；旧的固定别名只用于兼容已有链接。
 # 顺序：本地核对 sha512 → 上传到 .staging → 服务器再核对一次 → 安装包落位并更新版本文件名
-# → latest*.yml 最后落位 → 从公网回读版本。中途中断时线上仍指向旧版本。
+# → 持共享锁复验并将 latest*.yml 最后落位 → 从公网回读版本。两个平台元数据逐项替换。
 VERSION=${1:?用法：DEPLOY_CONFIRM=I-am-the-release-manager bash deploy/publish-desktop-updates.sh <版本号>}
 REMOTE_HOST=${REMOTE_HOST:-root}
 REMOTE_DIR=${REMOTE_DIR:-/opt/miaoimg/desktop-downloads/updates}
 PUBLIC_BASE=${PUBLIC_BASE:-https://miaoimg.cn/desktop-downloads/updates}
 SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 RELEASE_DIR=$(CDPATH='' cd -- "${MIAO_DESKTOP_RELEASE_DIR:-$SCRIPT_DIR/../desktop/release}" && pwd)
-case "$VERSION" in *[!0-9.]*|'') echo "版本号不合法：$VERSION" >&2; exit 2 ;; esac
+[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "版本号不合法：$VERSION" >&2; exit 2; }
 if [ "${DEPLOY_CONFIRM:-}" != "I-am-the-release-manager" ]; then
   echo "拒绝发布：更新源会推给所有已安装的用户，只有发布负责人带口令执行。" >&2
   exit 2
@@ -31,12 +31,16 @@ uploads+=(install-mac.sh latest-mac.yml latest.yml)
 VERIFY=$SCRIPT_DIR/verify-update-metadata.py
 python3 "$VERIFY" "$VERSION" latest-mac.yml latest.yml
 
-staging="$REMOTE_DIR/.staging-$VERSION"
-# 上传慢时可以中断重跑：保留 .staging 里已经传完或传了一半的文件，rsync 续传并按校验和核对。
+RUN_ID=${MIAO_DESKTOP_RELEASE_RUN_ID:-$(python3 -c 'import uuid; print(uuid.uuid4().hex)')}
+[[ "$RUN_ID" =~ ^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$ ]] || { echo '发布 run id 不合法。' >&2; exit 2; }
+staging="$REMOTE_DIR/.staging-$VERSION-$RUN_ID"
+echo "本轮发布 run id：${RUN_ID}；续传时设置 MIAO_DESKTOP_RELEASE_RUN_ID=${RUN_ID}"
+# 默认每轮隔离；显式沿用 run id 可续传。每轮锁使同一 run 的上传和激活不能同时改 staging。
 # 需要绕道时用 RSYNC_RSH 指定 ssh 参数（例如经本机代理）。
-ssh "$REMOTE_HOST" "mkdir -p '$staging'"
-rsync -a --partial --checksum --progress "${uploads[@]}" "$REMOTE_HOST:$staging/"
-ssh "$REMOTE_HOST" "cd '$staging' && python3 - '$VERSION' latest-mac.yml latest.yml" < "$VERIFY"
+printf -v setup_command 'umask 077; mkdir -p %q' "$staging"
+ssh "$REMOTE_HOST" "$setup_command"
+printf -v rsync_command 'flock -n %q rsync' "$staging/.publish.lock"
+rsync -a --partial --checksum --progress --rsync-path="$rsync_command" "${uploads[@]}" "$VERIFY" "$REMOTE_HOST:$staging/"
 
 printf -v activate_command 'bash -s -- %q %q %q' "$staging" "$REMOTE_DIR" "$VERSION"
 for file in "${uploads[@]}"; do
@@ -47,7 +51,34 @@ ssh "$REMOTE_HOST" "$activate_command" <<'REMOTE'
 set -Eeuo pipefail
 staging=$1; remote_dir=$2; version=$3; shift 3
 uploads=("$@")
+# Match the lock order used by API/site publishing. Never replace or remove these shared lock files.
+exec 7>"$staging/.publish.lock"
+flock -n 7 || { echo '同一 run 正在上传或激活，请稍后续传。' >&2; exit 1; }
+exec 8>>/opt/miaoimg/.production-release.lock
+flock -x 8
+exec 9>>/run/lock/miaoimg-deploy.lock
+flock -x 9
 cd "$staging"
+python3 verify-update-metadata.py "$version" latest-mac.yml latest.yml
+# Compare both currently published platforms under the same locks, before changing any public files.
+python3 - "$version" "$remote_dir/latest-mac.yml" "$remote_dir/latest.yml" <<'PY'
+import os, re, sys
+def parsed(value):
+    if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', value):
+        sys.exit('正式版本号无法核对，拒绝切换更新源。')
+    return tuple(map(int, value.split('.')))
+requested = parsed(sys.argv[1])
+for filename in sys.argv[2:]:
+    if not os.path.lexists(filename):
+        continue
+    with open(filename, encoding='utf-8') as handle:
+        match = re.search(r'^version: (.+)$', handle.read(), re.M)
+    if not match:
+        sys.exit('正式更新源缺少版本号，拒绝切换。')
+    current = match.group(1).strip().strip("'\"")
+    if parsed(current) > requested:
+        sys.exit(f'正式版本 {current} 高于待发布版本 {sys.argv[1]}，拒绝回退。')
+PY
 # Existing versioned package bytes are immutable, including blockmaps.
 for file in "${uploads[@]}"; do
   case "$file" in latest*.yml|install-mac.sh) continue ;; esac
@@ -68,6 +99,7 @@ ln -f "妙图-$version-x64.dmg" miaoimg-desktop-mac-x64.dmg
 ln -f "妙图-$version-Windows-x64.exe" miaoimg-desktop-windows.exe
 mv -f "$staging/latest-mac.yml" latest-mac.yml
 mv -f "$staging/latest.yml" latest.yml
+rm "$staging/verify-update-metadata.py" "$staging/.publish.lock"
 rmdir "$staging"
 REMOTE
 
