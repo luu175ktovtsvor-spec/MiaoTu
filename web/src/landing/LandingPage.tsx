@@ -1,10 +1,9 @@
-import { AppleLogo, ArrowRight, ArrowUpRight, Check, Copy, DownloadSimple, FolderOpen, Images, Sparkle, VideoCamera, WindowsLogo } from '@phosphor-icons/react'
+import { AppleLogo, ArrowRight, ArrowUpRight, Check, DownloadSimple, FolderOpen, Images, Sparkle, VideoCamera, WindowsLogo } from '@phosphor-icons/react'
 import { type RefObject, useEffect, useRef, useState } from 'react'
-import { writeClipboard } from '../clipboard'
 import { useLang } from '../i18n'
 import { landingCopy } from './copy'
 import { productName as desktopProductName } from '../../../desktop/package.json'
-import { getMacInstallState, usePublishedRelease } from './usePublishedRelease'
+import { usePublishedRelease } from './usePublishedRelease'
 import './landing.css'
 import VideoShowcase from './VideoShowcase'
 import CanvasFilm from './CanvasFilm'
@@ -12,7 +11,6 @@ import { LandingHeader, LandingHero } from './LandingHero'
 import UiClip, { type UiClipName } from './UiClip'
 import { MIAO_MANUAL_URL } from '../lib/productLinks'
 const base = '/desktop-downloads/updates/'
-const installCommand = 'curl -fsSL https://miaoimg.cn/desktop-downloads/updates/install-mac.sh | sh'
 const canvasMedia = ['ui-connections', 'ui-settings', 'ui-plus'] as const satisfies readonly UiClipName[]
 
 // Fades sections in once as they enter the viewport. Content stays visible
@@ -35,12 +33,7 @@ export default function LandingPage() {
   const { lang, setLang } = useLang()
   const c = landingCopy[lang] || landingCopy.en
   const { version, failed } = usePublishedRelease()
-  const macInstallState = getMacInstallState(version)
-  const macNotice = macInstallState === 'signed' ? c.macSignedNotice : macInstallState === 'unsigned' ? c.macNotice : c.macUnverifiedNotice
-  const macOpenSteps = macInstallState === 'unsigned' ? c.macOpenSteps : c.macStandardOpenSteps
-  const [copyState, setCopyState] = useState('')
   const [scrolled, setScrolled] = useState(false)
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const site = useRef<HTMLDivElement>(null)
   useReveal(site)
   useEffect(() => {
@@ -54,13 +47,6 @@ export default function LandingPage() {
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
-  useEffect(() => () => clearTimeout(timer.current), [])
-  async function copyCommand() {
-    try { await writeClipboard(installCommand); setCopyState('copied') }
-    catch { setCopyState('failed') }
-    clearTimeout(timer.current)
-    timer.current = setTimeout(() => setCopyState(''), 3000)
-  }
   const versionSuffix = version ? `-${version}` : ''
   const downloads = [
     ['macOS', c.apple, `miaoimg-desktop-mac-arm64${versionSuffix}.dmg`, AppleLogo, 'arm64.dmg'], ['macOS', c.intel, `miaoimg-desktop-mac-x64${versionSuffix}.dmg`, AppleLogo, 'x64.dmg'], ['Windows', c.win, `miaoimg-desktop-windows${versionSuffix}.exe`, WindowsLogo, 'Windows-x64.exe'],
@@ -107,8 +93,6 @@ export default function LandingPage() {
             <div className="site-section-heading"><img className="site-download-logo" src="/miaoimg-logo.png" width="56" height="56" alt=""/><p className="site-kicker">{c.downloadKicker}</p><h2>{c.downloadTitle[0]} <span>{c.downloadTitle[1]}</span></h2><p>{c.downloadBody}</p></div>
             <p className="site-release-version">{version ? `${c.currentVersion} ${version}` : failed ? c.releaseUnavailable : c.releaseLoading} · <a href="/changelog">{c.changelog}</a></p>
             <div className="site-download-grid">{downloads.map(([os, label, file, Icon, packageSuffix]) => <article key={file}><Icon size={26} weight="fill"/><div><h3>{os}</h3><p>{label}</p></div><a className="site-button site-button-outline" href={`${base}${file}`} download={version ? `${desktopProductName}-${version}-${packageSuffix}` : undefined} aria-label={`${c.downloadButton} · ${os} ${label}`}>{c.downloadButton}<DownloadSimple size={15}/></a></article>)}</div>
-            <div className="site-mac-notice"><strong>{c.macNoticeTitle}</strong><p>{macNotice}</p><ol>{macOpenSteps.map(step => <li key={step}>{step}</li>)}</ol>{macInstallState === 'unsigned' && <a href="https://support.apple.com/zh-cn/102445" target="_blank" rel="noreferrer">{c.appleHelp}<ArrowUpRight size={13}/></a>}</div>
-            {macInstallState === 'unsigned' && <details className="site-install-help"><summary>{c.installHelp}</summary><div><p>{c.installText} <a href={`${base}install-mac.sh`} target="_blank" rel="noreferrer">{c.viewScript}<ArrowUpRight size={13}/></a></p><div className="site-command"><code>{installCommand}</code><button onClick={copyCommand} aria-label={c.copy}>{copyState === 'copied' ? <Check size={17}/> : <Copy size={17}/>}</button></div><p role="status" className="site-copy-status">{copyState === 'copied' ? c.copied : copyState === 'failed' ? c.copyFailed : ''}</p></div></details>}
           </div>
         </div>
       </section>

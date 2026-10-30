@@ -182,20 +182,6 @@
 .site-download-grid p{color:var(--site-muted);font-size:13px;margin-top:2px!important}
 .site-button-outline{height:42px;width:100%;background:transparent;color:var(--site-fg)!important;font-size:13px;gap:8px;box-shadow:inset 0 0 0 1px var(--site-line-2)}
 .site-button-outline:hover{background:var(--site-fg);color:#0b0b0c!important;box-shadow:none}
-.site-install-help{max-width:740px;margin:36px auto 0;font-size:13px;color:var(--site-muted)}
-.site-install-help summary{text-align:center;cursor:pointer;list-style:none;padding:10px;transition:color .2s}
-.site-install-help summary::-webkit-details-marker{display:none}
-.site-install-help summary:hover{color:var(--site-fg)}
-.site-install-help summary::after{content:' +';margin-left:6px}
-.site-install-help[open] summary::after{content:' −'}
-.site-install-help>div{padding:16px 0 0}
-.site-install-help>div>p:first-child{text-align:center;line-height:1.9}
-.site-install-help a{display:inline-flex;align-items:center;gap:4px;color:#e2e2e2;text-decoration:underline;text-underline-offset:3px}
-.site-command{display:flex;gap:10px;align-items:center;background:#0b0b0c;border:1px solid var(--site-line);padding:14px 16px;border-radius:12px;margin-top:16px}
-.site-command code{overflow:auto;font-size:12px;flex:1;color:#c8c8c8;font-family:"SFMono-Regular","JetBrains Mono",Menlo,monospace;white-space:nowrap}
-.site-command button{border:0;background:transparent;color:#dddddd;display:grid;place-items:center;padding:5px;border-radius:6px}
-.site-command button:hover{background:var(--site-surface-3)}
-.site-copy-status{height:20px;margin-top:6px!important;text-align:center;font-size:12px}
 
 /* Footer */
 .site-footer{padding-top:72px;padding-bottom:36px}
@@ -282,7 +268,6 @@
   .site-download-grid h3{font-size:16px}.site-download-grid p{font-size:12px}
   .site-download-grid .site-button{width:auto;height:36px;padding:0 14px;font-size:12px}
   .site-download-grid .site-button svg{display:none}
-  .site-install-help{font-size:12px}.site-command code{font-size:11px}
   .site-footer{padding-top:56px}
   .site-footer-top{flex-direction:column;gap:26px}
   .site-footer nav{gap:12px 22px}
@@ -312,8 +297,3 @@
 
 .site-release-version{color:var(--site-muted);font-size:14px;margin:0 0 18px}
 .site-release-version a{text-decoration:underline;text-underline-offset:3px}
-.site-mac-notice{margin-top:24px;padding:20px 24px;border:1px solid var(--site-line);border-radius:16px;text-align:left;color:var(--site-muted);font-size:14px;line-height:1.8}
-.site-mac-notice strong{color:var(--site-fg);font-size:15px}
-.site-mac-notice p{margin:8px 0}
-.site-mac-notice ol{padding-left:22px;margin:8px 0}
-.site-mac-notice a{display:inline-flex;align-items:center;gap:5px;text-decoration:underline;text-underline-offset:3px}

@@ -7,13 +7,6 @@ export function compareVersions(a: string, b: string) {
   return 0
 }
 
-// This boundary describes verified official packages, never source-tree candidates.
-// Feed publication must follow signing/notarization acceptance for both Mac builds.
-export function getMacInstallState(publishedVersion: string | null): 'signed' | 'unsigned' | 'unknown' {
-  if (!publishedVersion || !/^\d+\.\d+\.\d+$/.test(publishedVersion)) return 'unknown'
-  return compareVersions(publishedVersion, '3.2.1') >= 0 ? 'signed' : 'unsigned'
-}
-
 // A source-tree candidate or release-note entry is not a published release.
 // Both official update feeds must agree before the site labels a version latest.
 export function usePublishedRelease() {
