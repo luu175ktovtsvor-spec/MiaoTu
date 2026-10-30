@@ -3,7 +3,7 @@
 .admin-analytics > *, .admin-analytics-section > * { min-width: 0; }
 .admin-analytics-toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 16px; }
 .admin-analytics-period { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.admin-analytics-period label { display: flex; align-items: center; gap: 7px; color: var(--a-muted); font-size: 12px; }
+.admin-analytics-period label { display: flex; flex-shrink: 0; align-items: center; gap: 7px; color: var(--a-muted); font-size: 12px; white-space: nowrap; }
 .admin-app .admin-analytics-period input { width: 146px; min-width: 0; font-size: 12px; }
 .admin-analytics-section { border: 1px solid var(--a-line); border-radius: 8px; background: var(--a-surface); overflow: hidden; }
 .admin-analytics-section > header { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px 20px; padding: 18px 20px; }
