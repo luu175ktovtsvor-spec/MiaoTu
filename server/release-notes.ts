@@ -20,6 +20,29 @@ export const RELEASE_NOTE_SECTIONS = [
 const item = (zh: string, en: string): ReleaseNoteItem => ({ zh, en })
 
 export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
+  '3.2.2': {
+    title: { zh: '灵感库与创作界面更新', en: 'An updated inspiration library and creative workspace' },
+    features: [
+      item('灵感库统一按图片、视频浏览，支持按题材、风格和模型筛选，并查看提示词原文和译文。', 'Browse the inspiration library by image or video, filter by subject, style and model, and view original prompts with translations.'),
+      item('Agent 可以检索灵感库，读取图片、视频的提示词与参考素材。', 'The Agent can search the inspiration library and read prompts and references for images and videos.'),
+      item('积分、账号资料和生成历史拥有独立入口，充值与积分流水可在积分页切换查看。', 'Credits, account details and generation history have separate entries, with top-ups and credit activity accessible from the Credits page.'),
+      item('生成历史按日期展示结果，详情中可切换多张图片、播放视频并查看原件。', 'Generation history groups results by date, with details for switching between multiple images, playing videos and viewing originals.'),
+    ],
+    improvements: [
+      item('灵感库内容可以持续更新，新增素材和提示词无需重新安装客户端。', 'New inspiration media and prompts can appear without reinstalling the app.'),
+      item('重新设计浅色外观与外观设置，主题、强调色、字号和圆角配有实时预览。', 'Redesigned the light appearance and Appearance settings, with live previews for themes, accent colors, font size and corner radius.'),
+      item('整理 Agent 的对话布局与输入区，悬浮对话框支持拖动调整位置。', 'Refined the Agent conversation layout and composer, with a floating chat panel that can be dragged into position.'),
+      item('调整充值金额选择、扫码付款与支付结果布局，积分流水的分类和时间更加清楚。', 'Refined amount selection, QR checkout and payment results, with clearer categories and timestamps in credit activity.'),
+      item('生成期间持续显示进度条和百分比，估算值以「≈」标记，保存与完成状态更明确。', 'Progress bars and percentages remain visible during generation, with estimates marked by ≈ and clearer saving and completion states.'),
+    ],
+    fixes: [
+      item('修复部分视频封面缺失或加载后仍不显示预览的问题。', 'Fixed missing covers and previews that remained blank for some videos.'),
+      item('修复时间估算覆盖真实进度，以及任务尚未完成时提前显示 100% 的问题。', 'Fixed time estimates overriding measured progress and tasks showing 100% before completion.'),
+      item('修复已有超宽视频时，生成进度条、百分比和状态文字被裁切的问题。', 'Fixed generation bars, percentages and status text being clipped when an existing video was very wide.'),
+      item('修复切换项目后生成历史保留旧页码，导致有记录却显示为空的问题。', 'Fixed generation history retaining the previous project’s page number and showing an empty view despite existing records.'),
+      item('修复部分积分变动分类与充值订单号展示错误。', 'Fixed incorrect categories for some credit changes and incorrect top-up order numbers.'),
+    ],
+  },
   '3.2.1': {
     title: { zh: '导演台升级与视频片段重拍', en: 'An upgraded director and video segment retakes' },
     features: [
