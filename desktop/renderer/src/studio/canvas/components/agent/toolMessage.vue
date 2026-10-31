@@ -74,6 +74,10 @@ function parsed(value: unknown): Record<string, any> {
   if (typeof value === "string") { try { return JSON.parse(value); } catch { return {}; } }
   return value && typeof value === "object" ? value as Record<string, any> : {};
 }
+function toolErrorText(value: string) {
+  const wrapped = /^<harness>\s*(?:\[error\]\s*)?([\s\S]*?)\s*<\/harness>$/i.exec(value.trim());
+  return wrapped ? wrapped[1]!.trim() : value;
+}
 const toolTarget = computed(() => {
   if (presentation?.target !== undefined) return presentation.target;
   const value = parsed(tool.args);
@@ -87,7 +91,7 @@ const outcome = computed(() => {
   if (tool.status === "error") {
     const raw = typeof tool.result === "string" ? tool.result.trim() : "";
     const message = value.message || value.error || (raw && !/^[\[{]/.test(raw) ? raw : "");
-    return String(message || translate("操作未完成，展开查看原因")).slice(0, 180);
+    return toolErrorText(String(message || translate("操作未完成，展开查看原因"))).slice(0, 180);
   }
   if (tool.status !== "success") return "";
   if (tool.name === "importLocalFile") return translate("素材已导入项目，待放入画布");

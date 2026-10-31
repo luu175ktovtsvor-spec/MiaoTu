@@ -1,18 +1,22 @@
 <template>
-  <div v-click-outside:[editor]="closeMenu" class="skillMenu" @keydown.capture="handleKeydown">
-    <el-button class="skillButton" text circle :disabled="disabled" :aria-expanded="visible" :aria-controls="listId" :aria-label="translate('选择技能')" :title="translate('选择技能')" @click="visible ? closeMenu() : buttonVisible = true"><icon-book :size="15" /></el-button>
-    <el-card v-if="visible" class="skillPopup" shadow="always" :bodyStyle="{ padding: '6px' }">
-      <el-input v-model="search" class="skillSearch" :placeholder="translate('搜索技能')" :aria-label="translate('搜索技能')" clearable size="small" @keydown.stop />
-      <el-scrollbar maxHeight="320px">
-        <div :id="listId" role="listbox" :aria-label="translate('技能指令')" :aria-busy="loading">
-          <div v-if="loading || loadError || !filteredSkills.length" class="skillStatus" role="status">{{ loading ? translate("正在加载技能…") : loadError || (skills.length ? translate("没有匹配的技能") : translate("暂无可用技能")) }}</div>
-          <button v-for="(skill, index) in filteredSkills" v-else :id="`${listId}-${index}`" :key="skill.id || skill.name" class="skillItem" :class="{ active: index === activeIndex }" type="button" role="option" :aria-selected="index === activeIndex" @mouseenter="activeIndex = index" @mousedown.prevent @click="selectSkill(skill.id || skill.name)">
-            <span class="skillName"><icon-book :size="15" />{{ skillLabel(skill) }}<small>{{ translate(skill.local ? '本地技能' : skill.builtin ? '内置技能' : '工作区技能') }}</small></span>
-            <span class="skillDescription">{{ skillText(skill) }}</span>
-          </button>
-        </div>
-      </el-scrollbar>
-    </el-card>
+  <div ref="menuElement" v-click-outside:[clickOutsideExclude]="closeMenu" class="skillMenu" @keydown.capture="handleKeydown">
+    <el-popover ref="popover" :visible="visible" :placement="placement" :width="384" :showArrow="false" :persistent="false" popperClass="agentSkillPopover" :popperStyle="{ padding: '6px', maxWidth: 'calc(100vw - 24px)', maxHeight: popupMaxHeight === undefined ? undefined : `${popupMaxHeight}px`, overflow: 'hidden' }" :popperOptions="{ strategy: 'fixed', modifiers: [{ name: 'flip', enabled: false }, { name: 'preventOverflow', options: { padding: 12, altAxis: true, rootBoundary: 'viewport', boundary: [] } }] }">
+      <template #reference>
+        <el-button class="skillButton" text circle :disabled="disabled" :aria-expanded="visible" :aria-controls="listId" :aria-label="translate('选择技能')" :title="translate('选择技能')" @mousedown.prevent @click="visible ? closeMenu() : buttonVisible = true"><icon-book :size="15" /></el-button>
+      </template>
+      <div v-if="visible" ref="popupElement" class="skillPopup" @keydown.capture="handleKeydown">
+        <el-input v-model="search" class="skillSearch" :placeholder="translate('搜索技能')" :aria-label="translate('搜索技能')" clearable size="small" @keydown.stop />
+        <el-scrollbar :maxHeight="`${listMaxHeight}px`">
+          <div :id="listId" role="listbox" :aria-label="translate('技能指令')" :aria-busy="loading">
+            <div v-if="loading || loadError || !filteredSkills.length" class="skillStatus" :role="loadError ? 'alert' : 'status'">{{ loading ? translate("正在加载技能…") : loadError || (skills.length ? translate("没有匹配的技能") : translate("暂无可用技能")) }}<el-button v-if="loadError && !loading" text type="primary" size="small" @click="loadSkills(true)">{{ translate('重试') }}</el-button></div>
+            <button v-for="(skill, index) in filteredSkills" v-else :id="`${listId}-${index}`" :key="skill.id || skill.name" class="skillItem" :class="{ active: index === activeIndex }" type="button" role="option" :aria-selected="index === activeIndex" @mouseenter="activeIndex = index" @mousedown.prevent @click="selectSkill(skill.id || skill.name)">
+              <span class="skillName"><icon-book :size="15" />{{ skillLabel(skill) }}<small>{{ translate(skill.local ? '本地技能' : skill.builtin ? '内置技能' : '工作区技能') }}</small></span>
+              <span class="skillDescription">{{ skillText(skill) }}</span>
+            </button>
+          </div>
+        </el-scrollbar>
+      </div>
+    </el-popover>
   </div>
 </template>
 
@@ -21,7 +25,7 @@ import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from "vue";
 import axios from "axios";
 import { assertWorkspaceScope, captureWorkspaceScope } from "../../../../lib/workspaceRemote";
 import { IconBook } from "@tabler/icons-vue";
-import { ClickOutside as vClickOutside } from "element-plus";
+import { ClickOutside as vClickOutside, type PopoverInstance } from "element-plus";
 import { locale, translate } from "@miaoimg/i18n/vue";
 
 const props = defineProps<{ directory?: string; sessionFile?: string; active: boolean; disabled: boolean; query?: string; editor?: HTMLElement }>();
@@ -34,6 +38,70 @@ const loading = ref(false);
 const loadError = ref("");
 const activeIndex = ref(0);
 const search = ref("");
+const popupElement = ref<HTMLElement>();
+const menuElement = ref<HTMLElement>();
+const popover = ref<PopoverInstance>();
+const placement = ref<"top-start" | "bottom-start">("top-start");
+const listMaxHeight = ref(320);
+const popupMaxHeight = ref<number>();
+const clickOutsideExclude = computed(() => [props.editor, popupElement.value]);
+let schedulePopupLayout: (() => void) | undefined;
+
+function updatePopupLayout() {
+  const button = menuElement.value?.querySelector("button");
+  const popup = popupElement.value;
+  if (!visible.value || !button || !popup) return;
+  const bounds = button.getBoundingClientRect();
+  const viewport = window.visualViewport;
+  const viewportTop = viewport?.offsetTop ?? 0;
+  const viewportBottom = viewportTop + (viewport?.height ?? window.innerHeight);
+  const padding = 12, offset = 12;
+  const above = Math.max(0, bounds.top - viewportTop - padding - offset);
+  const below = Math.max(0, viewportBottom - bounds.bottom - padding - offset);
+  // Choose from the space the user can actually see, including after a short
+  // loading/error state grows into a long asynchronously loaded catalog.
+  placement.value = above >= below ? "top-start" : "bottom-start";
+  const available = placement.value === "top-start" ? above : below;
+  const outer = popup.closest(".el-popper");
+  const list = popup.querySelector(".el-scrollbar");
+  const chrome = outer && list ? Math.max(0, outer.getBoundingClientRect().height - list.getBoundingClientRect().height) : 0;
+  popupMaxHeight.value = Math.floor(available);
+  listMaxHeight.value = Math.max(0, Math.min(320, Math.floor(available - chrome)));
+  // Element Plus exposes the underlying instance through Popover -> Popper.
+  // Update only after Vue applies placement and the new scroll height.
+  void nextTick(() => { if (visible.value) void popover.value?.popperRef?.popperInstanceRef?.update(); });
+}
+
+watch([visible, popupElement, menuElement, () => props.editor], ([open, popup, menu, editor], _previous, onCleanup) => {
+  if (!open || !popup || !menu) return;
+  let frame = 0, disposed = false;
+  const schedule = () => {
+    if (disposed || frame) return;
+    frame = requestAnimationFrame(() => { frame = 0; if (!disposed) updatePopupLayout(); });
+  };
+  schedulePopupLayout = schedule;
+  const resize = new ResizeObserver(schedule);
+  for (const element of [popup, menu, editor?.closest(".messageInput"), menu.closest(".floatingAgent")]) if (element) resize.observe(element);
+  // A freely dragged panel changes position without changing its dimensions.
+  const movement = new MutationObserver(schedule);
+  const panel = menu.closest(".floatingAgent");
+  if (panel) movement.observe(panel, { attributes: true, attributeFilter: ["style", "class"] });
+  window.addEventListener("resize", schedule);
+  window.addEventListener("scroll", schedule, true);
+  window.visualViewport?.addEventListener("resize", schedule);
+  window.visualViewport?.addEventListener("scroll", schedule);
+  schedule();
+  onCleanup(() => {
+    disposed = true;
+    cancelAnimationFrame(frame);
+    resize.disconnect(); movement.disconnect();
+    window.removeEventListener("resize", schedule);
+    window.removeEventListener("scroll", schedule, true);
+    window.visualViewport?.removeEventListener("resize", schedule);
+    window.visualViewport?.removeEventListener("scroll", schedule);
+    if (schedulePopupLayout === schedule) schedulePopupLayout = undefined;
+  });
+}, { flush: "post" });
 // 技能标签跟随界面语言：中文界面用 frontmatter 的中文名，其余语言用 displayName_en。
 const chineseLabels = computed(() => locale.value.startsWith("zh"));
 function skillLabel(skill: { name: string; displayName?: string; displayNameEn?: string }) {
@@ -46,6 +114,8 @@ const filteredSkills = computed(() => {
   const query = (props.query ?? search.value).toLowerCase();
   return skills.value.filter(skill => `skill:${skill.id || skill.name} ${skill.name} ${skill.displayName || ""} ${skill.displayNameEn || ""} ${skill.description} ${skill.descriptionEn || ""}`.toLowerCase().includes(query));
 });
+
+watch([filteredSkills, loading, loadError, search], async () => { await nextTick(); schedulePopupLayout?.(); }, { flush: "post" });
 
 function closeMenu() {
   buttonVisible.value = false;
@@ -137,7 +207,7 @@ async function loadSkills(force = false) {
         } catch (error) {
           if (requestController.signal.aborted || loadedScope !== key || axios.isCancel(error)) return;
           if (requestedRevision !== refreshRevision) continue;
-          loadError.value = translate("加载技能失败，请重新打开重试");
+          loadError.value = translate("加载技能失败，请重试");
           return;
         }
       }
@@ -178,55 +248,52 @@ defineExpose({ handleKeydown });
     height: 24px;
     padding: 0;
   }
+}
 
-  .skillPopup {
-    position: absolute;
-    z-index: 20;
-    right: 0;
-    bottom: calc(100% + 8px);
-    left: 0;
+.skillPopup {
+  min-width: 0;
+  font-size: 13px;
 
-    .skillSearch { margin-bottom: 6px; }
+  .skillSearch { margin-bottom: 6px; }
 
-    .skillStatus {
-      padding: 12px;
-      color: var(--el-text-color-secondary);
+  .skillStatus {
+    padding: 12px;
+    color: var(--el-text-color-secondary);
+  }
+
+  .skillItem {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    width: 100%;
+    padding: 8px;
+    border: none;
+    border-radius: var(--el-border-radius-base);
+    background: transparent;
+    color: var(--el-text-color-primary);
+    font: inherit;
+    text-align: left;
+    overflow-wrap: anywhere;
+    cursor: pointer;
+
+    &.active, &:focus-visible {
+      background: var(--el-fill-color-light);
     }
 
-    .skillItem {
+    .skillName {
       display: flex;
-      flex-direction: column;
-      gap: 4px;
-      width: 100%;
-      padding: 8px;
-      border: none;
-      border-radius: var(--el-border-radius-base);
-      background: transparent;
-      color: var(--el-text-color-primary);
-      font: inherit;
-      text-align: left;
-      overflow-wrap: anywhere;
-      cursor: pointer;
+      align-items: center;
+      gap: 6px;
+      small { flex-shrink: 0; margin-left: auto; color: var(--el-text-color-secondary); }
+    }
 
-      &.active, &:focus-visible {
-        background: var(--el-fill-color-light);
-      }
-
-      .skillName {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        small { flex-shrink: 0; margin-left: auto; color: var(--el-text-color-secondary); }
-      }
-
-      .skillDescription {
-        display: -webkit-box;
-        -webkit-box-orient: vertical;
-        -webkit-line-clamp: 3;
-        overflow: hidden;
-        color: var(--el-text-color-secondary);
-        font-size: 12px;
-      }
+    .skillDescription {
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 3;
+      overflow: hidden;
+      color: var(--el-text-color-secondary);
+      font-size: 12px;
     }
   }
 }

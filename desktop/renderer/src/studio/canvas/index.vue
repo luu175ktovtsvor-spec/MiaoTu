@@ -161,6 +161,7 @@ import {
   wheelDelta,
   isNode,
   type Node,
+  type NodeDragEvent,
   type Edge,
   type GraphEdge,
   type EdgeMouseEvent,
@@ -170,6 +171,7 @@ import {
 } from "@vue-flow/core";
 import { Background } from "@vue-flow/background";
 import { useCanvasTools } from "./useCanvasTools";
+import { endCanvasDrag, watchCanvasInteractionEnd } from "./canvasInteraction";
 import type { CanvasContext } from "@miaoimg/tool-canvas/runtime";
 import { loadNodeComponent, loadNodeCatalog } from "./loadNodeComponent";
 import { useCanvasHistory } from "./useCanvasHistory";
@@ -334,17 +336,37 @@ function finishDragCopy() {
   return copy;
 }
 onScopeDispose(finishDragCopy);
-flow.onNodeDragStart(({ event, nodes }) => {
+let canvasDrag: { event: NodeDragEvent; dispose: () => void } | undefined;
+function finishCanvasDrag() {
+  const current = canvasDrag;
+  if (!current) return;
+  current.dispose();
+  endCanvasDrag(current.event.event);
+  // The native owner may already have unmounted. Close the same captured
+  // nodes and history once; never clear a replacement canvas's interaction.
+  if (canvasDrag === current) {
+    current.event.nodes.forEach(node => { node.dragging = false; });
+    flow.emits.nodeDragStop(current.event);
+  }
+}
+flow.onNodeDragStart(args => {
+  canvasDrag?.dispose();
+  const current = { event: args, dispose: () => {} };
+  canvasDrag = current;
+  current.dispose = watchCanvasInteractionEnd(args.event, finishCanvasDrag);
   finishDragCopy();
   if (!props.active || props.settingsVisible) return;
+  const { event, nodes } = args;
   const shortcuts = generalSettings.value.canvasShortcuts;
   const withEdges = shortcutPressed(event, shortcuts.duplicateOnDrag, pressedCodes);
   if (withEdges || shortcutPressed(event, shortcuts.copyOnDrag, pressedCodes)) {
     dragCopy = selectionToolbarRef.value?.startDragCopy(nodes, withEdges);
   }
 });
-flow.onNodeDrag(() => dragCopy?.update());
+flow.onNodeDrag(args => { if (canvasDrag) canvasDrag.event = args; dragCopy?.update(); });
 flow.onNodeDragStop(({ nodes }) => {
+  canvasDrag?.dispose();
+  canvasDrag = undefined;
   if (!finishDragCopy()) finishGroupDrag(flow.getNodes.value, nodes);
 });
 const canvasHistory = useCanvasHistory(flow, () =>
@@ -1113,6 +1135,7 @@ watch(
       workspaceController = new AbortController();
     }
     edgeDisconnect.value = undefined;
+    finishCanvasDrag();
     finishDragCopy();
     pointerPosition = undefined;
     resetCanvasKeys();
@@ -1128,6 +1151,7 @@ watch(
 
 // ACT: 切换显示面板不会卸载画布；仅清理交互，不中断本轮工具调用。
 watch(() => props.active, (active) => {
+  if (!active) finishCanvasDrag();
   if (!active) assetsVisible.value = false;
   edgeDisconnect.value = undefined;
   finishDragCopy();
@@ -1425,6 +1449,7 @@ onMounted(() => {
   void loadRemoteNodes();
 });
 onBeforeUnmount(() => {
+  finishCanvasDrag();
   detachCanvasKeyboard();
   window.removeEventListener("blur", resetCanvasKeys);
   window.removeEventListener("miaoimg:plugin-installed", refreshInstalled);

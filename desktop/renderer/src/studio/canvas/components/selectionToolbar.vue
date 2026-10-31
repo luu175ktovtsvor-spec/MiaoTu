@@ -64,12 +64,14 @@ function startDragCopy(selection: GraphNode[], withEdges: boolean) {
   const ended = Promise.withResolvers<void>();
   const finish = () => ended.resolve();
   let copies: Map<string, string> | undefined;
+  const movingCopies = new Set<GraphNode>();
   let started = false;
 
   function moveCopies() {
     for (const node of roots) {
       const copy = flow.findNode(copies?.get(node.id));
       if (copy) {
+        movingCopies.add(copy);
         copy.position = { ...positions.get(node.id)! };
         copy.dragging = true;
       }
@@ -83,6 +85,7 @@ function startDragCopy(selection: GraphNode[], withEdges: boolean) {
       await props.batchHistory(async () => {
         signal.throwIfAborted();
         const result = await duplicateNodes(selection, signal, withEdges, positions);
+        signal.throwIfAborted();
         copies = result.ids;
         moveCopies();
         await ended.promise;
@@ -97,6 +100,7 @@ function startDragCopy(selection: GraphNode[], withEdges: boolean) {
       if (!signal.aborted) ElMessage.error(error instanceof Error ? error.message : translate("拖动复制失败"));
     } finally {
       signal.removeEventListener("abort", finish);
+      movingCopies.forEach(node => { node.dragging = false; });
       busy.value = false;
     }
   }

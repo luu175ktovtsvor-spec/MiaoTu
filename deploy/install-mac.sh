@@ -60,7 +60,18 @@ trap 'exit 143' HUP TERM
 curl -fsSL --retry 2 --connect-timeout 15 --max-time 60 "$BASE/latest-mac.yml" -o "$TMP/latest-mac.yml"
 VERSION=$(awk '$1 == "version:" { print $2 }' "$TMP/latest-mac.yml" | tr -d "\"'\r")
 printf '%s\n' "${VERSION}" | /usr/bin/grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || fail '无法确认正式版本，未修改现有应用。'
-DMG="妙图-${VERSION}-${ARCH}.dmg"
+DMG=$(awk -v version="$VERSION" -v arch="$ARCH" '
+  $1 == "-" && $2 == "url:" {
+    name=$3; gsub(/["\047\r]/,"",name)
+    prefix="妙图-" version "-"; suffix="-" arch ".dmg"
+    if (name == prefix arch ".dmg" || (index(name,prefix)==1 && length(name)>length(prefix)+length(suffix) && substr(name,length(name)-length(suffix)+1)==suffix)) {
+      middle=substr(name,length(prefix)+1,length(name)-length(prefix)-length(suffix))
+      if (name == prefix arch ".dmg" || middle ~ /^[A-Za-z0-9][A-Za-z0-9_-]*$/) { selected=name; count++ }
+    }
+  }
+  END { if (count==1) print selected }
+' "$TMP/latest-mac.yml")
+[ -n "$DMG" ] || fail '无法确认当前芯片的正式安装包，未修改现有应用。'
 META=$(awk -v target="$DMG" '
   /^[^[:space:]]/ { selected=0 }
   $1 == "-" && $2 == "url:" { name=$3; gsub(/["\047\r]/,"",name); selected=(name==target) }

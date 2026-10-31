@@ -1,6 +1,6 @@
 <template>
   <header class="agentMenu">
-    <el-button v-if="parentFile" class="backButton" text circle :icon="IconArrowLeft" :aria-label="translate('返回父 Agent')" :title="translate('返回父 Agent')" @click="emit('back')" />
+    <el-button v-if="parentFile" class="backButton" text circle :disabled="busy" :icon="IconArrowLeft" :aria-label="translate('返回父 Agent')" :title="translate('返回父 Agent')" @click="emit('back')" />
     <el-input
       v-if="editingName && !parentFile"
       ref="nameInput"
@@ -33,16 +33,17 @@
             class="historySelect"
             type="button"
             :aria-current="item.file === sessionFile ? 'true' : undefined"
+            :disabled="busy"
             :title="item.name"
             @click="selectConversation(item.file)">
             <icon-message-circle :size="16" />
             <span class="historyContent"><span class="historyName">{{ displayName(item.name) }}</span><span v-if="historyDate(item.modified)" class="historyDate">{{ historyDate(item.modified) }}</span></span>
             <icon-check v-if="item.file === sessionFile" :size="15" />
           </button>
-          <el-button class="historyAction" text circle :aria-label="translate('重命名对话 {0}', { 0: item.name })" :title="translate('重命名对话')" @click.stop="renameHistory(item)">
+          <el-button class="historyAction" text circle :disabled="busy" :aria-label="translate('重命名对话 {0}', { 0: item.name })" :title="translate('重命名对话')" @click.stop="renameHistory(item)">
             <icon-pencil :size="14" />
           </el-button>
-          <el-button class="historyAction" text circle :aria-label="translate('删除历史对话 {0}', { 0: item.name })" :title="translate('删除对话')" @click.stop="emit('remove', item.file)">
+          <el-button class="historyAction" text circle :disabled="busy" :aria-label="translate('删除历史对话 {0}', { 0: item.name })" :title="translate('删除对话')" @click.stop="emit('remove', item.file)">
             <icon-x :size="14" />
           </el-button>
         </div>
@@ -65,6 +66,7 @@
                 :class="{ selected: item.file === sessionFile }"
                 type="button"
                 :aria-current="item.file === sessionFile ? 'true' : undefined"
+                :disabled="busy"
                 @click="selectSubAgent(item.file)">
                 <span class="statusDot" :data-status="item.status" role="img" :aria-label="subAgentStatusLabels[item.status] ?? translate('状态待确认')" :title="subAgentStatusLabels[item.status] ?? translate('状态待确认')" />
                 <span class="subAgentInfo">
@@ -77,7 +79,7 @@
           </ul>
         </div>
       </el-popover>
-      <el-button v-if="!parentFile" text circle :aria-label="translate('新建对话')" :title="translate('新建对话')" @click="emit('newChat')"><icon-circle-plus :size="17" /></el-button>
+      <el-button v-if="!parentFile" text circle :disabled="busy" :aria-label="translate('新建对话')" :title="translate('新建对话')" @click="emit('newChat')"><icon-circle-plus :size="17" /></el-button>
 
       <slot name="actions" />
       <el-button text circle :aria-label="translate('关闭对话')" :title="translate('关闭')" @click="emit('close')"><icon-minus :size="17" /></el-button>
@@ -103,6 +105,7 @@ const props = defineProps<{
   history: AgentHistory[];
   sessionFile?: string;
   loading: boolean;
+  busy?: boolean;
   subAgents?: AgentSubAgent[];
   parentFile?: string;
 }>();
@@ -140,17 +143,19 @@ watch(() => [props.sessionFile, props.parentFile], () => {
 });
 
 function selectConversation(file: string) {
+  if (props.busy) return;
   historyVisible.value = false;
   emit("select", file);
 }
 
 function selectSubAgent(file: string) {
+  if (props.busy) return;
   subAgentsVisible.value = false;
   emit("openSubAgent", file);
 }
 
 async function editName() {
-  if (!props.sessionFile || props.parentFile) return;
+  if (!props.sessionFile || props.parentFile || props.busy) return;
   historyVisible.value = false;
   nameDraft.value = props.name;
   editingName.value = true;
@@ -166,6 +171,7 @@ function saveName(event: Event) {
 }
 
 async function renameHistory(item: AgentHistory) {
+  if (props.busy) return;
   const result = await ElMessageBox.prompt(translate("请输入对话名称"), translate("重命名对话"), {
     inputValue: item.name,
     confirmButtonText: translate("保存"),

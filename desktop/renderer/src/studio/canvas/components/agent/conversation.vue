@@ -65,9 +65,9 @@
               <template v-else>
                 <el-button v-if="item.content" class="messageAction" text circle :aria-label="translate('复制消息')" :title="translate('复制消息')" @click="copyMessage(mentionPlainText(item.content, item.mentions))"><icon-copy :size="14" /></el-button>
                 <template v-if="item.role === 'user'">
-                  <el-button class="messageAction" text circle :disabled="locked || turnRunning" :aria-label="translate('编辑消息')" :title="translate('编辑消息')" @click="editMessage(item)"><icon-pencil :size="14" /></el-button>
+                  <el-button class="messageAction" text circle :disabled="locked || turnRunning" :aria-label="translate('编辑消息')" :title="turnRunning ? translate('当前回复结束后可操作') : translate('编辑消息')" @click="editMessage(item)"><icon-pencil :size="14" /></el-button>
                 </template>
-                <el-button v-if="!item.report" class="messageAction" text circle :loading="deletingId === item.id" :disabled="locked || turnRunning" :aria-label="translate('删除消息')" :title="translate('删除消息')" @click="deleteMessage(item)"><icon-trash v-if="deletingId !== item.id" :size="14" /></el-button>
+                <el-button v-if="!item.report" class="messageAction" text circle :loading="deletingId === item.id" :disabled="locked || turnRunning" :aria-label="translate('删除消息')" :title="turnRunning ? translate('当前回复结束后可操作') : translate('删除消息')" @click="deleteMessage(item)"><icon-trash v-if="deletingId !== item.id" :size="14" /></el-button>
               </template>
             </div>
           </div>
@@ -100,24 +100,18 @@
       <span>{{ translate('上下文整理未完成，原始记录已保留，可以重试') }}</span>
     </div>
     <div v-if="lastFailure && !turnRunning" class="compactionStatus" role="alert"><span>{{ translate(lastFailure.message) }}</span></div>
-    <div class="messageInput">
-      <div v-if="isEmpty" class="composerSuggestions">
-        <el-button v-for="item in welcomeSuggestions" :key="item.label" class="composerSuggestion" text :disabled="locked" :aria-label="translate('填入提示：{0}', { 0: item.label })" :title="item.description" @click="fillPrompt(item.prompt)">
-          <component :is="item.icon" :size="14" aria-hidden="true" /><span>{{ item.label }}</span>
-        </el-button>
-      </div>
-      <div v-if="editingId" class="editingBanner"><span>{{ translate('编辑消息') }}</span><el-button text size="small" :disabled="busy" @click="cancelEdit">{{ translate('取消') }}</el-button></div>
+    <div class="messageInput" :style="{ maxHeight: senderInputMaxHeight === undefined ? undefined : `${senderInputMaxHeight}px` }">
       <div
         class="senderResizeHandle"
         role="separator"
         aria-orientation="horizontal"
         :aria-label="translate('调整输入框高度')"
-        aria-valuemin="64"
+        :aria-valuemin="Math.min(64, senderMaxHeight)"
         :aria-valuemax="senderMaxHeight"
         :aria-valuenow="senderHeight"
         tabindex="0"
         :title="translate('拖动调整输入框高度')"
-        @focus="senderHeight = sender?.chatElement.rollBox.clientHeight ?? 64"
+        @focus="updateSenderLayout"
         @pointerdown="startSenderResize"
         @pointermove="moveSenderResize"
         @pointerup="stopSenderResize"
@@ -125,16 +119,24 @@
         @lostpointercapture="stopSenderResize"
         @keydown.up.prevent="setSenderHeight((sender?.chatElement.rollBox.clientHeight ?? 64) + 16)"
         @keydown.down.prevent="setSenderHeight((sender?.chatElement.rollBox.clientHeight ?? 64) - 16)" />
-      <attachmentList v-if="draftAttachments.length" class="draftAttachments" :attachments="draftAttachments" :directory="directory" removable restorable :disabled="locked" @remove="draftAttachments.splice($event, 1)" @restore="restoreTextAttachment" />
-      <div ref="senderElement" class="senderEditor" @keydown.capture="handleSenderKeydown"></div>
-      <teleport v-for="target in draftMentionTargets" :key="target.key" :to="target.element"><mentionThumbnail v-bind="mentionThumbnailProps(target.mention)" :directory="directory"><icon-photo :size="14" /></mentionThumbnail></teleport>
-      <mentionContent ref="draftMentionPreview" :mentions="draftMentions" :directory="directory" removable @remove="removeDraftMention" />
+      <div class="composerScroll">
+        <div v-if="isEmpty" class="composerSuggestions">
+          <el-button v-for="item in welcomeSuggestions" :key="item.label" class="composerSuggestion" text :disabled="locked" :aria-label="translate('填入提示：{0}', { 0: item.label })" :title="item.description" @click="fillPrompt(item.prompt)">
+            <component :is="item.icon" :size="14" aria-hidden="true" /><span>{{ item.label }}</span>
+          </el-button>
+        </div>
+        <div v-if="editingId" class="editingBanner"><span>{{ translate('编辑消息') }}</span><el-button text size="small" :disabled="busy" @click="cancelEdit">{{ translate('取消') }}</el-button></div>
+        <attachmentList v-if="draftAttachments.length" class="draftAttachments" :attachments="draftAttachments" :directory="directory" removable restorable :disabled="locked" @remove="draftAttachments.splice($event, 1)" @restore="restoreTextAttachment" />
+        <div ref="senderElement" class="senderEditor" @keydown.capture="handleSenderKeydown"></div>
+        <teleport v-for="target in draftMentionTargets" :key="target.key" :to="target.element"><mentionThumbnail v-bind="mentionThumbnailProps(target.mention)" :directory="directory"><icon-photo :size="14" /></mentionThumbnail></teleport>
+        <mentionContent ref="draftMentionPreview" :mentions="draftMentions" :directory="directory" removable @remove="removeDraftMention" />
+      </div>
       <div class="senderActions">
         <input ref="attachmentInput" type="file" multiple accept="image/*,video/*,text/plain" hidden :disabled="locked" @change="selectAttachments" />
         <el-button class="attachmentButton" text circle :disabled="locked" :aria-label="translate('添加文件')" :title="translate('添加文件')" @click="attachmentInput?.click()">
           <icon-paperclip :size="16" aria-hidden="true" />
         </el-button>
-        <modelPopover :model-value="selectedModel" :reasoningEffort="reasoningEffort" @update:model-value="selectModel" @update:reasoningEffort="selectReasoningEffort" :active="active" :disabled="disabled || turnRunning" />
+        <modelPopover :model-value="selectedModel" :reasoningEffort="reasoningEffort" @update:model-value="selectModel" @update:reasoningEffort="selectReasoningEffort" :active="active" :disabled="locked || turnRunning" :disabled-reason="turnRunning ? translate('当前回复结束后可操作') : undefined" />
         <mentionMenu ref="mentionMenuRef" :directory="directory" :active="active" :disabled="locked || !directory" :query="mentionQuery" :editor="senderElement" :currentCanvasId="createCanvasContext?.()?.id" @open="captureMentionPosition" @select="insertMentions" @dismiss="mentionQuery = undefined" />
         <skillMenu ref="skillMenuRef" :directory="directory" :session-file="nativeFile || sessionFile" :active="active" :disabled="locked || !directory" :query="skillQuery" :editor="senderElement" @select="selectSkill" @dismiss="skillQuery = undefined" />
         <el-popover
@@ -162,7 +164,7 @@
             <span v-else class="contextHint">{{ contextUsage ? translate("等待下一次回复更新用量") : translate("尚无用量数据") }}</span>
             <p class="contextHint">{{ translate('接近容量上限时会自动整理，保留任务目标、约束和近期内容。原始对话记录仍会保留。') }}</p>
             <span v-if="lastCompaction?.status === 'completed'" class="contextHint">{{ translate('最近整理：约 {0} → {1} tok', { 0: lastCompaction.tokensBefore?.toLocaleString() ?? '—', 1: lastCompaction.tokensAfter?.toLocaleString() ?? '—' }) }}</span>
-            <el-button size="small" :disabled="busy || remoteRunning || locked || !sessionFile || !selectedModelChoice" @click="compactContext">{{ translate('整理上下文') }}</el-button>
+            <el-button size="small" :disabled="turnRunning || locked || !nativeFile || !selectedModelChoice" :title="turnRunning ? translate('当前回复结束后可操作') : !nativeFile ? translate('发送消息后可整理上下文') : undefined" @click="compactContext">{{ translate('整理上下文') }}</el-button>
             <div v-if="stats" class="contextStats">
               <div class="contextHeader">{{ translate('对话累计用量') }}</div>
               <div class="contextTokens"><span>{{ translate('输入') }}</span><span>{{ inputTokens.toLocaleString() }} tok</span></div>
@@ -370,8 +372,9 @@ const mentionQuery = ref<string>();
 let mentionPosition: { node: ReturnType<xSender["getCurrentNode"]>; remove: number } | undefined;
 let insertingMentions = false;
 const senderHeight = ref(64);
-const senderMaxHeight = ref(Math.max(64, window.innerHeight / 2));
-let senderResize: { pointerId: number; y: number; height: number } | undefined;
+const senderMaxHeight = ref(64);
+const senderInputMaxHeight = ref<number>();
+let senderResize: { pointerId: number; y: number; height: number; element: HTMLElement } | undefined;
 const selectedModel = ref(pendingMessage?.model ?? props.initialDraft?.model ?? (props.initialSession?.providerId && props.initialSession.modelId
   ? JSON.stringify([props.initialSession.providerId, props.initialSession.modelId]) : textModelSettings.value));
 const contextMenuVisible = ref(false);
@@ -1027,6 +1030,7 @@ function queueDraftMessage() {
 }
 
 async function compactContext() {
+  if (locked.value || turnRunning.value || !nativeFile.value || !selectedModelChoice.value) return;
   contextMenuVisible.value = false;
   return sendNative({ id: crypto.randomUUID(), prompt: '', attachments: [], mentions: [], status: 'waiting' }, undefined, 'compact');
 }
@@ -1099,17 +1103,24 @@ async function deleteMessage(item: AgentMessage) {
   if (locked.value || turnRunning.value || item.streaming || item.report) return;
   deletingId.value = item.id;
   try {
-    if (item.entryId || item.replyTo) {
-      if (!directory || !props.sessionFile) throw new Error(translate("请重新打开对话后再删除"));
+    const file = nativeFile.value || props.sessionFile;
+    if ((item.entryId || item.replyTo) && (!directory || !file)) throw new Error(translate("请重新打开对话后再删除"));
+    if (directory && file) {
+      assertWorkspaceScope(conversationScope);
       const { data } = await axios.delete<{ code: number; data: AgentConversation; message?: string }>("/api/agent/message", {
         data: {
-          directory, sessionFile: props.sessionFile,
-          ...(item.replyTo ? { replyTo: item.replyTo } : { entryIds: [item.entryId!] }),
+          directory, sessionFile: file,
+          ...(item.replyTo ? { replyTo: item.replyTo } : { entryIds: [item.entryId || item.id] }),
         },
         headers: { "x-miaoimg-workspace": "1" },
+        timeout: 15000,
       });
       if (data.code !== 200) throw new Error(data.message || "删除消息失败");
-      reconcileConversation(data.data); void observeNative(props.sessionFile!);
+      assertWorkspaceScope(conversationScope);
+      if (nativeDisposed || nativeFile.value !== file) return;
+      if (data.data?.file !== file) throw new Error(translate("删除消息失败"));
+      reconcileConversation({ ...data.data, messages: hydrateMessages(data.data.messages) });
+      if (data.data.nativeId) void observeNative(file);
     }
     messages.value = messages.value.filter(message => message.id !== item.id);
   } catch (error) {
@@ -1120,17 +1131,58 @@ async function deleteMessage(item: AgentMessage) {
   }
 }
 
+function updateSenderLayout() {
+  const editor = senderElement.value;
+  const conversation = editor?.closest<HTMLElement>(".agentConversation");
+  const input = editor?.closest<HTMLElement>(".messageInput");
+  const scroll = input?.querySelector<HTMLElement>(".composerScroll");
+  const actions = input?.querySelector<HTMLElement>(".senderActions");
+  const viewport = conversation?.querySelector<HTMLElement>(".messageViewport");
+  const roll = sender?.chatElement.rollBox;
+  if (!props.active || !conversation || !input || !scroll || !actions || !viewport || !roll || !conversation.clientHeight) return;
+  const css = (element: Element) => getComputedStyle(element);
+  const px = (value: string) => Number.parseFloat(value) || 0;
+  const outerHeight = (element: Element) => {
+    const style = css(element);
+    return element.getBoundingClientRect().height + px(style.marginTop) + px(style.marginBottom);
+  };
+  const style = css(conversation);
+  const available = Math.max(0, conversation.clientHeight - px(style.paddingTop) - px(style.paddingBottom));
+  const messagesStyle = css(viewport);
+  const lineHeight = px(messagesStyle.lineHeight) || px(messagesStyle.fontSize) * 1.75;
+  const messageSpace = Math.min(available / 4, lineHeight * 2);
+  const notices = Array.from(conversation.children).filter(element => element !== input && element !== viewport).reduce((sum, element) => sum + outerHeight(element), 0);
+  const inputStyle = css(input);
+  const inputMargins = px(inputStyle.marginTop) + px(inputStyle.marginBottom);
+  const bordersAndPadding = Math.max(0, input.getBoundingClientRect().height - input.clientHeight) + px(inputStyle.paddingTop) + px(inputStyle.paddingBottom);
+  const controls = outerHeight(actions) + bordersAndPadding;
+  const inputLimit = Math.max(0, Math.min(available - inputMargins, Math.max(controls, available - notices - messageSpace - inputMargins)));
+  senderInputMaxHeight.value = Math.floor(inputLimit);
+  const bodyLimit = Math.max(0, inputLimit - controls);
+  const extras = Math.max(0, scroll.scrollHeight - roll.getBoundingClientRect().height);
+  // Excess attachments/mentions scroll inside the composer; they must never
+  // push the fixed action row past the edge of the floating conversation.
+  senderMaxHeight.value = Math.max(0, Math.floor(Math.min(bodyLimit, Math.max(bodyLimit - extras, Math.min(64, bodyLimit)))));
+  const minimum = Math.min(64, senderMaxHeight.value);
+  roll.style.minHeight = `${minimum}px`;
+  roll.style.maxHeight = `${senderMaxHeight.value}px`;
+  const current = roll.getBoundingClientRect().height;
+  if (current > senderMaxHeight.value) roll.style.height = `${senderMaxHeight.value}px`;
+  senderHeight.value = Math.min(senderMaxHeight.value, Math.max(minimum, Math.round(current)));
+}
+
 function setSenderHeight(height: number) {
   if (!sender) return;
-  senderMaxHeight.value = Math.max(64, window.innerHeight / 2);
-  senderHeight.value = Math.max(64, Math.min(senderMaxHeight.value, Math.round(height)));
+  updateSenderLayout();
+  senderHeight.value = Math.max(Math.min(64, senderMaxHeight.value), Math.min(senderMaxHeight.value, Math.round(height)));
   sender.chatElement.rollBox.style.height = `${senderHeight.value}px`;
 }
 
 function startSenderResize(event: PointerEvent) {
   if (event.button !== 0 || senderResize || !sender) return;
   event.preventDefault();
-  senderResize = { pointerId: event.pointerId, y: event.clientY, height: sender.chatElement.rollBox.getBoundingClientRect().height };
+  updateSenderLayout();
+  senderResize = { pointerId: event.pointerId, y: event.clientY, height: sender.chatElement.rollBox.getBoundingClientRect().height, element: event.currentTarget as HTMLElement };
   senderHeight.value = senderResize.height;
   (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
 }
@@ -1140,9 +1192,47 @@ function moveSenderResize(event: PointerEvent) {
   setSenderHeight(senderResize.height + senderResize.y - event.clientY);
 }
 
-function stopSenderResize(event: PointerEvent) {
-  if (senderResize?.pointerId === event.pointerId) senderResize = undefined;
+function stopSenderResize(event?: PointerEvent) {
+  const current = senderResize;
+  if (event && current?.pointerId !== event.pointerId) return;
+  senderResize = undefined;
+  if (current?.element.hasPointerCapture(current.pointerId)) current.element.releasePointerCapture(current.pointerId);
 }
+
+watch([() => props.active, senderElement], ([active, editor], _previous, onCleanup) => {
+  if (!active || !editor) return;
+  const conversation = editor.closest(".agentConversation");
+  const input = editor.closest(".messageInput");
+  const scroll = input?.querySelector(".composerScroll");
+  const roll = sender?.chatElement.rollBox;
+  if (!conversation || !input || !scroll || !roll) return;
+  let frame = 0, disposed = false;
+  const schedule = () => {
+    if (disposed || frame) return;
+    frame = requestAnimationFrame(() => { frame = 0; if (!disposed) updateSenderLayout(); });
+  };
+  const resize = new ResizeObserver(schedule);
+  for (const element of [conversation, input, scroll, roll, ...Array.from(conversation.children), ...Array.from(input.children)]) resize.observe(element);
+  const notices = new MutationObserver(records => {
+    for (const record of records) {
+      for (const node of record.addedNodes) if (node instanceof Element) resize.observe(node);
+      for (const node of record.removedNodes) if (node instanceof Element) resize.unobserve(node);
+    }
+    schedule();
+  });
+  notices.observe(conversation, { childList: true });
+  const content = new MutationObserver(schedule);
+  content.observe(scroll, { childList: true, subtree: true, characterData: true });
+  window.addEventListener("resize", schedule);
+  schedule();
+  onCleanup(() => {
+    disposed = true;
+    cancelAnimationFrame(frame);
+    resize.disconnect(); notices.disconnect(); content.disconnect();
+    window.removeEventListener("resize", schedule);
+    stopSenderResize();
+  });
+}, { flush: "post" });
 
 async function stopMessage() {
   if (stopping.value || !turnRunning.value) return;
@@ -1305,7 +1395,7 @@ watch(senderElement, (element, _previous, onCleanup) => {
   const instance = new xSender(element, {
     autoFocus: false,
     placeholder: senderPlaceholder(),
-    chatStyle: { minHeight: "64px", maxHeight: "50vh", fontSize: "14px", lineHeight: "24px" },
+    chatStyle: { minHeight: "64px", maxHeight: "none", fontSize: "14px", lineHeight: "24px" },
     keyboardSendFun: event => event.key === "Enter" && !event.shiftKey && !event.isComposing,
     keyboardWrapFun: event => event.key === "Enter" && event.shiftKey && !event.isComposing,
   });
@@ -1713,8 +1803,11 @@ watch(() => !props.initialSession?.parentFile && !!workspaceStore.pendingAgentMe
   }
 
   .compactionStatus {
+    flex-shrink: 1;
+    min-height: 0;
+    max-height: 25%;
+    overflow-y: auto;
     display: flex;
-    flex-shrink: 0;
     align-items: center;
     gap: 6px;
     min-width: 0;
@@ -1732,7 +1825,10 @@ watch(() => !props.initialSession?.parentFile && !!workspaceStore.pendingAgentMe
     --chat-rect-padding: 10px;
     --chat-mention-text: var(--el-color-primary);
     position: relative;
+    display: flex;
+    flex-direction: column;
     flex-shrink: 0;
+    min-height: 0;
     min-width: 0;
     width: calc(100% - 32px);
     max-width: var(--agent-content-width);
@@ -1746,6 +1842,14 @@ watch(() => !props.initialSession?.parentFile && !!workspaceStore.pendingAgentMe
     &:focus-within {
       border-color: var(--el-color-primary-light-5);
       outline: none;
+    }
+
+    .composerScroll {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      border-radius: inherit;
     }
 
     .senderResizeHandle {
@@ -1821,6 +1925,7 @@ watch(() => !props.initialSession?.parentFile && !!workspaceStore.pendingAgentMe
 
     .senderActions {
       display: flex;
+      flex-shrink: 0;
       justify-content: flex-end;
       align-items: center;
       gap: 6px;

@@ -61,9 +61,9 @@ const statusText = computed(() => {
   if (!state) return "";
   if (state.state === "checking") return translate("正在检查更新") + "…";
   if (state.state === "latest") return translate("当前已是最新版本 v{0}", { 0: state.currentVersion });
-  if (state.state === "available") return translate("发现新版本 v{0}", { 0: state.version || "" });
+  if (state.state === "available") return state.version === state.currentVersion ? translate("当前版本有更新可下载") : translate("发现新版本 v{0}", { 0: state.version || "" });
   if (state.state === "downloading") return translate("正在下载更新 {0}%", { 0: state.percent ?? 0 });
-  if (state.state === "ready") return translate("新版本 {0} 已下载完成，重启后生效。", { 0: state.version || "" });
+  if (state.state === "ready") return translate("客户端更新已下载完成，重启后生效。");
   if (state.state === "failed") return translate("更新检查失败，请稍后重试。");
   if (state.state === "dev") return translate("开发版本不提供更新检查，请使用正式桌面客户端。");
   return "";

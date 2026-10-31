@@ -8,6 +8,7 @@
       :parentFile="selectedConversation?.parentFile"
       :subAgents="selectedConversation?.subAgents"
       :loading="loading || historyLoading"
+      :busy="loading && !historyLoading"
       @open-sub-agent="selectConversation"
       @back="backToParent"
       @new-chat="newConversation"
@@ -72,6 +73,7 @@ const loading = ref(false);
 const historyLoading = ref(false);
 const initialized = ref(false);
 let requestId = 0;
+let historyController: AbortController | undefined;
 let nextConversationKey = 0;
 const conversationRefs = new Map<number, InstanceType<typeof conversation>>();
 const pendingEvents = new Map<number, AgentEvent[]>();
@@ -155,15 +157,16 @@ function setSessionFile(item: OpenConversation, file: string) {
 }
 
 async function newConversation() {
-  if (loading.value || historyLoading.value) return;
+  if (loading.value && !historyLoading.value) return;
   const directory = workspaceStore.project?.directory;
   if (!directory) return ElMessage.warning(translate("请先打开项目"));
+  interruptHistoryRefresh();
   const currentRequest = ++requestId;
   loading.value = true;
   try {
     const { data } = await axios.post<{ code: number; data: AgentConversation; message?: string }>("/api/agent/create", {
       directory,
-    }, { headers: { "x-miaoimg-workspace": "1" } });
+    }, { headers: { "x-miaoimg-workspace": "1" }, timeout: 15000 });
     if (data.code !== 200) throw new Error(data.message || translate("新建对话失败"));
     if (currentRequest !== requestId) return;
     const session = data.data;
@@ -181,23 +184,33 @@ async function newConversation() {
 
 async function readConversation(directory: string, file: string) {
   const { data } = await axios.get<{ code: number; data: AgentConversation; message?: string }>("/api/agent/get", {
-    params: { directory, sessionFile: file }, headers: { "x-miaoimg-workspace": "1" },
+    params: { directory, sessionFile: file }, headers: { "x-miaoimg-workspace": "1" }, timeout: 15000,
   });
   if (data.code !== 200) throw new Error(data.message || translate("读取对话失败"));
   return data.data;
+}
+
+function interruptHistoryRefresh() {
+  if (!historyLoading.value) return;
+  historyController?.abort();
+  historyController = undefined;
+  historyLoading.value = false;
+  loading.value = false;
 }
 
 async function loadHistory(openLatest = false) {
   const directory = workspaceStore.project?.directory;
   if (!directory || loading.value || historyLoading.value) return;
   const currentRequest = ++requestId;
+  const controller = new AbortController();
+  historyController = controller;
   historyLoading.value = true;
   loading.value = openLatest;
   try {
     if (openLatest) warmMessageRenderer();
     const includeLatest = openLatest && !workspaceStore.pendingAgentMessage;
     const { data } = await axios.get<{ code: number; data: AgentHistory[]; session?: AgentConversation | null; message?: string }>("/api/agent/list", {
-      params: { directory, ...(includeLatest ? { includeLatest: "1" } : {}) }, headers: { "x-miaoimg-workspace": "1" },
+      params: { directory, ...(includeLatest ? { includeLatest: "1" } : {}) }, headers: { "x-miaoimg-workspace": "1" }, signal: controller.signal, timeout: 15000,
     });
     if (data.code !== 200) throw new Error(data.message || translate("读取历史对话失败"));
     if (currentRequest !== requestId) return;
@@ -233,8 +246,9 @@ async function loadHistory(openLatest = false) {
       initialized.value = true;
     }
   } catch (error) {
-    if (currentRequest === requestId) ElMessage.error(error instanceof Error ? error.message : translate("读取历史对话失败"));
+    if (currentRequest === requestId && !controller.signal.aborted) ElMessage.error(error instanceof Error ? error.message : translate("读取历史对话失败"));
   } finally {
+    if (historyController === controller) historyController = undefined;
     if (currentRequest === requestId) {
       historyLoading.value = false;
       loading.value = false;
@@ -244,7 +258,8 @@ async function loadHistory(openLatest = false) {
 
 async function selectConversation(file: string) {
   const directory = workspaceStore.project?.directory;
-  if (!directory || loading.value || historyLoading.value || file === sessionFile.value) return;
+  if (!directory || loading.value && !historyLoading.value || file === sessionFile.value) return;
+  interruptHistoryRefresh();
   const existing = conversations.value.find(item => item.file === file);
   const currentRequest = ++requestId;
   loading.value = true;
@@ -270,15 +285,16 @@ async function renameConversation(file: string, value: string) {
   const directory = workspaceStore.project?.directory;
   const item = history.value.find(item => item.file === file);
   const nextName = value.trim();
-  if (!directory || loading.value || historyLoading.value || (!item && file !== sessionFile.value)) return;
+  if (!directory || loading.value && !historyLoading.value || (!item && file !== sessionFile.value)) return;
   if (!nextName || nextName.length > 80) return ElMessage.warning(translate("请输入 1–80 个字符的对话名称"));
   if (nextName === (file === sessionFile.value ? name.value : item?.name)) return;
+  interruptHistoryRefresh();
   const currentRequest = ++requestId;
   loading.value = true;
   try {
     const { data } = await axios.patch<{ code: number; data: { name: string }; message?: string }>("/api/agent/rename", {
       directory, sessionFile: file, name: nextName,
-    }, { headers: { "x-miaoimg-workspace": "1" } });
+    }, { headers: { "x-miaoimg-workspace": "1" }, timeout: 15000 });
     if (data.code !== 200) throw new Error(data.message || translate("重命名对话失败"));
     if (currentRequest !== requestId) return;
     if (item) item.name = data.data.name;
@@ -295,13 +311,14 @@ async function renameConversation(file: string, value: string) {
 
 async function removeConversation(file: string) {
   const directory = workspaceStore.project?.directory;
-  if (!directory || loading.value || historyLoading.value || !history.value.some(item => item.file === file)) return;
+  if (!directory || loading.value && !historyLoading.value || !history.value.some(item => item.file === file)) return;
   if (!/^agent\/[\w-]{6,80}\.json$/.test(file)) return ElMessage.error(translate("对话文件名无效"));
+  interruptHistoryRefresh();
   const currentRequest = ++requestId;
   loading.value = true;
   try {
     const { data } = await axios.delete<{ code: number; data: { file: string; removed: number; files?: string[] }; message?: string }>("/api/agent/delete", {
-      data: { directory, sessionFile: file }, headers: { "x-miaoimg-workspace": "1" },
+      data: { directory, sessionFile: file }, headers: { "x-miaoimg-workspace": "1" }, timeout: 15000,
     });
     if (data.code !== 200) throw new Error(data.message || translate("删除对话失败"));
     if (currentRequest !== requestId) return;
@@ -332,6 +349,7 @@ async function removeConversation(file: string) {
 }
 
 watch(() => workspaceStore.project?.directory, directory => {
+  interruptHistoryRefresh();
   requestId++;
   history.value = [];
   conversations.value = [];
@@ -346,7 +364,7 @@ watch(() => workspaceStore.project?.directory, directory => {
 watch(visible, active => {
   if (active && !initialized.value) void loadHistory(true);
 });
-onBeforeUnmount(() => { requestId++; });
+onBeforeUnmount(() => { requestId++; historyController?.abort(); });
 
 </script>
 

@@ -4,13 +4,11 @@
       v-show="visible"
       id="agentPanel"
       class="floatingAgent"
-      :class="{ docked, dragging: interaction?.mode === 'move' }"
+      :class="{ docked, dragging: interaction?.mode === 'move' && interaction.active }"
       :style="panelStyle"
       :aria-label="translate('AI 对话')"
-      @pointerdown.capture="startMenuMove"
-      @pointermove="moveInteraction"
-      @pointerup="stopInteraction"
-      @pointercancel="stopInteraction"
+      @pointerdown.capture="startPanelMove"
+      @click.capture="suppressMoveClick"
       @lostpointercapture="stopInteraction">
       <div
         v-for="handle in resizeHandles"
@@ -97,7 +95,9 @@ const interaction = shallowRef<{
   right: number;
   width: number;
   height: number;
+  active: boolean;
 }>();
+let moveClick: { pointerId: number; until: number } | undefined;
 type ResizeEdge = "left" | "right" | "bottom" | "corner";
 
 function movePanel(x: number, y: number) {
@@ -140,17 +140,33 @@ function resizeWithKeyboard(event: KeyboardEvent, edge: ResizeEdge) {
   resizePanel(edge === "corner" ? "right" : edge, width.value + delta);
 }
 
-function startMenuMove(event: PointerEvent) {
-  const target = event.target as HTMLElement;
-  if (!target.closest(".agentMenu") || target.closest("button, input, textarea, select, a, [contenteditable], .el-input, .conversationTitle")) return;
+function startPanelMove(event: PointerEvent) {
+  moveClick = undefined;
+  const target = event.target instanceof Element ? event.target : null;
+  if (!target || docked.value) return;
+  // The title can be clicked for history or dragged. Other controls and message
+  // text retain their normal click, editing, scrolling and selection gestures.
+  const title = target.closest(".agentMenu .conversationHistoryTrigger, .agentMenu .conversationTitle");
+  if (!title && target.closest("button, input, textarea, select, a, [contenteditable], .el-input, .resizeHandle, .senderResizeHandle, .composerScroll, .el-scrollbar__bar, .el-scrollbar__thumb, .el-popper, .skillPopup, .mentionPopup, .messageMarkdown, .messageReasoning, .messageBubble:not(.agentEmptyState), .senderEditor, p, h1, h2, h3, h4, h5, h6, pre, code, [role='separator'], [role='slider'], [role='menu'], [role='listbox'], [role='dialog']")) return;
+  event.stopPropagation();
   startInteraction(event, "move");
+}
+
+function suppressMoveClick(event: MouseEvent) {
+  if (!moveClick || performance.now() > moveClick.until || event.detail === 0) return;
+  if (event instanceof PointerEvent && event.pointerId !== moveClick.pointerId) return;
+  moveClick = undefined;
+  event.preventDefault();
+  event.stopImmediatePropagation();
 }
 
 function startInteraction(event: PointerEvent, mode: "move" | ResizeEdge) {
   if (event.button !== 0 || interaction.value || (docked.value && mode !== "left")) return;
-  event.preventDefault();
   const element = event.currentTarget as HTMLElement;
-  element.setPointerCapture(event.pointerId);
+  if (mode !== "move") {
+    event.preventDefault();
+    element.setPointerCapture(event.pointerId);
+  }
   interaction.value = {
     mode,
     pointerId: event.pointerId,
@@ -162,13 +178,24 @@ function startInteraction(event: PointerEvent, mode: "move" | ResizeEdge) {
     right: docked.value ? viewport.width : left.value + width.value,
     width: width.value,
     height: height.value,
+    active: mode !== "move",
   };
 }
 
 function moveInteraction(event: PointerEvent) {
   const current = interaction.value;
   if (!current || current.pointerId !== event.pointerId) return;
-  if (current.mode === "move") movePanel(current.left + event.clientX - current.x, current.top + event.clientY - current.y);
+  if (current.mode === "move") {
+    if (!current.active) {
+      if (Math.hypot(event.clientX - current.x, event.clientY - current.y) < 6) return;
+      current.active = true;
+      interaction.value = { ...current };
+      current.element.setPointerCapture(current.pointerId);
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    movePanel(current.left + event.clientX - current.x, current.top + event.clientY - current.y);
+  }
   else if (current.mode === "left") resizePanel("left", current.width + current.x - event.clientX, current.right);
   else if (current.mode === "right") resizePanel("right", current.width + event.clientX - current.x, current.left);
   else if (current.mode === "bottom") resizePanel("bottom", current.height + event.clientY - current.y, current.top);
@@ -181,10 +208,13 @@ function moveInteraction(event: PointerEvent) {
 function stopInteraction(event?: PointerEvent) {
   const current = interaction.value;
   if (event && current?.pointerId !== event.pointerId) return;
+  if (event?.type === "pointerup" && current?.mode === "move" && current.active) moveClick = { pointerId: current.pointerId, until: performance.now() + 500 };
   interaction.value = undefined;
   if (current?.element.hasPointerCapture(current.pointerId)) current.element.releasePointerCapture(current.pointerId);
   if (current?.element === document.activeElement) current.element.blur();
 }
+
+function cancelInteraction() { stopInteraction(); }
 
 function resizeViewport() {
   const rightGap = viewport.width - left.value - width.value;
@@ -211,12 +241,20 @@ onMounted(() => {
   const workspace = document.querySelector(".workspacePage");
   if (workspace) workspaceObserver.observe(workspace);
   resizeViewport();
+  window.addEventListener("pointermove", moveInteraction, { capture: true, passive: false });
+  window.addEventListener("pointerup", stopInteraction, true);
+  window.addEventListener("pointercancel", stopInteraction, true);
+  window.addEventListener("blur", cancelInteraction);
 });
 window.addEventListener("resize", resizeViewport);
 onBeforeUnmount(() => {
   stopInteraction();
   window.removeEventListener("resize", resizeViewport);
   workspaceObserver.disconnect();
+  window.removeEventListener("pointermove", moveInteraction, true);
+  window.removeEventListener("pointerup", stopInteraction, true);
+  window.removeEventListener("pointercancel", stopInteraction, true);
+  window.removeEventListener("blur", cancelInteraction);
 });
 </script>
 
@@ -244,10 +282,15 @@ onBeforeUnmount(() => {
   :deep(.agent) {
     border-radius: inherit;
   }
+  &:not(.docked) { cursor: grab; }
+  :deep(button), :deep(a) { cursor: pointer; }
+  :deep(button:disabled) { cursor: not-allowed; }
+  :deep(input), :deep(textarea), :deep([contenteditable]), :deep(.messageBubble:not(.agentEmptyState)) { cursor: text; }
   &:not(.docked) :deep(.agentMenu) {
     cursor: grab;
     touch-action: none;
   }
+  &:not(.docked) :deep(.conversationHistoryTrigger), &:not(.docked) :deep(.conversationTitle) { cursor: grab; }
 
   &.dragging {
     user-select: none;

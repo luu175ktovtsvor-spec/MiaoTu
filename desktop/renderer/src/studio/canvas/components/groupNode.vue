@@ -37,15 +37,17 @@
 </template>
 
 <script setup lang="ts">
-import { inject, nextTick, onBeforeUnmount, ref, shallowRef, watch } from "vue";
+import { inject, nextTick, onBeforeUnmount, ref, shallowRef, watch, type Ref } from "vue";
 import { useVueFlow, type GraphNode } from "@vue-flow/core";
 import { ElMessage } from "element-plus";
 import { resizeGroup } from "../canvasSelectionOperations";
+import { watchCanvasInteractionEnd } from "../canvasInteraction";
 import { translate } from "@miaoimg/i18n/vue";
 import groupActions from "./groupActions.vue";
 
 const props = defineProps<{ id: string; data: Record<string, any>; width?: number; height?: number; selected?: boolean }>();
 const flow = useVueFlow();
+const canvasUiActive = inject<Ref<boolean> | undefined>("canvasUiActive", undefined);
 const batchHistory = inject<((action: () => Promise<void>) => Promise<void>) | undefined>("batchCanvasHistory", undefined);
 const editingLabel = ref(false);
 const labelDraft = ref("");
@@ -67,6 +69,7 @@ const resize = shallowRef<{
   width: number;
   height: number;
   resolve: () => void;
+  dispose: () => void;
 }>();
 
 async function editLabel() {
@@ -95,12 +98,14 @@ function startResize(event: PointerEvent, corner: ResizeCorner) {
   if (!node) return;
   const action = () => new Promise<void>(resolve => {
     const element = event.currentTarget as HTMLElement;
-    resize.value = {
+    const state = resize.value = {
       node, corner, element, pointerId: event.pointerId,
       point: flow.screenToFlowCoordinate({ x: event.clientX, y: event.clientY }),
       position: { ...node.position }, width: node.dimensions.width, height: node.dimensions.height, resolve,
+      dispose: () => {},
     };
     node.resizing = true;
+    state.dispose = watchCanvasInteractionEnd(event, () => finishResize(), true);
     element.setPointerCapture(event.pointerId);
   });
   void (batchHistory ? batchHistory(action) : action()).catch(error => {
@@ -127,12 +132,14 @@ function finishResize(event?: PointerEvent) {
   const state = resize.value;
   if (!state || (event && event.pointerId !== state.pointerId)) return;
   resize.value = undefined;
+  state.dispose();
   state.node.resizing = false;
   if (state.element.hasPointerCapture(state.pointerId)) state.element.releasePointerCapture(state.pointerId);
   state.resolve();
 }
 
 onBeforeUnmount(() => finishResize());
+watch(() => canvasUiActive?.value, active => { if (active === false) finishResize(); }, { flush: "sync" });
 
 watch(
   () => flow.getNodes.value.filter(node => node.parentNode === props.id),

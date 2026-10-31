@@ -294,12 +294,14 @@ function ratioStyle(value: string) {
   }
 
   .customSize {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
     align-items: center;
     gap: 6px;
+    min-width: 0;
 
-    :deep(.el-input-number) { width: 112px; }
+    :deep(.el-input-number) { width: 100%; min-width: 0; }
+    .el-button { grid-column: 1 / -1; justify-self: end; margin: 0; }
   }
 
   .customHint {

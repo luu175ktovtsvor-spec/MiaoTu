@@ -4798,5 +4798,10 @@
   "本次已扣 {0} 积分。": "이번 요청에 {0} 크레딧이 차감되었습니다.",
   "搜索暂不可用，请稍后重试。": "검색을 일시적으로 사용할 수 없습니다. 나중에 다시 시도해 주세요.",
   "请求过于频繁，请稍后再试": "요청이 너무 많습니다. 나중에 다시 시도해 주세요.",
-  "思考过程": "Thinking process"
+  "思考过程": "Thinking process",
+  "加载技能失败，请重试": "Unable to load skills. Please try again.",
+  "当前回复结束后可操作": "Available when the current reply finishes.",
+  "发送消息后可整理上下文": "Send a message before compacting the context.",
+  "当前版本有更新可下载": "An update is available for this version.",
+  "客户端更新已下载完成，重启后生效。": "The app update has downloaded. Restart to apply it."
 }

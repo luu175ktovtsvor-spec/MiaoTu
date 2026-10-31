@@ -485,6 +485,20 @@ body[data-miaoimg-canvas-ui] :is(.el-input__wrapper,.el-select__wrapper,.el-text
 }
 body[data-miaoimg-canvas-ui] :is(.el-input__wrapper,.el-select__wrapper):hover { box-shadow: 0 0 0 1px var(--canvas-hover-line) inset; }
 body[data-miaoimg-canvas-ui] :is(.el-input__wrapper.is-focus,.el-select__wrapper.is-focused),body[data-miaoimg-canvas-ui] .el-textarea__inner:focus { box-shadow: 0 0 0 1px var(--el-color-primary) inset; }
+/* InputNumber's steppers are siblings of the rounded input wrapper. Clip the
+   numeric control itself so their square fills cannot escape that outline. */
+body[data-miaoimg-canvas-ui] .el-input-number {
+  min-width: 0;
+  max-width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+}
+body[data-miaoimg-canvas-ui] .el-input-number > .el-input,
+body[data-miaoimg-canvas-ui] .el-input-number .el-input__wrapper { min-width: 0; border-radius: inherit; }
+/* Keep one focus indicator around the complete field, including the steppers,
+   rather than the generic canvas outline around the inner text input. */
+body[data-miaoimg-canvas-ui] .el-input-number:focus-within { outline: 1px solid var(--el-color-primary); outline-offset: -1px; }
+body[data-miaoimg-canvas-ui] .el-input-number .el-input__inner:focus-visible { outline: none; }
 body[data-miaoimg-canvas-ui] .el-select-dropdown__item { margin: 2px 6px; border-radius: 8px; }
 body[data-miaoimg-canvas-ui] .el-select-dropdown__item.is-selected { color: var(--el-color-primary); background: color-mix(in srgb,var(--el-color-primary) 10%,var(--canvas-surface)); }
 /* Logo、名称、箭头各占自己的位置，长名称只收缩文字区域。 */

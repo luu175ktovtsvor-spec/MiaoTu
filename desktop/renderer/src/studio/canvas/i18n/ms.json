@@ -4798,5 +4798,10 @@
   "本次已扣 {0} 积分。": "Sebanyak {0} kredit telah ditolak untuk permintaan ini.",
   "搜索暂不可用，请稍后重试。": "Carian tidak tersedia buat sementara waktu. Cuba lagi kemudian.",
   "请求过于频繁，请稍后再试": "Terlalu banyak permintaan. Cuba lagi kemudian.",
-  "思考过程": "Thinking process"
+  "思考过程": "Thinking process",
+  "加载技能失败，请重试": "Unable to load skills. Please try again.",
+  "当前回复结束后可操作": "Available when the current reply finishes.",
+  "发送消息后可整理上下文": "Send a message before compacting the context.",
+  "当前版本有更新可下载": "An update is available for this version.",
+  "客户端更新已下载完成，重启后生效。": "The app update has downloaded. Restart to apply it."
 }

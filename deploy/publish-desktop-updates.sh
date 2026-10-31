@@ -10,6 +10,10 @@ REMOTE_DIR=${REMOTE_DIR:-/opt/miaoimg/desktop-downloads/updates}
 PUBLIC_BASE=${PUBLIC_BASE:-https://miaoimg.cn/desktop-downloads/updates}
 SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 RELEASE_DIR=$(CDPATH='' cd -- "${MIAO_DESKTOP_RELEASE_DIR:-$SCRIPT_DIR/../desktop/release}" && pwd)
+BUILD_ID=${MIAO_DESKTOP_BUILD_ID:-}
+[[ -z "$BUILD_ID" || "$BUILD_ID" =~ ^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$ ]] || { echo '构建编号不合法。' >&2; exit 2; }
+ARTIFACT_TAG=$VERSION
+[[ -z "$BUILD_ID" ]] || ARTIFACT_TAG="$VERSION-$BUILD_ID"
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "版本号不合法：$VERSION" >&2; exit 2; }
 if [ "${DEPLOY_CONFIRM:-}" != "I-am-the-release-manager" ]; then
   echo "拒绝发布：更新源会推给所有已安装的用户，只有发布负责人带口令执行。" >&2
@@ -17,7 +21,22 @@ if [ "${DEPLOY_CONFIRM:-}" != "I-am-the-release-manager" ]; then
 fi
 
 cd "$RELEASE_DIR"
-installers=("妙图-$VERSION-arm64.dmg" "妙图-$VERSION-arm64.zip" "妙图-$VERSION-x64.dmg" "妙图-$VERSION-x64.zip" "妙图-$VERSION-Windows-x64.exe")
+DESKTOP_BUILD=$(node -e 'console.log(Number(require(process.argv[1]).desktopBuild || 0))' "$SCRIPT_DIR/../desktop/package.json")
+if [ "$DESKTOP_BUILD" != 0 ]; then
+  node --input-type=module - "$DESKTOP_BUILD" latest-mac.yml latest.yml <<'STAMP'
+import fs from 'node:fs'
+const [value, ...files] = process.argv.slice(2)
+const build = Number(value)
+if (!Number.isSafeInteger(build) || build <= 0) throw Error('客户端构建编号无效')
+for (const file of files) {
+  const source = fs.readFileSync(file, 'utf8')
+  const stamped = /^build:/m.test(source) ? source.replace(/^build:.*$/m, `build: ${build}`) : source.replace(/^(version:.*\r?\n)/, `$1build: ${build}\n`)
+  fs.writeFileSync(file, stamped)
+}
+STAMP
+fi
+[[ -z "$BUILD_ID" || "$DESKTOP_BUILD" != 0 ]] || { echo '同版本重打包缺少客户端构建编号。' >&2; exit 2; }
+installers=("妙图-$ARTIFACT_TAG-arm64.dmg" "妙图-$ARTIFACT_TAG-arm64.zip" "妙图-$ARTIFACT_TAG-x64.dmg" "妙图-$ARTIFACT_TAG-x64.zip" "妙图-$ARTIFACT_TAG-Windows-x64.exe")
 uploads=("${installers[@]}")
 for file in "${installers[@]}"; do
   [ -s "$file" ] || { echo "缺少安装包：$file" >&2; exit 2; }
@@ -42,14 +61,14 @@ ssh "$REMOTE_HOST" "$setup_command"
 printf -v rsync_command 'flock -n %q rsync' "$staging/.publish.lock"
 rsync -a --partial --checksum --progress --rsync-path="$rsync_command" "${uploads[@]}" "$VERIFY" "$REMOTE_HOST:$staging/"
 
-printf -v activate_command 'bash -s -- %q %q %q' "$staging" "$REMOTE_DIR" "$VERSION"
+printf -v activate_command 'bash -s -- %q %q %q %q' "$staging" "$REMOTE_DIR" "$VERSION" "$ARTIFACT_TAG"
 for file in "${uploads[@]}"; do
   printf -v quoted_file ' %q' "$file"
   activate_command+=$quoted_file
 done
 ssh "$REMOTE_HOST" "$activate_command" <<'REMOTE'
 set -Eeuo pipefail
-staging=$1; remote_dir=$2; version=$3; shift 3
+staging=$1; remote_dir=$2; version=$3; artifact_tag=$4; shift 4
 uploads=("$@")
 # Match the lock order used by API/site publishing. Never replace or remove these shared lock files.
 exec 7>"$staging/.publish.lock"
@@ -90,13 +109,13 @@ for file in "${uploads[@]}"; do
   case "$file" in latest*.yml) ;; *) mv -f "$file" "$remote_dir/" ;; esac
 done
 cd "$remote_dir"
-ln -f "妙图-$version-arm64.dmg" "miaoimg-desktop-mac-arm64-$version.dmg"
-ln -f "妙图-$version-x64.dmg" "miaoimg-desktop-mac-x64-$version.dmg"
-ln -f "妙图-$version-Windows-x64.exe" "miaoimg-desktop-windows-$version.exe"
+ln -f "妙图-$artifact_tag-arm64.dmg" "miaoimg-desktop-mac-arm64-$version.dmg"
+ln -f "妙图-$artifact_tag-x64.dmg" "miaoimg-desktop-mac-x64-$version.dmg"
+ln -f "妙图-$artifact_tag-Windows-x64.exe" "miaoimg-desktop-windows-$version.exe"
 # Stable names only support existing download links; archives retain the version.
-ln -f "妙图-$version-arm64.dmg" miaoimg-desktop-mac-arm64.dmg
-ln -f "妙图-$version-x64.dmg" miaoimg-desktop-mac-x64.dmg
-ln -f "妙图-$version-Windows-x64.exe" miaoimg-desktop-windows.exe
+ln -f "妙图-$artifact_tag-arm64.dmg" miaoimg-desktop-mac-arm64.dmg
+ln -f "妙图-$artifact_tag-x64.dmg" miaoimg-desktop-mac-x64.dmg
+ln -f "妙图-$artifact_tag-Windows-x64.exe" miaoimg-desktop-windows.exe
 mv -f "$staging/latest-mac.yml" latest-mac.yml
 mv -f "$staging/latest.yml" latest.yml
 rm "$staging/verify-update-metadata.py" "$staging/.publish.lock"

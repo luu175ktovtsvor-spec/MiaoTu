@@ -118,5 +118,6 @@
       "deleteAppDataOnUninstall": false
     },
     "afterPack": ".app/desktop/scripts/windows-resources.js"
-  }
+  },
+  "desktopBuild": 1793441059262
 }

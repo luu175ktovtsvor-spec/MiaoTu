@@ -1,5 +1,5 @@
 <template>
-  <div class="modelPopover">
+  <div class="modelPopover" :title="disabled ? disabledReason : undefined">
     <el-popover
       :popper-options="{ modifiers: [{ name: 'preventOverflow', options: { padding: 12, altAxis: true } }] }"
       v-model:visible="visible"
@@ -11,7 +11,7 @@
       popperClass="agentModelPopover"
       :popperStyle="{ padding: '6px', maxWidth: 'calc(100vw - 24px)' }">
       <template #reference>
-        <el-button class="modelButton" text :disabled="disabled" :aria-label="translate('模型与推理设置')">
+        <el-button class="modelButton" text :disabled="disabled" :aria-label="translate('模型与推理设置')" :aria-description="disabled ? disabledReason : undefined">
           <modelIcon v-if="selectedModelChoice" :model="selectedModelChoice.modelId" :size="14" />
           <span class="modelName">{{ selectedModelChoice?.label || translate('选择模型') }}</span>
           <span v-if="reasoningOptions.length > 1" class="reasoningLabel">· {{ reasoningLabel }}</span>
@@ -48,7 +48,7 @@ import { translate } from "@miaoimg/i18n/vue";
 
 const selectedModel = defineModel<string>({ default: "" });
 const reasoningEffort = defineModel<string>("reasoningEffort", { default: "" });
-const props = withDefaults(defineProps<{ active?: boolean; disabled?: boolean }>(), { active: true, disabled: false });
+const props = withDefaults(defineProps<{ active?: boolean; disabled?: boolean; disabledReason?: string }>(), { active: true, disabled: false, disabledReason: "" });
 const visible = ref(false);
 // 妙图的模型来自服务端目录；前端不展示供应商和内部标识，只列显示名称。
 const modelOptions = computed(() => modelChoices.value);
@@ -71,6 +71,7 @@ const reasoningOptions = computed(() => {
 });
 const reasoningLabel = computed(() => reasoningOptions.value.find(item => item.value === reasoningEffort.value)?.label ?? translate("默认"));
 function chooseModel(value: string) {
+  if (props.disabled) return;
   if (value !== selectedModel.value) reasoningEffort.value = "";
   selectedModel.value = value;
 }

@@ -16,6 +16,7 @@ import { get as httpGet } from 'node:http'
 import { get as httpsGet } from 'node:https'
 import { Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
+import { desktopBuild, newerDesktopRelease } from './update-release.ts'
 
 const root = dirname(fileURLToPath(import.meta.url))
 const { app, BrowserWindow, Menu, ipcMain, dialog, shell, session, clipboard } = electron
@@ -78,9 +79,10 @@ else {
   // macOS 自更新的目标与安装计划只在主进程里保存，页面拿不到地址和路径。
   let macUpdate = null
   let macInstallable = false
+  let windowsRebuildDownload = false
   function updateSnapshot() {
     // canInstall 只在“确实能自己装上”时为真：macOS 只有更新源带 zip 且应用目录可写才算。
-    return { canCheck: !updatesDisabled, canInstall: isWindows || macInstallable, currentVersion: app.getVersion(), state: updateStatus.state, version: updateStatus.version, percent: updateStatus.percent }
+    return { canCheck: !updatesDisabled, canInstall: isWindows ? !windowsRebuildDownload : macInstallable, currentVersion: app.getVersion(), state: updateStatus.state, version: updateStatus.version, percent: updateStatus.percent }
   }
   function publishUpdateStatus(patch) {
     updateStatus = { ...updateStatus, ...patch }
@@ -93,14 +95,14 @@ else {
     return candidate?.url ? new URL(candidate.url, updateFeedRoot).href : updateFeedRoot
   }
   // ---- macOS 应用内自更新 ----
-  // macOS 端没有 Apple Developer 签名，Squirrel.Mac（electron-updater 的 mac 路径）换不了应用，
-  // 所以这里自己做一遍：读 latest-mac.yml → 下载 zip → 校验 sha512 → 退出后由脚本替换 .app 再启动。
+  // macOS 使用独立替换路径：读 latest-mac.yml → 下载 ZIP → 校验 SHA-512，
+  // 退出后替换 .app 再启动；正式包仍由统一打包流程执行签名、公证和票据校验。
   // 下载用 Node 网络栈落在用户临时目录，文件不带 com.apple.quarantine，替换也不需要管理员授权。
   function macFeedUrl() { return new URL('latest-mac.yml', updateFeedRoot).href }
   function scalar(value) { return String(value ?? '').trim().replace(/^['"]|['"]$/g, '') }
   // 只解析 latest-mac.yml 里真正用到的字段，不引入 YAML 依赖。
   function parseMacFeed(text) {
-    const feed = { version: null, files: [] }
+    const feed = { version: null, build: 0, files: [] }
     let file = null
     for (const raw of String(text).split(/\r?\n/)) {
       if (!raw.trim() || raw.trim().startsWith('#')) continue
@@ -109,21 +111,12 @@ else {
       const pair = raw.match(/^(\s*)([A-Za-z][\w-]*)\s*:\s*(.*)$/)
       if (!pair) { file = null; continue }
       const [, indent, key, value] = pair
-      if (!indent) { if (key === 'version') feed.version = scalar(value); file = null; continue }
+      if (!indent) { if (key === 'version') feed.version = scalar(value); if (key === 'build') feed.build = desktopBuild(scalar(value)); file = null; continue }
       if (!file) continue
       if (key === 'sha512') file.sha512 = scalar(value)
       else if (key === 'size') file.size = Number(scalar(value)) || null
     }
     return feed
-  }
-  function newerVersion(candidate, current) {
-    const parts = value => String(value || '').split(/[-+]/)[0].split('.').map(part => parseInt(part, 10) || 0)
-    const next = parts(candidate), now = parts(current)
-    for (let index = 0; index < Math.max(next.length, now.length); index += 1) {
-      const diff = (next[index] || 0) - (now[index] || 0)
-      if (diff !== 0) return diff > 0
-    }
-    return false
   }
   // 自更新用 zip：替换 .app 最干净，dmg 只用于首次安装。没有 sha512 的条目一律不用。
   function pickMacAsset(feed) {
@@ -175,7 +168,7 @@ else {
     const feed = parseMacFeed(await fetchText(macFeedUrl()))
     if (!feed.version) throw new Error('更新源缺少版本号')
     updateUrl = downloadPageUrl(feed.files)
-    if (!newerVersion(feed.version, app.getVersion())) {
+    if (!newerDesktopRelease(feed, { version: app.getVersion(), build: packageConfig.desktopBuild })) {
       macUpdate = null; macInstallable = false
       publishUpdateStatus({ state: 'latest', version: null, percent: null })
       return
@@ -341,8 +334,8 @@ restore_previous
     instance.autoDownload = true
     instance.autoInstallOnAppQuit = false
     instance.on('checking-for-update', () => publishUpdateStatus({ state: 'checking', version: null, percent: null }))
-    instance.on('update-not-available', () => publishUpdateStatus({ state: 'latest', version: null, percent: null }))
-    instance.on('update-available', info => publishUpdateStatus({ state: 'available', version: info?.version || null, percent: null }))
+    instance.on('update-not-available', () => { windowsRebuildDownload = false; publishUpdateStatus({ state: 'latest', version: null, percent: null }) })
+    instance.on('update-available', info => { windowsRebuildDownload = false; publishUpdateStatus({ state: 'available', version: info?.version || null, percent: null }) })
     instance.on('download-progress', progress => {
       const percent = Math.round(progress?.percent || 0)
       publishUpdateStatus({ state: 'downloading', percent: Math.max(0, Math.min(100, percent)) })
@@ -373,6 +366,16 @@ restore_previous
     try { return await ensureUpdater() }
     catch (error) { console.warn('妙图更新模块不可用：' + (error?.message || error)); return null }
   }
+  async function checkWindowsRebuild() {
+    if (!isWindows || updateStatus.state !== 'latest') return
+    const feed = parseMacFeed(await fetchText(new URL('latest.yml', updateFeedRoot).href))
+    if (feed.version !== app.getVersion() || !newerDesktopRelease(feed, { version: app.getVersion(), build: packageConfig.desktopBuild })) return
+    const file = feed.files.find(item => typeof item.url === 'string' && /-Windows-x64\.exe$/.test(item.url) && /^[A-Za-z0-9+/]{86}==$/.test(item.sha512) && item.size > 0)
+    if (!file) throw new Error('更新源缺少有效的 Windows 安装包')
+    updateUrl = new URL(file.url, updateFeedRoot).href
+    windowsRebuildDownload = true
+    publishUpdateStatus({ state: 'available', version: feed.version, percent: null })
+  }
   async function setupAutoUpdates() {
     if (!app.isPackaged || updatesDisabled) return
     if (isMac) {
@@ -382,7 +385,7 @@ restore_previous
     }
     const instance = await usableUpdater()
     if (!instance) { updatesDisabled = true; publishUpdateStatus({ state: 'idle' }); return }
-    try { await instance.checkForUpdates() }
+    try { await instance.checkForUpdates(); await checkWindowsRebuild() }
     catch (error) { console.warn('妙图更新检查失败：' + (error?.message || error)); publishUpdateStatus({ state: 'failed', percent: null }) }
   }
   // 设置里的手动检查：开发态直接给出可操作提示，不抛内部异常。
@@ -399,6 +402,7 @@ restore_previous
     try {
       publishUpdateStatus({ state: 'checking', version: null, percent: null })
       await instance.checkForUpdates()
+      await checkWindowsRebuild()
     } catch (error) {
       console.warn('妙图更新检查失败：' + (error?.message || error))
       publishUpdateStatus({ state: 'failed', percent: null })
@@ -412,6 +416,7 @@ restore_previous
       catch (error) { console.warn('妙图更新下载失败：' + (error?.message || error)); publishUpdateStatus({ state: 'failed', percent: null }) }
       return updateSnapshot()
     }
+    if (windowsRebuildDownload) { await openUpdatePage(); return updateSnapshot() }
     const instance = await usableUpdater()
     if (!instance) { publishUpdateStatus({ state: 'failed', percent: null }); return updateSnapshot() }
     try {
@@ -429,7 +434,7 @@ restore_previous
     if (!updater || !isWindows) return
     return requestQuit(() => updater.quitAndInstall())
   }
-  function openUpdatePage() { shell.openExternal(updateUrl).catch(() => {}) }
+  function openUpdatePage() { return shell.openExternal(updateUrl) }
   app.on('second-instance', () => { if (window) { if (window.isMinimized()) window.restore(); window.show(); window.focus() } })
   app.whenReady().then(async () => {
   nativeLanguage = resolveRequestLocale(app.getLocale() + ',en;q=0.5')
