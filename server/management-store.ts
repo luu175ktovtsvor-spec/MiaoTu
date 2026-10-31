@@ -2031,7 +2031,7 @@ export class ManagementStore {
     return result
   }
   async artifact(id, session, accessToken = '') { const a=(await this.get('SELECT a.id,a.mime,a.bytes,a.storage,a.size,a.blob,e.expires_at,g.user_id,g.actor,g.owner_scope,g.viewer_token_hash FROM artifacts a LEFT JOIN artifact_expiry e ON e.artifact_id=a.id JOIN generations g ON g.id=a.request_id WHERE a.id=?',id)); if (!a) return null; if (a.expires_at && Date.parse(a.expires_at) <= Date.now()) return null; if (!this.canView(a, session, accessToken)) throw failure('无权查看这张图片',403); const mime = supportedImageMime(a.mime); if (!mime) return null; const location = (await (await this.artifactFiles()).locate(a, a.user_id || '')); if (!location) return null; const bytes = location.bytes || null; return { id: a.id, ownerId: a.user_id || '', bytes, diskPath: location.diskPath || '', size: location.size, mime } }
-  async records({ requestId = '', search = '', status = '', model = '', provider = '', upstreamRequestId = '', page = 1, userId, limit = 30, active = '', kind = '', from = '', to = '', summaryFrom = '', summaryTo = '', view = '' }: Record<string, any> = {}, admin = true) {
+  async records({ requestId = '', search = '', status = '', model = '', modelExact = '', provider = '', upstreamRequestId = '', page = 1, userId, limit = 30, active = '', kind = '', from = '', to = '', summaryFrom = '', summaryTo = '', view = '' }: Record<string, any> = {}, admin = true) {
     page=integer(page,1,100000); limit=integer(limit,1,100)
     const clauses=['1=1'],args=[]
     if(search){clauses.push('(g.actor LIKE ? OR g.model LIKE ? OR g.provider LIKE ? OR g.request_id LIKE ? OR g.upstream_request_id LIKE ? OR g.prompt LIKE ?)'); args.push(...Array(6).fill(`%${String(search).slice(0,100)}%`))}
@@ -2040,7 +2040,8 @@ export class ManagementStore {
     if(to){clauses.push('g.created_at<?');args.push(String(to).slice(0,40))}
     if(status){clauses.push('g.status=?');args.push(status)}
     if (active === 'true') clauses.push("g.status IN ('queued','running')")
-    if(model){clauses.push('g.model=?');args.push(publicModelId(model) || String(model))}
+    if(admin && modelExact){clauses.push('g.model=?');args.push(String(modelExact))}
+    else if(model){clauses.push('g.model=?');args.push(publicModelId(model) || String(model))}
     if(provider){clauses.push('g.provider=?');args.push(String(provider).slice(0,40))}
     if(upstreamRequestId){clauses.push('g.upstream_request_id=?');args.push(String(upstreamRequestId).slice(0,200))}
     if(userId){clauses.push('g.user_id=?');args.push(userId)}

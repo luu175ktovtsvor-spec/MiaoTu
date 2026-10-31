@@ -42,6 +42,8 @@ import { useLang } from "../i18n";
 import LanguageControl from "../LanguageControl";
 import "./admin.css";
 import AdminOverviewSummary from "./AdminOverviewSummary";
+import AdminOperationsOverview from "./AdminOperationsOverview";
+import { analyticsScopeLabel, type AnalyticsDrilldown } from "./operationsTypes";
 import AdminSettingsSection from "./AdminSettingsSection";
 import { adminNavigationGroups, adminSectionDescriptions } from "./adminNavigation";
 import { version as APP_VERSION } from "../../../package.json";
@@ -50,6 +52,7 @@ import AdminTextCharges, { TextChargeSummary } from "./AdminTextCharges";
 import AdminTextConsole from "./AdminTextConsole";
 import "./console.css";
 import "./admin-saas.css";
+import "./admin-details.css";
 import AdminFeedback from "./AdminFeedback";
 import AdminModelsSection from "./AdminModelsSection";
 import AdminPricingEditor from "./AdminPricingEditor";
@@ -193,6 +196,7 @@ export default function AdminPage() {
       total: number;
       page: number;
       limit: number;
+      modelOptions?: { id: string; label: string; kind: string }[];
       summary?: Record<string, any>;
       reconciliation?: Record<string, any>;
     }>({ items: [], total: 0, page: 1, limit: 30 }),
@@ -221,6 +225,9 @@ export default function AdminPage() {
   const navigationGroups = adminNavigationGroups.map(group => ({ ...group, label: adminText(group.label, lang) }));
   function navigate(key) {
     setSection(key);
+    setLegacyOverviewOpen(false);
+    setTextDrill(null);
+    setRecordDrill(null);
     window.scrollTo(0, 0);
     setSearch("");
     setFilter("");
@@ -274,6 +281,10 @@ export default function AdminPage() {
     [copied, setCopied] = useState(false),
     [upstream, setUpstream] = useState(null);
   const [pricingFocus, setPricingFocus] = useState("");
+  const [legacyOverviewOpen, setLegacyOverviewOpen] = useState(false);
+  const [textDrill, setTextDrill] = useState<AnalyticsDrilldown | null>(null);
+  const [recordDrill, setRecordDrill] = useState<AnalyticsDrilldown | null>(null);
+  const [analyticsRefresh, setAnalyticsRefresh] = useState(0);
   const actionSequence = useRef(0);
   const { session, ready, api, signIn, signOut, capture, isCurrent } =
     useAdminSession({
@@ -283,6 +294,9 @@ export default function AdminPage() {
         actionSequence.current++;
         priceBaseline.current = null;
         setOverview(null);
+        setLegacyOverviewOpen(false);
+        setTextDrill(null);
+        setRecordDrill(null);
         setOperations(null);
         setUpstream(null);
         setUsers({ items: [], total: 0, page: 1, limit: 20 });
@@ -361,20 +375,15 @@ export default function AdminPage() {
       cancelled = true;
     };
   }, [session, section]);
+  const needsLegacyOverview = legacyOverviewOpen || ["models", "legacy-models", "settings", "upstream"].includes(section) || ["create", "permissions", "prices", "settings"].includes(modal?.type);
   useEffect(() => {
-    if (!session) return;
-    let cancelled = false;
-    api("overview")
-      .then((d) => {
-        if (!cancelled) setOverview(d);
-      })
-      .catch((e) => {
-        if (!cancelled && !isDiscardedAdminRequest(e)) setError(e.message);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [session, api]);
+    if (!session || !needsLegacyOverview) return;
+    const controller = new AbortController();
+    api("overview", "GET", undefined, controller.signal)
+      .then(data => { if (!controller.signal.aborted) setOverview(data); })
+      .catch(reason => { if (!controller.signal.aborted && !isDiscardedAdminRequest(reason)) setError(reason.message); });
+    return () => controller.abort();
+  }, [session, api, needsLegacyOverview]);
   useEffect(() => {
     if (!session) {
       setListLoading(false);
@@ -394,8 +403,10 @@ export default function AdminPage() {
     if (section === "generations") {
       params.set("status", filter);
       params.set("kind", kindFilter);
-      params.set("model", modelFilter);
+      params.set("modelExact", modelFilter);
       if (userFilter) params.set("userId", userFilter);
+      if (recordDrill?.from) params.set("from", recordDrill.from);
+      if (recordDrill?.to) params.set("to", recordDrill.to);
     }
     if (section === "payments") {
       params.set("status", filter);
@@ -431,15 +442,21 @@ export default function AdminPage() {
     userFilter,
     kindFilter,
     modelFilter,
+    recordDrill,
   ]);
 
   async function refresh() {
     const token = capture();
     setError("");
-    const d = await api("overview");
-    if (!isCurrent(token)) return;
-    setOverview(d);
+    if (needsLegacyOverview) {
+      const d = await api("overview");
+      if (!isCurrent(token)) return;
+      setOverview(d);
+    }
     let next;
+    const scopedRange = new URLSearchParams();
+    if (recordDrill?.from) scopedRange.set("from", recordDrill.from);
+    if (recordDrill?.to) scopedRange.set("to", recordDrill.to);
     if (section === "operations") next = await api("operations");
     if (section === "upstream") next = await readUpstream();
     if (section === "users")
@@ -452,7 +469,7 @@ export default function AdminPage() {
       );
     if (section === "generations")
       next = await api(
-        `reconciliation?page=${page}&search=${encodeURIComponent(search)}&status=${filter}&kind=${kindFilter}&model=${encodeURIComponent(modelFilter)}${userFilter ? `&userId=${encodeURIComponent(userFilter)}` : ""}`,
+        `reconciliation?page=${page}&search=${encodeURIComponent(search)}&status=${filter}&kind=${kindFilter}&modelExact=${encodeURIComponent(modelFilter)}${userFilter ? `&userId=${encodeURIComponent(userFilter)}` : ""}${scopedRange.size ? `&${scopedRange}` : ""}`,
       );
     if (section === "payments")
       next = await api(
@@ -538,6 +555,7 @@ export default function AdminPage() {
   };
   async function submit(e) {
     e.preventDefault();
+    if (["create", "permissions", "settings"].includes(modal?.type) && !overview) return;
     await act(
       async () => {
         const { type, data } = modal;
@@ -793,6 +811,17 @@ export default function AdminPage() {
     ],
     current = sections.find((s) => s[0] === section) || sections[0],
     visibleUsers = users.items || [];
+  const mediaFilterOptions = (records.modelOptions || [...modelList, ...videoList].map(model => ({ id: model.id, label: model.label, kind: model.video ? "video" : "image" }))).filter(model => !kindFilter || model.kind === kindFilter);
+  function navigateAnalytics(target: AnalyticsDrilldown) {
+    window.history.pushState(null, "", `#${target.section}`);
+    navigate(target.section);
+    if (target.status) setFilter(target.status);
+    if (target.userId) setUserFilter(target.userId);
+    if (target.model) setModelFilter(target.model);
+    if (target.kind) setKindFilter(target.kind);
+    if (target.section === "text") setTextDrill(target);
+    if (target.section === "generations" || target.section === "payments") setRecordDrill(target);
+  }
   function openPricing(modelId = "") {
     if (!overview) return;
     const values = buildPricingDraft(
@@ -1132,8 +1161,8 @@ export default function AdminPage() {
             </nav>
             <h1>{lang === "en" ? sectionEnglish[section] : current[1]}</h1>
             <p>{adminText(adminSectionDescriptions[section] || "", lang)}</p>
-            {["overview", "generations", "payments", "upstream", "text"].includes(section) && <span className="admin-timezone-note">
-              {adminText("时间按本地时区显示；统计范围按 UTC。", lang)}
+            {["generations", "payments", "upstream", "text"].includes(section) && <span className="admin-timezone-note">
+              {recordDrill?.from || textDrill?.from ? (lang === "en" ? "Times use your local zone; the selected range is shown below." : "时间按本地时区显示；筛选区间以下方范围为准。") : adminText("时间按本地时区显示；统计范围按 UTC。", lang)}
             </span>}
           </div>
           <div className="admin-top-actions">
@@ -1187,14 +1216,10 @@ export default function AdminPage() {
             </div>
             <button
               disabled={busy}
-              onClick={() =>
-                act(
-                  async () => {},
-                  lang === "en"
-                    ? "Status refreshed"
-                    : adminText("状态已刷新", lang),
-                )
-              }
+              onClick={() => {
+                if (["overview", "text"].includes(section)) { setAnalyticsRefresh(value => value + 1); return; }
+                void act(async () => {}, lang === "en" ? "Status refreshed" : adminText("状态已刷新", lang));
+              }}
             >
               <ArrowClockwise size={17} />
               {lang === "en" ? "Refresh" : adminText("刷新", lang)}
@@ -1217,17 +1242,18 @@ export default function AdminPage() {
             {adminText(notice, lang)}
           </div>
         )}
-        {section === "text" && <AdminTextConsole api={api} lang={lang} />}
+        {section === "text" && <AdminTextConsole key={JSON.stringify(textDrill)} api={api} lang={lang} drilldown={textDrill} refreshToken={analyticsRefresh} />}
         {section === "settings" && (!overview ? <Empty>{adminText("正在读取运营数据…", lang)}</Empty> : <AdminSettingsSection
           lang={lang} settings={overview.settings || {}} payments={overview.payments || {}}
           onOpenServiceSettings={() => open("settings", { ...overview.settings })}
           onOpenPrices={() => openPricing()} onNavigate={selectSection}
         />)}
-        {section === "overview" &&
-          (!overview ? (
-            <Empty>{adminText("正在读取运营数据…", lang)}</Empty>
-          ) : (
-            <>
+        {section === "overview" && <>
+          <AdminOperationsOverview api={api} lang={lang} refreshToken={analyticsRefresh} onNavigate={navigateAnalytics}/>
+          <details className="admin-overview-details admin-legacy-overview" onToggle={event => setLegacyOverviewOpen(event.currentTarget.open)}>
+            <summary><span>{lang === "en" ? "Service settings and historical totals" : "服务配置与历史累计"}</span><small>{lang === "en" ? "Load only when expanded" : "展开后按需读取"}</small></summary>
+            {!overview ? <Empty>{adminText("正在读取运营数据…", lang)}</Empty> : <>
+
               <AdminOverviewSummary lang={lang} stats={stats} payments={overview.payments || {}}
                 onCreateUser={() => open("create")} onOpenPrices={() => openPricing()}
                 onNavigate={(key, status) => {
@@ -1516,8 +1542,10 @@ export default function AdminPage() {
                   </Empty>
                 )}
               </section>
-            </>
-          ))}
+
+            </>}
+          </details>
+        </>}
         {section === "operations" && (
           <>
             {!operations ? (
@@ -3076,7 +3104,8 @@ export default function AdminPage() {
             </section>
           </>
         )}
-        {section === "generations" && (
+        {section === "generations" && (<>
+          {recordDrill && <p className="admin-drilldown-scope"><span>{lang === "en" ? "Overview filters" : "概览筛选"} · {userFilter ? recordDrill.label || (lang === "en" ? "Selected user" : "所选用户") : modelFilter || (lang === "en" ? "All users" : "全部用户")} · {analyticsScopeLabel(recordDrill,lang)}</span><button type="button" onClick={()=>{setRecordDrill(null);setUserFilter("");setModelFilter("");setKindFilter("");setFilter("");setPage(1)}}>{lang === "en" ? "Clear overview filters" : "清除概览筛选"}</button></p>}
           <section className="admin-panel">
             <header className="admin-filter-header">
               <label className="admin-search">
@@ -3131,6 +3160,7 @@ export default function AdminPage() {
                 value={kindFilter}
                 onChange={(e) => {
                   setKindFilter(e.target.value);
+                  setModelFilter("");
                   setPage(1);
                 }}
               >
@@ -3147,11 +3177,8 @@ export default function AdminPage() {
                 }}
               >
                 <option value="">{adminText("全部模型", lang)}</option>
-                {[...modelList, ...videoList].map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.label}
-                  </option>
-                ))}
+                {modelFilter && !mediaFilterOptions.some(model => model.id === modelFilter) && <option value={modelFilter}>{modelFilter}</option>}
+                {mediaFilterOptions.map(model => <option key={model.id} value={model.id}>{model.label && model.label !== model.id ? `${model.label} · ${model.id}` : model.id}</option>)}
               </select>
               <button onClick={exportPage}>
                 <DownloadSimple size={16} />
@@ -3234,7 +3261,7 @@ export default function AdminPage() {
               </button>
             </footer>
           </section>
-        )}
+        </>)}
         {section === "payments" && (
           <>
             <div className="admin-metrics admin-payment-metrics">
@@ -3936,6 +3963,7 @@ export default function AdminPage() {
                   </label>
                 </>
               )}
+              {["create", "permissions", "settings"].includes(modal.type) && !overview && <p role="status" className="admin-footnote">{lang === "en" ? "Model options are not ready. Saving is available after they load." : "模型选项尚未就绪，读取成功后才能保存。"}</p>}
               {error && (
                 <p role="alert" className="admin-error">
                   {adminText(error, lang)}
@@ -3945,7 +3973,7 @@ export default function AdminPage() {
                 <button type="button" onClick={close} disabled={busy}>
                   {adminText("取消", lang)}
                 </button>
-                <button className="primary" disabled={busy}>
+                <button className="primary" disabled={busy || (["create", "permissions", "settings"].includes(modal.type) && !overview)}>
                   {busy
                     ? adminText("正在保存…", lang)
                     : modal.type === "create"

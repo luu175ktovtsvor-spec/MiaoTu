@@ -1,0 +1,112 @@
+name: 妙图 macOS DMG 受控复封装
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_commit:
+        description: 固定隔离发布提交，40 位小写十六进制；不使用移动分支的源码
+        type: string
+        required: true
+      source_manifest:
+        description: 公开 JSON 清单，固定原两 DMG、两 ZIP、两 ZIP blockmap 和 latest-mac.yml 的 URL/size/sha256
+        type: string
+        required: true
+      draft_release_tag:
+        description: 可选：预建 draft Release tag；必须仍为 draft 且 target 为本次提交
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-macos-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  repack:
+    runs-on: macos-15
+    environment: macos-signing
+    timeout-minutes: 120
+    env:
+      MIAO_MAC_RELEASE_OPERATION: dmg-repack
+      MIAO_DMG_REPACK_RELEASE_COMMIT: ${{ inputs.release_commit }}
+      MIAO_DMG_REPACK_MANIFEST: ${{ inputs.source_manifest }}
+      MIAO_DESKTOP_NO_GENERATION: '1'
+      ENABLE_MODEL_CALLS: 'false'
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - name: 检查固定提交格式
+        run: '[[ "$MIAO_DMG_REPACK_RELEASE_COMMIT" =~ ^[a-f0-9]{40}$ ]]'
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.release_commit }}
+          persist-credentials: false
+      - name: 核对实际检出提交，保留原 workflow dispatch 身份
+        run: test "$(git rev-parse HEAD)" = "$MIAO_DMG_REPACK_RELEASE_COMMIT"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: 配置本次 runner 独立票据网络 anchor
+        run: node desktop/scripts/macos-signing.ts transport-prepare
+      - name: 检查精确 G2 证书和公证配置
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: node desktop/scripts/macos-signing.ts preflight
+      - name: 安装复封装工具依赖，不构建或下载 Electron
+        run: npm --prefix desktop ci --ignore-scripts
+      - name: 将精确签名身份和公证配置导入临时钥匙串
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: node desktop/scripts/macos-signing.ts prepare
+      - name: 仅移除旧 DMG 顶层脚本，保持原 App 和 ZIP
+        run: node desktop/scripts/macos-signing.ts repack
+      - name: 独立进程核对复封装收据与全部成品 hash
+        run: node desktop/scripts/macos-signing.ts repack-verify
+      - name: 清除自己的网络 anchor 和启用引用
+        if: always()
+        run: node desktop/scripts/macos-signing.ts transport-cleanup
+      - name: 清理本次挂载、钥匙串和所有私密文件
+        if: always()
+        run: node desktop/scripts/macos-signing.ts cleanup
+      - name: 发布前独立核对清理收据和九项最终资产
+        if: success()
+        run: node desktop/scripts/macos-signing.ts repack-verify-publish
+      - name: 导出脱敏复封装证明
+        if: always()
+        run: node desktop/scripts/macos-signing.ts proof
+      - name: 只保存脱敏证明到临时 Release
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROOF_TAG: desktop-mac-dmg-repack-proof-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          proof="$RUNNER_TEMP/desktop-proof/sanitized/macos-dmg-repack.json"
+          if [ -f "$proof" ]; then
+            gh release create "$PROOF_TAG" "$proof" --target "$MIAO_DMG_REPACK_RELEASE_COMMIT" --latest=false --title '临时 DMG 复封装证明' --notes 'Sanitized receipts only; delete after retrieval.'
+          fi
+      - name: 独立核对清理与九项资产后上传，保持 draft 未发布
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRAFT_RELEASE_TAG: ${{ inputs.draft_release_tag }}
+          TEMP_RELEASE_TAG: desktop-mac-dmg-repack-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          if [ -n "$DRAFT_RELEASE_TAG" ]; then
+            node -e "if(!/^[A-Za-z0-9][A-Za-z0-9._-]{0,100}$/.test(process.env.DRAFT_RELEASE_TAG)) throw new Error('Invalid draft tag')"
+            gh release view "$DRAFT_RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,targetCommitish,assets > "$RUNNER_TEMP/dmg-repack-draft.json"
+            node --input-type=module -e "import fs from 'node:fs'; const v=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+'/dmg-repack-draft.json')); const files=fs.readdirSync(process.env.RUNNER_TEMP+'/dmg-repack-output/publish'); if (!v.isDraft || v.targetCommitish!==process.env.MIAO_DMG_REPACK_RELEASE_COMMIT || files.length!==9 || v.assets.some(a=>files.includes(a.name))) throw new Error('Exact fresh draft at this commit is required')"
+            gh release upload "$DRAFT_RELEASE_TAG" "$RUNNER_TEMP/dmg-repack-output/publish/"* --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TEMP_RELEASE_TAG" "$RUNNER_TEMP/dmg-repack-output/publish/"* --target "$MIAO_DMG_REPACK_RELEASE_COMMIT" --latest=false --title '临时 DMG 复封装成品' --notes 'Verified DMGs and original unchanged ZIPs; delete after retrieval.'
+          fi

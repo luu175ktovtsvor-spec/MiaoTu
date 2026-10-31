@@ -1,10 +1,11 @@
 // Controlled CI-only Developer ID packaging. Never use the user's login keychain.
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { randomBytes, X509Certificate } from 'node:crypto'
-import { access, chmod, copyFile, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { access, chmod, copyFile, lstat, mkdir, readFile, readdir, readlink, rename, rm, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { basename, dirname, join, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { RepackFailure, validateRepackManifest } from './macos-dmg-repack.ts'
 
 const desktop = fileURLToPath(new URL('../', import.meta.url))
 const repository = resolve(desktop, '..')
@@ -17,7 +18,7 @@ type TicketTransportState = { anchor: string; ruleFile: string; mainRules: strin
 type TicketPf = (args: string[]) => Promise<{ stdout: string; stderr: string }>
 type SaveTicketTransport = (state: TicketTransportState) => Promise<void>
 export const ticketTransportRule = 'block return out quick proto udp from any to any port 443 label "miaoimg-staple"\n'
-type Proof = { commit?: string; startedAt: string; checks: Record<string, unknown>[]; stages: string[]; failure?: { stage: string; code: string; diagnostic?: ReturnType<typeof safeSigningDiagnostic> }; complete?: boolean; cleanup?: boolean }
+type Proof = { operation?: 'package' | 'dmg-repack'; commit?: string; releaseSourceCommit?: string; workflowDispatchCommit?: string; startedAt: string; checks: Record<string, unknown>[]; stages: string[]; failure?: { stage: string; code: string; diagnostic?: ReturnType<typeof safeSigningDiagnostic> }; complete?: boolean; cleanup?: boolean }
 type ExtractDiagnostic = { toolCode: keyof typeof extractMessages; exitCode?: number }
 class SigningFailure extends Error { code: string; tool?: ExtractDiagnostic; constructor(code: string, tool?: ExtractDiagnostic) { super(code); this.code = code; this.tool = tool } }
 const extractMessages = {
@@ -55,10 +56,25 @@ function paths() {
   const temp = process.env.RUNNER_TEMP, run = process.env.GITHUB_RUN_ID, attempt = process.env.GITHUB_RUN_ATTEMPT
   if (!temp || !/^\d+$/.test(run || '') || !/^\d+$/.test(attempt || '')) fail('missing_isolated_runner_context')
   const privateDirectory = join(resolve(temp), `miaoimg-macos-signing-${run}-${attempt}`)
-  return { privateDirectory, preflightDirectory: privateDirectory + '-preflight', state: join(privateDirectory, 'state.json'), networkState: privateDirectory + '-network.json', networkRule: privateDirectory + '-network.rules', proofDirectory: join(resolve(temp), 'desktop-proof'), proof: join(resolve(temp), 'desktop-proof', 'macos-signing.json') }
+  return { privateDirectory, preflightDirectory: privateDirectory + '-preflight', state: join(privateDirectory, 'state.json'), networkState: privateDirectory + '-network.json', networkRule: privateDirectory + '-network.rules', proofDirectory: join(resolve(temp), 'desktop-proof'), proof: join(resolve(temp), 'desktop-proof', releaseOperation() === 'dmg-repack' ? 'macos-dmg-repack.json' : 'macos-signing.json') }
+}
+function releaseOperation(): 'package' | 'dmg-repack' {
+  const operation = process.env.MIAO_MAC_RELEASE_OPERATION || 'package'
+  if (!['package', 'dmg-repack'].includes(operation)) fail('unsupported_macos_release_operation')
+  return operation as 'package' | 'dmg-repack'
+}
+function releaseSourceCommit() {
+  if (releaseOperation() === 'package') return required('GITHUB_SHA')
+  const expected = required('MIAO_DMG_REPACK_RELEASE_COMMIT')
+  if (!/^[a-f\d]{40}$/.test(expected)) fail('repack_fixed_release_commit_required')
+  let actual: string
+  try { actual = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repository, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim() } catch { fail('repack_checked_out_commit_unavailable') }
+  if (actual !== expected) fail('repack_checked_out_commit_mismatch')
+  return actual
 }
 function assertCi() {
   if (process.platform !== 'darwin' || process.env.GITHUB_ACTIONS !== 'true' || process.env.GITHUB_REPOSITORY !== repositoryName || process.env.GITHUB_REF !== 'refs/heads/ChineseMain' || !/^[a-f\d]{40}$/i.test(process.env.GITHUB_SHA || '')) fail('controlled_macos_release_context_required')
+  if (releaseOperation() === 'dmg-repack') releaseSourceCommit()
 }
 function required(name: string) { const value = process.env[name]; if (!value?.trim()) fail(`missing_${name}`); return value }
 async function exists(path: string) { return access(path).then(() => true, () => false) }
@@ -66,7 +82,7 @@ async function readState(): Promise<SigningState> { return JSON.parse(await read
 async function saveState(value: SigningState) { await writeFile(paths().state, JSON.stringify(value), { mode: 0o600 }) }
 async function proof(): Promise<Proof> {
   try { return JSON.parse(await readFile(paths().proof, 'utf8')) }
-  catch { return { commit: process.env.GITHUB_SHA, startedAt: new Date().toISOString(), checks: [], stages: [] } }
+  catch { return { operation: releaseOperation(), commit: releaseSourceCommit(), ...(releaseOperation() === 'dmg-repack' ? { releaseSourceCommit: releaseSourceCommit(), workflowDispatchCommit: process.env.GITHUB_SHA } : {}), startedAt: new Date().toISOString(), checks: [], stages: [] } }
 }
 async function record(check: Record<string, unknown>) {
   // Builder may sign the two architectures concurrently. Keep both receipts.
@@ -209,8 +225,10 @@ export function certificateIdentity(pem: string, team: string, now = Date.now())
   return { certificate, sha1 }
 }
 
+function signingSecrets() { return ['CSC_LINK', 'CSC_KEY_PASSWORD', 'APPLE_ID', 'APPLE_TEAM_ID', 'APPLE_APP_SPECIFIC_PASSWORD', ...(releaseOperation() === 'package' ? ['MIAO_ACCEPT_EMAIL', 'MIAO_ACCEPT_PASSWORD'] : [])] }
 async function preflight() {
-  for (const name of ['CSC_LINK', 'CSC_KEY_PASSWORD', 'APPLE_ID', 'APPLE_TEAM_ID', 'APPLE_APP_SPECIFIC_PASSWORD', 'MIAO_ACCEPT_EMAIL', 'MIAO_ACCEPT_PASSWORD']) required(name)
+  if (releaseOperation() === 'dmg-repack') validateRepackManifest(required('MIAO_DMG_REPACK_MANIFEST'), JSON.parse(requireDesktop('node:fs').readFileSync(join(desktop, 'package.json'), 'utf8')))
+  for (const name of signingSecrets()) required(name)
   const team = required('APPLE_TEAM_ID'), encoded = required('CSC_LINK').replace(/\s/g, '')
   if (!/^[A-Z\d]{10}$/.test(team) || !/^[A-Za-z\d+/]+={0,2}$/.test(encoded)) fail('invalid_signing_configuration')
   const bytes = Buffer.from(encoded, 'base64')
@@ -227,7 +245,7 @@ async function preflight() {
 }
 
 async function prepare() {
-  const secrets = ['CSC_LINK', 'CSC_KEY_PASSWORD', 'APPLE_ID', 'APPLE_TEAM_ID', 'APPLE_APP_SPECIFIC_PASSWORD', 'MIAO_ACCEPT_EMAIL', 'MIAO_ACCEPT_PASSWORD']
+  const secrets = signingSecrets()
   for (const secret of secrets) required(secret)
   const team = required('APPLE_TEAM_ID')
   if (!/^[A-Z\d]{10}$/.test(team)) fail('invalid_apple_team_identifier')
@@ -355,11 +373,11 @@ export function classifyDependencySigningError(error: unknown) {
 
 export function safeSigningDiagnostic(error: unknown) {
   const value = error as { name?: unknown; code?: unknown; message?: unknown; errors?: unknown }
-  const names = new Set(['Error', 'TypeError', 'RangeError', 'SyntaxError', 'AggregateError', 'ValidationError', 'InvalidConfigurationError', 'SigningFailure', 'ExecError', 'TimeoutError', 'AbortError'])
+  const names = new Set(['Error', 'TypeError', 'RangeError', 'SyntaxError', 'AggregateError', 'ValidationError', 'InvalidConfigurationError', 'SigningFailure', 'RepackFailure', 'ExecError', 'TimeoutError', 'AbortError'])
   const codes = new Set(['ERR_ELECTRON_BUILDER_INVALID_CONFIGURATION', 'ERR_MODULE_NOT_FOUND', 'MODULE_NOT_FOUND', 'ERR_REQUIRE_ESM', 'ERR_REQUIRE_ASYNC_MODULE', 'ERR_INVALID_ARG_TYPE', 'ERR_INVALID_ARG_VALUE', 'ERR_PACKAGE_PATH_NOT_EXPORTED', 'ERR_UNKNOWN_FILE_EXTENSION', 'ENOENT', 'EACCES', 'EPERM', 'ENOTDIR', 'ENOSPC', 'ETIMEDOUT', 'ECONNRESET', 'ENOEXEC', 'ENOTFOUND'])
   const type = typeof value?.name === 'string' && names.has(value.name) ? value.name : 'Error'
   const dependency = error instanceof SigningFailure ? undefined : classifyDependencySigningError(error)
-  const code = error instanceof SigningFailure ? error.code : typeof value?.code === 'string' && codes.has(value.code) ? value.code : dependency?.toolCode
+  const code = error instanceof SigningFailure || error instanceof RepackFailure ? error.code : typeof value?.code === 'string' && codes.has(value.code) ? value.code : dependency?.toolCode
   const raw = typeof value?.message === 'string' ? value.message : ''
   // Never copy a raw message, argv, schema data/params, cause or stack. These
   // exact schema paths and constant messages are safe even for tool failures.
@@ -367,6 +385,7 @@ export function safeSigningDiagnostic(error: unknown) {
   const schemaPaths = new Set<string>()
   let message = 'Unclassified packaging failure; raw tool output omitted'
   if (error instanceof SigningFailure) message = error.tool ? extractMessages[error.tool.toolCode] : 'Controlled release verification failed'
+  else if (error instanceof RepackFailure) message = 'Controlled DMG repack verification failed'
   else if (dependency) message = dependency.message
   else if (/Hook module path[\s\S]*resolves outside[\s\S]*workspace root/.test(raw)) {
     message = 'Configured build hook resolves outside the desktop workspace'
@@ -417,6 +436,7 @@ async function recordFailedBuildState() {
 }
 
 export function assertVerifiedBuildProof(value: Proof, commit: string, certificateSha1: string) {
+  if (value.operation === 'dmg-repack') fail('repack_receipt_cannot_authorize_package')
   if (value.failure) fail('build_has_recorded_failure')
   if (value.commit !== commit || !/^[a-f\d]{40}$/i.test(commit)) fail('build_receipt_commit_mismatch')
   if (!/^[A-F\d]{40}$/.test(certificateSha1)) fail('build_receipt_certificate_missing')
@@ -472,7 +492,19 @@ async function build() {
   await record({ stage: 'build', verifiedArchitectures: [...signed], appTicketBeforeZip: true })
 }
 
-async function verifyDmg(path: string, architecture: string) {
+export async function inspectDmgContents(mount: string, productName: string, legacyHelper = false) {
+  const names = await readdir(mount), visible = names.filter(name => !name.startsWith('.')).sort()
+  const expected = [`${productName}.app`, 'Applications', ...(legacyHelper ? ['首次使用，请右键打开.command'] : [])].sort()
+  if (JSON.stringify(visible) !== JSON.stringify(expected)) fail('dmg_visible_contents_not_exact_allowlist')
+  if (names.filter(name => /\.command$/i.test(name)).length !== Number(legacyHelper)) fail('dmg_unexpected_command_entry')
+  const app = await lstat(join(mount, `${productName}.app`)), applications = await lstat(join(mount, 'Applications'))
+  if (!app.isDirectory() || app.isSymbolicLink()) fail('dmg_application_must_be_real_directory')
+  if (!applications.isSymbolicLink() || await readlink(join(mount, 'Applications')) !== '/Applications') fail('dmg_applications_link_not_exact')
+  if (legacyHelper && !(await lstat(join(mount, '首次使用，请右键打开.command'))).isFile()) fail('dmg_legacy_helper_must_be_file')
+  return { visibleEntries: visible, applicationsSymlink: '/Applications', appDirectoryVerified: true, noCommandEntries: !legacyHelper }
+}
+
+async function verifyDmg(path: string, architecture: string, inspectAfter?: (mount: string) => Promise<Record<string, unknown>>) {
   const state = await readState(), name = basename(path)
   await command('/usr/bin/codesign', ['--force', '--sign', state.sha1!, '--keychain', state.keychain, '--timestamp', path], 'sign_final_dmg')
   const submit = await command('/usr/bin/xcrun', ['notarytool', 'submit', path, '--keychain-profile', profile, '--keychain', state.keychain, '--wait', '--timeout', '30m', '--output-format', 'json'], 'notarize_dmg', { timeout: 32 * 60_000 })
@@ -484,13 +516,19 @@ async function verifyDmg(path: string, architecture: string) {
   await command('/usr/bin/codesign', ['--verify', '--strict', '--verbose=2', path], 'verify_dmg_signature')
   await command('/usr/sbin/spctl', ['--assess', '--type', 'open', '--context', 'context:primary-signature', '--verbose=4', path], 'assess_dmg_gatekeeper')
   const mount = join(paths().privateDirectory, `mount-${architecture}`); await mkdir(mount)
-  let mounted = false
+  let mounted = false, layout, extra
   try {
-    await command('/usr/bin/hdiutil', ['attach', '-readonly', '-nobrowse', '-mountpoint', mount, path], 'mount_final_dmg'); mounted = true
+    await command('/usr/bin/hdiutil', ['attach', '-readonly', '-nobrowse', '-owners', 'on', '-mountpoint', mount, path], 'mount_final_dmg'); mounted = true
     const metadata = JSON.parse(await readFile(join(desktop, 'package.json'), 'utf8'))
+    layout = await inspectDmgContents(mount, metadata.productName)
     await verifyApplication(join(mount, `${metadata.productName}.app`), architecture, `dmg-${architecture}`)
+    extra = inspectAfter ? await inspectAfter(mount) : {}
   } finally { if (mounted) await command('/usr/bin/hdiutil', ['detach', mount], 'detach_final_dmg') }
-  await record({ stage, artifact: name, dmgSignature: true, stapled: true, gatekeeper: 'accepted' })
+  await record({ stage, artifact: name, architecture, dmgSignature: true, stapled: true, gatekeeper: 'accepted', ...layout, ...extra })
+}
+
+function repackContext() {
+  return { privateDirectory: paths().privateDirectory, outputDirectory: join(resolve(required('RUNNER_TEMP')), 'dmg-repack-output'), repositoryDirectory: repository, commit: releaseSourceCommit(), publicPrefix: repositoryName.split('/')[1], metadata: JSON.parse(requireDesktop('node:fs').readFileSync(join(desktop, 'package.json'), 'utf8')), command, record, proof, readState, verifyApplication, verifyDmg, inspectDmgContents, loadTools: () => ({ yaml: requireDesktop('js-yaml'), buildBlockMap: requireDesktop('app-builder-lib/out/targets/blockmap/blockmap.js').buildBlockMap }) }
 }
 
 export async function refreshUpdateMetadata(directory: string, expectedVersion: string, expectedArtifacts: string[], buildBlockMap: (file: string, format: string, output: string) => Promise<{ sha512: string; size: number }>, yaml: any) {
@@ -545,6 +583,7 @@ async function finalize() {
 
 async function cleanup() {
   let problem = false
+  if (releaseOperation() === 'dmg-repack') await (await import('./macos-dmg-repack.ts')).cleanupRepackMounts(repackContext()).catch(() => { problem = true })
   if (await exists(paths().state)) {
     const state = await readState()
     // Mounted images can survive an interrupted finalizer; detach only our paths.
@@ -561,7 +600,9 @@ async function cleanup() {
     if (await exists(state.keychain)) await command('/usr/bin/security', ['delete-keychain', state.keychain], 'delete_isolated_keychain').catch(() => { problem = true })
   }
   await rm(join(paths().privateDirectory, 'identity.p12'), { force: true })
-  await rm(paths().privateDirectory, { recursive: true, force: true })
+  // A failed detach can leave a writable image below this directory. Preserve
+  // the tree and ownership receipts; never recurse through an uncertain mount.
+  if (!problem) await rm(paths().privateDirectory, { recursive: true, force: true })
   await rm(paths().preflightDirectory, { recursive: true, force: true })
   const value = await proof(); value.cleanup = !problem; await mkdir(paths().proofDirectory, { recursive: true }); await writeFile(paths().proof, JSON.stringify(value, null, 2) + '\n')
   if (problem) fail('isolated_keychain_cleanup_failed')
@@ -569,7 +610,7 @@ async function cleanup() {
 
 async function sanitizedProof() {
   const directory = paths().proofDirectory, safe = join(directory, 'sanitized'); await mkdir(safe, { recursive: true })
-  if (await exists(paths().proof)) await copyFile(paths().proof, join(safe, 'macos-signing.json'))
+  if (await exists(paths().proof)) await copyFile(paths().proof, join(safe, basename(paths().proof)))
   const acceptance = join(directory, 'result.json')
   if (await exists(acceptance)) {
     const raw = JSON.parse(await readFile(acceptance, 'utf8'))
@@ -581,10 +622,17 @@ async function sanitizedProof() {
 async function main(action: string) {
   assertCi(); stage = action
   try {
+    if (action.startsWith('repack-') && releaseOperation() !== 'dmg-repack' || ['build', 'verify-build', 'finalize'].includes(action) && releaseOperation() !== 'package') fail('macos_release_action_operation_mismatch')
     if (action === 'transport-prepare') await prepareTicketTransport()
     else if (action === 'transport-cleanup') await cleanupTicketTransport()
     else if (action === 'preflight') await preflight()
     else if (action === 'prepare') await prepare()
+    else if (action === 'repack') {
+      if (releaseOperation() !== 'dmg-repack') fail('macos_release_action_operation_mismatch')
+      await (await import('./macos-dmg-repack.ts')).repackDmgs(repackContext())
+      const value = await proof(); value.complete = true; await writeFile(paths().proof, JSON.stringify(value, null, 2) + '\n')
+    }
+    else if (action === 'repack-verify' || action === 'repack-verify-publish') await (await import('./macos-dmg-repack.ts')).verifyRepack(repackContext(), action === 'repack-verify-publish')
     else if (action === 'build') await build()
     else if (action === 'verify-build') await verifyBuild()
     else if (action === 'finalize') await finalize()

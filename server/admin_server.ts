@@ -15,6 +15,7 @@ import { generationDetail, probeGeneration, restoreGeneration, serveGenerationVi
 import { HttpIncomingRequests } from './http-request-lifetime.ts'
 import { createFeedbackStore } from './feedback-store.ts'
 import { refreshSuiheModels } from './suihe.ts'
+import { adminAnalytics, adminMediaModelOptions } from './admin-analytics.ts'
 
 const configuredHost=process.env.OIP_ADMIN_HOST||'127.0.0.1'
 // The production image sets this guard because the admin API is meant to be
@@ -111,6 +112,7 @@ const server=createServer(async(request,response)=>{
   if(path==='/api/admin/upstream-calls' && request.method==='GET'){json(response,200,(await upstreamCallsForAdmin(Object.fromEntries(url.searchParams))));return}
   if(path==='/api/admin/upstream-reconciliation' && request.method==='GET'){await refreshSuiheModels({env:process.env}).catch(()=>[]);json(response,200,{...(await store.upstreamReconciliation(Object.fromEntries(url.searchParams))),models:(await upstreamAuditModels())});return}
   if(path==='/api/admin/derived-prices' && request.method==='GET'){json(response,200,{items:(await store.derivedUpstreamPrices(Object.fromEntries(url.searchParams)))});return}
+  if(path==='/api/admin/analytics' && request.method==='GET'){json(response,200,await adminAnalytics(store,Object.fromEntries(url.searchParams),{catalog:modelCatalog()}),{'cache-control':'no-store'});return}
   if(path==='/api/admin/overview' && request.method==='GET'){await refreshSuiheModels({env:process.env}).catch(()=>[]);const payments=paymentConfig(process.env);const settings=(await store.settings());const adminModels=adminModelCatalog(process.env,settings);const textModels=(await publicTextCatalog(process.env)).map(model=>{const internal=ownTextModelById(model.id,process.env);const channel=internal?.channel||'yunshu';const providerLabel=channel==='deepseek'?'DeepSeek':channel==='yunshu-grok'?'云枢 Grok':channel==='yunshu'?'云枢':channel;return {...model,provider:channel,providerLabel,upstreamModelId:model.id,channelCategory:'text',configured:textChannelReady(process.env,model.id),paused:settings.models[model.id]===false}});json(response,200,{stats:(await store.overview()),settings,models:adminModels.filter(model=>!model.video),videoModels:adminModels.filter(model=>model.video),textModels,upstreamCosts:upstreamCostCatalog(),providers:(await mapAsync(providerCatalog(), async p=>({...p,configured:providerConfigured(p.id,process.env),latestCall:(await store.get('SELECT status,created_at,error FROM upstream_calls WHERE provider=? ORDER BY created_at DESC,id DESC LIMIT 1',p.id))||null}))),costPolicy:(await store.costPolicy()),payments:{...publicPaymentConfig(payments),summary:(await store.paymentSummary())}});return}
   if(path==='/api/admin/operations' && request.method==='GET'){
    const lifetime=new AbortController()
@@ -148,9 +150,9 @@ const server=createServer(async(request,response)=>{
     if(action==='probe' && request.method==='POST'){json(response,200,await probeGeneration(store,workspaceFiles,requestId));return}
     if(action==='restore' && request.method==='POST'){json(response,200,await restoreGeneration(store,workspaceFiles,requestId));return}
   }
-  if(path==='/api/admin/generations' && request.method==='GET'){json(response,200,(await store.records(Object.fromEntries(url.searchParams))));return}
+  if(path==='/api/admin/generations' && request.method==='GET'){const [result,modelOptions]=await Promise.all([store.records(Object.fromEntries(url.searchParams)),adminMediaModelOptions(store,modelCatalog())]);json(response,200,{...result,modelOptions});return}
   if(path==='/api/admin/payment-orders' && request.method==='GET'){json(response,200,(await store.paymentOrders(Object.fromEntries(url.searchParams))));return}
-  if(path==='/api/admin/reconciliation' && request.method==='GET'){json(response,200,(await store.reconciliation(Object.fromEntries(url.searchParams))));return}
+  if(path==='/api/admin/reconciliation' && request.method==='GET'){const [result,modelOptions]=await Promise.all([store.reconciliation(Object.fromEntries(url.searchParams)),adminMediaModelOptions(store,modelCatalog())]);json(response,200,{...result,modelOptions});return}
   if(path==='/api/admin/audit' && request.method==='GET'){json(response,200,(await store.audits(Object.fromEntries(url.searchParams))));return}
   // 用户反馈：列表、详情、回复、改状态和标签。
   if(path==='/api/admin/feedback' && request.method==='GET'){json(response,200,(await feedback.listForAdmin(Object.fromEntries(url.searchParams))));return}
