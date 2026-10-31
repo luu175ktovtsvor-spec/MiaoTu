@@ -408,8 +408,11 @@ function visibleTool(tool: AgentToolCall) {
 function hasReplyText(item: AgentMessage) {
   return Boolean(item.content?.trim() || item.parts?.some(part => part.type === "text" && part.content.trim()));
 }
+function hasThinking(item: AgentMessage) {
+  return Boolean(item.parts?.some(part => part.type === "thinking" && part.content.trim()));
+}
 // 一轮 = 一条用户消息之后的全部助手消息。运行中显示思考与正文、隐藏工具步骤；
-// 这一轮结束后，思考、工具步骤和中间说明收进最终回复上方的「处理过程」，点开才显示。
+// 结束后把工具步骤和中间说明收进「处理过程」；纯思考只保留自己的折叠行。
 type TurnInfo = { turnId: string; first: boolean; final: boolean; complete: boolean; steps: number; hasProcess: boolean };
 const expandedTurns = reactive(new Set<string>());
 const turnInfo = computed(() => {
@@ -422,7 +425,7 @@ const turnInfo = computed(() => {
     const final = [...turn].reverse().find(item => hasReplyText(item) || item.error) ?? turn.at(-1)!;
     const steps = turn.reduce((count, item) => count + (item.parts?.filter(part => part.type === "tool" && !visibleTool(part.tool)).length ?? 0), 0);
     const hasProcess = steps > 0 || turn.some(item => item !== final && hasReplyText(item))
-      || turn.some(item => item.parts?.some(part => part.type === "thinking" && part.content.trim()));
+      || turn.some(hasThinking) && turn.some(item => item.parts?.some(part => part.type === "tool"));
     for (const item of turn) info.set(item.id, { turnId: turnId || turn[0]!.id, first: item === turn[0], final: item === final, complete, steps, hasProcess });
     turn = [];
   };
@@ -438,10 +441,10 @@ function processOpen(item: AgentMessage) {
   const turn = turnInfo.value.get(item.id);
   return Boolean(turn?.complete && expandedTurns.has(turn.turnId));
 }
-// 运行中照常显示过程；结束后只有展开时显示。
+// 纯思考直接显示自己的折叠行；包含步骤的轮次结束后才由「处理过程」统一折叠。
 function showProcess(item: AgentMessage) {
   const turn = turnInfo.value.get(item.id);
-  return !turn || !turn.complete || expandedTurns.has(turn.turnId);
+  return !turn || !turn.complete || !turn.hasProcess || expandedTurns.has(turn.turnId);
 }
 function isFinalReply(item: AgentMessage) {
   return turnInfo.value.get(item.id)?.final ?? true;
@@ -467,6 +470,7 @@ function messageVisible(item: AgentMessage) {
   if (item.role === "user" || item.streaming || item.report) return true;
   const turn = turnInfo.value.get(item.id);
   if (turn?.complete && (turn.final || (turn.first && turn.hasProcess))) return true;
+  if (turn?.complete && !turn.hasProcess && hasThinking(item)) return true;
   if (turn?.complete && !expandedTurns.has(turn.turnId)) return false;
   // 运行中（或已展开）：思考内容保留，可以展开查看；只有纯工具步骤的消息不占位置，展开后才显示。
   return hasReplyText(item) || Boolean(item.error || item.attachments?.length)
