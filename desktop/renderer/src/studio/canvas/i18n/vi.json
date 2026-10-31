@@ -4790,5 +4790,6 @@
   "留空＝原样重跑一次；也可以写要改什么，例如：把黄色台灯换成白色台灯": "Để trống để chạy lại như cũ, hoặc mô tả thay đổi, ví dụ: thay đèn bàn màu vàng bằng đèn bàn màu trắng",
   "把 {0} 中": "Trong {0},",
   "{0}个": "{0} video",
-  "{0}s": "{0}s"
+  "{0}s": "{0}s",
+  "思考过程": "Thinking process"
 }

@@ -42,7 +42,7 @@
                       <template #title>
                         <span class="reasoningHeader">
                           <icon-atom :size="14" />
-                          <span>{{ translate('思考') }}</span>
+                          <span>{{ translate('思考过程') }}</span>
                           <span v-if="part.duration !== undefined" class="thinkingDuration">{{ translate('{0} 秒', { 0: part.duration.toFixed(1) }) }}</span>
                         </span>
                       </template>
@@ -172,9 +172,9 @@
             </div>
           </div>
         </el-popover>
-        <el-button v-if="turnRunning" class="stopButton" text circle :disabled="stopping" :aria-label="translate('停止生成')" :title="translate('停止生成')" @click="stopMessage"><icon-player-stop-filled :size="14" /></el-button>
-        <el-button v-if="!turnRunning || hasDraft" class="sendButton" type="primary" circle :disabled="locked || !hasDraft || !createCanvasContext?.()?.id" :aria-label="editingId ? translate('重发消息') : turnRunning ? translate('引导当前任务') : translate('发送消息')" :title="editingId ? translate('重发消息') : turnRunning ? translate('引导当前任务') : translate('发送消息')" @click="submitMessage()">
-          <icon-arrow-up :size="16" />
+        <el-button class="sendButton" type="primary" circle :disabled="stopping || (!turnRunning && (locked || !hasDraft || !createCanvasContext?.()?.id))" :aria-label="composerActionLabel" :title="composerActionLabel" :aria-busy="stopping || undefined" :data-action="turnRunning || stopping ? 'stop' : 'send'" @pointerdown="captureComposerAction" @pointercancel="clearComposerActions" @keydown="captureComposerKeyAction" @blur="clearComposerActions" @click="activateComposer">
+          <icon-player-stop-filled v-if="turnRunning || stopping" :size="14" aria-hidden="true" />
+          <icon-arrow-up v-else :size="16" aria-hidden="true" />
         </el-button>
       </div>
     </div>
@@ -278,6 +278,9 @@ const hasDraft = computed(() => { draftRevision.value; return hasDraftToSend(); 
 const savedEditing = !pendingMessage ? props.initialDraft?.editing : undefined;
 const editingSource = shallowRef<AgentMessage | undefined>(savedEditing?.message);
 const editingId = computed(() => editingSource.value?.id);
+const composerActionLabel = computed(() => stopping.value ? translate('正在停止…') : turnRunning.value ? translate('停止生成') : editingId.value ? translate('重发消息') : translate('发送消息'));
+let composerPointerAction: 'send' | 'stop' | undefined;
+let composerKeyboardAction: 'send' | 'stop' | undefined;
 const draftMentions = ref<AgentMention[]>([]);
 const draftMentionTargets = shallowRef<{ key: symbol; element: HTMLElement; mention: AgentMention }[]>([]);
 const draftMentionPreview = ref<InstanceType<typeof mentionContent>>();
@@ -959,6 +962,36 @@ async function removeDraftMention(id: string) {
   if (!locked.value) await sender?.removeMention([id]);
 }
 
+function captureComposerAction() {
+  composerKeyboardAction = undefined;
+  composerPointerAction = turnRunning.value || stopping.value ? 'stop' : 'send';
+}
+
+function captureComposerKeyAction(event: KeyboardEvent) {
+  if (event.key !== 'Enter' && event.key !== ' ' && event.code !== 'Space') return;
+  if (event.repeat) {
+    if (event.key === 'Enter') event.preventDefault();
+    return;
+  }
+  composerPointerAction = undefined;
+  composerKeyboardAction = turnRunning.value || stopping.value ? 'stop' : 'send';
+}
+
+function clearComposerActions() {
+  composerPointerAction = undefined;
+  composerKeyboardAction = undefined;
+}
+
+function activateComposer(event: MouseEvent) {
+  const action = event.detail > 0 ? composerPointerAction : composerKeyboardAction;
+  clearComposerActions();
+  if (stopping.value) return;
+  // Finishing after pointer/key down must not send the waiting draft on click.
+  if (action === 'stop' || action === undefined && turnRunning.value) return stopMessage();
+  if (turnRunning.value) return;
+  return submitMessage();
+}
+
 function submitMessage() {
   if (editingSource.value) return sendMessage(messages.value.find(item => item.id === editingId.value) || editingSource.value);
   if (turnRunning.value) {
@@ -1108,19 +1141,46 @@ function stopSenderResize(event: PointerEvent) {
 }
 
 async function stopMessage() {
-  if (stopping.value) return;
+  if (stopping.value || !turnRunning.value) return;
   stopping.value = true;
+  let stoppingFile = nativeFile.value;
   // Cancel uploads and sends which have not reached admission. An already
   // submitted request keeps its receipt; stop it after admission settles so
   // a late acknowledgement cannot start work after the Stop response.
   for (const staging of nativeStaging) staging.abort(new Error(translate('发送已取消，可重试或撤回')));
   try {
     await nativeAdmission;
-    if (!nativeFile.value) return;
+    stoppingFile ||= nativeFile.value;
+    const file = stoppingFile;
+    if (!file || nativeDisposed || nativeFile.value !== file) return;
+    const isCurrent = () => !nativeDisposed && nativeFile.value === file;
     assertWorkspaceScope(conversationScope);
-    await axios.post('/api/agent/native/stop', { directory, sessionFile: nativeFile.value }, { headers: { 'x-miaoimg-workspace': '1' } });
+    const headers = { 'x-miaoimg-workspace': '1' };
+    const read = async () => {
+      const { data } = await axios.get('/api/agent/get', { params: { directory, sessionFile: file }, headers, timeout: 15000 });
+      assertWorkspaceScope(conversationScope);
+      if (!isCurrent() || data?.code !== 200 || data.data?.file !== file) throw new Error(translate('停止未完成，请重试'));
+      return data.data as AgentConversation;
+    };
+    const conversation = await read();
+    // The native stop endpoint imports unknown legacy sessions; route by the
+    // current persisted session so its original controller receives the stop.
+    const native = Boolean(conversation.nativeId);
+    const { data } = await axios.post(native ? '/api/agent/native/stop' : '/api/agent/stop', { directory, sessionFile: file }, { headers, timeout: 15000 });
+    assertWorkspaceScope(conversationScope);
+    if (!isCurrent()) return;
+    if (data?.code !== 200 || (native ? data.data?.stopped !== true : typeof data.data?.stopped !== 'boolean')) throw new Error(translate('停止未完成，请重试'));
+    if (native) { void observeNative(file); return; }
+    // Legacy sessions have no native observer. Wait for the controller's real
+    // terminal snapshot rather than displaying an optimistic stopped state.
+    for (let attempt = 0; attempt < 12 && isCurrent(); attempt++) {
+      const latest = await read();
+      if (!latest.running) { reconcileConversation({ ...latest, messages: hydrateMessages(latest.messages) }); return; }
+      await new Promise<void>(resolve => setTimeout(resolve, 500));
+    }
+    if (isCurrent()) throw new Error(translate('停止未完成，请重试'));
   }
-  catch (error) { ElMessage.error((error as any)?.response?.data?.message || translate('停止未完成，请重试')); }
+  catch (error) { if (!nativeDisposed && nativeFile.value === stoppingFile) ElMessage.error((error as any)?.response?.data?.message || translate('停止未完成，请重试')); }
   finally { stopping.value = false; }
 }
 
@@ -1328,7 +1388,6 @@ watch(() => !props.initialSession?.parentFile && !!workspaceStore.pendingAgentMe
 .agentConversation .pendingInputText { display:block;overflow:hidden;text-overflow:ellipsis;font-size:12px;line-height:1.6;white-space:nowrap; }
 .agentConversation .pendingInput .el-button+.el-button { margin-left:0; }
 .agentConversation .pendingInputStatus { grid-column:1/-1;min-width:0;overflow-wrap:anywhere;font-size:11px;line-height:1.5;color:var(--el-text-color-secondary); }
-.agentConversation .stopButton { width:32px;height:32px;flex:none;color:var(--el-text-color-primary);background:var(--el-fill-color); }
 .agentConversation {
   --agent-content-width: 760px;
   display: flex;
@@ -1593,6 +1652,58 @@ watch(() => !props.initialSession?.parentFile && !!workspaceStore.pendingAgentMe
         max-width: 100%;
         font-size: 14px;
         line-height: 1.75;
+
+        [data-stream-markdown="paragraph"] { margin: 0 0 12px; }
+
+        :is(h1, h2, h3, h4, h5, h6) {
+          margin: 20px 0 10px;
+          color: inherit;
+          font-size: 15px;
+          font-weight: 600;
+          line-height: 1.5;
+          letter-spacing: 0;
+        }
+        h1 { font-size: 19px; }
+        h2 { font-size: 17px; }
+        strong { font-weight: 600; }
+
+        :is(ul, ol) {
+          margin: 6px 0 12px;
+          padding-left: 1.5em;
+          line-height: inherit;
+        }
+        li {
+          padding: 2px 0 2px 2px;
+          > [data-stream-markdown="paragraph"] { margin: 0; }
+          > :is(ul, ol) { margin: 4px 0; }
+        }
+
+        blockquote {
+          margin: 12px 0;
+          padding: 2px 0 2px 12px;
+          border-left: 3px solid var(--el-border-color);
+          color: var(--el-text-color-secondary);
+          > :last-child { margin-bottom: 0; }
+        }
+
+        [data-stream-markdown="table-wrapper"] { margin: 14px 0; }
+        [data-stream-markdown="table-inner-wrapper"] {
+          max-width: 100%;
+          overscroll-behavior-x: contain;
+        }
+        table {
+          font-size: 13px;
+          line-height: 1.6;
+          th, td { padding: 9px 12px; }
+          thead { background: var(--el-fill-color-light); }
+          th { font-weight: 600; }
+          tbody { background: transparent; font-weight: 400; }
+        }
+
+        a { text-underline-offset: 3px; }
+        hr { margin: 20px 0; border-color: var(--el-border-color-lighter); }
+        .markdownChunk > :first-child { margin-top: 0; }
+        .markdownChunk > :last-child { margin-bottom: 0; }
       }
     }
   }
@@ -1743,9 +1854,18 @@ watch(() => !props.initialSession?.parentFile && !!workspaceStore.pendingAgentMe
       }
 
       .sendButton {
+        --el-button-bg-color: var(--el-text-color-primary);
+        --el-button-text-color: var(--el-bg-color);
+        --el-button-hover-bg-color: var(--el-text-color-regular);
+        --el-button-hover-text-color: var(--el-bg-color);
+        --el-button-active-bg-color: var(--el-text-color-primary);
+        --el-button-active-text-color: var(--el-bg-color);
+        --el-button-disabled-bg-color: var(--el-fill-color-dark);
+        --el-button-disabled-text-color: var(--el-text-color-placeholder);
         width: 32px;
         height: 32px;
         border: none;
+        border-radius: 10px;
         flex: none;
       }
     }

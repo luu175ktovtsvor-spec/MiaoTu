@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useSessionViewReceipt } from './useSessionViewReceipt'
 import { ArrowRight, EnvelopeSimple, Eye, EyeSlash, LockKey, SignOut, SpinnerGap, X } from '@phosphor-icons/react'
 import './desktop.css'
+import { DesktopUpdateHost } from './DesktopUpdate'
 
 // 登录弹窗左侧轮播的精选作品（来自首页案例库，素材经本机转发）。
 const LOGIN_SHOWCASE = [
@@ -117,6 +118,7 @@ export default function DesktopBar({ children }: { children: ReactNode }) {
   function switchMode(next: 'code' | 'password' | 'reset') { setMode(next); setError(''); setPassword(''); setShowPassword(false) }
   const loginView = !loading && Boolean(state) && !state.statusUnavailable && !account
   return <>
+    <DesktopUpdateHost />
     <div key={account?.id || account?.workspaceKey || 'local'}>{children}</div>
     {native.platform !== 'darwin' && <div className="desktop-window-buttons"><button aria-label={t('desktop.window.minimize')} onClick={() => native.minimize()}>−</button><button aria-label={t('desktop.window.maximize')} onClick={() => native.maximize()}>□</button><button aria-label={t('desktop.window.close')} onClick={() => native.close()}>×</button></div>}
     {open && <div className={'desktop-account-mask' + (loginView ? ' is-login' : '')} onClick={event => { if (event.target === event.currentTarget) close() }}>

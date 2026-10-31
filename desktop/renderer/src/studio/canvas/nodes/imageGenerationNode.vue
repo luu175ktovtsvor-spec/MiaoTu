@@ -86,7 +86,6 @@
             v-model="refList"
             @preview="setReferencePreview"
             @remove="removeReference" />
-          <imageReferenceRoles v-if="editor?.mode !== 'inpaint'" v-model="data.imageReferenceRoles" :references="refList" :model="selectedModel" :disabled="generating || deleting" />
           <promptInput
             v-if="editor?.mode === 'inpaint'"
             v-model="data.inpaintPromptModel"
@@ -227,8 +226,6 @@ import { useImageGeometryActions } from "./imageTools/useImageGeometryActions";
 import imageGeometryMenu from "./imageTools/components/imageGeometryMenu.vue";
 import { useImageOutpaintActions } from "./imageTools/useImageOutpaintActions";
 import imageOutpaintMenu from "./imageTools/components/imageOutpaintMenu.vue";
-import imageReferenceRoles from "./imageTools/components/imageReferenceRoles.vue";
-import { imageReferenceRoles as collectImageReferenceRoles } from "./imageTools/imageReferenceRoles";
 import { useImagePaletteActions, combineCanvasToolExtensions } from "../useMediaPaletteActions";
 import imageLighting from "./imageTools/components/imageLighting.vue";
 import imageMultiAngle from "./imageTools/components/imageMultiAngle.vue";
@@ -250,7 +247,7 @@ const { id, node, nodeProps, nodeEvent, outputs, files, ai, updateNodeInternals 
 });
 const delivery = useMediaTaskDelivery(node, outputs, "image");
 type PromptModel = NonNullable<InstanceType<typeof promptInput>["$props"]["modelValue"]>;
-const data = computed(() => node.data as { prompt: string; promptModel: PromptModel; inpaintPrompt: string; inpaintPromptModel: PromptModel; model: string; size: string; ratio: string; format?: string; background?: string; quality?: string; inputFidelity?: string; count?: number; layerDecomposition?: boolean; optimizePrompt?: string; imageReferenceRoles: Record<string, string>; parameters: Record<string, unknown>; taskRequestId?: string; taskExtraNodeIds?: string[] });
+const data = computed(() => node.data as { prompt: string; promptModel: PromptModel; inpaintPrompt: string; inpaintPromptModel: PromptModel; model: string; size: string; ratio: string; format?: string; background?: string; quality?: string; inputFidelity?: string; count?: number; layerDecomposition?: boolean; optimizePrompt?: string; parameters: Record<string, unknown>; taskRequestId?: string; taskExtraNodeIds?: string[] });
 if (!data.value.parameters) data.value.parameters = {};
 data.value.prompt ??= "";
 data.value.promptModel ??= [];
@@ -266,7 +263,6 @@ data.value.inputFidelity ??= "";
 data.value.count ??= 1;
 data.value.layerDecomposition ??= false;
 data.value.optimizePrompt ??= "";
-data.value.imageReferenceRoles ??= {};
 const { refList, referenceMentions, canvasReferenceMentions, referenceKinds, connectReference, referenceHistory, preparePromptReferences, setReferencePreview, removeReference } = useNodeReferences();
 const promptEditor = ref<InstanceType<typeof promptInput>>();
 const models = ref<NodeMediaModel[]>([]);
@@ -433,7 +429,6 @@ const canGenerate = computed(() => {
   return Boolean(generationPrompt.value) || Boolean(data.value.layerDecomposition);
 });
 const outputFile = computed(() => outputs.value.image?.dataType === "IMAGE" ? outputs.value.image.value : undefined);
-const imageRolePayload = computed(() => editor.value?.mode === "inpaint" ? undefined : collectImageReferenceRoles(refList.value, data.value.imageReferenceRoles, selectedModel.value));
 const imageEstimateKey = computed(() => JSON.stringify({
   provider: selectedModel.value?.providerId || "",
   model: selectedModel.value?.modelId || "",
@@ -446,7 +441,6 @@ const imageEstimateKey = computed(() => JSON.stringify({
   inputFidelity: data.value.inputFidelity,
   count: data.value.count,
   layerDecomposition: data.value.layerDecomposition,
-  referenceRoles: imageRolePayload.value,
   optimizePrompt: data.value.optimizePrompt,
   editMode: editor.value?.mode || "",
   output: outputFile.value?.url || "",
@@ -573,7 +567,6 @@ async function refreshImageEstimate(sequence: number, signal?: AbortSignal) {
       prompt: generationPrompt.value,
       outputDirectory: "assets/" + id,
       images,
-      referenceRoles: imageRolePayload.value,
       size: data.value.size,
       ratio: data.value.ratio,
       format: data.value.format || undefined,
@@ -780,7 +773,6 @@ async function startGeneration(signal?: AbortSignal) {
     modelId: choice.modelId,
     prompt: generationPrompt.value,
     referenceHistory: inpaintEditor ? [{ index: 1, name: String(node.data.label || ""), kind: "IMAGE" }] : referenceHistory(),
-    referenceRoles: imageRolePayload.value,
     size: data.value.size,
     ratio: data.value.ratio,
     format: data.value.format || undefined,

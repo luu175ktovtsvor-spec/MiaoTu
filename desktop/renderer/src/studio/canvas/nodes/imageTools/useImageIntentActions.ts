@@ -29,7 +29,7 @@ export function useImageIntentActions(options: {
   let unbindCanvasAbort: (() => void) | undefined;
   let assertSource: (() => void) | undefined;
   const state = reactive({ visible: false, loading: false, preparing: false, models: [] as NodeMediaModel[],
-    intent: "image:edit-element" as ImageIntentId, model: "", prompt: "", size: "", ratio: "", quality: "", sourceRole: "general", sourceWidth: 0, sourceHeight: 0 });
+    intent: "image:edit-element" as ImageIntentId, model: "", prompt: "", size: "", ratio: "", quality: "", sourceWidth: 0, sourceHeight: 0 });
   const choices = computed(() => imageIntentModels(state.intent, state.models));
   const choice = computed(() => choices.value.find(model => key(model) === state.model));
   const busy = computed(() => state.loading || state.preparing);
@@ -58,7 +58,6 @@ export function useImageIntentActions(options: {
     state.quality = state.intent === "image:ai-redraw"
       ? model.quality?.includes("high") ? "high" : model.quality?.includes("auto") ? "auto" : ""
       : "";
-    if (!model.referenceRoles?.some(role => role.value === state.sourceRole)) state.sourceRole = "general";
   }
   async function open(id: string, assertBinding?: () => void) {
     const definition = imageIntent(id);
@@ -78,7 +77,6 @@ export function useImageIntentActions(options: {
         throw new Error(translate("原图片已变化或正在处理，请重新操作"));
     };
     state.intent = definition.id; state.prompt = definition.prompt ? translate(definition.prompt) : "";
-    state.sourceRole = ["image:portrait-texture", "image:restyle"].includes(id) ? "person" : "general";
     state.visible = true; state.loading = true;
     state.sourceWidth = state.sourceHeight = 0;
     try {
@@ -120,7 +118,6 @@ export function useImageIntentActions(options: {
         const result = await createVariation({ label: translate(definition.label), prompt: input.prompt, model: key(model), size: state.size, ratio: state.ratio,
           ...(state.intent === "image:remove-background" ? { background: "transparent", format: "png" } : {}),
           ...(state.quality ? { quality: state.quality } : {}),
-          ...(model.referenceRoles?.some(role => role.value === state.sourceRole) ? { sourceRole: state.sourceRole } : {}),
         }, signal, assertSource);
         const created = flow.findNode(result.nodeId);
         if (created) { flow.removeSelectedElements(); flow.addSelectedNodes([created]); await nextTick();
