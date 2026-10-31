@@ -5201,5 +5201,12 @@
   "茶几": "Coffee table",
   "茶几面": "Coffee table top",
   "茶几腿": "Coffee table leg",
+  "生成未完成，请查看任务记录。": "Generation did not finish. Check the task history.",
+  "生成未完成，预扣积分已退还。": "Generation did not finish. The reserved credits have been refunded.",
+  "保留原任务，核对结果和费用，不要重新生成。": "Keep the original task, check its result and charges, and do not generate again.",
+  "请检查当前账号和模型权限。": "Check the current account and model permissions.",
+  "本次已扣 {0} 积分。": "{0} credits were charged for this request.",
+  "搜索暂不可用，请稍后重试。": "Search is temporarily unavailable. Try again later.",
+  "请求过于频繁，请稍后再试": "Too many requests. Try again later.",
   "思考过程": "Thinking process"
 }

@@ -454,7 +454,7 @@ function upstreamError(response, data) {
   const upstreamCode = String(data?.error?.code || data?.error?.type || data?.code || '').slice(0, 100)
   // 没有符合资格的媒体账号可能是路由或资格过滤，不能据此断言额度用尽。
   const message = upstreamCode === 'grok_media_no_eligible_account' || /No eligible Grok media accounts/i.test(raw)
-    ? 'Grok 视频通道暂无可用账号，请稍后重试或联系妙图团队'
+    ? '当前模型暂时不可用，请稍后再试或选择其他模型'
     : raw
   return Object.assign(new Error(message), { status: response.ok ? 502 : response.status >= 500 ? 502 : 422, upstreamStatus: response.status, upstreamCode, upstreamMessage: raw, upstreamRequestId: String(data?.request_id || data?.requestId || response.headers.get('x-request-id') || '') })
 }

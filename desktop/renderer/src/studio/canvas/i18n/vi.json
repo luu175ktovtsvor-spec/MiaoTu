@@ -4791,5 +4791,12 @@
   "把 {0} 中": "Trong {0},",
   "{0}个": "{0} video",
   "{0}s": "{0}s",
+  "生成未完成，请查看任务记录。": "Quá trình tạo chưa hoàn tất. Hãy kiểm tra lịch sử tác vụ.",
+  "生成未完成，预扣积分已退还。": "Quá trình tạo chưa hoàn tất. Số điểm tạm giữ đã được hoàn lại.",
+  "保留原任务，核对结果和费用，不要重新生成。": "Giữ tác vụ gốc, kiểm tra kết quả và chi phí, không tạo lại.",
+  "请检查当前账号和模型权限。": "Kiểm tra tài khoản hiện tại và quyền sử dụng mô hình.",
+  "本次已扣 {0} 积分。": "Yêu cầu này đã trừ {0} điểm.",
+  "搜索暂不可用，请稍后重试。": "Tạm thời không thể tìm kiếm. Vui lòng thử lại sau.",
+  "请求过于频繁，请稍后再试": "Có quá nhiều yêu cầu. Vui lòng thử lại sau.",
   "思考过程": "Thinking process"
 }

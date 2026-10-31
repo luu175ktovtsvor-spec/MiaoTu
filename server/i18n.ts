@@ -8,6 +8,7 @@ import { IntlMessageFormat } from 'intl-messageformat'
 import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { numericMessageValues } from './numeric-messages.ts'
+import { normalizeUserErrorCopy } from './user-errors.ts'
 
 const CATALOG_DIR = fileURLToPath(new URL('./locales/', import.meta.url))
 const requestLocale = new AsyncLocalStorage()
@@ -128,6 +129,8 @@ function numericPublicMessage(text: string) {
 }
 
 function publicMessage(text: string, language: string) {
+  text = normalizeUserErrorCopy(text, key => catalog(language)?.[key])
+  text = normalizeUserErrorCopy(text, key => catalog('en')?.[key])
   if (!text) return text
   const translated = translate(text)
   if (translated !== text || language === 'zh-CN') return translated
@@ -139,7 +142,7 @@ function publicMessage(text: string, language: string) {
   if (numeric !== undefined) return numeric
   // 已由云端翻译过的词典文案可穿过桌面响应；未知诊断只给安全通用提示。
   if ([catalog(language), catalog('en')].some(entries => entries && Object.values(entries).some((value: string) => value === text || numericMessageValues(value, text)))) return text
-  return language === 'zh-TW' ? text : translate('当前操作未能完成，请稍后重试或联系妙图团队')
+  return language === 'zh-TW' ? text : translate('操作失败，请重试')
 }
 
 // 只本地化已面向用户公开的错误字段，不递归改写任务、画布、用户文本或落盘记录。
