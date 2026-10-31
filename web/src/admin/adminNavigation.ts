@@ -16,6 +16,6 @@ export const adminSectionDescriptions: Record<string, string> = {
   payments: '核对充值订单、支付状态和积分到账。',
   upstream: '核对采购成本、供应商用量和调用留档。',
   settings: '集中管理服务开关、注册规则和自动报价参数。',
-  operations: '检查存储、备份、数据同步和服务配置。',
+  operations: '查看服务器空间、素材库和最近更新情况。',
   audit: '追踪账号、订单与后台管理操作。',
 };

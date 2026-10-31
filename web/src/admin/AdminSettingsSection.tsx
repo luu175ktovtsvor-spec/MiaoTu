@@ -39,7 +39,7 @@ export default function AdminSettingsSection({ lang, settings, payments, onOpenS
     <section className="admin-panel admin-setting-card">
       <header><ListChecks size={22}/><div><h2>{t('运维与审计')}</h2><p>{t('查看服务配置、存储备份和管理操作记录。')}</p></div></header>
       <div className="admin-setting-note"><strong>{t('操作有据可查')}</strong><p>{t('账号、积分和设置操作继续保留原有审计记录。')}</p></div>
-      <footer><button onClick={() => onNavigate('operations')}>{t('系统运维')}<ArrowRight size={16}/></button><button onClick={() => onNavigate('audit')}>{t('操作日志')}</button></footer>
+      <footer><button onClick={() => onNavigate('operations')}>{t('系统状态')}<ArrowRight size={16}/></button><button onClick={() => onNavigate('audit')}>{t('操作日志')}</button></footer>
     </section>
   </div>;
 }

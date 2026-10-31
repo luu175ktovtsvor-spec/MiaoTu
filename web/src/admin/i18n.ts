@@ -1,6 +1,6 @@
-export const sectionEnglish={text:'Text service',overview:'Overview',operations:'System operations',users:'Users',models:'Models & pricing',upstream:'Costs & reconciliation',generations:'Generation tasks',payments:'Top-up orders',feedback:'User feedback',audit:'Activity log',settings:'Operations settings'}
+export const sectionEnglish={text:'Text service',overview:'Overview',operations:'System status',users:'Users',models:'Models & pricing',upstream:'Costs & reconciliation',generations:'Generation tasks',payments:'Top-up orders',feedback:'User feedback',audit:'Activity log',settings:'Operations settings'}
 
-export const sectionDescriptionEnglish={text:'Manage text usage, pricing and user benefits.',overview:'Review accounts, generations and costs.',operations:'Review storage, data sync and service settings.',users:'Manage accounts, permissions and credits.',models:'Manage model availability, parameter prices and cost allocation.',upstream:'Review provider calls, estimated costs and balance records.',generations:'Review results, task status and credit usage.',payments:'Review orders and payment status. Credits arrive after successful payment.',feedback:'Read and reply to bugs and ideas sent from the desktop app.',audit:'Review account, payment and admin activity.'}
+export const sectionDescriptionEnglish={text:'Manage text usage, pricing and user benefits.',overview:'Review accounts, generations and costs.',operations:'Review server space, the content library and recent updates.',users:'Manage accounts, permissions and credits.',models:'Manage model availability, parameter prices and cost allocation.',upstream:'Review provider calls, estimated costs and balance records.',generations:'Review results, task status and credit usage.',payments:'Review orders and payment status. Credits arrive after successful payment.',feedback:'Read and reply to bugs and ideas sent from the desktop app.',audit:'Review account, payment and admin activity.'}
 
 const adminEnglish: Record<string, string> = {
   "一次性密码": "One-time password",
@@ -186,7 +186,6 @@ const adminEnglish: Record<string, string> = {
   "开放状态": "Availability",
   "开放用户注册": "Allow user registration",
   "当前": "current",
-  "当前未读取到索引与字节核对报告。": "No index / byte comparison report was read.",
   "当前没有媒体调用留档；留档包含请求、响应及已获得的用量与推算成本。": "No media call records. Records contain requests, responses and available usage / estimated costs.",
   "当前没有工作区文件索引行。": "No workspace file index rows.",
   "当前没有生成结果索引行。": "No generated result index rows.",
@@ -364,7 +363,6 @@ const adminEnglish: Record<string, string> = {
   "管理端只显示凭据配置状态，不显示 API 密钥；已配置不代表当前通道可用。": "The admin UI shows configuration status only; API keys are never displayed.",
   "管理账号、权限与积分。": "Manage permissions, credit balances and ledgers.",
   "系统": "System",
-  "索引与字节一致性": "Index and byte consistency",
   "索引行": "Index rows",
   "索引容量（MiB）": "Indexed byte total (MiB)",
   "累计已支付订单金额": "All-time paid order amount",
@@ -397,7 +395,6 @@ const adminEnglish: Record<string, string> = {
   "路径布局（path）": "Path layout (path)",
   "轮换 MCP 访问令牌（运维）": "Rotate MCP access token (maintenance)",
   "运维事件标识": "Maintenance event ID",
-  "运维命令": "Maintenance command",
   "运维字段：blob 列不存在时登记数也返回 0；0 不代表已完成迁移。": "Maintenance fields: absent blob columns also return 0 registrations; 0 does not indicate completed migration.",
   "运维推算依据": "Maintenance estimation basis",
   "运维标识": "Maintenance ID",
@@ -429,8 +426,6 @@ const adminEnglish: Record<string, string> = {
   "请求被拒绝，请刷新页面后重试": "Invalid request origin",
   "登录已过期，请重新登录": "Session expired; sign in again",
   "正在读取运营数据…": "Reading operational data…",
-  "已读取报告": "Report read",
-  "未读取到报告": "No report read",
   "有余额差样本，但余额差合计为 0，未形成推算单价": "Balance samples total zero; no derived unit rate",
   "秘塔最贵档 0.0108 元/积分：720p 约 0.38 元/秒（35.09 积分/秒）": "Metaso reference: CNY 0.0108/provider credit; 720p about CNY 0.38/s (35.09 provider credits/s)",
   "秘塔最贵档 0.0108 元/积分：720p 约 1.18 元/秒（108.89 积分/秒）": "Metaso reference: CNY 0.0108/provider credit; 720p about CNY 1.18/s (108.89 provider credits/s)",
@@ -523,7 +518,6 @@ const adminChinese: Record<string, string> = {
 }
 export const adminText=(value,lang,vars={})=>{let text=lang==='en'?(adminEnglish[value]||value):(adminChinese[value]||value);for(const [key,val] of Object.entries(vars))text=text.replaceAll(`{${key}}`,String(val));return text}
 
-export const opsStatusText = (value, lang) => adminText(({success:'运行成功',failed:'运行失败',running:'运行中',stale:'状态文件已过期','未运行过':'未读取到状态',unknown:'未知'})[value] || '未知', lang)
 
 export const statusLabel={active:'正常',disabled:'已停用',queued:'排队中',running:'生成中',succeeded:'已完成',failed:'失败',cancelled:'已取消',expired:'已过期',created:'待支付',paid:'已支付',closed:'已关闭'}
 
@@ -634,7 +628,7 @@ Object.assign(adminEnglish, {
   "查看服务配置、存储备份和管理操作记录。": "Review service configuration, storage, backups and admin activity.",
   "操作有据可查": "Actions remain traceable",
   "账号、积分和设置操作继续保留原有审计记录。": "Account, credit and settings actions retain their existing audit records.",
-  "系统运维": "System operations",
+  "系统状态": "System status",
   "操作日志": "Activity log",
   "工作台": "Workspace",
   "业务运营": "Business operations",
@@ -650,7 +644,7 @@ Object.assign(adminEnglish, {
   "核对充值订单、支付状态和积分到账。": "Review top-up orders, payment status and delivered credits.",
   "核对采购成本、供应商用量和调用留档。": "Reconcile procurement costs, provider usage and request records.",
   "集中管理服务开关、注册规则和自动报价参数。": "Manage service switches, registrations and automatic pricing in one place.",
-  "检查存储、备份、数据同步和服务配置。": "Inspect storage, backups, data sync and service configuration.",
+  "查看服务器空间、素材库和最近更新情况。": "Review server space, the content library and recent updates.",
   "追踪账号、订单与后台管理操作。": "Trace account, order and administrative actions.",
   "文本": "Text",
   "Grok 视频售价倍率": "Grok video customer price multiplier",

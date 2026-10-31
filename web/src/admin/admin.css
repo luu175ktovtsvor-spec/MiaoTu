@@ -913,7 +913,6 @@ html[data-admin-theme="dark"] body {
 
 .admin-app .numeric,
 .admin-value-row,
-.admin-ops-grid strong,
 .admin-price-tiers strong {
   font-variant-numeric: tabular-nums;
 }
@@ -1090,74 +1089,6 @@ html[data-admin-theme="dark"] body {
   opacity: .72;
 }
 
-.admin-ops-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0;
-  padding: 0;
-  border-bottom: 1px solid var(--a-line-soft);
-}
-
-.admin-ops-grid > div {
-  padding: 13px 16px;
-  border-right: 1px solid var(--a-line-soft);
-  border-bottom: 1px solid var(--a-line-soft);
-}
-
-.admin-ops-grid > div:nth-child(3n) {
-  border-right: 0;
-}
-
-.admin-ops-grid span,
-.admin-ops-grid small {
-  display: block;
-  color: var(--a-muted);
-  font-size: 12px;
-}
-
-.admin-ops-grid strong {
-  display: block;
-  margin: 5px 0 2px;
-  font-size: 20px;
-  font-weight: 650;
-}
-
-.admin-ops-dl {
-  padding: 0 17px 12px;
-}
-
-.admin-ops-dl > div {
-  align-items: baseline;
-  border-bottom: 1px solid var(--a-line-soft);
-}
-
-.admin-ops-dl > div:last-child {
-  border-bottom: 0;
-}
-
-.admin-ops-dl dd {
-  max-width: 66%;
-  text-align: right;
-}
-
-.admin-snapshot-list {
-  padding: 9px 17px 13px;
-  border-top: 1px solid var(--a-line-soft);
-}
-
-.admin-snapshot-list > div {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 5px 0;
-  font-size: 12px;
-}
-
-.admin-snapshot-list small {
-  color: var(--a-muted);
-}
-
-.admin-ops-pre,
 .admin-app pre {
   max-height: 340px;
   margin: 14px 17px;
