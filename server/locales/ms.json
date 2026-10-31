@@ -3736,5 +3736,12 @@
   "静音分析回执异常": "Resit analisis senyap tidak normal",
   "静音分析失败": "Analisis senyap gagal",
   "静音分析正在排队，请稍后重试": "Analisis senyap dalam baris gilir. Cuba lagi sebentar lagi.",
-  "静音检测参数超出范围": "Parameter pengesanan senyap di luar julat"
+  "静音检测参数超出范围": "Parameter pengesanan senyap di luar julat",
+  "生成未完成，请查看任务记录。": "Penjanaan belum selesai. Semak sejarah tugas.",
+  "生成未完成，预扣积分已退还。": "Penjanaan belum selesai. Kredit yang ditempah telah dipulangkan.",
+  "保留原任务，核对结果和费用，不要重新生成。": "Simpan tugas asal, semak hasil dan cajnya, dan jangan jana semula.",
+  "请检查当前账号和模型权限。": "Semak akaun semasa dan kebenaran model.",
+  "本次已扣 {0} 积分。": "Sebanyak {0} kredit telah ditolak untuk permintaan ini.",
+  "搜索暂不可用，请稍后重试。": "Carian tidak tersedia buat sementara waktu. Cuba lagi kemudian.",
+  "请求过于频繁，请稍后再试": "Terlalu banyak permintaan. Cuba lagi kemudian."
 }

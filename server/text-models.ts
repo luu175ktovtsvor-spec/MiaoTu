@@ -115,7 +115,7 @@ export async function createTextCompletion(request, { fetchImpl = fetch, signal 
         ...(Number.isInteger(maxTokens) ? { [model.fields.output]: maxTokens } : {}),
         ...(model.reasoningEffort ? { reasoning_effort: model.reasoningEffort } : {}),
       }
-  const response = await createCustomProviderFetch({ allowPrivate: true, fetchImpl, redirectMessage: '模型服务地址已变化，请联系妙图团队' })(`${config.baseUrl}${responses ? '/responses' : '/chat/completions'}`, {
+  const response = await createCustomProviderFetch({ allowPrivate: true, fetchImpl, redirectMessage: '模型调用暂不可用，请稍后再试' })(`${config.baseUrl}${responses ? '/responses' : '/chat/completions'}`, {
     method: 'POST',
     headers: { authorization: `Bearer ${config.apiKey}`, 'content-type': 'application/json' },
     body: JSON.stringify(body),

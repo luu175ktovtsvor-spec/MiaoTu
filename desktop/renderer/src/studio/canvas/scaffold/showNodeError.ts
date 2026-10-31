@@ -2,7 +2,7 @@ import { h } from "vue";
 import { ElMessage } from "element-plus";
 import nodeError from "./components/nodeError.vue";
 import { explainUserError } from "../../../../../../server/user-errors.ts";
-import { publicError } from "@/lib/publicError";
+import { publicError, publicErrorCopy } from "@/lib/publicError";
 import { translate } from "@miaoimg/i18n/vue";
 
 export function showNodeError(error: unknown, title: string) {
@@ -19,7 +19,7 @@ export function showNodeError(error: unknown, title: string) {
     if (!value || typeof value !== "object") return fallback;
     const source = value as Record<string, unknown>;
     if (source.version !== 1) return fallback;
-    return { ...fallback, ...Object.fromEntries(["summary", "reason", "action", "billing", "requestId", "source", "aiToken"].map(key => [key, typeof source[key] === "string" ? String(source[key]).slice(0, 1000) : ""])) } as typeof fallback & { source?: string; aiToken?: string };
+    return { ...fallback, ...Object.fromEntries(["summary", "reason", "action", "billing", "requestId", "source", "aiToken"].map(key => [key, typeof source[key] === "string" ? (["summary", "reason", "action", "billing"].includes(key) ? publicErrorCopy(String(source[key]).slice(0, 1000)) : String(source[key]).slice(0, 1000)) : ""])) } as typeof fallback & { source?: string; aiToken?: string };
   };
   const initial = toExplanation(supplied);
   const show = (explanation: ReturnType<typeof toExplanation>) => {

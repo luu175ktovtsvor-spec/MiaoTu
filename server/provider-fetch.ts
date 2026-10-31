@@ -11,7 +11,7 @@ export class ProviderRedirectError extends Error {
   submissionUncertain = true
   upstreamStatus: number
   constructor(status: number) {
-    super('生成服务地址发生变化，请联系妙图团队核对原任务，避免重复提交')
+    super('正在确认生成结果，请稍后查看状态，不要重复提交')
     this.upstreamStatus = status
   }
 }

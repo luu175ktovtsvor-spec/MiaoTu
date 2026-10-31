@@ -4790,5 +4790,12 @@
   "留空＝原样重跑一次；也可以写要改什么，例如：把黄色台灯换成白色台灯": "Aynen yeniden çalıştırmak için boş bırakın veya değişikliği yazın; örneğin: sarı masa lambasını beyaz masa lambasıyla değiştir",
   "把 {0} 中": "{0} içinde,",
   "{0}个": "{0} video",
-  "{0}s": "{0}s"
+  "{0}s": "{0}s",
+  "生成未完成，请查看任务记录。": "Üretim tamamlanmadı. Görev geçmişini kontrol edin.",
+  "生成未完成，预扣积分已退还。": "Üretim tamamlanmadı. Ayrılan krediler iade edildi.",
+  "保留原任务，核对结果和费用，不要重新生成。": "Asıl görevi saklayın, sonucu ve ücretleri kontrol edin; yeniden üretmeyin.",
+  "请检查当前账号和模型权限。": "Geçerli hesabı ve model izinlerini kontrol edin.",
+  "本次已扣 {0} 积分。": "Bu istek için {0} kredi düşüldü.",
+  "搜索暂不可用，请稍后重试。": "Arama geçici olarak kullanılamıyor. Daha sonra tekrar deneyin.",
+  "请求过于频繁，请稍后再试": "Çok fazla istek var. Daha sonra tekrar deneyin."
 }

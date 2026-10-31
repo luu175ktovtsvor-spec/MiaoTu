@@ -1387,7 +1387,7 @@ export class ManagementStore {
       const activeLimit = Number.isSafeInteger(configuredActiveLimit) && configuredActiveLimit > 0 ? Math.min(configuredActiveLimit, 1000) : 8
       const active = Number((await this.get("SELECT COUNT(*) AS count FROM generations WHERE user_id=? AND status IN ('queued','running')", userId))?.count || 0)
       if (active >= activeLimit) throw failure('当前账号进行中的生成任务过多，请等待已有任务完成后再试', 429)
-      if ((await this.run('UPDATE users SET points=ROUND(points-?,4) WHERE id=? AND points>=?',points,userId,points)).changes !== 1) throw failure('积分不足，请联系妙图团队',402)
+      if ((await this.run('UPDATE users SET points=ROUND(points-?,4) WHERE id=? AND points>=?',points,userId,points)).changes !== 1) throw failure('积分不足，请先充值后生成',402)
       const id = newGenerationId()
       const now = new Date().toISOString()
       const expiresAt = status === GENERATION_STATES.QUEUED ? new Date(Date.now() + GENERATION_LIMITS.queueMs).toISOString() : null
@@ -1606,7 +1606,7 @@ export class ManagementStore {
         await this.run('DELETE FROM generation_inputs WHERE generation_id=?', id)
       }
       await this.run('UPDATE generations SET parameters=?,error=?,lease_id=NULL,lease_at=NULL WHERE id=?', JSON.stringify(parameters),
-        reason === 'expired' ? '原图暂存期已结束，请联系妙图团队核对原任务，避免重复生成' : '原图暂存回执缺失，请保留原任务并联系妙图团队核对，避免重复生成', id)
+        reason === 'expired' ? '原图暂存期已结束' : '原图回执缺失，请保留原任务等待核对', id)
       return true
     }))
   }

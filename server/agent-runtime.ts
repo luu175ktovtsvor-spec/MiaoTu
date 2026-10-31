@@ -48,7 +48,7 @@ export async function createAgentModel({ providerId = 'miaoimg', baseUrl, apiKey
   // Built-in origins are selected by the host, including its local relay.
   // Custom cloud providers retain public-DNS pinning. Both reject redirects.
   const providerFetch = providerId === 'miaoimg'
-    ? createCustomProviderFetch({ allowPrivate: true, beforeDispatch, redirectMessage: '模型服务地址已变化，请联系妙图团队', ...(fetchImpl ? { fetchImpl } : {}) })
+    ? createCustomProviderFetch({ allowPrivate: true, beforeDispatch, redirectMessage: '模型调用暂不可用，请稍后再试', ...(fetchImpl ? { fetchImpl } : {}) })
     : fetchImpl || createCustomProviderFetch({ beforeDispatch })
   runtime.registerProvider(runtimeProvider, {
     // ModelRuntime 的原生 adapter 会按这个 api 生成请求体、工具块、工具结果、SSE 事件和错误文本。
