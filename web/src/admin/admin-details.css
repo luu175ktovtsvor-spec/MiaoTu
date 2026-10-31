@@ -1,7 +1,7 @@
 /* Readable operational data and bounded dialogs, shared by the real admin views. */
 .admin-app,
 .admin-login {
-  --font-admin: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Arial, sans-serif;
+  --font-admin: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Arial, sans-serif;
   font-family: var(--font-admin);
   font-weight: 400;
   font-variant-numeric: tabular-nums;
@@ -31,16 +31,16 @@
   box-shadow: 0 18px 48px rgb(0 0 0 / .16);
 }
 .admin-app .admin-modal:focus { outline: none; }
-.admin-app .admin-modal:has(.console-detail) { width: min(800px, 100%); }
-.admin-app .admin-modal:has(.admin-record) { width: min(840px, 100%); }
+.admin-app .admin-modal:has(.console-detail) { width: min(920px, 100%); }
+.admin-app .admin-modal:has(.admin-record) { width: min(920px, 100%); }
 .admin-app .admin-modal > .admin-modal-header {
   position: static;
   flex: 0 0 auto;
   min-width: 0;
-  padding: 16px 22px;
+  padding: 22px 28px;
   gap: 16px;
 }
-.admin-app .admin-modal-header h2 { font-size: 16px; font-weight: 600; letter-spacing: 0; line-height: 1.4; }
+.admin-app .admin-modal-header h2 { font-size: 20px; font-weight: 600; letter-spacing: 0; line-height: 1.4; }
 .admin-app .admin-modal-close {
   flex: 0 0 30px;
   width: 30px;
@@ -60,7 +60,7 @@
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
-  padding: 18px 22px 22px;
+  padding: 24px 28px 28px;
   overflow: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
@@ -80,29 +80,29 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: start;
-  gap: 0 24px;
+  gap: 0 32px;
   margin: 0;
 }
 .admin-app .console-detail > div {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   min-width: 0;
-  gap: 4px;
-  padding: 10px 0;
+  gap: 8px;
+  padding: 16px 0;
   border-bottom: 1px solid var(--a-line-soft);
 }
-.admin-app .console-detail > .console-detail-wide { grid-column: 1 / -1; }
-.admin-app .console-detail dt { color: var(--a-muted); font-size: 11.5px; font-weight: 400; line-height: 1.5; }
-.admin-app .console-detail dd { min-width: 0; margin: 0; font: 400 13px/1.6 var(--font-admin); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.admin-app .console-detail > .console-detail-wide:not(:has(.admin-identifier)) { grid-column: 1 / -1; }
+.admin-app .console-detail dt { color: var(--a-muted); font-size: 13px; font-weight: 400; line-height: 1.5; }
+.admin-app .console-detail dd { min-width: 0; margin: 0; font: 400 15px/1.6 var(--font-admin); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .admin-identifier { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px 8px; min-width: 0; max-width: 100%; }
-.admin-identifier code { flex: 1 1 0; min-width: 0; font: 400 11.5px/1.7 var(--font-admin-mono); overflow-wrap: anywhere; word-break: normal; }
+.admin-identifier code { flex: 1 1 0; min-width: 0; font: 400 13px/1.7 var(--font-admin-mono); overflow-wrap: anywhere; word-break: normal; }
 .admin-app .admin-copy-id { flex: 0 0 24px; width: 24px; min-width: 24px; min-height: 24px; padding: 3px; border: 0; border-radius: 4px; background: transparent; color: var(--a-muted); box-shadow: none; }
 .admin-app .admin-copy-id:hover:not(:disabled) { color: var(--a-ink); background: var(--a-hover); }
-.admin-copy-error { flex-basis: 100%; color: var(--a-bad); font: 400 11px/1.5 var(--font-admin); }
+.admin-copy-error { flex-basis: 100%; color: var(--a-bad); font: 400 13px/1.5 var(--font-admin); }
 .admin-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 .admin-technical-details { margin-top: 18px; border-top: 1px solid var(--a-line); }
-.admin-technical-details > summary { padding: 13px 0 0; color: var(--a-muted); font-size: 12px; cursor: pointer; }
-.admin-app .admin-modal-body pre { min-width: 0; max-width: 100%; max-height: 240px; margin: 12px 0 0; border-radius: 5px; font-size: 11px; font-weight: 400; line-height: 1.6; tab-size: 2; }
+.admin-technical-details > summary { padding: 13px 0 0; color: var(--a-muted); font-size: 14px; cursor: pointer; }
+.admin-app .admin-modal-body pre { min-width: 0; max-width: 100%; max-height: 240px; margin: 12px 0 0; border-radius: 5px; font-size: 13px; font-weight: 400; line-height: 1.6; tab-size: 2; }
 
 .text-console { min-width: 0; }
 .console-card > header > div { min-width: 0; }
@@ -117,7 +117,8 @@
 .admin-app .console-usage-table th:nth-child(6) { width: 11%; }
 .admin-app .console-usage-table th:nth-child(7) { width: 7%; }
 .admin-app .console-usage-table th:nth-child(8) { width: 10%; }
-.admin-app .console-usage-table th:nth-child(9) { width: 84px; }
+.admin-app .console-usage-table th:nth-child(9) { width: 104px; }
+.admin-app .console-usage-table button { white-space: nowrap; }
 .console-filters > * { max-width: 100%; }
 .console-filters .console-search { min-width: min(220px, 100%); }
 .admin-app .console-filters select { min-width: 0; flex: 1 1 130px; }

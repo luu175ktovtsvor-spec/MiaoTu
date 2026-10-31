@@ -40,7 +40,7 @@
   color: var(--a-ink);
   background: var(--a-bg);
   color-scheme: light;
-  font: 14px/1.55 var(--font-admin);
+  font: 15px/1.55 var(--font-admin);
   -webkit-font-smoothing: antialiased;
   letter-spacing: -.004em;
 }
@@ -116,19 +116,19 @@ html[data-admin-theme="dark"] body {
 }
 
 .admin-app h2 {
-  font-size: 17px;
+  font-size: 19px;
   line-height: 1.35;
 }
 
 .admin-app h3 {
   margin-top: 18px;
-  font-size: 15px;
+  font-size: 17px;
   line-height: 1.45;
 }
 
 .admin-app h4 {
   margin-top: 16px;
-  font-size: 13px;
+  font-size: 15px;
 }
 
 .admin-app p,
@@ -157,7 +157,7 @@ html[data-admin-theme="dark"] body {
   border-radius: 6px;
   background: var(--a-surface);
   color: var(--a-ink);
-  font: 600 12px/1.35 var(--font-admin);
+  font: 600 14px/1.35 var(--font-admin);
   cursor: pointer;
   transition: background-color 110ms ease, border-color 110ms ease, color 110ms ease;
 }
@@ -198,7 +198,7 @@ html[data-admin-theme="dark"] body {
   border-radius: 6px;
   background: var(--a-surface);
   color: var(--a-ink);
-  font: 13px/1.5 var(--font-admin);
+  font: 15px/1.5 var(--font-admin);
 }
 
 .admin-app textarea {
@@ -270,7 +270,7 @@ html[data-admin-theme="dark"] body {
 .admin-brand > span {
   display: block;
   min-width: 0;
-  font-size: 17px;
+  font-size: 19px;
   font-weight: 650;
   letter-spacing: -.035em;
 }
@@ -279,7 +279,7 @@ html[data-admin-theme="dark"] body {
   display: block;
   margin-top: 2px;
   color: var(--a-sidebar-muted);
-  font: 650 9px/1.3 var(--font-admin-mono);
+  font: 650 12px/1.3 var(--font-admin-mono);
   letter-spacing: .085em;
 }
 
@@ -298,7 +298,7 @@ html[data-admin-theme="dark"] body {
 .admin-nav-group-label {
   padding: 0 12px 7px;
   color: var(--a-sidebar-muted);
-  font: 650 9px/1.3 var(--font-admin-mono);
+  font: 650 12px/1.3 var(--font-admin-mono);
   letter-spacing: .09em;
   text-transform: uppercase;
 }
@@ -314,7 +314,7 @@ html[data-admin-theme="dark"] body {
   border-radius: 5px;
   background: transparent;
   color: var(--a-sidebar-muted);
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 500;
 }
 
@@ -351,7 +351,7 @@ html[data-admin-theme="dark"] body {
 .admin-version {
   margin: 0;
   color: var(--a-sidebar-muted);
-  font: 10px/1.4 var(--font-admin-mono);
+  font: 12px/1.4 var(--font-admin-mono);
 }
 
 .admin-sidebar-bottom > .admin-version {
@@ -367,7 +367,7 @@ html[data-admin-theme="dark"] body {
 .admin-theme > span {
   padding: 0 8px;
   color: var(--a-sidebar-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .admin-theme > div {
@@ -386,7 +386,7 @@ html[data-admin-theme="dark"] body {
   border-radius: 3px;
   background: transparent;
   color: var(--a-sidebar-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .admin-app .admin-theme button:hover,
@@ -429,7 +429,7 @@ html[data-admin-theme="dark"] body {
   display: block;
   margin-bottom: 7px;
   color: var(--a-brand);
-  font: 650 10px/1.3 var(--font-admin-mono);
+  font: 650 12px/1.3 var(--font-admin-mono);
   letter-spacing: .075em;
   text-transform: uppercase;
 }
@@ -438,14 +438,14 @@ html[data-admin-theme="dark"] body {
   max-width: 74ch;
   margin: 7px 0 0;
   color: var(--a-muted);
-  font-size: 13px;
+  font-size: 15px;
 }
 
 .admin-timezone-note {
   display: block;
   margin-top: 7px;
   color: var(--a-faint);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .admin-top-actions {
@@ -492,7 +492,7 @@ html[data-admin-theme="dark"] body {
 .admin-quick-links-heading {
   padding: 8px 10px 7px;
   color: var(--a-faint);
-  font: 650 10px/1.3 var(--font-admin-mono);
+  font: 650 12px/1.3 var(--font-admin-mono);
   letter-spacing: .06em;
   text-transform: uppercase;
 }
@@ -522,14 +522,14 @@ html[data-admin-theme="dark"] body {
 
 .admin-quick-links-menu strong {
   color: var(--a-ink);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 650;
 }
 
 .admin-quick-links-menu small {
   overflow: hidden;
   color: var(--a-muted);
-  font: 11px/1.35 var(--font-admin-mono);
+  font: 13px/1.35 var(--font-admin-mono);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -549,7 +549,7 @@ html[data-admin-theme="dark"] body {
 .admin-loading {
   margin: 0 0 12px;
   color: var(--a-muted);
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .admin-message {
@@ -562,7 +562,7 @@ html[data-admin-theme="dark"] body {
   border-radius: 5px;
   background: var(--a-ok-bg);
   color: var(--a-ok);
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .admin-message.error,
@@ -576,7 +576,7 @@ html[data-admin-theme="dark"] body {
   padding: 9px 11px;
   border: 1px solid transparent;
   border-radius: 5px;
-  font-size: 12px;
+  font-size: 14px;
   overflow-wrap: anywhere;
 }
 
@@ -644,7 +644,7 @@ html[data-admin-theme="dark"] body {
   display: block;
   min-height: 0;
   color: var(--a-muted);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.45;
 }
 
@@ -676,7 +676,7 @@ html[data-admin-theme="dark"] body {
   display: block;
   margin-top: 4px;
   color: var(--a-faint);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .admin-overview-grid {
@@ -703,7 +703,7 @@ html[data-admin-theme="dark"] body {
 .admin-service small {
   margin-left: auto;
   color: var(--a-muted);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .admin-app dl {
@@ -720,14 +720,14 @@ html[data-admin-theme="dark"] body {
 .admin-app dt {
   min-width: 0;
   color: var(--a-muted);
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .admin-app dd {
   min-width: 0;
   margin: 0;
   color: var(--a-ink);
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 550;
   overflow-wrap: anywhere;
 }
@@ -736,7 +736,7 @@ html[data-admin-theme="dark"] body {
   display: block;
   margin-top: 3px;
   color: var(--a-faint);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 400;
 }
 
@@ -779,7 +779,7 @@ html[data-admin-theme="dark"] body {
   display: block;
   margin-top: 3px;
   color: var(--a-muted);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .admin-provider .admin-error {
@@ -790,7 +790,7 @@ html[data-admin-theme="dark"] body {
   margin: 0;
   padding: 11px 17px;
   color: var(--a-muted);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.7;
   overflow-wrap: anywhere;
 }
@@ -803,7 +803,7 @@ html[data-admin-theme="dark"] body {
 .admin-explainer > summary {
   padding: 11px 17px;
   color: var(--a-muted);
-  font-size: 11px;
+  font-size: 13px;
   cursor: pointer;
 }
 
@@ -826,7 +826,7 @@ html[data-admin-theme="dark"] body {
   border-radius: 3px;
   background: var(--a-surface-raised);
   color: var(--a-muted);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 650;
   line-height: 1.3;
   white-space: nowrap;
@@ -869,7 +869,7 @@ html[data-admin-theme="dark"] body {
   width: 100%;
   border-collapse: collapse;
   color: var(--a-ink);
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.55;
   text-align: left;
 }
@@ -883,7 +883,7 @@ html[data-admin-theme="dark"] body {
   border-bottom: 1px solid var(--a-line);
   background: var(--a-surface-raised);
   color: var(--a-muted);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 650;
   letter-spacing: .025em;
   white-space: nowrap;
@@ -907,7 +907,7 @@ html[data-admin-theme="dark"] body {
   display: block;
   margin-top: 3px;
   color: var(--a-muted);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.55;
 }
 
@@ -919,7 +919,7 @@ html[data-admin-theme="dark"] body {
 }
 
 .admin-app .numeric {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 650;
 }
 
@@ -965,7 +965,7 @@ html[data-admin-theme="dark"] body {
 
 .admin-value-row > :first-child {
   color: var(--a-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .admin-content-counts {
@@ -985,7 +985,7 @@ html[data-admin-theme="dark"] body {
 .admin-app .table-actions button {
   min-height: 28px;
   padding: 4px 7px;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .admin-pagination {
@@ -997,7 +997,7 @@ html[data-admin-theme="dark"] body {
   border-top: 1px solid var(--a-line-soft);
   background: var(--a-surface-raised);
   color: var(--a-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .admin-pagination span {
@@ -1007,7 +1007,7 @@ html[data-admin-theme="dark"] body {
 .admin-app .admin-pagination button {
   min-height: 29px;
   padding: 4px 8px;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .admin-search {
@@ -1041,7 +1041,7 @@ html[data-admin-theme="dark"] body {
   border-color: transparent;
   background: transparent;
   color: var(--a-muted);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .admin-app .admin-filter-buttons button[aria-pressed="true"] {
@@ -1052,7 +1052,7 @@ html[data-admin-theme="dark"] body {
 
 .admin-filter-buttons small {
   color: var(--a-faint);
-  font: 10px/1 var(--font-admin-mono);
+  font: 12px/1 var(--font-admin-mono);
 }
 
 .admin-filter-header select {
@@ -1070,7 +1070,7 @@ html[data-admin-theme="dark"] body {
   align-items: center;
   gap: 10px;
   margin-bottom: 6px;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .admin-days time,
@@ -1079,7 +1079,7 @@ html[data-admin-theme="dark"] body {
 }
 
 .admin-days strong {
-  font-size: 11px;
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1112,13 +1112,13 @@ html[data-admin-theme="dark"] body {
 .admin-ops-grid small {
   display: block;
   color: var(--a-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .admin-ops-grid strong {
   display: block;
   margin: 5px 0 2px;
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 650;
 }
 
@@ -1150,7 +1150,7 @@ html[data-admin-theme="dark"] body {
   justify-content: space-between;
   gap: 12px;
   padding: 5px 0;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .admin-snapshot-list small {
@@ -1167,7 +1167,7 @@ html[data-admin-theme="dark"] body {
   border-radius: 4px;
   background: var(--a-surface-sunken);
   color: var(--a-ink);
-  font: 11px/1.65 var(--font-admin-mono);
+  font: 13px/1.65 var(--font-admin-mono);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -1179,25 +1179,25 @@ html[data-admin-theme="dark"] body {
 .admin-balance-panel > p:not(.admin-footnote) {
   margin: 0;
   padding: 7px 17px 12px;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .admin-muted {
   color: var(--a-muted);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .admin-empty {
   padding: 44px 18px;
   color: var(--a-muted);
-  font-size: 12px;
+  font-size: 14px;
   text-align: center;
 }
 
 .id-cell {
   max-width: 180px;
   color: var(--a-muted);
-  font: 10px/1.6 var(--font-admin-mono);
+  font: 12px/1.6 var(--font-admin-mono);
   overflow-wrap: anywhere;
 }
 
@@ -1267,13 +1267,13 @@ html[data-admin-theme="dark"] body {
   display: block;
   margin-bottom: 7px;
   color: var(--a-brand);
-  font: 650 9px/1.3 var(--font-admin-mono);
+  font: 650 12px/1.3 var(--font-admin-mono);
   letter-spacing: .09em;
 }
 
 .model-hero h2,
 .pricing-intro h2 {
-  font-size: 22px;
+  font-size: 26px;
   line-height: 1.3;
   letter-spacing: -.03em;
 }
@@ -1283,7 +1283,7 @@ html[data-admin-theme="dark"] body {
   max-width: 74ch;
   margin: 7px 0 0;
   color: var(--a-muted);
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.7;
 }
 
@@ -1314,7 +1314,7 @@ html[data-admin-theme="dark"] body {
 
 .model-summary span {
   color: var(--a-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .model-summary strong {
@@ -1328,7 +1328,7 @@ html[data-admin-theme="dark"] body {
 
 .model-summary small {
   color: var(--a-faint);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .model-browser {
@@ -1359,7 +1359,7 @@ html[data-admin-theme="dark"] body {
 }
 
 .model-search > span {
-  font-size: 16px;
+  font-size: 18px;
 }
 
 .model-search input {
@@ -1385,12 +1385,12 @@ html[data-admin-theme="dark"] body {
   border-radius: 3px;
   background: transparent;
   color: var(--a-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .admin-app .model-filter button span {
   color: var(--a-faint);
-  font: 9px/1 var(--font-admin-mono);
+  font: 12px/1 var(--font-admin-mono);
 }
 
 .admin-app .model-filter button[aria-pressed="true"] {
@@ -1476,7 +1476,7 @@ html[data-admin-theme="dark"] body {
 
 .model-card-title h3 {
   margin: 0;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 600;
   line-height: 1.4;
 }
@@ -1488,7 +1488,7 @@ html[data-admin-theme="dark"] body {
   margin-top: 2px;
   overflow: hidden;
   color: var(--a-faint);
-  font: 9px/1.5 var(--font-admin-mono);
+  font: 12px/1.5 var(--font-admin-mono);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1512,7 +1512,7 @@ html[data-admin-theme="dark"] body {
   border-radius: 3px;
   background: var(--a-surface-raised);
   color: var(--a-muted);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -1561,7 +1561,7 @@ html[data-admin-theme="dark"] body {
 .model-route-meta span {
   flex: 0 0 auto;
   color: var(--a-faint);
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .model-route-meta strong,
@@ -1569,7 +1569,7 @@ html[data-admin-theme="dark"] body {
   min-width: 0;
   overflow: hidden;
   color: var(--a-muted);
-  font-size: 10px;
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1607,7 +1607,7 @@ html[data-admin-theme="dark"] body {
 
 .model-channel-copy strong {
   color: var(--a-ink);
-  font-size: 10px;
+  font-size: 12px;
   white-space: nowrap;
 }
 
@@ -1643,7 +1643,7 @@ html[data-admin-theme="dark"] body {
 
 .model-price-preview > span {
   color: var(--a-muted);
-  font-size: 10px;
+  font-size: 12px;
   white-space: nowrap;
 }
 
@@ -1653,7 +1653,7 @@ html[data-admin-theme="dark"] body {
   align-items: baseline;
   gap: 6px;
   color: var(--a-ink);
-  font-size: 17px;
+  font-size: 19px;
   font-weight: 650;
   line-height: 1.3;
   font-variant-numeric: tabular-nums;
@@ -1661,7 +1661,7 @@ html[data-admin-theme="dark"] body {
 
 .model-price-preview strong small {
   color: var(--a-faint);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 400;
 }
 
@@ -1676,14 +1676,14 @@ html[data-admin-theme="dark"] body {
 
 .model-card > footer span {
   color: var(--a-faint);
-  font-size: 9px;
+  font-size: 12px;
   text-align: right;
 }
 
 .admin-app .model-card > footer button {
   min-height: 28px;
   padding: 4px 8px;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 @media (max-width: 1080px) {
@@ -1754,7 +1754,7 @@ html[data-admin-theme="dark"] body {
   border: 1px solid var(--a-line);
   border-radius: 3px;
   color: var(--a-muted);
-  font-size: 10px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1790,17 +1790,17 @@ html[data-admin-theme="dark"] body {
 
 .pricing-group h3 {
   margin: 0;
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .pricing-group-index {
   color: var(--a-brand);
-  font: 650 9px/1 var(--font-admin-mono);
+  font: 650 12px/1 var(--font-admin-mono);
 }
 
 .pricing-group > header small {
   color: var(--a-faint);
-  font-size: 10px;
+  font-size: 12px;
   text-align: right;
 }
 
@@ -1825,7 +1825,7 @@ html[data-admin-theme="dark"] body {
   max-width: calc(100% - 16px);
   padding: 0 4px;
   color: var(--a-ink);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 650;
   overflow-wrap: anywhere;
 }
@@ -1845,7 +1845,7 @@ html[data-admin-theme="dark"] body {
 .pricing-note {
   margin: 8px 0 0;
   color: var(--a-muted);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.65;
 }
 
@@ -1873,7 +1873,7 @@ html[data-admin-theme="dark"] body {
   gap: 8px;
   min-width: 0;
   margin: 0 !important;
-  font-size: 10px !important;
+  font-size: 12px !important;
 }
 
 .pricing-field > span {
@@ -1893,7 +1893,7 @@ html[data-admin-theme="dark"] body {
 
 .pricing-field em {
   color: var(--a-faint);
-  font-size: 9px;
+  font-size: 12px;
   font-style: normal;
   white-space: nowrap;
 }
@@ -1935,13 +1935,13 @@ html[data-admin-theme="dark"] body {
   gap: 16px;
   padding: 11px 13px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
 }
 
 .pricing-costs > summary small {
   color: var(--a-muted);
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .pricing-costs .pricing-note {
@@ -2008,7 +2008,7 @@ html[data-admin-theme="dark"] body {
   display: block;
   margin-bottom: 13px;
   color: var(--a-ink);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 550;
 }
 
@@ -2022,7 +2022,7 @@ html[data-admin-theme="dark"] body {
   display: block;
   margin-top: 4px;
   color: var(--a-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .admin-modal fieldset {
@@ -2035,7 +2035,7 @@ html[data-admin-theme="dark"] body {
 .admin-modal legend {
   padding: 0 5px;
   color: var(--a-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .admin-modal label.admin-check {
@@ -2130,7 +2130,7 @@ html[data-admin-theme="dark"] body {
 
 .admin-price-row > em {
   color: var(--a-muted);
-  font-size: 10px;
+  font-size: 12px;
   font-style: normal;
   white-space: nowrap;
 }
@@ -2174,7 +2174,7 @@ html[data-admin-theme="dark"] body {
 .admin-price-details > summary span {
   margin-left: 4px;
   color: var(--a-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .admin-price-details > .admin-price-tiers {
@@ -2218,7 +2218,7 @@ html[data-admin-theme="dark"] body {
   border-radius: 3px;
   background: transparent;
   color: var(--a-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .admin-app .admin-feedback-tabs button[aria-selected="true"],
@@ -2230,7 +2230,7 @@ html[data-admin-theme="dark"] body {
 
 .admin-feedback-tabs span {
   color: var(--a-faint);
-  font: 9px/1 var(--font-admin-mono);
+  font: 12px/1 var(--font-admin-mono);
 }
 
 .admin-feedback-check {
@@ -2238,7 +2238,7 @@ html[data-admin-theme="dark"] body {
   align-items: center;
   gap: 6px;
   color: var(--a-muted);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .admin-feedback-list ul {
@@ -2281,14 +2281,14 @@ html[data-admin-theme="dark"] body {
 
 .admin-feedback-main strong {
   overflow: hidden;
-  font-size: 12px;
+  font-size: 14px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .admin-feedback-main small {
   color: var(--a-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .admin-feedback-dot {
@@ -2318,7 +2318,7 @@ html[data-admin-theme="dark"] body {
   align-items: center;
   gap: 3px;
   color: var(--a-muted);
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .admin-feedback-pages {
@@ -2329,11 +2329,11 @@ html[data-admin-theme="dark"] body {
   padding: 10px;
   border-top: 1px solid var(--a-line-soft);
   color: var(--a-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .admin-feedback-detail > header h2 {
-  font-size: 16px;
+  font-size: 18px;
 }
 
 .admin-feedback-labels {
@@ -2370,7 +2370,7 @@ html[data-admin-theme="dark"] body {
 .admin-feedback-thread header,
 .admin-feedback-thread footer {
   color: var(--a-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .admin-feedback-thread header {
@@ -2460,7 +2460,7 @@ html[data-admin-theme="dark"] body {
 
 .admin-login-brand span {
   display: block;
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 650;
   letter-spacing: -.035em;
 }
@@ -2469,7 +2469,7 @@ html[data-admin-theme="dark"] body {
   display: block;
   margin-top: 2px;
   color: var(--a-sidebar-muted);
-  font: 650 9px/1.3 var(--font-admin-mono);
+  font: 650 12px/1.3 var(--font-admin-mono);
   letter-spacing: .09em;
 }
 
@@ -2491,7 +2491,7 @@ html[data-admin-theme="dark"] body {
   max-width: 33ch;
   margin: 13px 0 0;
   color: var(--a-sidebar-muted);
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.75;
 }
 
@@ -2507,7 +2507,7 @@ html[data-admin-theme="dark"] body {
   padding: 8px 0;
   border-bottom: 1px solid rgb(255 255 255 / .08);
   color: var(--a-sidebar-muted);
-  font: 9px/1.4 var(--font-admin-mono);
+  font: 12px/1.4 var(--font-admin-mono);
 }
 
 .admin-login form {
@@ -2522,14 +2522,14 @@ html[data-admin-theme="dark"] body {
 
 .admin-login form h1 {
   margin-bottom: 5px;
-  font-size: 27px;
+  font-size: 30px;
   line-height: 1.25;
 }
 
 .admin-login form > p:first-of-type {
   margin: 0 0 24px;
   color: var(--a-muted);
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .admin-login form > button.primary {
@@ -2541,7 +2541,7 @@ html[data-admin-theme="dark"] body {
 .admin-login .admin-version {
   margin-top: 18px;
   color: var(--a-faint);
-  font-size: 10px;
+  font-size: 12px;
   text-align: center;
 }
 
@@ -2622,7 +2622,7 @@ html[data-admin-theme="dark"] body {
   border-radius: 3px;
   background: transparent;
   color: var(--a-muted);
-  font: 650 9px/1 var(--font-admin-mono);
+  font: 650 12px/1 var(--font-admin-mono);
 }
 
 .language-control button[aria-pressed="true"] {
@@ -2926,7 +2926,7 @@ html[data-admin-theme="dark"] body {
 
   .admin-login-intro h2 {
     margin-top: 28px;
-    font-size: 27px;
+    font-size: 30px;
   }
 
   .admin-login-intro > div:nth-child(2) {
