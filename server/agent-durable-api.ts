@@ -245,10 +245,10 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
     const cached = state.modelCache.get(namespace)
     if (cached?.signature === signature) return cached.result
     const registered = await createAgentModel({ ...config, providerId: payload.providerId || 'miaoimg', modelId: payload.modelId, modelRuntime: state.models, runtimeProviderId: namespace, beforeRequest: async signal => {
-      state.scope(() => {}, payload)
+      await state.scope(() => {}, payload)
       await beforeModelRequest?.(payload, session, signal)
       signal?.throwIfAborted()
-      state.scope(() => {}, payload)
+      await state.scope(() => {}, payload)
     } })
     const result = { config, ref: { provider: namespace, modelId: registered.model.id }, contextWindow: registered.model.contextWindow }
     state.modelCache.set(namespace, { signature, result })
@@ -303,7 +303,7 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
     if (['completed','limited','cancelled','error'].includes(status)) restoredMetadata.status = status
     restoredMetadata.result = String(savedActivity?.result || (lastAssistant?.content || []).filter(part => part.type === 'text').map(part => part.text).join('\n\n')).slice(0, 4000)
     if ((unfinished || status === 'error') && !restoredMetadata.importedFailure) restoredMetadata.importedFailure = { taskId: 0, message: unfinished ? '历史任务尚未完成，原执行状态未恢复。已有内容已保留，请明确追加要求后继续。' : '历史任务未完成，已有内容已保留，可以继续。' }
-    const defaults = state.scope(() => conversationDefaults?.(parent?.metadata) || {})
+    const defaults = await state.scope(() => conversationDefaults?.(parent?.metadata) || {})
     if (typeof restoredMetadata.memoryEnabled !== 'boolean') {
       const memoryEnabled = previous.memoryEnabled ?? parent?.metadata.memoryEnabled
       if (typeof memoryEnabled === 'boolean') restoredMetadata.memoryEnabled = memoryEnabled
@@ -342,7 +342,7 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
       if (!files && children.length >= 100) break
     }
     taskContext.abortSignal?.throwIfAborted()
-    state.scope(() => {})
+    await state.scope(() => {})
     return children
   }
   async function entries(conversation, taskContext = context, minEntryId?: number) {
@@ -676,7 +676,7 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
         const observer = connectedObserver(state, item.id, payload.observerId)
         const registered = await model(state, payload, session)
         item.metadata = { ...await state.host.harness.snapshot(AgentMetadata, item.id, context), nativeId: item.id }
-        const available = state.scope(() => createTools(session.userId, {}).map(tool => tool.name), item.metadata)
+        const available = await state.scope(() => createTools(session.userId, {}).map(tool => tool.name), item.metadata)
         const selected = item.metadata.teamName ? (await (await state.host.conversation(item.id)).agent(context)).tools.map(tool => tool.name) : [...available, 'subAgent', 'messageSubAgent', 'waitSubAgents', 'stopSubAgent', 'getSubAgents', ...(item.metadata.parentId ? ['report'] : []), ...(payload.canvas?.id || item.metadata.canvasId ? canvasTools.map(tool => tool.name) : [])]
         if (payload.resendFrom) await edit(state, item, payload.resendFrom, requestId, true)
         // Background jobs and canvas tools can commit while model preparation
@@ -698,7 +698,7 @@ export function createDurableAgentApi({ directory, identity, createTools, canvas
         connectedObserver(state, item.id, payload.observerId)
         if (payload.action === 'compact') { const taskId = await state.host.compact(item.id, compactInstructions); return { taskId, file } }
         const data = { id: requestId, content: prompt, mentions: Array.isArray(payload.mentions) ? payload.mentions : [], attachments: Array.isArray(payload.attachments) ? payload.attachments : [] }
-        const content = state.scope(() => contextualText(data, state.userId), metadata)
+        const content = await state.scope(() => contextualText(data, state.userId), metadata)
         const submission = await state.host.submit(item.id, { requestId, content, data })
         return { submissionId: submission.id, file, ...await state.host.inputReceipt(item.id, requestId) }
       })
