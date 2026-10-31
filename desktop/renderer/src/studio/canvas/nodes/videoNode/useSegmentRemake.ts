@@ -6,7 +6,7 @@ import { useNodeFiles } from "../../scaffold/workspaceFiles";
 import { useNodeFfmpeg } from "../../scaffold/nodeFfmpeg";
 import type { useNodeAi, NodeCreditEstimate, NodeVideoRequest, NodeMediaModel } from "../../scaffold/nodeAi";
 import { captureWorkspaceScope, assertWorkspaceScope } from "@/lib/workspaceRemote";
-import { normalizeSegmentRanges, segmentInstructions, type SegmentRemakeData, type SegmentRemakePart, type SegmentRemakeRun } from "./segmentRemake";
+import { normalizeSegmentRanges, segmentInstructions, segmentRemakeAdmission, segmentRemakeCharge, type SegmentRemakeData, type SegmentRemakePart, type SegmentRemakeRun } from "./segmentRemake";
 import { mergeRemakeClips, prepareRemakeClip } from "./segmentRemakeProcessing";
 import { videoEditDefaults, videoEditEligibility } from "./videoEditIntentContract";
 
@@ -25,10 +25,17 @@ export function useSegmentRemake(options: { node: GraphNode; ai: ReturnType<type
   const currentTime = ref(0), starting = ref(false);
   let disposed = false, sequence = 0, timer: ReturnType<typeof setTimeout> | undefined, quoteController: AbortController | undefined, controller: AbortController | undefined;
   let activeWork: Promise<unknown> | undefined, startFlight: Promise<void> | undefined, explicitStop = false;
+  const admitting = ref(false);
+  // True only while the point dialog is open. Refresh must not see this as locked,
+  // or the first quote would skip preparing the run.
+  const confirming = ref(false);
+  // The quote decision admit() already showed or skipped. start() must not turn a
+  // resume into a newly charged submission if a later refresh gains a quote.
+  let admittedGate: { token: string; fingerprint: string; resumeOnly: boolean; points?: number } | undefined;
   let preparationTail: Promise<unknown> = Promise.resolve();
   const enabled = computed(() => Boolean(data().segmentRemakeDraft));
   const pending = computed(() => Boolean(currentRun()?.parts.some(part => part.taskRequestId && !part.output)));
-  const locked = computed(() => options.busy.value || Boolean(currentRun() && currentRun()!.phase !== "complete" && currentRun()!.parts.some(part => part.taskRequestId || part.output)));
+  const locked = computed(() => confirming.value || options.busy.value || Boolean(currentRun() && currentRun()!.phase !== "complete" && currentRun()!.parts.some(part => part.taskRequestId || part.output)));
   const key = computed(() => enabled.value ? JSON.stringify([data().segmentRemakeDraft, options.request(), data().segmentRemakeAudio || "original"]) : "");
   const autoVisible = () => active?.value !== false && (options.autoEstimate?.() ?? options.node.selected);
   let quotedKey = "", quotedRunKey = "";
@@ -204,25 +211,64 @@ export function useSegmentRemake(options: { node: GraphNode; ai: ReturnType<type
     if (timer) clearTimeout(timer); timer = undefined;
     if (autoVisible() && !options.busy.value && !starting.value) timer = setTimeout(() => { void refresh(true); }, 400);
   }, { immediate: true, flush: "sync" });
-  const ready = computed(() => enabled.value && !starting.value && !options.busy.value && !quoting.value && !(currentRun()?.phase === "complete" && currentRun()?.configurationKey === key.value) && Boolean(quote.value && quotedKey === key.value));
+  const ready = computed(() => enabled.value && !admitting.value && !confirming.value && !starting.value && !options.busy.value && !quoting.value && !(currentRun()?.phase === "complete" && currentRun()?.configurationKey === key.value) && Boolean(quote.value && quotedKey === key.value));
+  async function admit(interactive: boolean): Promise<"idle" | "cancel" | "start"> {
+    if (admitting.value || confirming.value || options.busy.value || starting.value) throw new Error(translate("视频正在生成，请等待完成"));
+    admitting.value = true;
+    try {
+      await refresh();
+      const token = key.value, run = currentRun();
+      if (!run) throw new Error(error.value || translate("请选择重拍片段并等待报价"));
+      const quoted = Boolean(quote.value && quotedKey === token && quotedRunKey === runKey(run) && !quoting.value);
+      const resumeOnly = !quoted && run.parts.some(part => part.taskRequestId && !part.output);
+      const decision = segmentRemakeAdmission({ complete: run.phase === "complete" && run.configurationKey === token, quoted, resumeOnly, unsent: unsent(run).length, interactive });
+      if (decision === "reject") throw new Error(error.value || translate("请选择重拍片段并等待报价"));
+      if (decision === "idle") return decision;
+      if (decision === "start") { admittedGate = { token, fingerprint: runKey(run), resumeOnly, ...(resumeOnly ? {} : { points: Number(quote.value!.points) }) }; return "start"; }
+      const confirmedKey = token, confirmedRun = runKey(run);
+      if (timer) clearTimeout(timer); timer = undefined;
+      confirming.value = true;
+      try {
+        await ElMessageBox.confirm(translate("将生成 {0} 个重拍片段，预计共 {1} 积分，完成后拼回原视频。", { 0: unsent(run).length, 1: quote.value!.points }), translate("片段重拍"), { confirmButtonText: translate("生成"), cancelButtonText: translate("取消"), type: "info" });
+        const latest = currentRun();
+        if (!latest || key.value !== confirmedKey || runKey(latest) !== confirmedRun || quoting.value || !quote.value || quotedKey !== confirmedKey || quotedRunKey !== confirmedRun) throw new Error(translate("片段或参数已变化，请重新确认报价"));
+        admittedGate = { token: confirmedKey, fingerprint: confirmedRun, resumeOnly: false, points: Number(quote.value!.points) };
+      } catch (cause) { if (cause === "cancel" || cause === "close") return "cancel"; throw cause; }
+      return "start";
+    } finally { confirming.value = false; admitting.value = false; }
+  }
+  function discardAdmission() { admittedGate = undefined; }
+  function consumePendingStop() {
+    if (startFlight || controller || !explicitStop) return false;
+    explicitStop = false;
+    return true;
+  }
   function start(): Promise<void> {
+    const gate = admittedGate; admittedGate = undefined;
     if (startFlight) return startFlight;
-    if (options.busy.value) return Promise.resolve();
+    if (options.busy.value) return Promise.reject(new Error(translate("视频正在生成，请等待完成")));
+    if (explicitStop) { explicitStop = false; return Promise.reject(new DOMException(translate("生成已取消"), "AbortError")); }
+    if (!gate || gate.token !== key.value) return Promise.reject(new Error(translate("片段或参数已变化，请重新确认报价")));
     starting.value = true;
     const local = controller = new AbortController(), scope = captureWorkspaceScope(), signal = AbortSignal.any([local.signal, ...(canvasSignal ? [canvasSignal()] : [])]), token = key.value;
-    explicitStop = false;
+    if (explicitStop) local.abort();
+    else explicitStop = false;
     let ownedRun: FrozenRun | undefined, ownedConfiguration = "", admitted = false;
     const check = () => { assertWorkspaceScope(scope); assertLive(signal); if (ownedRun && (currentRun() !== ownedRun || configurationKey(ownedRun) !== ownedConfiguration)) throw new Error(translate("片段或参数已变化，请重新确认报价")); if (token !== key.value) throw new Error(translate("片段或参数已变化，请重新确认报价")); };
     const work = Promise.resolve().then(async () => {
       check(); await refresh(); check();
       const run = currentRun(); if (!run) throw new Error(error.value || translate("请选择重拍片段并等待报价"));
       if (run.phase === "complete" && run.configurationKey === token) return;
+      if (token !== gate.token) throw new Error(translate("片段或参数已变化，请重新确认报价"));
       const quoted = Boolean(quote.value && quotedKey === token && quotedRunKey === runKey(run) && !quoting.value);
-      const resumeOnly = !quoted && run.parts.some(part => part.taskRequestId && !part.output);
-      if (!quoted && !resumeOnly) throw new Error(error.value || translate("请选择重拍片段并等待报价"));
-      const authorized = resumeOnly ? [] : unsent(run).map(part => part.id), fingerprint = runKey(run);
+      const charge = segmentRemakeCharge({
+        gateResumeOnly: gate.resumeOnly, gateFingerprint: gate.fingerprint, gatePoints: gate.points, runKey: runKey(run),
+        quoted, points: quoted ? Number(quote.value!.points) : undefined,
+        hasInFlight: run.parts.some(part => part.taskRequestId && !part.output), unsentIds: unsent(run).map(part => part.id),
+      });
+      if (charge.action === "reject") throw new Error(charge.reason === "reconfirm" ? translate("片段或参数已变化，请重新确认报价") : (error.value || translate("请选择重拍片段并等待报价")));
+      const authorized = charge.action === "submit" ? charge.authorized : [], fingerprint = runKey(run);
       ownedRun = run; ownedConfiguration = configurationKey(run);
-      if (authorized.length) try { await ElMessageBox.confirm(translate("将生成 {0} 个重拍片段，预计共 {1} 积分，完成后拼回原视频。", { 0: authorized.length, 1: quote.value!.points }), translate("片段重拍"), { confirmButtonText: translate("生成"), cancelButtonText: translate("取消"), type: "info" }); } catch (cause) { if (cause === "cancel" || cause === "close") return; throw cause; }
       check();
       if (currentRun() !== run || fingerprint !== runKey(run)) throw new Error(translate("片段或参数已变化，请重新确认报价"));
       admitted = true; options.busy.value = true; error.value = ""; quoteController?.abort(); run.phase = "generating";
@@ -298,6 +344,7 @@ export function useSegmentRemake(options: { node: GraphNode; ai: ReturnType<type
       options.busy.value = false; starting.value = false; status.value = "";
       if (startFlight === flight) startFlight = undefined;
       if (activeWork === flight) activeWork = undefined;
+      explicitStop = false;
       if (!disposed && autoVisible()) void refresh(true);
     });
     const flight = work; startFlight = flight; activeWork = flight; return flight;
@@ -305,5 +352,5 @@ export function useSegmentRemake(options: { node: GraphNode; ai: ReturnType<type
   function cancel() { explicitStop = true; controller?.abort(); }
   onScopeDispose(() => { disposed = true; sequence++; if (timer) clearTimeout(timer); quoteController?.abort(); controller?.abort(); });
   watch(active || ref(true), value => { if (!value) { quoteController?.abort(); controller?.abort(); } }, { flush: "sync" });
-  return { enabled, quote, error, quoting, status, pending, locked, ready, currentTime, refresh, start, cancel, wait: () => activeWork };
+  return { enabled, quote, error, quoting, status, pending, locked, admitting, confirming, ready, currentTime, refresh, admit, discardAdmission, consumePendingStop, start, cancel, wait: () => activeWork };
 }

@@ -1,6 +1,6 @@
 <template>
   <div class="personalization">
-    <settings-section :title="translate('创作说明')" :description="translate('写下你的风格、要求或习惯，保存后在下一条 Agent 消息中生效。')">
+    <settings-section :title="translate('创作说明')" :description="translate('保存后从下一条消息开始用')">
       <feedbackNotice v-if="document.error" :message="document.error"  />
       <el-input
         v-model="document.content"
@@ -36,7 +36,7 @@
       </div>
     </settings-section>
 
-    <settings-section :title="translate('创作记忆')" :description="translate('从下一次发送起控制是否自动使用创作记忆；关闭不会删除已保存的记忆或聊天内容。')">
+    <settings-section :title="translate('创作记忆')" :description="translate('关闭后不再使用，已有内容保留')">
       <settings-row :label="translate('启用创作记忆')">
         <el-switch
           :modelValue="memoryEnabled"

@@ -1,5 +1,5 @@
 <template>
-  <settings-section :description="translate('关闭后不再出现在添加菜单中，已有节点和内容会继续保留。')">
+  <settings-section :description="translate('关闭后不进添加菜单，已有节点保留')">
     <settings-row v-for="item in nodeCatalog" :key="item.type" :label="translate(item.label)">
       <el-switch :modelValue="!nodeSettings.disabledNodeTypes.includes(item.type)" :aria-label="translate('启用 {0}', { 0: translate(item.label) })" @change="value => setEnabled(item.type, value === true)" />
     </settings-row>

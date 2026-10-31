@@ -8,7 +8,8 @@
     topWidth="max-content"
     :downloadUrl="exporting ? '' : previewUrl"
     :downloadName="outputFile?.url.split(/[\\/]/).at(-1)"
-    :style="{ width: previewUrl && videoWidth ? `${videoWidth}px` : undefined }"
+    :mediaFrameHeight="videoFrameHeight || undefined"
+    :style="{ width: videoWidth ? `${videoWidth}px` : undefined }"
     @fullscreen="player?.enterFullscreen()">
     <template #topActions>
       <el-button v-for="entry in modelEntries" :key="entry.mode" :icon="entry.icon" text :disabled="!outputFile || uploading || uploadingDrag || exporting || actions?.processing || creatingEntry" :title="translate(entry.label)" :aria-label="translate(entry.label)" @click.stop="entry.mode === 'edit' ? videoIntents.open('video:edit') : createModeNode(entry)">{{ translate(entry.label) }}</el-button>
@@ -27,7 +28,8 @@
         :aria-label="translate('替换视频')"
         @click.stop="fileInput?.click()" />
     </template>
-    <div class="videoContent nopan">
+    <div class="videoContent nopan" :style="videoWidth && videoFrameHeight ? { aspectRatio: `${videoWidth} / ${videoFrameHeight}` } : undefined">
+      <div v-if="outputFile" class="mediaFramePlaceholder" aria-hidden="true" />
       <div v-if="exporting" class="exportLoading" role="status" :aria-label="translate('视频导出中')">
         <el-progress type="circle" :percentage="exportProgress" :width="64" :strokeWidth="3" />
         <span>{{ translate('正在导出视频') }}</span>
@@ -36,6 +38,7 @@
         v-else-if="previewUrl"
         ref="player"
         :src="previewUrl"
+        :aspect="videoAspectHint"
         :disabled="uploading || uploadingDrag"
         @dimensions="resizeVideo" />
       <input ref="fileInput" class="fileInput" type="file" accept="video/*" :aria-label="translate('选择视频')" :disabled="uploading || exporting" @change="uploadVideo" />
@@ -63,6 +66,7 @@ import videoActions from "./videoNode/videoActions.vue";
 import { useMediaPublication } from "../scaffold/mediaPublication";
 import { mediaExportProgress } from "../scaffold/mediaExport";
 import { videoSizeLabel } from "../../../../../../server/media-size-label";
+import { commitVideoFrame, layoutAspect, pixelsFromNodeData, videoMediaHeight, videoMediaWidth, watchVideoFrame, type MediaPixels } from "../scaffold/mediaFrame";
 import { useVideoModeEntries } from "./videoNode/useVideoModeEntries";
 import { useRegisterVideoActions } from "../videoActionRegistry";
 import { useVideoPaletteActions, combineCanvasToolExtensions } from "../useMediaPaletteActions";
@@ -84,8 +88,16 @@ const player = ref<InstanceType<typeof videoPlayer>>();
 const actions = ref<InstanceType<typeof videoActions>>();
 const exportProgress = computed(() => mediaExportProgress(node));
 const exporting = computed(() => typeof exportProgress.value === "number");
-const videoWidth = ref(0);
-const videoDimensions = ref<{ width: number; height: number }>();
+const storedVideo = pixelsFromNodeData(node.data);
+const storedLayout = layoutAspect(node.data);
+const videoLayout = ref<MediaPixels | undefined>(storedLayout);
+const videoWidth = ref(storedLayout ? videoMediaWidth(storedLayout.width, storedLayout.height) : 0);
+const videoDimensions = ref<MediaPixels | undefined>(storedVideo);
+const videoFrameHeight = computed(() => {
+  const size = videoLayout.value;
+  return size ? videoMediaHeight(size.width, size.height) : 0;
+});
+const videoAspectHint = computed(() => videoLayout.value ? `${videoLayout.value.width} / ${videoLayout.value.height}` : undefined);
 const mediaMeta = computed(() => videoDimensions.value ? videoSizeLabel(videoDimensions.value.width, videoDimensions.value.height) : "");
 const mediaMetaTitle = computed(() => videoDimensions.value ? `${videoDimensions.value.width} × ${videoDimensions.value.height}` : "");
 
@@ -94,10 +106,17 @@ const { entry: dragUploadEntry, uploading: uploadingDrag, retry: retryDragUpload
   outputs.value.video = { dataType: "VIDEO", value: { url: path, mimeType } };
 }, () => outputs.value);
 const outputFile = computed(() => outputs.value.video?.dataType === "VIDEO" ? outputs.value.video.value : undefined);
-watch(() => outputFile.value?.url, () => { videoDimensions.value = undefined; });
 const previewUrl = files.useFileUrl(
   outputFile,
   (error) => showError(error, translate("视频读取失败"))
+);
+watchVideoFrame(
+  () => outputFile.value,
+  videoWidth,
+  videoDimensions,
+  videoLayout,
+  node.data,
+  (path, mimeType) => files.getWorkspaceFiles().acquirePreviewUrl?.(path, mimeType, 1024),
 );
 useRegisterVideoActions(node, {
   available: () => Boolean(outputFile.value?.url && previewUrl.value && player.value && actions.value)
@@ -169,9 +188,8 @@ useVideoPaletteActions({
 });
 
 async function resizeVideo({ width, height }: { width: number; height: number }) {
-  if (!width || !height) return;
-  videoDimensions.value = { width, height };
-  videoWidth.value = Math.min(640, Math.max(240, (240 * width) / height));
+  videoLayout.value = { width, height };
+  if (!commitVideoFrame(videoWidth, videoDimensions, node.data, width, height)) return;
   await nextTick();
   updateNodeInternals();
 }
@@ -218,20 +236,22 @@ function showError(error: unknown, fallback: string) {
   min-height: 144px;
   &:has(.videoPlayer) { min-height: 0; }
   overflow: hidden;
-  border-radius: var(--el-border-radius-base);
-
-  .exportLoading {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 12px;
-    padding: 20px;
-    color: var(--el-text-color-secondary);
-  }
-
-  .fileInput {
-    display: none;
-  }
-
+  border-radius: inherit;
+  background: var(--canvas-node, var(--el-bg-color-overlay));
 }
+.mediaFramePlaceholder {
+  position: absolute;
+  inset: 0;
+  background: var(--canvas-node, var(--el-bg-color-overlay));
+}
+.videoContent :deep(.videoPlayer) { position: relative; z-index: 1; width: 100%; height: 100%; }
+.videoContent .exportLoading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 20px;
+  color: var(--el-text-color-secondary);
+}
+.fileInput { display: none; }
 </style>

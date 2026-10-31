@@ -1,4 +1,4 @@
-import { ChatCircleText, ClockCounterClockwise, FolderSimple, GearSix, House, Images, Lightbulb, UserCircle, Wallet } from '@phosphor-icons/react'
+import { ChatCircleText, ClockCounterClockwise, FolderSimple, GearSix, House, Images, UserCircle, Wallet } from '@phosphor-icons/react'
 import { useLang } from '../i18n'
 import { isChineseLang } from '../shellLanguage'
 import { DesktopUpdateButton } from './DesktopUpdate'
@@ -27,11 +27,15 @@ export default function DesktopRail({ active, onHome, onProjects, onCases, onAss
         <button type="button" className="desktop-edge-rail__brand" aria-label={t('desktop.nav.home')} onClick={onHome}>
           <img src="/miaoimg-logo.png" alt="" /><span className="desktop-edge-rail__wordmark">{t('app.title')}{isChineseLang(lang) && <small>MiaoImg</small>}</span>
         </button>
+        <DesktopUpdateButton />
       </div>
       <div className="desktop-edge-rail__body">
       <nav className="desktop-edge-rail__nav" aria-label={t('desktop.nav.workspace')}>
         <button type="button" aria-current={active === 'home' ? 'page' : undefined} onClick={onHome}>
           <House size={19} aria-hidden="true" /><span>{t('desktop.nav.home')}</span>
+        </button>
+        <button type="button" aria-current={active === 'account' ? 'page' : undefined} onClick={onAccount}>
+          <UserCircle size={19} aria-hidden="true" /><span>{t('desktop.nav.account')}</span>
         </button>
         <button type="button" aria-current={active === 'projects' || active === 'canvas' ? 'page' : undefined} onClick={onProjects}>
           <FolderSimple size={19} aria-hidden="true" /><span>{t('desktop.nav.projects')}</span>
@@ -58,15 +62,6 @@ export default function DesktopRail({ active, onHome, onProjects, onCases, onAss
           <GearSix size={19} aria-hidden="true" /><span>{t('desktop.nav.settings')}</span>
         </button>
       </nav>
-      </div>
-      <div className="desktop-edge-rail__footer">
-      <DesktopUpdateButton />
-      <button type="button" className="desktop-edge-rail__account desktop-edge-rail__changelog" onClick={() => window.dispatchEvent(new Event('miao-show-release-notes'))}>
-        <Lightbulb size={19} aria-hidden="true" /><span>{t('desktop.nav.changelog')}</span>
-      </button>
-      <button type="button" className="desktop-edge-rail__account" aria-current={active === 'account' ? 'page' : undefined} onClick={onAccount}>
-        <UserCircle size={20} aria-hidden="true" /><span>{t('desktop.nav.account')}</span>
-      </button>
       </div>
     </aside>
   )

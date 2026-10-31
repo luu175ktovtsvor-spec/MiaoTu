@@ -15,6 +15,34 @@ export type SegmentRemakeRun = {
 };
 export type SegmentRemakeData = { segmentRemakeDraft?: SegmentRemakeDraft; segmentRemakeRun?: SegmentRemakeRun; segmentRemakeAudio?: "original" | "generated" };
 
+export type SegmentAdmission = "idle" | "confirm" | "start" | "reject";
+
+// Already-submitted parts resume without another confirm. Only newly quoted parts ask.
+export function segmentRemakeAdmission(input: { complete: boolean; quoted: boolean; resumeOnly: boolean; unsent: number; interactive: boolean }): SegmentAdmission {
+  if (input.complete) return "idle";
+  if (!input.quoted && !input.resumeOnly) return "reject";
+  if (input.interactive && !input.resumeOnly && input.unsent > 0) return "confirm";
+  return "start";
+}
+
+export type SegmentCharge =
+  | { action: "submit"; authorized: string[] }
+  | { action: "resume" }
+  | { action: "reject"; reason: "reconfirm" | "quote" };
+
+// start() quotes again after the dialog has closed. A paid admission may resume
+// receipts already in flight, and may submit new parts only at the same total.
+export function segmentRemakeCharge(input: {
+  gateResumeOnly: boolean; gateFingerprint: string; gatePoints?: number; runKey: string;
+  quoted: boolean; points?: number; hasInFlight: boolean; unsentIds: string[];
+}): SegmentCharge {
+  if (!input.gateResumeOnly && input.runKey !== input.gateFingerprint) return { action: "reject", reason: "reconfirm" };
+  if (input.gateResumeOnly) return { action: "resume" };
+  if (!input.quoted) return input.hasInFlight ? { action: "resume" } : { action: "reject", reason: "quote" };
+  if (input.gatePoints === undefined || input.points !== input.gatePoints) return { action: "reject", reason: "reconfirm" };
+  return { action: "submit", authorized: input.unsentIds };
+}
+
 export function normalizeSegmentRanges(ranges: readonly SegmentRange[], duration: number): SegmentRange[] {
   if (!Number.isFinite(duration) || duration < 4) throw new Error("原视频至少需要 4 秒");
   if (!ranges.length || ranges.length > 5) throw new Error("请选择 1–5 个重拍片段");

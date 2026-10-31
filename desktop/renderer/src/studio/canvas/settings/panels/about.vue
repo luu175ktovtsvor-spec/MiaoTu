@@ -1,6 +1,6 @@
 <template>
   <div class="about">
-    <div class="brand"><img src="/miaoimg-logo.png" :alt="translate('妙图 Logo')" /><div><h3>{{ translate('妙图') }}</h3><p>{{ translate('案例 · 创作画布') }}</p></div></div>
+    <div class="brand"><img src="/miaoimg-logo.png" :alt="translate('妙图 Logo')" /><div><h3>{{ translate('妙图') }}</h3><p>{{ translate('AI 无限画布') }}</p></div></div>
     <settings-section :title="translate('应用版本')">
       <p v-if="desktopVersion" class="version">v{{ desktopVersion }}</p>
       <p v-if="canCheck" class="hint">{{ translate(desktopHint) }}</p>
@@ -45,7 +45,7 @@ onBeforeUnmount(() => { disposed = true; unsubscribe?.(); });
 
 const desktopVersion = computed(() => snapshot.value?.currentVersion || "");
 const canCheck = computed(() => snapshot.value?.canCheck !== false);
-const desktopHint = computed(() => bridge?.platform === "darwin" ? "桌面版会在这里检查并自动更新，无需打开安装包。" : "桌面版会在这里检查并安装新版本。");
+const desktopHint = computed(() => bridge?.platform === "darwin" ? "桌面版在这里检查并自动更新" : "桌面版在这里检查并安装新版本");
 const busy = computed(() => action.value || ["checking", "downloading"].includes(snapshot.value?.state || ""));
 const actionLabel = computed(() => {
   const state = snapshot.value;
@@ -63,9 +63,9 @@ const statusText = computed(() => {
   if (state.state === "latest") return translate("当前已是最新版本 v{0}", { 0: state.currentVersion });
   if (state.state === "available") return state.version === state.currentVersion ? translate("当前版本有更新可下载") : translate("发现新版本 v{0}", { 0: state.version || "" });
   if (state.state === "downloading") return translate("正在下载更新 {0}%", { 0: state.percent ?? 0 });
-  if (state.state === "ready") return translate("客户端更新已下载完成，重启后生效。");
-  if (state.state === "failed") return translate("更新检查失败，请稍后重试。");
-  if (state.state === "dev") return translate("开发版本不提供更新检查，请使用正式桌面客户端。");
+  if (state.state === "ready") return translate("更新已下载，重启后生效");
+  if (state.state === "failed") return translate("更新检查失败，请稍后重试");
+  if (state.state === "dev") return translate("开发版不检查更新");
   return "";
 });
 

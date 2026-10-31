@@ -8,8 +8,8 @@
       <span v-if="skills.length" class="skillCount"><strong>{{ enabledCount }}</strong> / {{ skills.length }}<span>{{ translate('已启用') }}</span></span>
     </div>
     <div class="skillNote">
-      <p>{{ translate('Agent 按任务选择已启用的技能，也可在对话框输入 / 手动指定。') }}</p>
-      <p>{{ translate('开启本机操作后，还会读取你个人目录和当前工作文件夹里 .agents/skills 下的技能。') }}</p>
+      <p>{{ translate('Agent 按任务选用，也可输入 / 指定') }}</p>
+      <p>{{ translate('本机操作开启后，还会读取 .agents/skills') }}</p>
     </div>
     <feedbackNotice :message="error" @close="error = ''" />
     <div v-if="filtered.length" class="skillGrid">

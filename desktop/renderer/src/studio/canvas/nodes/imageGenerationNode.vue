@@ -1,7 +1,7 @@
 <template>
   <nodeSkeleton
     class="imageNodeShell"
-    :class="{ emptyGeneration: !previewUrl }"
+    :class="{ emptyGeneration: !outputFile }"
     v-bind="nodeProps"
     :modelLabel="nodeLocalModelLabel(data.model)"
     :mediaMeta="mediaMeta"
@@ -13,7 +13,8 @@
     :downloadName="outputFile?.url.split(/[\\/]/).at(-1)"
     @fullscreen="previewVisible = true"
     :bottomWidth="660"
-    :style="{ width: previewUrl && imageWidth ? `${imageWidth + 2}px` : undefined }">
+    :mediaFrameHeight="imageWidth ? 360 : undefined"
+    :style="{ width: imageWidth ? `${imageWidth + 2}px` : undefined }">
     <template v-if="editor?.mode" #top><div ref="paintToolbar" /></template>
     <template #topActions>
       <imageIntentMenu v-if="previewUrl" :controller="imageIntents" :disabled="imageOutpaint.busy || imageOutpaint.state.visible || imageGeometry.state.visible || imageGeometry.busy || imageBusy" />
@@ -31,12 +32,12 @@
       <input ref="fileInput" type="file" accept="image/*" hidden :aria-label="translate('选择替换图片')" :disabled="generating || deleting || uploading || uploadingDrag" @change="replaceOutput" />
       <el-button :icon="IconPencil" :disabled="generating || deleting || uploading || !previewUrl || gridSplit?.splitting" text :title="translate('标注')" :aria-label="translate('标注')" @click.stop="editor?.start('mark')" />
     </template>
-    <div v-loading="uploading" class="imageContent nopan" :aria-busy="generating || uploading">
+    <div v-loading="uploading" class="imageContent nopan" :aria-busy="generating || uploading" :style="imageWidth ? { aspectRatio: `${imageWidth} / 360` } : undefined">
+      <div v-if="outputFile" class="mediaFramePlaceholder" aria-hidden="true" />
       <imageEditor
         v-if="previewUrl"
         ref="editor"
         :src="previewUrl"
-        :previewSrc="displayPreviewUrl"
         :toolbarTarget="paintToolbar"
         :regionEdit="selectedModel?.regionEdit ?? null"
         :disabled="generating || deleting || uploading"
@@ -232,6 +233,7 @@ import imageMultiAngle from "./imageTools/components/imageMultiAngle.vue";
 import imagePanorama from "./imageTools/components/imagePanorama.vue";
 import imagePresetMenu from "./imageTools/components/imagePresetMenu.vue";
 import { mediaSizeLabel } from "../../../../../../server/media-size-label";
+import { commitImageFrame, imageMediaWidth, layoutAspect, pixelsFromNodeData, watchImageFrame } from "../scaffold/mediaFrame";
 
 defineOptions({
   inheritAttrs: false,
@@ -247,7 +249,7 @@ const { id, node, nodeProps, nodeEvent, outputs, files, ai, updateNodeInternals 
 });
 const delivery = useMediaTaskDelivery(node, outputs, "image");
 type PromptModel = NonNullable<InstanceType<typeof promptInput>["$props"]["modelValue"]>;
-const data = computed(() => node.data as { prompt: string; promptModel: PromptModel; inpaintPrompt: string; inpaintPromptModel: PromptModel; model: string; size: string; ratio: string; format?: string; background?: string; quality?: string; inputFidelity?: string; count?: number; layerDecomposition?: boolean; optimizePrompt?: string; parameters: Record<string, unknown>; taskRequestId?: string; taskExtraNodeIds?: string[] });
+const data = computed(() => node.data as { prompt: string; promptModel: PromptModel; inpaintPrompt: string; inpaintPromptModel: PromptModel; model: string; size: string; ratio: string; format?: string; background?: string; quality?: string; inputFidelity?: string; count?: number; layerDecomposition?: boolean; optimizePrompt?: string; parameters: Record<string, unknown>; taskRequestId?: string; taskExtraNodeIds?: string[]; mediaPixels?: { width: number; height: number } });
 if (!data.value.parameters) data.value.parameters = {};
 data.value.prompt ??= "";
 data.value.promptModel ??= [];
@@ -284,8 +286,11 @@ let disposed = false;
 const deleting = ref(false);
 const previewVisible = ref(false);
 useImagePreviewTools(previewVisible, () => !!previewUrl.value);
-const imageWidth = ref(0);
-const imageDimensions = ref<{ width: number; height: number }>();
+const hasImageOutput = outputs.value.image?.dataType === "IMAGE" && outputs.value.image.value;
+const storedImage = hasImageOutput ? pixelsFromNodeData(data.value) : undefined;
+const storedLayout = hasImageOutput ? layoutAspect(data.value) : undefined;
+const imageWidth = ref(storedLayout ? imageMediaWidth(storedLayout.width, storedLayout.height) : 0);
+const imageDimensions = ref<{ width: number; height: number } | undefined>(storedImage);
 // 节点头部按 LibTV 的叫法显示“比例 · 清晰度”，精确像素放在悬停提示里。
 const mediaMeta = computed(() => imageDimensions.value ? mediaSizeLabel(`${imageDimensions.value.width}x${imageDimensions.value.height}`) : "");
 const mediaMetaTitle = computed(() => imageDimensions.value ? `${imageDimensions.value.width} × ${imageDimensions.value.height}` : "");
@@ -453,6 +458,12 @@ const previewUrl = files.useFileUrl(
   outputFile,
   (error) => showNodeError(error, translate("图片读取失败"))
 );
+watchImageFrame(
+  () => outputFile.value?.url,
+  imageWidth,
+  data.value,
+  (path, signal) => files.getWorkspaceFiles().readImageSize?.(path, signal),
+);
 const imageBusy = computed(() => generating.value || deleting.value || uploading.value || uploadingDrag.value
   || Boolean(editor.value?.busy) || Boolean(lighting.value?.generating) || Boolean(multiAngle.value?.generating)
   || Boolean(panorama.value?.busy) || Boolean(gridSplit.value?.splitting));
@@ -498,9 +509,7 @@ const composerVisible = ref(false);
 const composerExpanded = ref(false);
 const { addSelectedNodes, removeSelectedElements } = useVueFlow();
 watchEffect(() => { composerVisible.value = composerExpanded.value || autoEstimateVisible.value; });
-
-const displayPreviewUrl = files.useFileUrl(outputFile, () => {}, true);
-// A thumbnail only determines layout. Read the original dimensions on demand
+// Node layout can use the displayed original. Read the original dimensions on demand
 // for the selected node, reusing the workspace's browser media cache.
 watch([previewUrl, () => node.selected], async ([source, selected], previous, onCleanup) => {
   if (source !== previous?.[0]) imageDimensions.value = undefined;
@@ -834,7 +843,7 @@ async function resizeImage(event: Event) {
   const image = event.currentTarget as HTMLImageElement;
   if (!image.naturalWidth || !image.naturalHeight) return;
   if (image.src === previewUrl.value) imageDimensions.value = { width: image.naturalWidth, height: image.naturalHeight };
-  imageWidth.value = (360 * image.naturalWidth) / image.naturalHeight;
+  if (!commitImageFrame(imageWidth, data.value, image.naturalWidth, image.naturalHeight)) return;
   await nextTick();
   updateNodeInternals();
 }
@@ -989,21 +998,25 @@ async function focusPrompt() {
   place-items: center;
   min-height: 144px;
   overflow: hidden;
-  border-radius: var(--el-border-radius-base);
-
-  .imageEmpty {
-    align-content: center;
-    gap: 18px;
-    display: grid;
-    place-items: center;
-    min-height: 144px;
-    color: var(--el-text-color-placeholder);
-  }
-
-  :deep(.el-loading-mask) {
-    pointer-events: none;
-  }
-
+  border-radius: inherit;
+  background: var(--canvas-node, var(--el-bg-color-overlay));
+}
+.mediaFramePlaceholder {
+  position: absolute;
+  inset: 0;
+  background: var(--canvas-node, var(--el-bg-color-overlay));
+}
+.imageContent :deep(.imageEditor) { position: absolute; inset: 0; width: 100%; height: 100%; }
+.imageContent .imageEmpty {
+  align-content: center;
+  gap: 18px;
+  display: grid;
+  place-items: center;
+  min-height: 144px;
+  color: var(--el-text-color-placeholder);
+}
+.imageContent :deep(.el-loading-mask) {
+  pointer-events: none;
 }
 
 .localRatio {

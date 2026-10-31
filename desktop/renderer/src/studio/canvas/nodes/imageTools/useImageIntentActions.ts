@@ -2,6 +2,7 @@ import { computed, inject, nextTick, onScopeDispose, reactive, watch, type Ref }
 import { useVueFlow, type GraphNode } from "@vue-flow/core";
 import { translate } from "@miaoimg/i18n/vue";
 import { assertWorkspaceScope, captureWorkspaceScope } from "@/lib/workspaceRemote";
+import { nodeTools, z } from "@miaoimg/nodes-scaffold/runtime";
 import type { NodeInpaintInput, NodeMediaModel } from "../../scaffold/nodeAi";
 import type { CanvasToolExtension } from "../../useMediaPaletteActions";
 import { useCanvasToolRegistry } from "../../canvasToolRegistry";
@@ -10,6 +11,8 @@ import { useImageVariationNode } from "./useImageVariationNode";
 import { useNodeFiles } from "../../scaffold/workspaceFiles";
 import { fitsCustomSize } from "../../scaffold/nodeAi";
 import { imageRedrawOutput } from "./imageRedrawOutput";
+
+const headlessIntents = ["edit-element", "remove-background", "portrait-texture", "restyle", "ai-redraw"] as const;
 
 const key = (model: NodeMediaModel) => JSON.stringify([model.providerId, model.modelId]);
 
@@ -127,6 +130,69 @@ export function useImageIntentActions(options: {
     } catch (error) { if (!operationSignal.aborted && !lifetime.signal.aborted) options.onError(error); }
     finally { state.preparing = false; }
   }
+  nodeTools.register({
+    name: "prepareImageIntent",
+    description: "按元素编辑、透明背景、人像质感、造型调整或 AI 高清重绘创建图片生成节点并连接原图。不打开面板，不提交生成。intent 取 edit-element、remove-background、portrait-texture、restyle、ai-redraw。模型、尺寸、比例先查 getImageTools；省略 size/ratio 时沿用当前节点或重绘计算值。透明背景会请求 png。擦除物体和标注需要蒙版，不能用本函数代替。返回 nodeId，用户确认后再对新节点 generateImage。",
+    parameters: z.strictObject({
+      intent: z.enum(headlessIntents),
+      prompt: z.string().trim().min(1).max(10000),
+      providerId: z.string().min(1),
+      modelId: z.string().min(1),
+      size: z.string().min(1).optional(),
+      ratio: z.string().min(1).optional(),
+      quality: z.string().min(1).optional(),
+    }),
+    async execute(args, { signal }) {
+      if (busy.value) throw new Error(translate("图片处理中，请稍后重试"));
+      if (!usable()) throw new Error(translate("原图片已变化或正在处理，请重新操作"));
+      const canvas = canvasSignal?.();
+      const operation = AbortSignal.any([lifetime.signal, ...(signal ? [signal] : []), ...(canvas ? [canvas] : [])]);
+      operation.throwIfAborted();
+      const source = JSON.stringify(options.node.data.outputs?.image);
+      const assertSource = () => {
+        operation.throwIfAborted();
+        if (!usable() || JSON.stringify(options.node.data.outputs?.image) !== source) throw new Error(translate("原图片已变化或正在处理，请重新操作"));
+      };
+      state.preparing = true;
+      try {
+        const id = `image:${args.intent}` as ImageIntentId;
+        const models = await options.loadModels();
+        assertSource();
+        const model = imageIntentModels(id, models).find(item => item.providerId === args.providerId && item.modelId === args.modelId);
+        if (!model) throw new Error(translate("暂无支持此图片操作的可用模型"));
+        let size = args.size || "";
+        let ratio = args.ratio || "";
+        if (args.intent === "ai-redraw" && !args.size) {
+          const dimensions = await files.getWorkspaceFiles().readImageSize?.(options.node.data.outputs!.image.value.url, operation);
+          assertSource();
+          const output = imageRedrawOutput(model, dimensions?.width, dimensions?.height);
+          size = output.size; if (!args.ratio) ratio = output.ratio;
+        }
+        if (!size) {
+          const sizes = model.imageSizes || [];
+          size = sizes.includes(String(options.node.data.size)) ? String(options.node.data.size) : sizes[0] || "";
+        }
+        if (!ratio) {
+          const ratios = model.imageRatios || [];
+          ratio = ratios.includes(String(options.node.data.ratio)) ? String(options.node.data.ratio) : ratios.includes("auto") ? "auto" : ratios[0] || "";
+        }
+        const sizeOk = Boolean(model.imageSizes?.includes(size) || args.intent === "ai-redraw" && model.customSize && fitsCustomSize(model.sizeRule, size));
+        if (!sizeOk || ratio && !model.imageRatios?.includes(ratio) || args.quality && !model.quality?.includes(args.quality)) throw new Error(translate("暂无支持此图片操作的可用模型"));
+        const definition = imageIntent(id)!;
+        const result = await createVariation({
+          label: translate(definition.label), prompt: args.prompt.trim(), model: key(model), size, ratio,
+          ...(args.intent === "remove-background" ? { background: "transparent", format: "png" } : {}),
+          ...(args.quality ? { quality: args.quality } : {}),
+        }, operation, assertSource);
+        const created = flow.findNode(result.nodeId);
+        if (created) {
+          flow.removeSelectedElements(); flow.addSelectedNodes([created]); await nextTick();
+          if (!operation.aborted && flow.findNode(result.nodeId) === created) await flow.fitView({ nodes: [result.nodeId], padding: 0.4, maxZoom: 1, duration: 200 }).catch(() => {});
+        }
+        return { nodeId: result.nodeId, edgeId: result.edgeId, prepared: true, generationStarted: false };
+      } finally { state.preparing = false; }
+    },
+  });
   const extension: CanvasToolExtension = {
     available: tool => Boolean(imageIntent(tool) && usable() && imageIntentModels(tool, registry?.models.value.length ? registry.models.value : state.models).length),
     ready: tool => Boolean(imageIntent(tool) && usable()),

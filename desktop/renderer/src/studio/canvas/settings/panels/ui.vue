@@ -17,7 +17,7 @@
           <span class="modeCaption"><component :is="mode.icon" :size="15" aria-hidden="true" /><span>{{ translate(mode.label) }}</span><span class="modeCheck" aria-hidden="true"><icon-check v-if="uiSettings.theme === mode.value" :size="11" :stroke-width="2.8" /></span></span>
         </button>
       </div>
-      <p class="appearanceSectionHint">{{ translate('跟随系统切换明暗，也可以固定外观或选择自己的背景色。') }}</p>
+      <p class="appearanceSectionHint">{{ translate('跟随系统，或固定明暗和背景') }}</p>
     </section>
 
     <section v-if="uiSettings.theme === 'custom'" class="customBackground" :aria-label="translate('背景颜色')">
@@ -31,7 +31,7 @@
           <el-input v-model="backgroundInput" maxlength="7" spellcheck="false" :aria-label="translate('背景颜色值')" :placeholder="uiSettings.backgroundColor" @change="changeBackground" @blur="backgroundInput = uiSettings.backgroundColor.toUpperCase()" />
         </div>
       </div>
-      <p class="appearanceSectionHint">{{ translate('背景、面板和文字一起适配，图片与视频保持原色。') }}</p>
+      <p class="appearanceSectionHint">{{ translate('背景和文字一起变，图片视频保持原色') }}</p>
     </section>
 
     <section class="appearanceWorkbench">
@@ -43,7 +43,7 @@
             <span class="colorDivider" aria-hidden="true" />
             <span class="customAccentPicker"><el-color-picker :model-value="uiSettings.primaryColor" color-format="hex" :aria-label="translate('自定义主题色')" @change="changeColor" /><span>{{ translate('自定义') }}</span></span>
           </div>
-          <p class="controlHint">{{ translate('按钮、选中状态和画布高亮都用它。') }}</p>
+          <p class="controlHint">{{ translate('按钮、选中态和画布高亮') }}</p>
         </div>
 
         <div class="appearanceControl scaleControl">

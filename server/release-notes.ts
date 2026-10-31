@@ -20,6 +20,20 @@ export const RELEASE_NOTE_SECTIONS = [
 const item = (zh: string, en: string): ReleaseNoteItem => ({ zh, en })
 
 export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
+  '3.2.3': {
+    title: { zh: '画布画面与侧栏', en: 'Canvas frames and the sidebar' },
+    features: [],
+    improvements: [
+      item('图片和视频节点先按画面比例占位，加载完成后保持同一形状。清晰度和像素提示使用原片尺寸。', 'Image and video nodes reserve their frame from the picture’s aspect ratio and keep that shape after loading. Resolution labels and pixel details use the original size.'),
+      item('设置里的说明写得更短。关于页的产品说明改为「AI 无限画布」。', 'Shorter descriptions in Settings. The About page now reads “The AI infinite canvas.”'),
+      item('账号放进侧栏主导航。没有新版本时不显示更新按钮，有新版本时在标志旁边显示下载图标。', 'Account sits in the main sidebar. The update button stays hidden until a new version is available, then appears as a download icon beside the logo.'),
+      item('生成历史的筛选项保持自身宽度。', 'Generation history filters keep their own width.'),
+    ],
+    fixes: [
+      item('修复片段重拍在重新报价失败或金额变化后，仍会生成尚未提交的片段。', 'Fixed segment retake submitting clips that had not been sent after a new quote failed or the price changed.'),
+      item('修复把画面比例、节点外框或缩小后的预览当成成片分辨率，清晰度显示错误且不再重新测量。', 'Fixed aspect ratios, node frames, and reduced previews being treated as the finished resolution, so the quality label was wrong and the file was not measured again.'),
+    ],
+  },
   '3.2.2': {
     title: { zh: '灵感库与创作界面更新', en: 'An updated inspiration library and creative workspace' },
     features: [

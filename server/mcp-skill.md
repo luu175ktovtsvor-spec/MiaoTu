@@ -36,6 +36,12 @@ description: 通过妙图 MCP 读取和编辑已打开的妙图桌面画布，�
 
 图片/视频生成节点的模型能力以节点 `node:getConfig` 返回为准：视频的 `modeGuide` 列出每个模型支持的全部模式及各自要连入的素材，模式可以先选再连素材；模型没有列出的模式就是不支持，不用其他模式冒充。文本节点 `node:createStoryboard` 把正文拆成分组内的图片生成节点，图片节点 `node:applyImagePreset` 使用工具栏快捷预设，二者都只准备节点不生成；整组生成前用 `estimateGroup` 读取组内报价合计并请用户确认。
 
+片段重拍不要自己拼节点。原视频节点调用 `prepareSegmentRemake` 只创建草稿并连上原片，不生成。新节点用 `setSegments` 选段，再用 `getConfig` 看报价。用户确认费用后，`generateVideo` 会立即返回 `generating` 并按报价扣费，不再弹出确认框；报价没好或同一配置已经完成时不会开始。停止用该节点的 `cancelGeneration`。取消这次 MCP 调用不会停掉已经返回的重拍。
+
+图片节点还可以不打开面板、不生成地准备：`prepareImageIntent`（元素编辑、透明背景、人像质感、造型调整、高清重绘）、`applyImageGeometry`（裁剪、旋转、镜像）、`prepareImageOutpaint`（扩图）、`prepareImageLayers`（图层分离）。擦除物体和标注仍要蒙版，用已有的 `editImageMarks` / `generateInpaint`，不要等用户去点对话框。
+
+视频的元素替换、主体消除、去字幕、背景编辑、人物编辑和编辑视频，用原视频节点的 `prepareVideoEdit`。它按界面同一套素材校验和默认规格建好编辑节点并连上原片，可选带上画布里已有的参考图片或音频；不弹窗，不生成。模型先从视频生成节点的 `getConfig` 里选 `edit` 模式。用户确认费用后再对新节点 `generateVideo`。延长视频没有单独函数：`addNode` 视频生成节点，`connectNodes` 连上原片，`setConfig` 把 `mode` 设为 `extend`。
+
 围绕作品组织流程，例如「剧本 → 分镜 → 参考素材 → 镜头生成 → 合成」，而非堆放无关节点。每个阶段的输出应连接到下一步实际需要的输入。
 
 ## 文档、素材与辅助工具

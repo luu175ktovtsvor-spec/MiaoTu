@@ -32,7 +32,7 @@
 .desktop-edge-rail{width:240px;flex:0 0 240px;height:100dvh;display:flex;flex-direction:column;align-items:stretch;padding:74px 12px 16px;border-inline-end:1px solid var(--color-line);background:var(--color-canvas);color:var(--color-muted);-webkit-app-region:drag}
 .desktop-edge-rail button{font:inherit;-webkit-app-region:no-drag;cursor:pointer}
 .desktop-edge-rail__masthead{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%}
-.desktop-edge-rail__brand{display:flex;width:100%;height:42px;align-items:center;justify-content:flex-start;gap:9px;padding:0 11px;border:1px solid var(--color-line);border-radius:10px;background:color-mix(in srgb,var(--color-elevate) 82%,transparent);color:var(--color-ink);font-size:13px!important;font-weight:600}
+.desktop-edge-rail__brand{display:flex;flex:1;min-width:0;width:100%;height:42px;align-items:center;justify-content:flex-start;gap:9px;padding:0 11px;border:1px solid var(--color-line);border-radius:10px;background:color-mix(in srgb,var(--color-elevate) 82%,transparent);color:var(--color-ink);font-size:13px!important;font-weight:600}
 .desktop-edge-rail__brand img{display:block;width:24px;height:24px;object-fit:contain}
 .desktop-edge-rail__wordmark{display:flex;min-width:0;flex-direction:column;align-items:flex-start;line-height:1.05;letter-spacing:.08em}
 .desktop-edge-rail__wordmark small{margin-top:4px;color:var(--color-muted);font-size:8px;font-weight:500;letter-spacing:.18em;text-transform:none}
@@ -180,10 +180,10 @@
 .desktop-edge-rail__body{flex:1;min-height:0;overflow-y:auto;scrollbar-width:thin}
 .desktop-edge-rail__footer{display:grid;flex-shrink:0;gap:4px;width:100%;padding-top:12px;margin-top:auto}
 .desktop-edge-rail__footer .desktop-edge-rail__account{margin-top:0}
-.desktop-update-button{overflow:hidden}
-.desktop-update-button>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.desktop-update-button{position:relative;display:grid;flex:none;width:34px;height:34px;place-items:center;overflow:hidden;border:0;border-radius:10px;background:transparent;color:var(--color-muted);cursor:pointer}
+.desktop-update-button:hover{background:color-mix(in srgb,var(--color-elevate) 72%,transparent);color:var(--color-ink)}
 .desktop-update-button:disabled{cursor:progress;opacity:.7}
-.desktop-update-available{flex-shrink:0;width:6px;height:6px;margin-inline-start:auto;border-radius:50%;background:var(--color-accent)}
+.desktop-update-available{position:absolute;top:7px;inset-inline-end:7px;width:6px;height:6px;border-radius:50%;background:var(--color-accent)}
 .desktop-update-progress{position:absolute;inset-inline-start:0;bottom:0;height:2px;background:var(--color-accent);transition:width .2s}
 .desktop-update-spinner{animation:desktop-update-spin 1s linear infinite}
 @keyframes desktop-update-spin{to{transform:rotate(360deg)}}

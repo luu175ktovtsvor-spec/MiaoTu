@@ -10,7 +10,8 @@
     :downloadUrl="previewUrl"
     :downloadName="outputFile?.url.split(/[\\/]/).at(-1)"
     @fullscreen="previewVisible = true"
-    :style="{ width: previewUrl && imageWidth ? `${imageWidth + 2}px` : undefined }">
+    :mediaFrameHeight="imageWidth ? 360 : undefined"
+    :style="{ width: imageWidth ? `${imageWidth + 2}px` : undefined }">
     <template v-if="editor?.mode" #top><div ref="paintToolbar" /></template>
     <template #topActions>
       <imageIntentMenu v-if="previewUrl" :controller="imageIntents" :disabled="imageOutpaint.busy || imageOutpaint.state.visible || imageGeometry.state.visible || imageGeometry.busy || imageBusy || gridSplit?.splitting" />
@@ -53,12 +54,12 @@
         :aria-label="translate('替换图片')"
         @click.stop="fileInput?.click()" />
     </template>
-    <div class="imageContent nopan">
+    <div class="imageContent nopan" :style="imageWidth ? { aspectRatio: `${imageWidth} / 360` } : undefined">
+      <div v-if="outputFile" class="mediaFramePlaceholder" aria-hidden="true" />
       <imageEditor
         v-if="previewUrl"
         ref="editor"
         :src="previewUrl"
-        :previewSrc="displayPreviewUrl"
         :toolbarTarget="paintToolbar"
         :regionEdit="inpaintRegionEdit"
         :disabled="imageBusy"
@@ -140,6 +141,7 @@ import { mediaSizeLabel } from "../../../../../../server/media-size-label";
 import { assetFileType } from "../assetFile";
 import { useMediaTaskDelivery } from "../scaffold/useMediaTaskDelivery";
 import { useMediaPublication } from "../scaffold/mediaPublication";
+import { commitImageFrame, imageMediaWidth, layoutAspect, pixelsFromNodeData, watchImageFrame } from "../scaffold/mediaFrame";
 
 defineOptions({
   inheritAttrs: false,
@@ -166,8 +168,10 @@ const inpaintRegionEdit = ref<"mask" | "annotation" | null>(null);
 const uploading = ref(false);
 const previewVisible = ref(false);
 useImagePreviewTools(previewVisible, () => !!previewUrl.value);
-const imageWidth = ref(0);
-const imageDimensions = ref<{ width: number; height: number }>();
+const storedImage = pixelsFromNodeData(node.data);
+const storedLayout = layoutAspect(node.data);
+const imageWidth = ref(storedLayout ? imageMediaWidth(storedLayout.width, storedLayout.height) : 0);
+const imageDimensions = ref<{ width: number; height: number } | undefined>(storedImage);
 const mediaMeta = computed(() => imageDimensions.value ? mediaSizeLabel(`${imageDimensions.value.width}x${imageDimensions.value.height}`) : "");
 const mediaMetaTitle = computed(() => imageDimensions.value ? `${imageDimensions.value.width} × ${imageDimensions.value.height}` : "");
 
@@ -177,7 +181,7 @@ const { entry: dragUploadEntry, uploading: uploadingDrag, retry: retryDragUpload
   outputs.value.image = { dataType: "IMAGE", value: { url: path, mimeType } };
 }, () => outputs.value);
 const outputFile = computed(() => outputs.value.image?.dataType === "IMAGE" ? outputs.value.image.value : undefined);
-const inpaintData = computed(() => node.data as { taskRequestId?: string });
+const inpaintData = computed(() => node.data as { taskRequestId?: string; mediaPixels?: { width: number; height: number } });
 const delivery = useMediaTaskDelivery(node, outputs, "image");
 const preparedOutpaint = usePreparedOutpaint({ node, outputs, files, loadModels: () => ai.getMediaModels(true) });
 const inpaintTask = useInpaintTask({ nodeId: id, data: inpaintData, outputs, ai, delivery, prepare: prepareInpaint, applied: () => editor.value?.cancel() });
@@ -230,8 +234,12 @@ const previewUrl = files.useFileUrl(
   outputFile,
   (error) => showError(error, translate("图片读取失败"))
 );
-
-const displayPreviewUrl = files.useFileUrl(outputFile, () => {}, true);
+watchImageFrame(
+  () => outputFile.value?.url,
+  imageWidth,
+  node.data,
+  (path, signal) => files.getWorkspaceFiles().readImageSize?.(path, signal),
+);
 // Preview dimensions only control layout; the quality label belongs to the original.
 watch([() => outputFile.value?.url, previewUrl, () => node.selected], async ([path, source, selected], previous, onCleanup) => {
   if (path !== previous?.[0] || source !== previous?.[1]) imageDimensions.value = undefined;
@@ -339,9 +347,7 @@ async function resizeImage(event: Event) {
   const image = event.currentTarget as HTMLImageElement;
   if (!image.naturalWidth || !image.naturalHeight) return;
   if (image.src === previewUrl.value) imageDimensions.value = { width: image.naturalWidth, height: image.naturalHeight };
-  // 预览高度放大到 360：文件本身按原图保存（不做压缩），但 240px 的缩小预览
-  // 会让人以为画质被压了，这里让节点里的画面更接近原图观感。
-  imageWidth.value = 360 * image.naturalWidth / image.naturalHeight;
+  if (!commitImageFrame(imageWidth, node.data, image.naturalWidth, image.naturalHeight)) return;
   await nextTick();
   updateNodeInternals();
 }
@@ -387,11 +393,17 @@ function showError(error: unknown, fallback: string) {
 
 <style scoped lang="scss">
 .imageContent {
+  position: relative;
   min-height: 144px;
-
-  .fileInput {
-    display: none;
-  }
-
+  overflow: hidden;
+  border-radius: inherit;
+  background: var(--canvas-node, var(--el-bg-color-overlay));
 }
+.mediaFramePlaceholder {
+  position: absolute;
+  inset: 0;
+  background: var(--canvas-node, var(--el-bg-color-overlay));
+}
+.imageContent :deep(.imageEditor) { position: absolute; inset: 0; width: 100%; height: 100%; }
+.fileInput { display: none; }
 </style>

@@ -1,6 +1,6 @@
 <template>
   <div class="imageEditor" :class="{ editing: mode }">
-    <img ref="sourceImage" :src="mode || previewFailed ? src : previewSrc || src" :alt="alt" draggable="false" @load="emit('load', $event)" @error="imageError" />
+    <img ref="sourceImage" :src="src" :alt="alt" draggable="false" @load="emit('load', $event)" @error="emit('error', $event)" />
     <canvas
       v-if="mode"
       ref="paintCanvas"
@@ -63,7 +63,7 @@ import { nodeTools, z } from "../nodeTools";
 import { uploadNodeFile, useNodeFiles } from "../workspaceFiles";
 import type { NodeImageEdit } from "../nodeAi";
 
-const props = defineProps<{ src: string; previewSrc?: string; alt: string; toolbarTarget?: HTMLElement; disabled?: boolean; regionEdit?: "mask" | "annotation" | null }>();
+const props = defineProps<{ src: string; alt: string; toolbarTarget?: HTMLElement; disabled?: boolean; regionEdit?: "mask" | "annotation" | null }>();
 const emit = defineEmits<{ load: [event: Event]; error: [event: Event] }>();
 const { node } = useNode();
 const { addNodes, findNode, getNodes, nodeTypes } = useVueFlow();
@@ -71,12 +71,6 @@ const files = useNodeFiles();
 const getCanvas = inject<(() => { id: string } | undefined) | undefined>("canvas", undefined);
 const batchHistory = inject<(action: () => Promise<void>) => Promise<void>>("batchCanvasHistory", action => action());
 const sourceImage = ref<HTMLImageElement>();
-const previewFailed = ref(false);
-watch(() => props.previewSrc, () => { previewFailed.value = false; });
-function imageError(event: Event) {
-  if (!mode.value && props.previewSrc && !previewFailed.value) previewFailed.value = true;
-  else emit("error", event);
-}
 const paintCanvas = ref<HTMLCanvasElement>();
 const mode = ref<"inpaint" | "mark">();
 const busy = ref(false);
@@ -145,7 +139,7 @@ onBeforeUnmount(cancel);
 async function start(value: "inpaint" | "mark") {
   if (props.disabled || busy.value) return;
   const source = props.src;
-  // 展示用小预览，标记和局部重绘必须等待原图，不能在缩略图上生成蒙版。
+  // 画布节点展示原图像素。标记和局部重绘也必须在原图上生成蒙版，不能用缩略图。
   const original = new Image();
   original.src = source;
   busy.value = true;
@@ -483,6 +477,7 @@ defineExpose({ mode, busy, start, cancel, buildEdit });
 .imageEditor {
   position: relative;
   width: 100%;
+  height: 100%;
   display: grid;
   place-items: center;
 

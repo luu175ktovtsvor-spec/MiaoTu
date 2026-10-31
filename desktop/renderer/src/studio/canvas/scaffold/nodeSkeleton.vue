@@ -220,6 +220,7 @@ type SkeletonProps = {
   downloadUrl?: string;
   downloadName?: string;
   fullscreenDisabled?: boolean;
+  mediaFrameHeight?: number;
 };
 
 const topVisible = defineModel<boolean>("topVisible", { default: false });
@@ -245,7 +246,7 @@ const handleGroups = computed(() => [
   { type: "target" as const, position: Position.Left, items: props.handles.filter((item) => item.type === "target") },
   { type: "source" as const, position: Position.Right, items: props.handles.filter((item) => item.type === "source") },
 ]);
-const cardHeight = computed(() => Math.max(100, ...handleGroups.value.map((group) => (group.items.length + 1) * 44)));
+const cardHeight = computed(() => Math.max(100, props.mediaFrameHeight || 0, ...handleGroups.value.map((group) => (group.items.length + 1) * 44)));
 const { id: nodeId, node } = useNode();
 const documentContext = inject<NodeDocumentContext | undefined>("nodeDocument", undefined);
 const documentTarget = computed(() => documentContext?.targets.get(nodeId));

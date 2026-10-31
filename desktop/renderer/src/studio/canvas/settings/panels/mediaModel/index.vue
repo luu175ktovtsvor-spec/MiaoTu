@@ -2,7 +2,7 @@
   <div class="mediaModels">
     <feedbackNotice v-if="error" :message="error"  />
     <p v-else-if="loading && !models.length" class="mediaStatus" role="status">{{ translate('正在读取模型目录…') }}</p>
-    <p v-else-if="!loading && !groups.length" class="mediaStatus" role="status">{{ translate('当前没有可用的图片或视频模型。') }}</p>
+    <p v-else-if="!loading && !groups.length" class="mediaStatus" role="status">{{ translate('当前没有可用的图片或视频模型') }}</p>
 
     <section v-for="group in groups" :key="group.key" class="mediaGroup">
       <header class="mediaGroupHead">

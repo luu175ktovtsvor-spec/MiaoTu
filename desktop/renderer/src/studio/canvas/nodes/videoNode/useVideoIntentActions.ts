@@ -1,7 +1,7 @@
 import { computed, inject, nextTick, onScopeDispose, reactive, watch, type Ref } from "vue";
 import { useVueFlow, type GraphNode } from "@vue-flow/core";
 import { translate } from "@miaoimg/i18n/vue";
-import { useNodeFiles, useNodeFfmpeg, type NodeMediaValue } from "@miaoimg/nodes-scaffold/runtime";
+import { nodeTools, useNodeFiles, useNodeFfmpeg, z, type NodeMediaValue } from "@miaoimg/nodes-scaffold/runtime";
 import { captureWorkspaceScope, assertWorkspaceScope, subscribeWorkspaceScope } from "@/lib/workspaceRemote";
 import { validateConnection } from "../../scaffold/connection";
 import type { NodeHandle } from "../../scaffold/connection";
@@ -73,11 +73,11 @@ export function useVideoIntentActions(options: { node: GraphNode; file: () => No
   const durations = computed(() => choice.value ? durationsForMode(choice.value, "edit") : []);
   const resolutions = computed(() => choice.value ? resolutionsForMode(choice.value, "edit", state.duration, videoEditDefaults(choice.value, state.source?.duration || 0).parameters) : []);
   const inherited = computed(() => inheritedFields(choice.value, "edit"));
-  const prompt = computed(() => {
-    const intent = videoIntent(state.intent)!;
-    const range = state.intent === "video:retake-segment" ? { start: state.start, end: state.end } : undefined;
-    return [translate("编辑目标：{0}", { 0: translate(intent.label) }), ...(range ? [translate("仅对 {0}–{1} 秒的内容进行语义编辑，其它内容尽量保持不变。", { 0: range.start, 1: range.end })] : []), state.prompt.trim(), translate("尽量保留未要求修改的内容，以及原视频的时长与画面比例。")].join("\n");
-  });
+  function editPrompt(intentId: string, request: string, range?: { start: number; end: number }) {
+    const intent = videoIntent(intentId)!;
+    return [translate("编辑目标：{0}", { 0: translate(intent.label) }), ...(range ? [translate("仅对 {0}–{1} 秒的内容进行语义编辑，其它内容尽量保持不变。", { 0: range.start, 1: range.end })] : []), request.trim(), translate("尽量保留未要求修改的内容，以及原视频的时长与画面比例。")].join("\n");
+  }
+  const prompt = computed(() => editPrompt(state.intent, state.prompt, state.intent === "video:retake-segment" ? { start: state.start, end: state.end } : undefined));
   const promptError = computed(() => choice.value?.parameterRules?.maxPromptCharacters && [...prompt.value.trim()].length > choice.value.parameterRules.maxPromptCharacters ? translate("编辑描述超过当前模型的字符上限") : "");
   const canPrepare = computed(() => usable() && !state.loading && !state.referenceLoading && !state.preparing && Boolean(choice.value && state.prompt.trim() && state.source)
     && durations.value.includes(state.duration!) && resolutions.value.includes(state.resolution) && !promptError.value && !missingReference.value && selectedReferences.value.length === Object.keys(state.referenceMetadata).length
@@ -162,7 +162,7 @@ export function useVideoIntentActions(options: { node: GraphNode; file: () => No
     } catch (error) { if (!signal.aborted && token === opening) options.onError(error); }
     finally { if (token === opening) state.loading = false; }
   }
-  async function createRemakeNode(model: NodeMediaModel, sourceFile: NodeMediaValue, sourceMetadata: EditMediaMetadata, signal: AbortSignal) {
+  async function createRemakeNode(model: NodeMediaModel, sourceFile: NodeMediaValue, sourceMetadata: EditMediaMetadata, signal: AbortSignal): Promise<string> {
     if (!Number.isFinite(sourceMetadata.duration) || sourceMetadata.duration! < 4) throw new Error(translate("原视频至少需要 4 秒"));
     if (!sourceMetadata.revision || ![sourceMetadata.width, sourceMetadata.height, sourceMetadata.fps].every(value => Number.isFinite(value) && value! > 0)) throw new Error(translate("无法读取素材信息"));
     // The original may be longer/larger than one admitted segment. Validate
@@ -215,36 +215,47 @@ export function useVideoIntentActions(options: { node: GraphNode; file: () => No
         // framing so the timeline and send button stay in the initial viewport.
         const p = created.computedPosition, ratio = sourceMetadata.width! / sourceMetadata.height!;
         const previewHeight = Math.min(640, Math.max(320, 350 * ratio)) / ratio;
+        // Framing is not part of the commit. A viewport error must still return the node that already exists.
         await flow.fitBounds({ x: p.x - 40, y: p.y - 40, width: Math.max(created.dimensions.width || 0, 660) + 80,
-          height: Math.max(created.dimensions.height || 0, previewHeight) + 620 }, { padding: 0.1, duration: 200 });
+          height: Math.max(created.dimensions.height || 0, previewHeight) + 620 }, { padding: 0.1, duration: 200 }).catch(() => {});
       }
+      if (!created || flow.findNode(created.id) !== created) throw new Error(translate("目标节点已变化，请重新操作"));
+      return created.id;
     } catch (error) {
       if (!committed && created && flow.findNode(created.id) === created) flow.removeNodes(created.id, true, false);
       throw error;
     } finally { state.preparing = false; }
   }
-  async function prepare() {
-    if (!canPrepare.value || !choice.value || !state.source) return;
-    const sourceFile = { ...options.file()! }, selected = [...selectedReferences.value], model = choice.value, sourceMetadata = state.source;
-    const intent = videoIntent(state.intent)!, range = state.intent === "video:retake-segment" ? { start: state.start, end: state.end } : undefined;
-    state.preparing = true;
-    const signal = boundSignal;
-    let created: GraphNode | undefined;
-    let committed = false;
+  function eligibilityError(model: NodeMediaModel, editInputs: { source?: EditMediaMetadata; images: EditMediaMetadata[]; audios: EditMediaMetadata[] }) {
+    const invalid = videoEditEligibility(model, editInputs);
+    if (!invalid) return;
+    throw new Error(translate(invalid.key, Object.fromEntries(Object.entries(invalid.params || {}).map(([key, value]) => [key, typeof value === "string" ? translate(value) : value]))));
+  }
+  async function commitEditNode(input: {
+    signal: AbortSignal; sourceFile: NodeMediaValue; sourceMetadata: EditMediaMetadata; selected: Reference[];
+    metadataByKey: Record<string, EditMediaMetadata>; model: NodeMediaModel; prompt: string;
+    duration?: number; resolution?: string; range?: { start: number; end: number }; intent: string; closeDialog: boolean;
+  }) {
+    let created: GraphNode | undefined, committed = false;
     try {
       assertSource?.();
       const workspace = files.getWorkspaceFiles();
-      const compare = async (file: NodeMediaValue, metadata: EditMediaMetadata) => { const stat = await workspace.stat!(file.url, signal); if (stat.revision !== metadata.revision) throw new Error(translate("素材已变化，请重新选择后操作")); };
-      await Promise.all([compare(sourceFile, sourceMetadata), ...selected.map(item => compare(item.file, state.referenceMetadata[item.key]))]);
+      const compare = async (file: NodeMediaValue, probed: EditMediaMetadata) => { const stat = await workspace.stat!(file.url, input.signal); if (stat.revision !== probed.revision) throw new Error(translate("素材已变化，请重新选择后操作")); };
+      await Promise.all([compare(input.sourceFile, input.sourceMetadata), ...input.selected.map(item => compare(item.file, input.metadataByKey[item.key]))]);
       assertSource?.();
-      const invalid = videoEditEligibility(model, inputs.value); if (invalid) throw new Error(translate(invalid.key, Object.fromEntries(Object.entries(invalid.params || {}).map(([key, value]) => [key, typeof value === "string" ? translate(value) : value]))));
+      const editInputs = {
+        source: input.sourceMetadata,
+        images: input.selected.filter(item => item.kind === "image").map(item => input.metadataByKey[item.key]).filter((item): item is EditMediaMetadata => Boolean(item)),
+        audios: input.selected.filter(item => item.kind === "audio").map(item => input.metadataByKey[item.key]).filter((item): item is EditMediaMetadata => Boolean(item)),
+      };
+      eligibilityError(input.model, editInputs);
       const type = "remote-videoGenerationNode";
       if (!flow.nodeTypes?.value?.[type]) throw new Error(translate("请先启用视频生成节点插件"));
       const assertReferences = () => {
         assertSource?.();
-        if (selected.some(item => flow.findNode(item.node.id) !== item.node || item.node.data.outputs?.[item.handle]?.value?.url !== item.file.url)) throw new Error(translate("参考素材已更新，请重新选择后操作"));
+        if (input.selected.some(item => flow.findNode(item.node.id) !== item.node || item.node.data.outputs?.[item.handle]?.value?.url !== item.file.url)) throw new Error(translate("参考素材已更新，请重新选择后操作"));
       };
-      const data = preparedVideoEditData({ model, label: `${options.node.data.label || translate("视频")} · ${translate(intent.label)}`, prompt: prompt.value, sourceSeconds: sourceMetadata.duration!, duration: state.duration, resolution: state.resolution, range, intent: intent.id });
+      const data = preparedVideoEditData({ model: input.model, label: `${options.node.data.label || translate("视频")} · ${translate(videoIntent(input.intent)!.label)}`, prompt: input.prompt, sourceSeconds: input.sourceMetadata.duration!, duration: input.duration, resolution: input.resolution, range: input.range, intent: input.intent });
       await batch(async () => {
         assertReferences();
         const id = crypto.randomUUID(), source = options.node;
@@ -259,22 +270,132 @@ export function useVideoIntentActions(options: { node: GraphNode; file: () => No
         try {
           await nextTick(); assertReferences();
           if (!created || flow.findNode(id) !== created) throw new Error(translate("目标节点已变化，请重新操作"));
-          const bindings = [{ node: source, handle: "video" }, ...selected];
-          const inputs = (created.data.handles || []).filter((handle: NodeHandle) => handle.type === "target");
-          const connections = bindings.map(item => inputs.map((input: NodeHandle) => ({ source: item.node.id, sourceHandle: item.handle, target: id, targetHandle: input.id })).find(connection => validateConnection(connection, { sourceNode: item.node, targetNode: created!, nodes: flow.getNodes.value, edges: flow.getEdges.value })));
+          const bindings = [{ node: source, handle: "video" }, ...input.selected];
+          const handles = (created.data.handles || []).filter((handle: NodeHandle) => handle.type === "target");
+          const connections = bindings.map(item => handles.map((handle: NodeHandle) => ({ source: item.node.id, sourceHandle: item.handle, target: id, targetHandle: handle.id })).find(connection => validateConnection(connection, { sourceNode: item.node, targetNode: created!, nodes: flow.getNodes.value, edges: flow.getEdges.value })));
           if (connections.some(item => !item)) throw new Error(translate("素材无法完整连接到编辑节点，请重新操作"));
           assertReferences(); flow.addEdges(connections.map(connection => ({ ...connection!, id: crypto.randomUUID() })));
           flow.removeSelectedElements(); flow.addSelectedNodes([created]);
         } catch (error) { if (created && flow.findNode(id) === created) flow.removeNodes(id, true, false); throw error; }
       });
-      assertSource?.(); committed = true; state.visible = false;
-      if (!signal.aborted && created && flow.findNode(created.id) === created) await flow.fitView({ nodes: [created.id], padding: 0.4, maxZoom: 1, duration: 200 });
+      assertSource?.(); committed = true;
+      if (input.closeDialog) state.visible = false;
+      return created;
     } catch (error) {
       if (!committed && created && flow.findNode(created.id) === created) flow.removeNodes(created.id, true, false);
-      if (!signal.aborted) options.onError(error);
+      throw error;
     }
+  }
+  async function prepare() {
+    if (!canPrepare.value || !choice.value || !state.source) return;
+    const sourceFile = { ...options.file()! }, selected = [...selectedReferences.value], model = choice.value, sourceMetadata = state.source;
+    const intent = videoIntent(state.intent)!, range = state.intent === "video:retake-segment" ? { start: state.start, end: state.end } : undefined;
+    state.preparing = true;
+    const signal = boundSignal;
+    try {
+      const created = await commitEditNode({ signal, sourceFile, sourceMetadata, selected, metadataByKey: state.referenceMetadata, model, prompt: prompt.value, duration: state.duration, resolution: state.resolution, range, intent: intent.id, closeDialog: true });
+      if (created && flow.findNode(created.id) === created) await flow.fitView({ nodes: [created.id], padding: 0.4, maxZoom: 1, duration: 200 }).catch(() => {});
+    } catch (error) { if (!signal.aborted) options.onError(error); }
     finally { state.preparing = false; }
   }
+  async function prepareSegmentRemake(signal?: AbortSignal) {
+    if (busy.value || !usable()) throw new Error(translate("原视频已变化或正在处理，请重新操作"));
+    operation.abort(); operation = new AbortController(); referencesOperation.abort();
+    const token = ++opening, scope = captureWorkspaceScope(), binding = registry?.scope(), source = JSON.stringify(options.node.data.outputs?.video);
+    const canvasSignal = getCanvasSignal?.();
+    const op = boundSignal = AbortSignal.any([operation.signal, lifetime.signal, ...(canvasSignal ? [canvasSignal] : []), ...(signal ? [signal] : [])]);
+    assertSource = () => {
+      op.throwIfAborted(); assertWorkspaceScope(scope);
+      if (!usable() || registry && registry.scope() !== binding || JSON.stringify(options.node.data.outputs?.video) !== source) throw new Error(translate("原视频已变化或正在处理，请重新操作"));
+    };
+    state.loading = true;
+    try {
+      const sourceFile = { ...options.file()! };
+      const modelTask = registry ? registry.refresh().then(() => registry.models.value) : options.loadModels();
+      const [models, sourceMetadata] = await Promise.all([modelTask, metadata(sourceFile, "video", op)]);
+      if (token !== opening) throw new Error(translate("原视频已变化或正在处理，请重新操作"));
+      assertSource();
+      state.models = [...models];
+      const model = remakeModels(models).find(item => modelKey(item) === options.node.data.model) || remakeModels(models)[0];
+      if (!model) throw new Error(translate("Seedance 2.5 暂不可用，请稍后重试"));
+      const nodeId = await createRemakeNode(model, sourceFile, sourceMetadata, op);
+      return { nodeId, generationStarted: false };
+    } finally { if (token === opening) state.loading = false; }
+  }
+  nodeTools.register({
+    name: "prepareSegmentRemake",
+    description: "从当前视频创建片段重拍节点并连接原视频。不弹确认框，不开始生成，时间轴为空。原视频至少 4 秒，且 Seedance 2.5 视频编辑可用。返回 nodeId。接着在新节点 setSegments，用 getConfig 看报价；用户确认费用后再 generateVideo。该调用会立即按报价扣费，不再弹窗。",
+    parameters: z.strictObject({}),
+    async execute(_args, { signal }) { signal?.throwIfAborted(); return prepareSegmentRemake(signal); },
+  });
+  const headlessIntents = ["replace-element", "remove-subject", "remove-subtitles", "edit-background", "edit-person", "edit"] as const;
+  async function prepareVideoEdit(args: { intent: typeof headlessIntents[number]; prompt?: string; providerId: string; modelId: string; duration?: number; resolution?: string; references?: { nodeId: string; handle: string }[] }, signal?: AbortSignal) {
+    if (state.visible || busy.value) throw new Error(translate("原视频已变化或正在处理，请重新操作"));
+    if (!usable()) throw new Error(translate("原视频已变化或正在处理，请重新操作"));
+    operation.abort(); operation = new AbortController(); referencesOperation.abort();
+    const token = ++opening, scope = captureWorkspaceScope(), binding = registry?.scope(), source = JSON.stringify(options.node.data.outputs?.video);
+    const canvasSignal = getCanvasSignal?.();
+    const op = boundSignal = AbortSignal.any([operation.signal, lifetime.signal, ...(canvasSignal ? [canvasSignal] : []), ...(signal ? [signal] : [])]);
+    assertSource = () => {
+      op.throwIfAborted(); assertWorkspaceScope(scope);
+      if (!usable() || registry && registry.scope() !== binding || JSON.stringify(options.node.data.outputs?.video) !== source) throw new Error(translate("原视频已变化或正在处理，请重新操作"));
+    };
+    state.preparing = true;
+    try {
+      const intent = videoIntent(`video:${args.intent}`)!;
+      const request = (args.prompt ?? (intent.prompt ? translate(intent.prompt) : "")).trim();
+      if (!request) throw new Error(translate("请填写具体编辑要求"));
+      const sourceFile = { ...options.file()! };
+      const seen = new Set<string>();
+      const selected = (args.references ?? []).map(item => {
+        const identity = JSON.stringify([item.nodeId, item.handle]);
+        if (seen.has(identity)) throw new Error(translate("参考素材已更新，请重新选择后操作"));
+        seen.add(identity);
+        const match = references.value.find(reference => reference.node.id === item.nodeId && reference.handle === item.handle);
+        if (!match) throw new Error(translate("参考素材已更新，请重新选择后操作"));
+        return match;
+      });
+      const modelTask = registry ? registry.refresh().then(() => registry.models.value) : options.loadModels();
+      const [models, sourceMetadata] = await Promise.all([modelTask, metadata(sourceFile, "video", op)]);
+      if (token !== opening) throw new Error(translate("原视频已变化或正在处理，请重新操作"));
+      assertSource();
+      const probed = await Promise.all(selected.map(async item => [item.key, await metadata(item.file, item.kind, op)] as const));
+      assertSource();
+      const metadataByKey = Object.fromEntries(probed);
+      const editInputs = {
+        source: sourceMetadata,
+        images: selected.filter(item => item.kind === "image").map(item => metadataByKey[item.key]),
+        audios: selected.filter(item => item.kind === "audio").map(item => metadataByKey[item.key]),
+      };
+      const model = models.find(item => item.type === "video" && item.providerId === args.providerId && item.modelId === args.modelId);
+      if (!model) throw new Error(translate("当前没有支持此操作的视频模型"));
+      eligibilityError(model, editInputs);
+      const defaults = videoEditDefaults(model, sourceMetadata.duration!);
+      const duration = args.duration ?? defaults.duration, resolution = args.resolution ?? defaults.resolution;
+      if (duration === undefined || !resolution || !durationsForMode(model, "edit").includes(duration) || !resolutionsForMode(model, "edit", duration, defaults.parameters).includes(resolution)) throw new Error(translate("当前模型没有可用的视频编辑规格"));
+      const composed = editPrompt(intent.id, request);
+      const limit = model.parameterRules?.maxPromptCharacters;
+      if (limit && [...composed].length > limit) throw new Error(translate("编辑描述超过当前模型的字符上限"));
+      const created = await commitEditNode({ signal: op, sourceFile, sourceMetadata, selected, metadataByKey, model, prompt: composed, duration, resolution, intent: intent.id, closeDialog: false });
+      if (!created || flow.findNode(created.id) !== created) throw new Error(translate("目标节点已变化，请重新操作"));
+      await flow.fitView({ nodes: [created.id], padding: 0.4, maxZoom: 1, duration: 200 }).catch(() => {});
+      return { nodeId: created.id, generationStarted: false };
+    } finally { state.preparing = false; }
+  }
+  nodeTools.register({
+    name: "prepareVideoEdit",
+    description: "从当前视频准备元素替换、主体消除、去字幕、背景编辑、人物编辑或编辑视频节点，并连接原视频和可选参考图片或音频。不打开对话框，不开始生成，也不裁时间段。intent 取 replace-element、remove-subject、remove-subtitles、edit-background、edit-person、edit。prompt 是具体编辑要求；去字幕可省略并沿用界面预填句。providerId 与 modelId 取自视频生成节点 getConfig 里 mode 含 edit 的模型，这里会按原片和附加素材再校验。duration、resolution 省略时用该模型的编辑默认值。references 填画布上已有图片或音频的 nodeId 与输出 handle。返回 nodeId。用户确认费用后，在新节点 generateVideo。按时间段重拍用 prepareSegmentRemake，不要用本函数。",
+    parameters: z.strictObject({
+      intent: z.enum(headlessIntents),
+      prompt: z.string().trim().min(1).max(10000).optional(),
+      providerId: z.string().min(1),
+      modelId: z.string().min(1),
+      duration: z.number().finite().optional(),
+      resolution: z.string().min(1).optional(),
+      references: z.array(z.strictObject({ nodeId: z.string().min(1), handle: z.string().min(1) })).max(32).optional(),
+    }),
+    async execute(args, { signal }) { signal?.throwIfAborted(); return prepareVideoEdit(args, signal); },
+  });
   const extension: CanvasToolExtension = { available: tool => Boolean(videoIntent(tool) && usable() && (tool === "video:retake-segment" ? remakeAvailable.value : videoEditModels(registry?.models.value.length ? registry.models.value : state.models).length)), ready: tool => Boolean(videoIntent(tool) && usable()), run: (tool, context) => open(tool, context.assertCurrent) };
   return { state, extension, open, close, prepare, chooseModel, references, selectedReferences, choices, choice, durations, resolutions, inherited, canPrepare, busy, modelError, modelHelp, promptError, modelKey,
     get remakeAvailable() { return remakeAvailable.value; }, definition: computed(() => videoIntent(state.intent)!), defaultHint: "视频模型会重新生成画面，未提及的内容和声音也可能改变。先准备编辑节点，确认后再生成。" };

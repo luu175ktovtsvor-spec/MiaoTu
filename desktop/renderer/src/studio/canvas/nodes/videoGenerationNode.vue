@@ -1,7 +1,7 @@
 <template>
   <nodeSkeleton
     class="videoNodeShell"
-    :class="{ emptyGeneration: !displayPreviewUrl }"
+    :class="{ emptyGeneration: !outputFile && !segmentDraft }"
     v-bind="nodeProps"
     :modelLabel="nodeLocalModelLabel(data.model)"
     :mediaMeta="mediaMeta"
@@ -13,7 +13,8 @@
     :downloadName="outputFile?.url.split(/[\\/]/).at(-1)"
     @fullscreen="player?.enterFullscreen()"
     :bottomWidth="660"
-    :style="{ width: displayPreviewUrl && videoWidth ? `${videoWidth}px` : undefined }">
+    :mediaFrameHeight="videoFrameHeight || undefined"
+    :style="{ width: videoWidth ? `${videoWidth}px` : undefined }">
     <template #topActions>
       <el-button v-for="entry in modeEntries" v-show="previewUrl" :key="entry.mode" :icon="entry.icon" text :disabled="generating || deleting || uploading || uploadingDrag || actions?.processing || creatingModeEntry" :title="translate(entry.label)" :aria-label="translate(entry.label)" @click.stop="entry.mode === 'edit' ? videoIntents.open('video:edit') : createModeEntry(entry)">{{ translate(entry.label) }}</el-button>
       <el-button v-if="outputFile && videoIntents.remakeAvailable" :icon="IconScissors" text :disabled="generating || deleting || uploading || uploadingDrag || actions?.processing" :aria-label="translate('片段重拍')" @click.stop="videoIntents.open('video:retake-segment')">{{ translate('片段重拍') }}</el-button>
@@ -26,7 +27,8 @@
       <el-button :icon="IconTransfer" :loading="uploading || uploadingDrag" :disabled="generating || deleting" text :title="translate('替换视频')" :aria-label="translate('替换视频')" @click.stop="fileInput?.click()" />
       <input ref="fileInput" type="file" accept="video/*" hidden :aria-label="translate('选择替换视频')" :disabled="generating || deleting || uploading || uploadingDrag" @change="replaceOutput" />
     </template>
-    <div v-loading="uploading" class="videoContent nopan" :aria-busy="generating || uploading">
+    <div v-loading="uploading" class="videoContent nopan" :aria-busy="generating || uploading" :style="videoWidth && videoFrameHeight ? { aspectRatio: `${videoWidth} / ${videoFrameHeight}` } : undefined">
+      <div v-if="outputFile" class="mediaFramePlaceholder" aria-hidden="true" />
       <div v-if="segmentDraft && previewUrl" class="retakePreviewTabs nodrag nopan">
         <el-button text :type="!showRetakeResult ? 'primary' : undefined" @click.stop="showRetakeResult = false">{{ translate('原视频') }}</el-button>
         <el-button text :type="showRetakeResult ? 'primary' : undefined" @click.stop="showRetakeResult = true">{{ translate('重拍结果') }}</el-button>
@@ -35,6 +37,7 @@
         v-if="displayPreviewUrl"
         ref="player"
         :src="displayPreviewUrl"
+        :aspect="videoAspectHint"
         @time="segmentRemake.currentTime.value = $event"
         :disabled="generating || deleting || uploading || uploadingDrag"
         :label="translate('生成视频')"
@@ -173,7 +176,7 @@
               class="sendButton"
               :icon="generating ? IconPlayerStop : IconArrowUp"
               :loading="checkingTask"
-              :disabled="checkingTask || deleting || uploading || uploadingDrag || (!generating && !pendingTask && (segmentDraft ? !segmentRemake.ready.value : (!canStartGeneration || Boolean(videoEstimateError))))"
+              :disabled="checkingTask || deleting || uploading || uploadingDrag || segmentRemake.admitting.value || (!generating && !pendingTask && (segmentDraft ? !segmentRemake.ready.value : (!canStartGeneration || Boolean(videoEstimateError))))"
               :title="checkingTask ? translate('正在确认原任务') : generating ? translate('取消生成（{0}）', { 0: cancellationHint }) : pendingTask ? translate('继续取回') : segmentDraft ? segmentSendLabel : translate('生成视频')"
               :aria-label="checkingTask ? translate('正在确认原任务') : generating ? translate('取消生成') : pendingTask ? translate('继续取回') : segmentDraft ? segmentSendLabel : translate('生成视频')"
               @click="generating ? stopGeneration() : startGeneration().catch((error) => showNodeError(error, translate('视频生成失败')))" />
@@ -193,6 +196,7 @@ import feedbackNotice from '../components/feedbackNotice.vue';
 import videoModeMenu from "./videoModeMenu.vue";
 import { useVideoModeEntries } from "./videoNode/useVideoModeEntries";
 import { videoSizeLabel } from "../../../../../../server/media-size-label";
+import { commitVideoFrame, layoutAspect, pixelsFromNodeData, videoMediaHeight, videoMediaWidth, watchVideoFrame, type MediaPixels } from "../scaffold/mediaFrame";
 import { groupNodeModels } from "../scaffold/nodeAi";
 import { nodeLocalModelLabel, nodeModelValueId, nodeModelOptionLabel, nodeModelValueLabel } from '../scaffold/localModelLabel';
 import { computed, inject, nextTick, onMounted, onScopeDispose, ref, watch, watchEffect } from "vue";
@@ -240,7 +244,7 @@ const { id, node, nodeProps, nodeEvent, outputs, files, ai, updateNodeInternals 
   label: "视频生成",
 });
 type PromptModel = NonNullable<InstanceType<typeof promptInput>["$props"]["modelValue"]>;
-const data = computed(() => node.data as { prompt: string; promptModel: PromptModel; model: string; duration?: number; resolution: string; ratio: string; mode: string; modeChosen?: boolean; generateAudio: boolean; parameters: Record<string, unknown>; referenceVoices?: string[]; keyframes?: VideoKeyframeSelection[]; pinnedFrames?: VideoFramePins; taskRequestId?: string } & SegmentRemakeData);
+const data = computed(() => node.data as { prompt: string; promptModel: PromptModel; model: string; duration?: number; resolution: string; ratio: string; mode: string; modeChosen?: boolean; generateAudio: boolean; parameters: Record<string, unknown>; referenceVoices?: string[]; keyframes?: VideoKeyframeSelection[]; pinnedFrames?: VideoFramePins; taskRequestId?: string; mediaPixels?: { width: number; height: number } } & SegmentRemakeData);
 const segmentDraft = computed(() => data.value.segmentRemakeDraft);
 if (segmentDraft.value) data.value.segmentRemakeAudio ??= "original";
 if (!data.value.parameters) data.value.parameters = {};
@@ -267,8 +271,23 @@ let disposed = false;
 const deleting = ref(false);
 const player = ref<InstanceType<typeof videoPlayer>>();
 const actions = ref<InstanceType<typeof videoActions>>();
-const videoWidth = ref(segmentDraft.value ? Math.min(640, Math.max(320, 350 * segmentDraft.value.source.width / segmentDraft.value.source.height)) : 0);
-const videoDimensions = ref<{ width: number; height: number }>();
+const hasVideoOutput = outputs.value.video?.dataType === "VIDEO" && outputs.value.video.value;
+const storedVideo = hasVideoOutput ? pixelsFromNodeData(data.value) : undefined;
+const storedLayout = hasVideoOutput ? layoutAspect(data.value) : undefined;
+const videoLayout = ref<MediaPixels | undefined>(storedLayout);
+const videoWidth = ref(segmentDraft.value
+  ? Math.min(640, Math.max(320, 350 * segmentDraft.value.source.width / segmentDraft.value.source.height))
+  : storedLayout ? videoMediaWidth(storedLayout.width, storedLayout.height) : 0);
+const videoDimensions = ref<MediaPixels | undefined>(storedVideo);
+const videoFrameHeight = computed(() => {
+  if (segmentDraft.value) return videoWidth.value * segmentDraft.value.source.height / segmentDraft.value.source.width;
+  const size = videoLayout.value;
+  return size ? videoMediaHeight(size.width, size.height) : 0;
+});
+const videoAspectHint = computed(() => {
+  if (segmentDraft.value) return `${segmentDraft.value.source.width} / ${segmentDraft.value.source.height}`;
+  return videoLayout.value ? `${videoLayout.value.width} / ${videoLayout.value.height}` : undefined;
+});
 // 节点头部按 LibTV 的叫法显示“比例 · 1080P”，精确像素放在悬停提示里。
 const mediaMeta = computed(() => videoDimensions.value ? videoSizeLabel(videoDimensions.value.width, videoDimensions.value.height) : "");
 const mediaMetaTitle = computed(() => videoDimensions.value ? `${videoDimensions.value.width} × ${videoDimensions.value.height}` : "");
@@ -606,6 +625,14 @@ const previewUrl = files.useFileUrl(
   outputFile,
   (error) => showNodeError(error, translate("视频读取失败"))
 );
+watchVideoFrame(
+  () => outputFile.value,
+  videoWidth,
+  videoDimensions,
+  videoLayout,
+  data.value,
+  (path, mimeType) => files.getWorkspaceFiles().acquirePreviewUrl?.(path, mimeType, 1024),
+);
 useRegisterVideoActions(node, {
   available: () => Boolean(outputFile.value?.url && previewUrl.value && player.value && actions.value)
     && !generating.value && !deleting.value && !uploading.value && !uploadingDrag.value
@@ -844,7 +871,25 @@ async function startGeneration(signal?: AbortSignal) {
   signal?.throwIfAborted();
   if (disposed || deleting.value) throw new Error(translate("节点正在删除"));
   if (generating.value) throw new Error(translate("视频正在生成，请等待完成"));
-  if (segmentDraft.value) { preparePromptReferences(); generation = generationState.run(() => segmentRemake.start()); await generation; return { status: "ready" }; }
+  if (segmentDraft.value) {
+    preparePromptReferences();
+    signal?.throwIfAborted();
+    // A tool call carries the MCP signal and is the authorization. A button click has no signal and still confirms the quote.
+    let started = false;
+    try {
+      const admission = await segmentRemake.admit(!signal);
+      signal?.throwIfAborted();
+      if (admission !== "start") return { status: admission === "cancel" ? "idle" : "ready", started: false };
+      const stopped = segmentRemake.consumePendingStop();
+      if (disposed || deleting.value) throw new Error(deleting.value ? translate("节点正在删除") : translate("画布节点已变化，请重新操作"));
+      if (stopped) return { status: "idle", started: false };
+      signal?.throwIfAborted();
+      generation = generationState.run(() => segmentRemake.start());
+      started = true;
+      void generation.catch(error => { if (!disposed) showNodeError(error, translate("片段重拍失败")); });
+      return { status: "generating" };
+    } finally { if (!started) segmentRemake.discardAdmission(); }
+  }
   if (uploading.value || uploadingDrag.value) throw new Error(translate("视频正在替换，请等待完成"));
   const wasPending = pendingTask.value;
   const previousOutput = outputs.value.video;
@@ -951,9 +996,17 @@ nodeEvent.on("delete", async () => {
 });
 
 async function resizeVideo({ width, height }: { width: number; height: number }) {
-  if (!width || !height) return;
-  videoDimensions.value = { width, height };
-  videoWidth.value = Math.min(640, Math.max(segmentDraft.value ? 320 : 240, ((segmentDraft.value ? 350 : 240) * width) / height));
+  if (segmentDraft.value) {
+    if (!width || !height) return;
+    videoLayout.value = { width, height };
+    videoDimensions.value = { width, height };
+    videoWidth.value = Math.min(640, Math.max(320, (350 * width) / height));
+    await nextTick();
+    updateNodeInternals();
+    return;
+  }
+  videoLayout.value = { width, height };
+  if (!commitVideoFrame(videoWidth, videoDimensions, data.value, width, height)) return;
   await nextTick();
   updateNodeInternals();
 }
@@ -1150,7 +1203,7 @@ nodeTools.register({
 
 nodeTools.register({
   name: "setSegments",
-  description: "设置当前片段重拍节点的时间轴范围，不启动生成。需先有片段重拍草稿；最多5段，每段4.1–30秒，不重叠且在原视频范围内；空数组清除选段。返回真实合计报价，报价失败为null。",
+  description: "设置当前片段重拍节点的时间轴范围，不启动生成。草稿由原视频节点的 prepareSegmentRemake 创建；最多5段，每段4.1–30秒，不重叠且在原视频范围内；空数组清除选段。返回真实合计报价，报价失败为null。",
   parameters: z.strictObject({ ranges: z.array(z.strictObject({ id: z.string().min(1).optional(), start: z.number().nonnegative(), end: z.number().positive() })).max(5) }),
   async execute({ ranges }, { signal }) {
     signal?.throwIfAborted();
@@ -1177,7 +1230,7 @@ nodeTools.register({
 
 nodeTools.register({
   name: "generateVideo",
-  description: "启动此节点的后台视频生成；节点尚无输出时先核对本节点原任务，查询失败不提交新请求；找到原任务或仍有待取回任务时，只取回原结果，不重新下单。新生成使用当前提示词、模型、模式、时长、分辨率、比例和参考素材；立即返回已开始，用 getGenerationStatus 查询完成结果，cancelGeneration 请求停止",
+  description: "启动此节点的后台视频生成；节点尚无输出时先核对本节点原任务，查询失败不提交新请求；找到原任务或仍有待取回任务时，只取回原结果，不重新下单。新生成使用当前提示词、模型、模式、时长、分辨率、比例和参考素材；立即返回已开始，用 getGenerationStatus 查询完成结果，cancelGeneration 请求停止。片段重拍草稿同样立即返回 {status:\"generating\"}，不弹积分确认框：调用即按 getConfig 的报价扣费；报价未就绪或已完成同一配置时直接返回，不开始。取消已开始的重拍用 cancelGeneration。取消本次 MCP 调用不会停止已经返回的重拍。",
   parameters: z.strictObject({}),
   execute(_args, { signal }) {
     signal?.throwIfAborted();
@@ -1243,21 +1296,25 @@ const emptyHints = computed(() => {
   // 超宽旧视频不能把生成状态、进度条和百分比压出预览区域。
   &:has(.videoPlayer):not(:has(.generationProgress)) { min-height: 0; }
   overflow: hidden;
-  border-radius: var(--el-border-radius-base);
-
-  .videoEmpty {
-    display: grid;
-    place-items: center;
-    align-content: center;
-    gap: 18px;
-    min-height: 144px;
-    color: var(--el-text-color-placeholder);
-  }
-
-  :deep(.el-loading-mask) {
-    pointer-events: none;
-  }
-
+  border-radius: inherit;
+  background: var(--canvas-node, var(--el-bg-color-overlay));
+}
+.mediaFramePlaceholder {
+  position: absolute;
+  inset: 0;
+  background: var(--canvas-node, var(--el-bg-color-overlay));
+}
+.videoContent :deep(.videoPlayer) { position: relative; z-index: 1; width: 100%; height: 100%; }
+.videoContent .videoEmpty {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 18px;
+  min-height: 144px;
+  color: var(--el-text-color-placeholder);
+}
+.videoContent :deep(.el-loading-mask) {
+  pointer-events: none;
 }
 
 .promptCard {

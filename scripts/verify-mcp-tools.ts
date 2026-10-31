@@ -46,7 +46,12 @@ const requiredNodeTools: Record<string, string[]> = {
   'nodes/imageNode.vue': ['setImage', 'generateInpaint', 'cancelInpaint'],
   'nodes/imageGenerationNode.vue': ['getConfig', 'setConfig', 'setPrompt', 'generateImage'],
   'nodes/videoNode.vue': ['setVideo'],
-  'nodes/videoGenerationNode.vue': ['getConfig', 'setConfig', 'setPrompt', 'generateVideo'],
+  'nodes/videoNode/useVideoIntentActions.ts': ['prepareSegmentRemake', 'prepareVideoEdit'],
+  'nodes/videoGenerationNode.vue': ['getConfig', 'setConfig', 'setSegments', 'setPrompt', 'generateVideo'],
+  'nodes/imageTools/useImageIntentActions.ts': ['prepareImageIntent'],
+  'nodes/imageTools/useImageGeometryActions.ts': ['applyImageGeometry'],
+  'nodes/imageTools/useImageOutpaintActions.ts': ['prepareImageOutpaint'],
+  'nodes/imageTools/useImageLayerEntry.ts': ['prepareImageLayers'],
   'nodes/audioNode.vue': ['setAudio'],
 }
 for (const [file, required] of Object.entries(requiredNodeTools)) {

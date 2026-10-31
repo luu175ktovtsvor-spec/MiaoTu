@@ -48,11 +48,13 @@ export function DesktopUpdateButton() {
   if (!native) return null
   const downloading = action.phase === 'downloading' || snapshot?.state === 'downloading'
   const percent = typeof snapshot?.percent === 'number' && Number.isFinite(snapshot.percent) ? Math.max(0, Math.min(100, Math.round(snapshot.percent))) : null
-  const label = action.phase === 'installing' ? L('正在重启更新…') : downloading ? percent == null ? L('下载更新') : L('正在下载 {percent}%', { percent }) : action.busy ? L('正在获取新版…') : L('更新客户端')
   const available = ['available', 'ready'].includes(snapshot?.state || '')
-  return <button type="button" className="desktop-edge-rail__account desktop-update-button" disabled={action.busy} aria-busy={action.busy} aria-label={label} title={available && snapshot?.version ? `${L('更新客户端')} · v${snapshot.version}` : L('更新客户端')} onClick={() => window.dispatchEvent(new Event('miao-desktop-update-now'))}>
-    {action.busy ? <SpinnerGap size={20} className="desktop-update-spinner" aria-hidden="true" /> : <DownloadSimple size={20} aria-hidden="true" />}
-    <span>{label}</span>{available && !action.busy && <i className="desktop-update-available" aria-label={L('有新版本')} />}
+  // 没有新版本就不占位；有新版本、或正在下载/重启时才冒出一个图标。
+  if (!available && !downloading && !action.busy) return null
+  const label = action.phase === 'installing' ? L('正在重启更新…') : downloading ? percent == null ? L('下载更新') : L('正在下载 {percent}%', { percent }) : action.busy ? L('正在获取新版…') : L('有新版本')
+  return <button type="button" className="desktop-update-button" disabled={action.busy} aria-busy={action.busy} aria-label={label} title={snapshot?.version ? `${label} · v${snapshot.version}` : label} onClick={() => window.dispatchEvent(new Event('miao-desktop-update-now'))}>
+    {action.busy || downloading ? <SpinnerGap size={18} className="desktop-update-spinner" aria-hidden="true" /> : <DownloadSimple size={18} aria-hidden="true" />}
+    {available && !action.busy && <i className="desktop-update-available" aria-hidden="true" />}
     {downloading && percent != null && <i className="desktop-update-progress" aria-hidden="true" style={{ width: `${percent}%` }} />}
   </button>
 }

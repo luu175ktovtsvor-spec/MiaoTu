@@ -72,7 +72,7 @@
             <el-button text size="small" :icon="IconTrash" :aria-label="translate('移除')" @click="form.models.splice(index, 1)" />
           </div>
         </div>
-        <p class="privacyNote">{{ translate('API Key 只保存在这台电脑上。使用自己的供应商不消耗妙图积分。') }}</p>
+        <p class="privacyNote">{{ translate('API Key 只在这台电脑上，不消耗妙图积分') }}</p>
       </el-form>
     </div>
     <template #footer>

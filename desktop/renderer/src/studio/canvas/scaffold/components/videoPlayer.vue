@@ -1,13 +1,10 @@
 <template>
   <div ref="host" class="videoPlayer" :style="{ aspectRatio: videoAspect || '16 / 9' }">
-    <img v-if="mediaActive && !mediaRequested && posterUrl" class="videoPoster" :src="posterUrl" alt="" draggable="false" @load="readPoster" @error="requestMedia" />
     <video
-      v-show="mediaRequested || !posterUrl"
       ref="video"
       class="videoPreview"
       :class="{ nodrag: fullscreen }"
       :src="mediaActive && mediaRequested ? playbackSrc : undefined"
-      :poster="mediaActive ? posterUrl : undefined"
       :style="{ aspectRatio: videoAspect || undefined }"
       :controls="fullscreen"
       playsinline
@@ -20,14 +17,14 @@
       @durationchange="readDuration"
       @timeupdate="readTime"
       @play="playing = true"
-      @waiting="buffering = true"
+      @waiting="onWaiting"
       @canplay="buffering = false"
       @playing="buffering = false"
       @pause="playing = false"
       @ended="playing = false"
       @volumechange="readVolume"
       @error="mediaError" />
-    <span v-if="mediaActive && mediaRequested && !failed && (!ready || buffering)" class="playbackStatus" role="status">{{ ready ? translate("正在缓冲…") : translate("正在准备播放…") }}</span>
+    <span v-if="showPlaybackStatus" class="playbackStatus" role="status">{{ ready ? translate("正在缓冲…") : translate("正在准备播放…") }}</span>
     <button v-if="mediaActive && failed" class="playbackStatus retryPlayback nodrag nopan" @pointerdown.stop @click.stop="retryPlayback">{{ translate('视频加载未完成，点击重试') }}</button>
     <div v-show="!fullscreen" class="playerControls nodrag nopan nowheel" @pointerdown.stop @mousedown.stop @dblclick.stop @keydown.stop>
       <el-button class="playerButton playButton" text circle :icon="playing ? IconPlayerPause : IconPlayerPlay" :disabled="!mediaActive || failed" :aria-label="playing ? translate('暂停视频') : translate('播放视频')" :title="playing ? translate('暂停') : translate('播放')" @click="togglePlayback" />
@@ -70,9 +67,9 @@ import { ElButton, ElDropdown, ElDropdownMenu, ElDropdownItem, ElMessage, ElPopo
 import { IconPlayerPlay, IconPlayerPause, IconVolume, IconVolumeOff, IconPhotoScan, IconPlayerSkipBack, IconPlayerSkipForward } from "@tabler/icons-vue";
 import { useNodeFiles } from "../workspaceFiles";
 import { translate } from "@miaoimg/i18n/vue";
-import { workspacePreviewUrl, workspacePlaybackUrl } from "@/lib/workspaceFiles";
+import { workspacePlaybackUrl } from "@/lib/workspaceFiles";
 
-const props = defineProps<{ src: string; label?: string; disabled?: boolean }>();
+const props = defineProps<{ src: string; label?: string; disabled?: boolean; aspect?: string }>();
 const originalFallback = ref(false);
 const adaptivePreview = ref(false);
 let resumeAfterSwitch = false;
@@ -82,13 +79,14 @@ const host = ref<HTMLElement>();
 const inView = ref(false);
 const pageVisible = ref(!document.hidden);
 const failed = ref(false);
-const videoAspect = ref("");
+const videoAspect = ref(props.aspect || "");
+watch(() => props.aspect, value => { if (value && !videoAspect.value) videoAspect.value = value; });
 let observer: IntersectionObserver | undefined;
 let resumeTime = 0;
 const buffering = ref(false);
 const playbackSrc = computed(() => originalFallback.value ? props.src : workspacePlaybackUrl(props.src, adaptivePreview.value));
 const canAdaptPlayback = computed(() => Boolean(window.miaoDesktop) && workspacePlaybackUrl(props.src, true) !== props.src);
-const posterUrl = computed(() => props.src.includes("/api/imagine/workspace/files?") ? workspacePreviewUrl(props.src) : undefined);
+const localDesktopPlayback = computed(() => Boolean(window.miaoDesktop) && !adaptivePreview.value);
 // 节点名是画布数据：展示时按当前语言兜底，写进画布（新建节点名）仍用中文原文。
 const label = computed(() => props.label || translate("节点视频"));
 const emit = defineEmits<{ time: [seconds: number]; dimensions: [size: { width: number; height: number }] }>();
@@ -109,6 +107,7 @@ const files = useNodeFiles();
 const canvasUiActive = inject<Ref<boolean> | undefined>("canvasUiActive", undefined);
 // 离开视口后释放解码器和下载连接，保留尺寸与进度；重新进入时按需读取。
 const mediaActive = computed(() => inView.value && pageVisible.value && canvasUiActive?.value !== false);
+const showPlaybackStatus = computed(() => mediaActive.value && mediaRequested.value && !failed.value && (!ready.value || buffering.value) && !localDesktopPlayback.value);
 onMounted(() => {
   observer = new IntersectionObserver(entries => { inView.value = entries[0]?.isIntersecting ?? false; }, { rootMargin: "240px" });
   if (host.value) observer.observe(host.value);
@@ -124,8 +123,9 @@ watch(mediaActive, active => {
     video.value?.load();
     ready.value = false;
     mediaRequested.value = false;
+    buffering.value = false;
     scrubbing = false;
-  } else { failed.value = false; if (!posterUrl.value) void requestMedia(); }
+  } else { failed.value = false; void requestMedia(); }
 }, { flush: "pre" });
 const getCanvas = inject<(() => { id: string } | undefined) | undefined>("canvas", undefined);
 let captureController: AbortController | undefined;
@@ -150,7 +150,8 @@ watch(() => props.src, () => {
   duration.value = 0;
   resumeTime = 0;
   failed.value = false;
-  if (mediaActive.value && !posterUrl.value) void requestMedia();
+  videoAspect.value = props.aspect || "";
+  if (mediaActive.value) void requestMedia();
 }, { flush: "sync" });
 onBeforeUnmount(() => { seekController?.abort(); observer?.disconnect(); captureController?.abort(); video.value?.pause(); video.value?.removeAttribute("src"); video.value?.load(); });
 // 切到其他画布或后台标签时停止播放，避免看不见的播放器继续抢带宽。
@@ -221,11 +222,6 @@ function dimensions(width: number, height: number) {
   videoAspect.value = `${width} / ${height}`;
   emit("dimensions", { width, height });
 }
-function readPoster(event: Event) {
-  const image = event.currentTarget as HTMLImageElement;
-  // A poster preserves aspect ratio, but is not the video's resolution.
-  if (image.naturalWidth && image.naturalHeight) videoAspect.value = `${image.naturalWidth} / ${image.naturalHeight}`;
-}
 async function requestMedia() {
   if (!mediaActive.value) return;
   mediaRequested.value = true;
@@ -236,7 +232,12 @@ function readDuration() {
   const value = video.value?.duration ?? 0;
   if (Number.isFinite(value) && value > 0) duration.value = value;
 }
-function markReady() { failed.value = false; ready.value = true; readDuration(); }
+function markReady() { failed.value = false; ready.value = true; buffering.value = false; readDuration(); }
+function onWaiting() {
+  // 桌面原片在本机，play() 仍会先发 waiting。那不是网络缓冲，不要盖「正在缓冲…」。
+  if (localDesktopPlayback.value) return;
+  buffering.value = true;
+}
 function retryPlayback() {
   failed.value = false;
   originalFallback.value = false;
@@ -498,7 +499,7 @@ async function captureFrameUsingFfmpeg(command: 'first' | 'last' | 'current', si
   cursor: grab;
 
   &:active { cursor: grabbing; }
-  .videoPoster, .videoPreview {
+  .videoPreview {
     display: block;
     width: 100%;
     height: 100%;

@@ -2,7 +2,7 @@
   <div class="textModelPanel">
     <settings-section
       :title="translate('文本模型')"
-      :description="translate('选择 Agent 和文本节点默认使用的模型：可以用妙图提供的模型，也可以用下面你自己接入的供应商。')">
+      :description="translate('妙图模型，或你自己接入的供应商')">
       <feedbackNotice v-if="error" :message="error"  />
       <el-form v-else labelPosition="top">
         <el-form-item :label="translate('模型')">
@@ -33,12 +33,12 @@
         <el-tag v-if="selectedModelInfo.reasoning" size="small" effect="plain">{{ translate('支持推理') }}</el-tag>
       </div>
     </settings-section>
-    <settings-section :title="translate('我的供应商')" :description="translate('接入你自己的大模型账号（OpenAI、DeepSeek、Kimi、通义、本机 Ollama 等），用你自己的 API Key，不消耗妙图积分。')">
+    <settings-section :title="translate('我的供应商')" :description="translate('用自己的 API Key，不消耗妙图积分')">
       <template #actions>
         <el-button text size="small" :icon="IconPlus" @click="openEditor(null)">{{ translate('添加供应商') }}</el-button>
       </template>
       <feedbackNotice v-if="providerError" :message="providerError"  />
-      <p v-else-if="!providers.length" class="localTextHint">{{ translate('还没有接入自己的供应商。') }}</p>
+      <p v-else-if="!providers.length" class="localTextHint">{{ translate('还没有自己的供应商') }}</p>
       <ul v-else class="ownProviders">
         <li v-for="provider in providers" :key="provider.id">
           <span class="providerMark" aria-hidden="true"><modelIcon :model="provider.models?.[0]?.id || ''" :provider="`${provider.label} ${provider.apiUrl || ''}`" :size="20" /></span>
@@ -54,8 +54,8 @@
       </ul>
     </settings-section>
     <providerEditor :visible="editorVisible" :provider="editingProvider" :existingIds="providers.map(item => item.id)" @close="editorVisible = false" @saved="onSaved" />
-    <settings-section :title="translate('豆包与 Dola 文本模型')" :description="translate('在设置 → 豆包与 Dola 中连接账户后，可在文本节点选择对应来源。')">
-      <p class="localTextHint">{{ translate('使用豆包或 Dola 账号自带的权益生成文本回复；Agent 和导演台请选择上面的妙图模型或你接入的模型。') }}</p>
+    <settings-section :title="translate('豆包与 Dola 文本模型')" :description="translate('连接账号后可在文本节点里选用')">
+      <p class="localTextHint">{{ translate('文本模型只在文本节点里用') }}</p>
     </settings-section>
   </div>
 </template>

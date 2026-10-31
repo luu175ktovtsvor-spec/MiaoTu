@@ -64,8 +64,8 @@ const resetKey = ref(0);
 const issues = ref<Partial<Record<CanvasShortcutAction, string>>>({});
 
 const bindHint = computed(() => bindMode.value === "listen"
-  ? translate("点键帽后按下新按键，Esc 退出；右侧 × 取消绑定。")
-  : translate("填按键代号，如 Ctrl+KeyG；回车或移开焦点保存，留空即不绑定。"));
+  ? translate("点键帽后按下新按键，Esc 退出，右侧 × 取消绑定")
+  : translate("填按键代号，如 Ctrl+KeyG，回车或移开后保存，留空即不绑定"));
 
 function gestureHint(gesture: "drag" | "wheel" | undefined, hold: boolean | undefined) {
   if (!hold) return "";

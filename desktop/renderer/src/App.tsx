@@ -1,5 +1,4 @@
 import { lazy, Suspense } from 'react'
-import ReleaseNotesOnVersion from './components/ReleaseNotesModal'
 import { useLang } from './i18n'
 import './components/feedback.css'
 
@@ -18,5 +17,5 @@ function DesktopContent() {
 }
 
 export default function App() {
-  return <><ReleaseNotesOnVersion /><DesktopContent /></>
+  return <DesktopContent />
 }

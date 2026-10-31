@@ -1,13 +1,13 @@
 <template>
   <div class="mcpPanel">
     <settings-section>
-      <settings-row :label="translate('开启 MCP')" :description="translate('允许 Claude Code、Codex 等外部编程工具操作画布。开启后把下面的配置填进对应工具。')">
+      <settings-row :label="translate('开启 MCP')" :description="translate('外部工具用来操作画布')">
         <el-switch :modelValue="mcpSettings.enabled" :loading="saving" :disabled="busy" :aria-label="translate('开启 MCP')" @change="(value) => setEnabled(value === true)" />
       </settings-row>
-      <p class="mcpNote">{{ translate('开启本机操作后，外部 Agent 还能把电脑上的素材导入画布、把项目文件导出到电脑；原件保留，不覆盖已有文件。') }}</p>
+      <p class="mcpNote">{{ translate('本机操作开启后可以导入和导出，不覆盖已有文件') }}</p>
     </settings-section>
 
-    <settings-section :title="translate('访问令牌')" :description="translate('令牌保存在这台电脑上，正常重启后继续有效。重新生成会使旧配置失效；只发给可信的客户端。')">
+    <settings-section :title="translate('访问令牌')" :description="translate('重新生成后旧配置失效，只发给可信客户端')">
       <template #actions>
         <el-button text size="small" :icon="IconRefresh" :loading="busy" :disabled="saving" @click="rotateToken">{{ hasToken ? translate('重新生成') : translate('生成令牌') }}</el-button>
         <el-button text size="small" :icon="IconCopy" :disabled="!token || busy || saving || !!statusError" @click="copyText(token, translate('MCP 访问令牌'), true)">{{ translate('复制') }}</el-button>
@@ -24,7 +24,7 @@
       </div>
     </settings-section>
 
-    <settings-section :title="translate('连接状态')" :description="translate('操作画布需要妙图页面保持打开。')">
+    <settings-section :title="translate('连接状态')" :description="translate('连接时保持妙图打开')">
       <template #actions>
         <el-button text size="small" :icon="IconRefresh" :loading="statusBusy" :disabled="busy || saving" @click="refreshStatus">{{ translate('刷新') }}</el-button>
       </template>
@@ -43,11 +43,11 @@
       </template>
     </settings-section>
 
-    <settings-section :title="translate('服务地址')" :description="translate('供同一台电脑上的外部 Agent 连接。正常重启保留地址；切换项目或端口被占用后重新复制配置。')">
+    <settings-section :title="translate('服务地址')" :description="translate('同一台电脑上的外部工具使用')">
       <el-input :modelValue="endpoint" dir="ltr" readonly :aria-label="translate('MCP 服务地址')" />
     </settings-section>
 
-    <settings-section :title="translate('妙图 Skill')" :description="translate('教外部工具组合使用画布工具，把 SKILL.md 放进对应工具的技能目录。')">
+    <settings-section :title="translate('妙图 Skill')" :description="translate('放进外部工具的技能目录')">
       <template #actions>
         <el-button text size="small" :icon="IconFileText" :loading="skillAction === 'view'" :disabled="!!skillAction" @click="handleSkill('view')">{{ translate('查看') }}</el-button>
         <el-button text size="small" :icon="IconCopy" :loading="skillAction === 'copy'" :disabled="!!skillAction" @click="handleSkill('copy')">{{ translate('复制') }}</el-button>
@@ -59,7 +59,7 @@
       <div class="skillContent"><messageMarkdown :content="skillContent" /></div>
     </el-dialog>
     <el-dialog v-model="copyVisible" :title="translate('复制 {0}', { 0: copyTitle })" width="min(680px, calc(100vw - 32px))" alignCenter appendToBody>
-      <p class="copyHint">{{ translate('请选中下面的文本手动复制。') }}{{ copyHasCredential ? translate('此配置包含访问凭证，只发给可信的客户端。') : '' }}</p>
+      <p class="copyHint">{{ translate('选中下面的文本手动复制') }}{{ copyHasCredential ? translate('含访问凭证，只发给可信客户端') : '' }}</p>
       <el-input :modelValue="copyContent" type="textarea" dir="ltr" :autosize="{ minRows: 8, maxRows: 18 }" readonly :aria-label="copyTitle" />
     </el-dialog>
   </div>

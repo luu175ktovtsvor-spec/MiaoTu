@@ -1,28 +1,28 @@
 <template>
   <div class="general">
     <settings-section>
-      <settings-row :label="translate('启动动画')" :description="translate('打开妙图时的开场动画，关闭后启动更快；下次启动生效。')">
+      <settings-row :label="translate('启动动画')" :description="translate('下次启动生效')">
         <el-switch
           :modelValue="uiSettings.startupAnimation"
           :aria-label="translate('启动动画')"
           @change="(value) => updateUiSettings({ startupAnimation: value === true })" />
       </settings-row>
 
-      <settings-row :label="translate('流畅画布')" :description="translate('优化节点较多时的平移和缩放；设备运行吃力时可以关闭。')">
+      <settings-row :label="translate('流畅画布')" :description="translate('平移和缩放时使用独立图层')">
         <el-switch
           :modelValue="generalSettings.canvasCompositingEnabled"
           :aria-label="translate('流畅画布')"
           @change="(value) => updateGeneralSettings({ canvasCompositingEnabled: value === true })" />
       </settings-row>
 
-      <settings-row :label="translate('节点连线动画')" :description="translate('选中或拖动节点时，相连的线条发光并有光点流动；关闭后只保留发光。')">
+      <settings-row :label="translate('节点连线动画')" :description="translate('选中时线条发光，开启后光点会流动')">
         <el-switch
           :modelValue="generalSettings.canvasEdgeAnimationEnabled"
           :aria-label="translate('节点连线动画')"
           @change="(value) => updateGeneralSettings({ canvasEdgeAnimationEnabled: value === true })" />
       </settings-row>
 
-      <settings-row :label="translate('节点连线高亮颜色')" :description="translate('选中或拖动节点、以及拖出连线时，线条发光的颜色。')" control-width="240px">
+      <settings-row :label="translate('节点连线高亮颜色')" :description="translate('选中或拖动时线条发光的颜色')" control-width="240px">
         <el-select
           :modelValue="generalSettings.canvasEdgeColorMode"
           :aria-label="translate('节点连线颜色模式')"

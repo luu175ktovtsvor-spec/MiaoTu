@@ -3,7 +3,7 @@
     <el-radio-group v-model="platform" :aria-label="translate('选择平台')">
       <el-radio-button value="doubao">豆包</el-radio-button><el-radio-button value="dola">Dola</el-radio-button>
     </el-radio-group>
-    <settings-section :title="site.id === 'dola' ? translate('Dola 账号') : translate('豆包账号')" :description="translate('登录后，就能在文本、图片和视频节点里用这个账号生成；用的是账号自己的额度，不扣妙图积分。')">
+    <settings-section :title="site.id === 'dola' ? translate('Dola 账号') : translate('豆包账号')" :description="translate('用账号自己的额度，不扣妙图积分')">
       <div class="accountList" :aria-label="translate('平台账号列表')">
         <button v-for="account in state?.accounts || []" :key="account.id" type="button" class="accountItem" :class="{ active: account.id === state?.accountId }" :aria-pressed="account.active" :disabled="busy" @click="perform('select-account', false, { accountId: account.id })">
           <span class="accountDot" aria-hidden="true" />
@@ -24,9 +24,9 @@
         <el-button v-if="state?.accountId !== 'default'" :disabled="busy" @click="removeAccount">{{ translate('删除账号') }}</el-button>
       </div>
       <feedbackNotice :message="error" @close="error = ''" />
-      <p v-if="state && !state.available" class="hint">{{ translate('请在妙图桌面版里打开这个设置。') }}</p>
+      <p v-if="state && !state.available" class="hint">{{ translate('请在妙图桌面版里打开') }}</p>
     </settings-section>
-    <settings-section :title="translate('当前账号模型与参数')" :description="translate('这里显示节点实际使用的模型 ID，以及这个账号当前可选的时长、比例和分辨率。节点里仍可直接修改参数。')">
+    <settings-section :title="translate('当前账号模型与参数')" :description="translate('节点里用的模型，以及时长、比例和分辨率')">
       <div v-if="mediaModels.length" class="modelList">
         <article v-for="item in mediaModels" :key="item.providerId + ':' + item.modelId" class="modelCard">
           <header>
@@ -45,7 +45,7 @@
           </dl>
         </article>
       </div>
-      <p v-else class="hint">{{ state?.connected ? translate('正在读取这个账号的模型与参数，或当前账号没有开放图片和视频模型。') : translate('连接账号后会显示图片、视频模型及其参数。') }}</p>
+      <p v-else class="hint">{{ state?.connected ? translate('正在读取，或这个账号没有图片和视频模型') : translate('连接后显示图片和视频模型') }}</p>
       <div v-if="textModels.length" class="textModels">
         <strong>{{ translate('文本模型') }}</strong>
         <div v-for="item in textModels" :key="item.modelId" class="textModelRow">
@@ -53,13 +53,13 @@
         </div>
       </div>
     </settings-section>
-    <settings-section v-if="state?.pending?.length" :title="translate('还有结果没取回')" :description="translate('在平台窗口里打开那段对话，再点「关联当前对话」；妙图核对提示词后取回结果，不会重新生成。')">
+    <settings-section v-if="state?.pending?.length" :title="translate('还有结果没取回')" :description="translate('到平台窗口关联当前对话，不会重新生成')">
       <settings-row v-for="task in state.pending" :key="task.id" :label="kinds.find(kind => kind.id === task.kind)?.label || task.kind" :description="(task.accountLabel || translate('默认账号')) + ' · ' + new Date(task.createdAt).toLocaleString()">
         <el-button v-if="task.needsBinding" :disabled="busy" @click="perform('bind-current', false, { requestId: task.id })">{{ translate('关联当前对话') }}</el-button>
         <span v-else>{{ translate('正在取回') }}</span>
       </settings-row>
     </settings-section>
-    <settings-section :title="site.label + ' ' + translate('剩余额度')" :description="translate('数字来自你的平台账号。')">
+    <settings-section :title="site.label + ' ' + translate('剩余额度')" :description="translate('数字来自平台账号')">
       <div class="quotaGrid">
         <div v-for="kind in kinds" :key="kind.id" class="quotaCard">
           <span>{{ kind.label }}</span>
@@ -69,22 +69,22 @@
       </div>
       <p v-if="state?.checkedAt" class="hint">{{ translate('上次更新') }}：{{ new Date(state.checkedAt).toLocaleString() }}</p>
     </settings-section>
-    <settings-section :title="translate('今天在妙图里的用量')" :description="translate('这台电脑上，用这个账号在妙图里提交的生成。')">
+    <settings-section :title="translate('今天在妙图里的用量')" :description="translate('这台电脑上用这个账号提交的生成')">
       <settings-row v-for="kind in kinds" :key="kind.id" :label="kind.label" control-width="auto">
         <span class="usageValue">{{ translate('提交') }} {{ usage(kind.id)?.submitted || 0 }} · {{ translate('完成') }} {{ usage(kind.id)?.succeeded || 0 }} · {{ translate('待取回') }} {{ usage(kind.id)?.pending || 0 }}<template v-if="usage(kind.id)?.confirming"> · {{ translate('确认中') }} {{ usage(kind.id)?.confirming }}</template></span>
       </settings-row>
     </settings-section>
-    <settings-section :title="translate('在节点里使用')" :description="translate('在文本、图片或视频节点的模型菜单里，选「豆包」或「Dola」分组下的模型。')">
+    <settings-section :title="translate('在节点里使用')" :description="translate('在节点的模型菜单里选豆包或 Dola')">
       <local-media-info :model="{ providerId: platform + '-local', modelId: platform + '-local-video' }" />
-      <p class="hint">{{ translate('时长、比例等选项按平台实际提供的显示；平台窗口要求验证时，在窗口里完成后会自动继续。') }}</p>
-      <p class="hint">{{ translate('豆包、Dola 的文本模型只在文本节点里用；Agent 和导演台请在「文本模型」里换成其他模型。') }}</p>
-      <p class="hint">{{ translate('每个平台账号使用独立的本机网页登录状态；新生成任务会固定到当时使用的账号，切换默认账号不会把旧任务改到别的账号。') }}</p>
+      <p class="hint">{{ translate('选项按平台实际提供的来') }}</p>
+      <p class="hint">{{ translate('文本模型只在文本节点里用') }}</p>
+      <p class="hint">{{ translate('任务留在提交时的账号') }}</p>
     </settings-section>
-    <settings-section :title="translate('支持的地区')" :description="translate('平台按你登录和生成时所用网络的地区判断能不能用。')">
+    <settings-section :title="translate('支持的地区')" :description="translate('按登录和生成时的网络地区判断')">
       <div class="networkGuide">
-        <p><strong>Dola</strong><span>{{ translate('可用：日本、英国和东南亚等地区。不可用：中国大陆、美国、加拿大、澳大利亚、印度。') }}</span></p>
-        <p><strong>豆包</strong><span>{{ translate('在中国大陆的网络下可直接使用。') }}</span></p>
-        <p><strong>{{ translate('受限时') }}</strong><span>{{ translate('换到可用地区的网络后，重新打开平台窗口并登录。') }}</span></p>
+        <p><strong>Dola</strong><span>{{ translate('可用：日本、英国和东南亚等；不可用：中国大陆、美国、加拿大、澳大利亚、印度') }}</span></p>
+        <p><strong>豆包</strong><span>{{ translate('中国大陆网络下可直接使用') }}</span></p>
+        <p><strong>{{ translate('受限时') }}</strong><span>{{ translate('换到可用地区后重新打开平台窗口并登录') }}</span></p>
       </div>
     </settings-section>
   </div>
