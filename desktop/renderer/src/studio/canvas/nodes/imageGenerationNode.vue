@@ -297,6 +297,7 @@ let generationController: AbortController | undefined;
 // 进度条要的上游状态：queued / running / saving（nodeAi 在写回画布前会补发一次 saving）。
 const generationStatus = ref("");
 const generationMessage = ref("");
+const upstreamPercent = ref<number | null>(null);
 const generationState = useNodeGeneration(outputs, () => generationController?.abort(), undefined, () => ({ phase: generationStatus.value, message: generationMessage.value, requestId: data.value.taskRequestId }));
 const { generating } = generationState;
 const pendingTask = computed(() => Boolean(data.value.taskRequestId) || generationState.outcome.value === "pending");
@@ -327,8 +328,8 @@ nodeEvent.on("canConnect", (connection, context) => {
   ElMessage({ message: translate(message), type: "warning", grouping: true });
   return false;
 });
-// 图片通道没有真实百分比（服务端生成记录里根本没有 progress 字段），进度条走
-// 「阶段 + 已用时 / 该模型典型耗时」估算：条形一直在动，但不显示数字，封顶 90%。
+// 图片通道未返回真实百分比时，进度条按已用时估算并显示 ≈，生成时封顶 90%。
+// 有真实值时与视频节点共用真值优先的规则，保存阶段保留带 ≈ 的百分比。
 // 典型耗时的数据来源与算法见 scaffold/generationProgress.ts。
 const progress = useGenerationProgress({
   generating,
@@ -337,6 +338,7 @@ const progress = useGenerationProgress({
   error: generationState.error,
   status: generationStatus,
   statusMessage: generationMessage,
+  realPercent: upstreamPercent,
   modelId: () => selectedModel.value?.modelId ?? "",
   kind: "image",
 });
@@ -662,8 +664,9 @@ onMounted(() => window.addEventListener("miao-media-models", refreshLiveModels))
 onScopeDispose(() => window.removeEventListener("miao-media-models", refreshLiveModels));
 watch(() => node.selected, selected => { if (selected) refreshLiveModels(); });
 
-function recordGenerationStatus(status: string, _progress?: number | null, message = "", requestId?: string) {
+function recordGenerationStatus(status: string, progress?: number | null, message = "", requestId?: string) {
   generationMessage.value = message;
+  if (progress !== undefined) upstreamPercent.value = progress;
   generationStatus.value = status;
   if (requestId && ["failed", "cancelled", "expired"].includes(status)) delivery.clear(requestId);
 }
@@ -766,6 +769,7 @@ async function startGeneration(signal?: AbortSignal) {
   const workspace = files.getWorkspaceFiles();
   const controller = new AbortController();
   recordGenerationStatus("queued");
+  upstreamPercent.value = null;
   const layerDecomposition = !inpaintEditor && Boolean(data.value.layerDecomposition);
   // 官方图层拆分固定 1 张底图 + 最多 16 个透明图层；普通多图生成按张数；重绘由服务端固定 1 张。
   const maxResults = inpaintEditor ? 1 : layerDecomposition ? 17 : Math.max(1, Math.floor(Number(data.value.count) || 1));

@@ -49,10 +49,10 @@ export function ProgressRing({ percent, estimated = false, showPercent = true, i
       height={size}
       viewBox={`0 0 ${size} ${size}`}
       role="progressbar"
-      aria-valuemin={showPercent ? 0 : undefined}
-      aria-valuemax={showPercent ? 100 : undefined}
+      aria-valuemin={!indeterminate && showPercent ? 0 : undefined}
+      aria-valuemax={!indeterminate && showPercent ? 100 : undefined}
       aria-valuenow={indeterminate || !showPercent ? undefined : shown}
-      aria-valuetext={indeterminate ? undefined : showPercent ? text : statusText}
+      aria-valuetext={!showPercent ? statusText : indeterminate ? `${statusText} · ${text}` : text}
       aria-label={label}>
       <circle className="gen-ring__track" cx={size / 2} cy={size / 2} r={radius} fill="none" strokeWidth={stroke} />
       <circle
@@ -66,7 +66,7 @@ export function ProgressRing({ percent, estimated = false, showPercent = true, i
         strokeDasharray={indeterminate ? `${circumference * 0.22} ${circumference}` : `${(showPercent ? shown : 0) / 100 * circumference} ${circumference}`}
         transform={`rotate(-90 ${size / 2} ${size / 2})`}
       />
-      {!indeterminate && showPercent && <text className="gen-ring__text" x="50%" y="50%" textAnchor="middle" dominantBaseline="central">{text}</text>}
+      {showPercent && <text className="gen-ring__text" x="50%" y="50%" textAnchor="middle" dominantBaseline="central">{text}</text>}
     </svg>
   )
 }

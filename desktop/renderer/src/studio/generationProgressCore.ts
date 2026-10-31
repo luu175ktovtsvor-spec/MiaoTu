@@ -7,7 +7,7 @@
 // 2. 上游不报百分比 —— 图片生成就是这一类（server/image_api.ts 的生成记录里没有 progress 字段），
 //    只能按「阶段 + 已生成时长 / 该模型典型耗时」估算推进，封顶 ESTIMATE_CAP，成功才到 100。
 //    估算值照样显示数字（产品要求 0~100 一路可见），但用 ≈ 前缀和真值区分。
-// 3. 排队 —— 停在 0%，等真正开跑才起算估算钟。
+// 3. 排队显示 0%；保存显示带 ≈ 的阶段估算，完整写回才显示 100%。
 
 export type ProgressKind = "image" | "video";
 export type ProgressPhase = "idle" | "submitting" | "confirming" | "queued" | "running" | "saving" | "pending" | "succeeded" | "failed" | "cancelled";
@@ -48,7 +48,7 @@ export const ESTIMATE_CAP = 90;
 // 估算曲线 percent = CAP * (1 - e^(-RATE * 已生成时长/典型耗时))：起步快、越接近典型耗时越慢，
 // 永远不会越过 CAP。RATE=1.5 时，走满一个典型耗时约到 CAP 的 78%，两倍典型耗时约 95%。
 const ESTIMATE_RATE = 1.5;
-// 上游已经出图/出片、正在写回画布时停在 95%（只有估算通道需要这个占位）。
+// 上游已完成、本机仍在保存：保留数字反馈，明确这是阶段估算，不是下载字节比例。
 const SAVING_PERCENT = 95;
 
 // 每个模型的典型耗时，估算分母。两个消费者必须用同一个分母，所以和计算放在一起。
@@ -107,7 +107,7 @@ export function typicalSeconds(modelId: string, kind: ProgressKind, durationSeco
 // 无真值通道的估算值，0 → ESTIMATE_CAP 单调递增。
 export function estimatedPercent(input: Pick<ProgressInput, "elapsedSeconds" | "modelId" | "kind" | "durationSeconds">): number {
   const typical = Math.max(1, typicalSeconds(input.modelId, input.kind, input.durationSeconds));
-  const ratio = Math.max(0, input.elapsedSeconds) / typical;
+  const ratio = (Number.isFinite(input.elapsedSeconds) ? Math.max(0, input.elapsedSeconds) : 0) / typical;
   return Math.min(ESTIMATE_CAP, Math.round(ESTIMATE_CAP * (1 - Math.exp(-ESTIMATE_RATE * ratio))));
 }
 
@@ -115,36 +115,32 @@ function clampPercent(value: number): number {
   return Math.min(100, Math.max(0, Math.round(value)));
 }
 
+function measuredPercent(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100
+    ? clampPercent(value) : null;
+}
+
 /**
  * 把「阶段 + 真值 + 已生成时长」合成一个可以直接画的百分比。
  *
- * 合并规则在核心内完成，消费者不要自己再 max 一遍：`percent = max(真值峰值, 估算)`。
- * 为什么必须合并：真值可能比估算低（估算已经 70%、上游第一次才报 42%），直接切真值会让
- * 数字倒退；两边各自 max 又会写出两份逻辑。
- * `estimated` 描述的是**当前显示的这个数**的来源：估算领先时为 true（界面显示 ≈70%），
- * 真值追上来之后才变 false。
+ * 真值优先，不能用时间估算把平台真实进度顶高。首次收到真值会校正之前的估算，
+ * 之后保留真值峰值，缺报或旧轮询不能让时间估算重新接管。
+ * 100% 只属于完整成功：平台报满但本机还没写回时最多显示 99%。
+ * 保存阶段没有文件字节进度，用带 ≈ 的阶段估算保留数字反馈。
  */
 export function progressView(input: ProgressInput): ProgressView {
-  const real = input.realPeak ?? input.realPercent ?? null;
-  const realPeak = real === null ? null : clampPercent(real);
-  const estimate = estimatedPercent(input);
-  const merged = Math.max(realPeak ?? 0, estimate);
-  const estimated = estimate > (realPeak ?? 0);
+  const values = [measuredPercent(input.realPeak), measuredPercent(input.realPercent)].filter((value): value is number => value !== null);
+  const real = values.length ? Math.max(...values) : null;
 
   switch (input.phase) {
     case "submitting":
     case "confirming":
-      return { percent: 0, estimated: false, showPercent: false };
     case "queued":
-      // 排队有数字 0%，但没有真值也没有估算依据，不算「估算」。
       return { percent: 0, estimated: false, showPercent: true };
-    case "running":
-      return { percent: clampPercent(merged), estimated, showPercent: true };
     case "saving":
-      // 有真值的通道继续用真值（别把上游的 72% 忽然说成 95%）；只有估算通道才需要占位。
-      return realPeak === null
-        ? { percent: clampPercent(Math.max(SAVING_PERCENT, estimate)), estimated: true, showPercent: true }
-        : { percent: clampPercent(merged), estimated, showPercent: true };
+      return { percent: Math.min(99, Math.max(SAVING_PERCENT, real ?? 0)), estimated: true, showPercent: true };
+    case "running":
+      return { percent: real === null ? estimatedPercent(input) : Math.min(99, real), estimated: real === null, showPercent: true };
     case "succeeded":
       return { percent: 100, estimated: false, showPercent: true };
     case "failed":
@@ -166,8 +162,8 @@ export function createProgressTracker() {
   return {
     reset() { realPeak = null; },
     view(input: Omit<ProgressInput, "realPeak">): ProgressView {
-      if (input.realPercent !== null && input.realPercent !== undefined) {
-        const value = clampPercent(input.realPercent);
+      const value = measuredPercent(input.realPercent);
+      if (value !== null && input.phase === "running") {
         realPeak = Math.max(realPeak ?? 0, value);
       }
       return progressView({ ...input, realPeak });

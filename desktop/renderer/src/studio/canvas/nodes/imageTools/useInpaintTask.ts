@@ -17,6 +17,7 @@ export function useInpaintTask(options: {
 }) {
   const status = ref("");
   const message = ref("");
+  const upstreamPercent = ref<number | null>(null);
   const modelId = ref("");
   let disposed = false;
   let controller: AbortController | undefined;
@@ -31,7 +32,7 @@ export function useInpaintTask(options: {
   const pending = computed(() => !!options.data.value.taskRequestId || state.outcome.value === "pending");
   const progress = useGenerationProgress({
     generating: state.generating, outcome: state.outcome, cancelled: state.cancelled,
-    error: state.error, status, statusMessage: message, modelId: () => modelId.value, kind: "image",
+    error: state.error, status, statusMessage: message, realPercent: upstreamPercent, modelId: () => modelId.value, kind: "image",
   });
   onScopeDispose(() => { disposed = true; stop(); });
 
@@ -58,6 +59,7 @@ export function useInpaintTask(options: {
     }
     status.value = resuming ? "confirming" : "submitting";
     message.value = "";
+    upstreamPercent.value = null;
     if (input && !resuming) modelId.value = input.modelId;
     let receivedStatus = false;
     let observedRequestId = options.data.value.taskRequestId || lastRequestId || "";
@@ -70,9 +72,10 @@ export function useInpaintTask(options: {
         await options.delivery.bind(requestId, existing, undefined, current.signal);
         if (!resuming) started("generating", requestId);
       },
-      onStatus: (value: string, _progress?: number | null, detail = "") => {
+      onStatus: (value: string, percent?: number | null, detail = "") => {
         if (disposed) return;
         receivedStatus = true;
+        if (percent !== undefined) upstreamPercent.value = percent;
         status.value = value;
         message.value = detail;
         if (["failed", "cancelled", "expired"].includes(value)) {

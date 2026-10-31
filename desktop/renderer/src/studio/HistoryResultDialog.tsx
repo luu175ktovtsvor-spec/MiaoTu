@@ -81,7 +81,7 @@ export default function HistoryResultDialog({ item, lang, locale, progress, now,
               ? <video ref={video} key={`${current.key}:${attempt}`} src={current.url} poster={current.thumbnail} controls playsInline preload="metadata" onError={() => setMediaFailed(true)} />
               : <img key={`${current.key}:${attempt}`} src={current.url} alt={L('生成详情')} onError={() => setMediaFailed(true)} />
               : <div className="history-result-media-state">
-                {pending && progress ? <ProgressRing percent={progress.percent ?? 0} estimated={progress.estimated} showPercent={progress.showPercent ?? true} indeterminate={['submitting', 'confirming'].includes(progress.status)} label={L('生成进度')} approx={L('≈')} statusText={L(status)} /> : item.kind === 'video' || item.video ? <FilmStrip size={32} /> : <ImageSquare size={32} />}
+                {pending && progress ? <ProgressRing percent={progress.percent ?? 0} estimated={progress.estimated} showPercent={progress.showPercent ?? true} indeterminate={['submitting', 'confirming', 'queued', 'waiting'].includes(progress.status)} label={L('生成进度')} approx={L('≈')} statusText={L(status)} /> : item.kind === 'video' || item.video ? <FilmStrip size={32} /> : <ImageSquare size={32} />}
                 <strong>{L(mediaFailed ? '加载失败，请重试' : pending ? status : '该记录没有可展示的媒体')}</strong>
                 {pending && elapsed != null && <span>{waitingText(elapsed, lang)}</span>}
                 {mediaFailed && <button type="button" onClick={() => { setMediaFailed(false); setAttempt(value => value + 1) }}>{L('重试')}</button>}
@@ -97,7 +97,7 @@ export default function HistoryResultDialog({ item, lang, locale, progress, now,
         </div>
         <aside className="history-result-info">
           <div className={`history-result-status${item.status === 'failed' ? ' is-error' : ''}${pending ? ' is-pending' : ''}`}><span />{L(status)}</div>
-          {current && pending && progress && <div className="history-result-inline-progress"><ProgressRing percent={progress.percent ?? 0} estimated={progress.estimated} showPercent={progress.showPercent ?? true} indeterminate={['submitting', 'confirming'].includes(progress.status)} label={L('生成进度')} approx={L('≈')} statusText={L(status)} /><span>{elapsed == null ? L(status) : waitingText(elapsed, lang)}</span></div>}
+          {current && pending && progress && <div className="history-result-inline-progress"><ProgressRing percent={progress.percent ?? 0} estimated={progress.estimated} showPercent={progress.showPercent ?? true} indeterminate={['submitting', 'confirming', 'queued', 'waiting'].includes(progress.status)} label={L('生成进度')} approx={L('≈')} statusText={L(status)} /><span>{elapsed == null ? L(status) : waitingText(elapsed, lang)}</span></div>}
           <dl className="history-result-facts">
             <div><dt>{L('模型')}</dt><dd>{item.modelLabel || item.model || '—'}</dd></div>
             <div><dt>{L('时间')}</dt><dd>{historyTime(item, locale, lang) || '—'}</dd></div>

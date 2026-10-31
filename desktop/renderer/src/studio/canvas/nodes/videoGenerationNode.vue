@@ -789,8 +789,8 @@ watch(() => node.selected, selected => { if (selected) refreshLiveModels(); });
 
 function recordGenerationStatus(status: string, progress?: number | null, message = "", requestId?: string) {
   generationMessage.value = message;
-  generationStatus.value = status;
   if (progress !== undefined) upstreamPercent.value = progress;
+  generationStatus.value = status;
   if (requestId && ["failed", "cancelled", "expired"].includes(status)) delivery.clear(requestId);
 }
 
@@ -1240,7 +1240,8 @@ const emptyHints = computed(() => {
   display: grid;
   place-items: center;
   min-height: 144px;
-  &:has(.videoPlayer) { min-height: 0; }
+  // 超宽旧视频不能把生成状态、进度条和百分比压出预览区域。
+  &:has(.videoPlayer):not(:has(.generationProgress)) { min-height: 0; }
   overflow: hidden;
   border-radius: var(--el-border-radius-base);
 

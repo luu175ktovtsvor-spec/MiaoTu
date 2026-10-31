@@ -13,7 +13,7 @@
       :aria-label="label"
       :aria-valuetext="progress.text"
       v-bind="progress.showPercent ? { 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': progress.percent } : {}">
-      <div class="progressFill" :style="{ width: `${fillWidth}%` }" />
+      <div class="progressRail"><div class="progressFill" :class="{ 'is-indeterminate': indeterminate }" :style="{ width: indeterminate ? '30%' : `${fillWidth}%` }" /></div>
       <span v-if="progress.showPercent" class="progressNumber" :style="{ left: `${numberLeft}%` }">{{ numberText }}</span>
     </div>
   </div>
@@ -29,8 +29,9 @@ const props = defineProps<{
   label: string;
 }>();
 
-// 失败、取消、停止等待没有完成比例：条子铺满并换成状态色，不显示数字。
-const fillWidth = computed(() => (props.progress.showPercent ? Math.max(2, props.progress.percent) : 100));
+// 提交/排队保留 0% 和活动指示；失败、取消、停止等待不画一条假满的进度。
+const indeterminate = computed(() => ["submitting", "confirming", "queued"].includes(props.progress.phase));
+const fillWidth = computed(() => (props.progress.showPercent ? props.progress.percent : 0));
 // 数字贴着进度条的头，两端各留一点位置，不被预览框裁掉。
 const numberLeft = computed(() => Math.min(94, Math.max(6, props.progress.percent)));
 const numberText = computed(() => `${props.progress.estimated ? "≈" : ""}${props.progress.percent}%`);
@@ -79,6 +80,7 @@ const numberText = computed(() => `${props.progress.estimated ? "≈" : ""}${pro
   border-radius: 999px;
   background: rgb(255 255 255 / .16);
 }
+.progressRail { height: 100%; overflow: hidden; border-radius: inherit; }
 .progressFill {
   height: 100%;
   border-radius: inherit;
@@ -99,25 +101,23 @@ const numberText = computed(() => `${props.progress.estimated ? "≈" : ""}${pro
   transition: left .6s cubic-bezier(.2, .7, .2, 1);
 }
 
-// 排队：还没开跑，条子上有一道光来回扫，表示在排队、不是卡住了。
-.phase-queued .progressFill {
-  width: 100% !important;
-  background: linear-gradient(90deg, transparent, rgb(76 157 255 / .9), transparent) 0 0 / 40% 100% no-repeat;
+// 提交、确认和排队的活动段不表达完成百分比，旁边的数字保持 0%。
+.progressFill.is-indeterminate {
+  background: linear-gradient(90deg, transparent, var(--progress-flow), transparent);
   box-shadow: none;
   animation: progress-scan 1.6s ease-in-out infinite;
 }
-.phase-queued .progressNumber { display: none; }
 .phase-succeeded .progressFill { background: var(--progress-flow); }
-.phase-failed .progressFill { background: #e5484d; box-shadow: 0 0 10px rgb(229 72 77 / .7); }
+.phase-failed .progressTrack { background: rgb(229 72 77 / .35); }
 :is(.phase-cancelled, .phase-pending) .progressFill { background: rgb(255 255 255 / .45); box-shadow: none; }
 
 @keyframes progress-scan {
-  0% { background-position: -40% 0; }
-  100% { background-position: 140% 0; }
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(340%); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .progressFill, .progressNumber { transition: none; }
-  .phase-queued .progressFill { animation: none; background: rgb(76 157 255 / .5); }
+  .progressFill.is-indeterminate { animation: none; transform: translateX(115%); background: rgb(76 157 255 / .5); }
 }
 </style>
