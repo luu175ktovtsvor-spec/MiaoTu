@@ -1,0 +1,75 @@
+name: 妙图 Intel Mac 安装包验收
+on:
+  workflow_dispatch:
+    inputs:
+      build_release:
+        description: Verified temporary macOS build release
+        required: true
+      source_commit:
+        description: Exact application source commit
+        required: true
+permissions:
+  contents: write
+jobs:
+  accept:
+    runs-on: macos-15-intel
+    timeout-minutes: 25
+    env:
+      MIAO_DESKTOP_NO_GENERATION: '1'
+      MIAO_DESKTOP_DISABLE_UPDATES: '1'
+      ENABLE_MODEL_CALLS: 'false'
+      SOURCE_COMMIT: ${{ inputs.source_commit }}
+      BUILD_RELEASE: ${{ inputs.build_release }}
+    steps:
+      - name: 核对本轮固定来源和原生 Intel 环境
+        shell: bash
+        run: |
+          [[ "$SOURCE_COMMIT" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$BUILD_RELEASE" =~ ^desktop-mac-build-[0-9]+-[0-9]+$ ]]
+          [ "$(uname -m)" = x86_64 ]
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.source_commit }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24'
+      - name: 下载固定提交的 Intel ZIP 并校验元数据
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/intel-package" "$RUNNER_TEMP/intel-proof"
+          gh release view "$BUILD_RELEASE" --json targetCommitish > "$RUNNER_TEMP/intel-package/release.json"
+          node -e "const fs=require('fs');const d=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+'/intel-package/release.json'));if(d.targetCommitish!==process.env.SOURCE_COMMIT)throw Error('Source commit mismatch')"
+          version=$(node -p "require('./desktop/package.json').version")
+          gh release download "$BUILD_RELEASE" --pattern "MiaoTu-$version-x64.zip" --pattern latest-mac.yml --dir "$RUNNER_TEMP/intel-package"
+          node --input-type=module <<'JS'
+          import fs from 'node:fs'; import crypto from 'node:crypto';
+          const version=JSON.parse(fs.readFileSync('desktop/package.json')).version;
+          const dir=process.env.RUNNER_TEMP+'/intel-package/';
+          const file=`MiaoTu-${version}-x64.zip`, raw=fs.readFileSync(dir+'latest-mac.yml','utf8');
+          const lines=raw.split(/\r?\n/), index=lines.findIndex(line=>line.trim()==='- url: '+file);
+          if(index<0)throw Error('Intel ZIP missing from metadata');
+          const sha=lines[index+1].trim().replace(/^sha512: /,''), size=Number(lines[index+2].trim().replace(/^size: /,''));
+          const bytes=fs.readFileSync(dir+file);
+          if(bytes.length!==size||crypto.createHash('sha512').update(bytes).digest('base64')!==sha)throw Error('Intel ZIP hash mismatch');
+          fs.writeFileSync(process.env.RUNNER_TEMP+'/intel-proof/package.json',JSON.stringify({sourceCommit:process.env.SOURCE_COMMIT,workflowCommit:process.env.GITHUB_SHA,version,architecture:process.arch,zipSha512:sha,zipSize:size}));
+          JS
+          ditto -x -k "$RUNNER_TEMP/intel-package/MiaoTu-$version-x64.zip" "$RUNNER_TEMP/intel-app"
+          codesign --verify --deep --strict "$RUNNER_TEMP/intel-app/妙图.app"
+          spctl --assess --type execute --verbose=4 "$RUNNER_TEMP/intel-app/妙图.app"
+          xcrun stapler validate "$RUNNER_TEMP/intel-app/妙图.app"
+      - name: Intel 原生启动并验证登录、画布及重启
+        env:
+          MIAO_ACCEPT_EMAIL: ${{ secrets.MIAO_ACCEPT_EMAIL }}
+          MIAO_ACCEPT_PASSWORD: ${{ secrets.MIAO_ACCEPT_PASSWORD }}
+        run: node desktop/scripts/accept-login.ts "$RUNNER_TEMP/intel-app/妙图.app/Contents/MacOS/妙图" "$RUNNER_TEMP/intel-proof"
+      - name: 保存仅含验收结果的临时证明
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROOF_TAG: desktop-intel-proof-${{ github.run_id }}
+        run: |
+          if [ -f "$RUNNER_TEMP/intel-proof/result.json" ]; then
+            gh release create "$PROOF_TAG" "$RUNNER_TEMP/intel-proof/result.json" "$RUNNER_TEMP/intel-proof/package.json" --target "$SOURCE_COMMIT" --latest=false --title '临时 Intel Mac 验收证明' --notes 'Existing signed application, native Intel acceptance only; delete after retrieval.'
+          fi
