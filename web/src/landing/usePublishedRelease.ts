@@ -19,6 +19,14 @@ export function macDownloadRevisions(text: string) {
   return revisions
 }
 
+export function windowsDownloadRevision(text: string) {
+  for (const match of text.matchAll(/^\s*- url: (.+)\r?\n\s+sha512: (\S+)/gm)) {
+    const name = match[1].trim().replace(/^['"]|['"]$/g, '')
+    if (/-Windows-x64\.exe$/.test(name) && /^[A-Za-z0-9+/]{86}==$/.test(match[2])) return match[2].slice(0, 16)
+  }
+  throw new Error('Windows download digest unavailable')
+}
+
 // A source-tree candidate or release-note entry is not a published release.
 // Both official update feeds must agree before the site labels a version latest.
 export function usePublishedRelease() {
@@ -35,10 +43,12 @@ export function usePublishedRelease() {
       const text = await response.text()
       const value = text.match(/^version:\s*['"]?(\d+\.\d+\.\d+)['"]?\s*$/m)?.[1]
       if (!value) throw new Error('Invalid release version')
-      return { version: value, text }
+      const build = Number(text.match(/^build:\s*(\d+)\s*$/m)?.[1] || 0)
+      if (!Number.isSafeInteger(build)) throw new Error('Invalid release build')
+      return { version: value, build, text }
     })).then(([windows, mac]) => {
-      if (windows.version !== mac.version) throw new Error('Release feeds differ')
-      const revisions = macDownloadRevisions(mac.text)
+      if (windows.version !== mac.version || windows.build !== mac.build) throw new Error('Release feeds differ')
+      const revisions = { ...macDownloadRevisions(mac.text), 'Windows-x64.exe': windowsDownloadRevision(windows.text) }
       if (active) { setDownloadRevisions(revisions); setVersion(mac.version) }
     }).catch(() => { if (active) setFailed(true) })
       .finally(() => window.clearTimeout(timeout))
